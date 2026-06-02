@@ -4,12 +4,13 @@ import {
   getPublicBytesForKeyId,
   sign,
 } from '@animo-id/expo-secure-environment'
-import { createMMKV } from 'react-native-mmkv'
+
+import { getMetaStorage } from '../storage/storage'
 
 const KEY_ID = 'etda_wallet_signing_key'
 const COMPRESSED_KEY_STORAGE = 'wallet.compressed_pub_key'
 
-const metaStorage = createMMKV({ id: 'wallet-meta' })
+const metaStorage = getMetaStorage()
 
 // P-256 curve constants
 const P256_P = BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF')

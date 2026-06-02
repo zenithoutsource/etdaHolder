@@ -1,6 +1,6 @@
 # Architecture
 
-> For domain terms → `CONTEXT.md` | For locked decisions → `docs/adr/` | For task state → `AGENTS.md`
+> For domain terms → `../CONTEXT.md` | For locked decisions → `./adr/` | For task state → `../AGENTS.md`
 
 ---
 
@@ -8,7 +8,7 @@
 
 This project is an OID4VCI 1.0 Holder Wallet built on Expo SDK 54 (TypeScript, Hermes Engine, React Compiler). It targets iOS and Android via Expo Prebuild / Development Builds. The runtime is Hermes, which requires all cryptographic operations on the signing path to be offloaded to native modules — no pure-JS `BigInt`-dependent cryptography is permitted for PoP JWT signing.
 
-The wallet fulfills the Holder role in the W3C Verifiable Credentials data model and the OID4VCI 1.0 specification. It acquires credentials from Issuer services, stores them locally on-device with AES-256 encryption, and presents them to Verifier services via ISO 18013-5 NFC proximity exchange.
+The wallet fulfills the Holder role in the W3C Verifiable Credentials data model and the OID4VCI 1.0 specification. It acquires credentials from Issuer services (OID4VCI 1.0), stores them locally on-device with AES-256 encryption, and presents them to Verifier services over two channels split by transport: ISO 18013-5 proximity (NFC/BLE tap-to-reader, ADR 0003) and — planned post-v1 — OID4VP 1.0 online/cross-device presentation. See the Presentation Channels table in §2.
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -80,7 +80,7 @@ Content-Type: application/json
 { "vc": "<signed-vc-jwt>" }
 ```
 
-This is the sole permitted write operation to the backend during credential acquisition. The Issuer's credential endpoint and the company backend are independent services. The wallet does not proxy or relay OID4VCI traffic through the company backend. See `docs/API.md` for the full Protocol Boundary Matrix.
+This is the sole permitted write operation to the backend during credential acquisition. The Issuer's credential endpoint and the company backend are independent services. The wallet does not proxy or relay OID4VCI traffic through the company backend. See `API.md` for the full Protocol Boundary Matrix.
 
 ### Credential Offer Delivery Channels
 
@@ -91,11 +91,22 @@ This is the sole permitted write operation to the backend during credential acqu
 | NFC (presentation) | ISO 18013-5 proximity mdoc exchange (ADR 0003) |
 | In-app | User taps "claim" → SDK call → backend returns offer URL → `@sphereon/oid4vci-client` |
 
+### Presentation Channels
+
+Credential presentation (Holder → Verifier) is separate from acquisition and split by transport:
+
+| Channel | Protocol | Status |
+|---|---|---|
+| Proximity (tap-to-reader) | ISO 18013-5 mdoc (NFC/BLE engagement) | Decided — ADR 0003 |
+| Online / cross-device | OID4VP 1.0 (Authorization Request → signed Verifiable Presentation) | Planned post-v1 — scope-only, mechanics TBD |
+
+The two are complementary, not alternatives — different transports. OID4VP online does **not** supersede ADR 0003, which scopes the proximity channel only. Online presentation runs device-to-Verifier directly with no company backend proxy, and reuses the hardware Wallet Signing Key via `src/services/crypto` under the same biometric sign-time gate. Protocol mechanics (library, query language, `client_id` scheme) are deferred — see `ROADMAP.md` Post-v1.
+
 ---
 
 ## 3. Security Boundary and Hardware Sandbox
 
-See `docs/SECURITY.md` for the full cryptographic policy and storage standard.
+See `SECURITY.md` for the full cryptographic policy and storage standard.
 
 **Non-Extractable Signing Key (ADR 0001, ADR 0002)**
 
@@ -150,8 +161,9 @@ interface VerifiableCredentialRecord {
 |---|---|
 | `src/services/vci/` | OID4VCI 1.0 protocol adapter: credential offer parsing, Issuer metadata discovery, token exchange, PoP JWT construction, credential request/response handling via `@sphereon/oid4vci-client`. |
 | `src/services/crypto/` | Hardware key management via `@animo-id/expo-secure-environment`. Key alias `etda_wallet_signing_key`. Non-signing hashing and encoding via `react-native-quick-crypto`. No software fallback on signing path. |
+| `src/services/vp/` | OID4VP 1.0 online presentation: Authorization Request handling, Verifiable Presentation construction and signing via the crypto service. Planned post-v1 — not yet implemented, mechanics TBD. |
 | `src/services/storage/` | Encrypted MMKV VC store, keychain encryption key management. |
-| `src/sdk/` | Orval-generated TanStack Query hooks from `walletApi.json` (company OpenAPI spec). Only allowed endpoints are generated. See `docs/API.md`. |
+| `src/sdk/` | Orval-generated TanStack Query hooks from `walletApi.json` (company OpenAPI spec). Only allowed endpoints are generated. See `API.md`. |
 | `src/store/` | Zustand global state — thin slices, no heavy arrays. Persisted via MMKV storage adapter. |
 | `src/screens/` | Expo Router file-based route screens. Screen-level state stays local unless shared via a store slice. |
 | `src/components/` | Atomic UI (Buttons, Cards, Scanner Views) via NativeWind. Safe Area aware. React Compiler compatible. |
@@ -175,7 +187,7 @@ interface VerifiableCredentialRecord {
 
 ## 7. Architecture Decision Records
 
-All significant, hard-to-reverse technical choices are recorded as ADRs in `docs/adr/`. Once accepted, ADRs are immutable. Superseding an ADR requires a new numbered record that references the original.
+All significant, hard-to-reverse technical choices are recorded as ADRs in `adr/`. Once accepted, ADRs are immutable. Superseding an ADR requires a new numbered record that references the original.
 
 | ADR | Decision |
 |---|---|
@@ -183,15 +195,17 @@ All significant, hard-to-reverse technical choices are recorded as ADRs in `docs
 | 0002 | `@animo-id/expo-secure-environment` as the native signing module |
 | 0003 | ISO 18013-5 for NFC proximity credential presentation |
 
+> OID4VP 1.0 online presentation is planned post-v1 as scope-only; no ADR is recorded until the protocol mechanics are decided. ADR 0003 covers the proximity channel only and is not superseded.
+
 ---
 
 ## 8. Reference Documents
 
 | Document | Contents |
 |---|---|
-| `docs/ROADMAP.md` | 2-month, 4-phase delivery plan with week-by-week milestones |
-| `docs/SECURITY.md` | Cryptographic policy, storage standard, biometric auth gate specification |
-| `docs/TESTING.md` | Coverage thresholds, native module mock patterns, MSW usage |
-| `docs/API.md` | Orval configuration and Protocol Boundary Matrix |
-| `CONTEXT.md` | Domain glossary and OID4VCI 1.0 terminology |
-| `docs/adr/` | Numbered, immutable architecture decision records |
+| `ROADMAP.md` | 2-month, 4-phase delivery plan with week-by-week milestones, plus Post-v1 backlog |
+| `SECURITY.md` | Cryptographic policy, storage standard, biometric auth gate specification |
+| `TESTING.md` | Coverage thresholds, native module mock patterns, MSW usage |
+| `API.md` | Orval configuration and Protocol Boundary Matrix |
+| `../CONTEXT.md` | Domain glossary and OID4VCI 1.0 terminology |
+| `./adr/` | Numbered, immutable architecture decision records |

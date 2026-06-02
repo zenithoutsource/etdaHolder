@@ -11,22 +11,50 @@ Orval is configured in `orval.config.ts` at the project root:
 ```typescript
 import { defineConfig } from 'orval';
 
+const ALLOWED_PATHS = new Set([
+  '/wallet-api/wallet/{wallet}/keys/generate',
+  '/wallet-api/wallet/{wallet}/dids/create/key',
+  '/wallet-api/wallet/{wallet}/credentials/import',
+]);
+
+const OPERATION_NAMES: Record<string, string> = {
+  'post /wallet-api/wallet/{wallet}/keys/generate': 'generateKey',
+  'post /wallet-api/wallet/{wallet}/dids/create/key': 'createDidKey',
+  'post /wallet-api/wallet/{wallet}/credentials/import': 'importCredential',
+};
+
 export default defineConfig({
   walletApi: {
-    input: './walletApi.json',
+    input: {
+      target: './walletApi.json',
+      override: {
+        transformer: (spec) => ({
+          ...spec,
+          paths: Object.fromEntries(
+            Object.entries(spec.paths ?? {})
+              .filter(([path]) => ALLOWED_PATHS.has(path))
+              .map(([path, pathItem]) => [
+                path,
+                {
+                  ...pathItem,
+                  post: {
+                    ...pathItem.post,
+                    operationId: OPERATION_NAMES[`post ${path}`],
+                  },
+                },
+              ]),
+          ),
+        }),
+      },
+    },
     output: {
       target: './src/sdk/walletApi.ts',
-      client: 'fetch',
+      client: 'react-query',
+      httpClient: 'fetch',
       mode: 'single',
       override: {
-        operationId: {
-          // Only generate the allowed operations listed in the Protocol Boundary Matrix.
-          // All other operations are excluded at generation time.
-          include: [
-            'generateKey',
-            'createDidKey',
-            'importCredential',
-          ],
+        query: {
+          version: 5,
         },
       },
     },
@@ -34,10 +62,12 @@ export default defineConfig({
 });
 ```
 
+`walletApi.json` currently has no `operationId` values, so the transformer both filters the allowed paths and injects stable operation names. This keeps forbidden `/exchange/*` operations out of `src/sdk/` at generation time.
+
 Regenerate the client after any change to `walletApi.json`:
 
 ```bash
-npx orval --config orval.config.ts
+yarn sdk:generate
 ```
 
 The generated file is committed to version control so that CI and team members do not need to run Orval on every checkout. Re-run Orval when `walletApi.json` changes.

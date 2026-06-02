@@ -1,58 +1,58 @@
 TASKS.md - Active Implementation Backlog
 
 Controls execution of local AI agent coding sessions. Isolates immediate steps from long-term milestones.
-Cross-reference: AGENTS.md (status) | ARCHITECTURE.md (design) | CONTEXT.md (terms) | docs/adr/ (decisions)
+Cross-reference: AGENTS.md (status) | docs/ARCHITECTURE.md (design) | CONTEXT.md (terms) | docs/adr/ (decisions)
 
 ---
 
 ## PHASE 1: Cryptography & Secure Storage (Week 1-2)
 
-### 1.1 Crypto Service — src/services/crypto/crypto.ts
+### 1.1 Crypto Service - src/services/crypto/crypto.ts
 [x] Generate EC P-256 hardware keypair via @animo-id/expo-secure-environment
 [x] Derive did:key from compressed P-256 key (multicodec prefix [0x80, 0x24], base58btc)
-[x] Implement signProof(nonce, audience) — PoP JWT with kid/DID header, biometric sign-time gate
+[x] Implement signProof(nonce, audience) - PoP JWT with kid/DID header, biometric sign-time gate
 [x] Implement getHolderDid(), getPublicKeyJwk(), hasWalletKey(), resetWalletKey()
-[ ] Run yarn tsc — verify zero TypeScript errors
+[x] Run yarn tsc - verify zero TypeScript errors
 
-### 1.2 Storage Service — src/services/storage/storage.ts
-[ ] Generate random 256-bit encryption key at first launch
-[ ] Store encryption key in react-native-keychain with biometric access control
-[ ] Expose initStorage(): Promise<void> — retrieves key from Keychain, unlocks MMKV
-[ ] Expose getCredentialStorage(): MMKV — returns encrypted wallet-credentials instance
-[ ] Two MMKV instances: wallet-meta (unencrypted) | wallet-credentials (AES-256 encrypted)
+### 1.2 Storage Service - src/services/storage/storage.ts
+[x] Generate random 256-bit encryption key at first launch
+[x] Store encryption key in react-native-keychain with biometric access control
+[x] Expose initStorage(): Promise<void> - retrieves key from Keychain, unlocks MMKV
+[x] Expose getCredentialStorage(): MMKV - returns encrypted wallet-credentials instance
+[x] Two MMKV instances: wallet-meta (unencrypted) | wallet-credentials (AES-256 encrypted)
 
-### 1.3 App Startup Wiring — app/_layout.tsx
-[ ] Call generateWalletKeyIfNeeded() on first launch
-[ ] Call initStorage() before any credential access
-[ ] Show error boundary if hardware key or storage init fails (do not silently swallow)
+### 1.3 App Startup Wiring - app/_layout.tsx
+[x] Call generateWalletKeyIfNeeded() on first launch
+[x] Call initStorage() before any credential access
+[x] Show error boundary if hardware key or storage init fails (do not silently swallow)
 
 ---
 
 ## PHASE 2: OID4VCI 1.0 Protocol Integration (Week 3-4)
 
 ### 2.1 SDK Generation Setup
-[ ] Install orval: yarn add orval --dev
-[ ] Configure orval.config.ts → input: walletApi.json (swap for real company spec when available)
-[ ] Output target: src/sdk/ with TanStack Query hooks
-[ ] Run orval → verify generated hooks compile
+[x] Install orval: yarn add --dev orval@7.10.0
+[x] Configure orval.config.ts -> input: walletApi.json (swap for real company spec when available)
+[x] Output target: src/sdk/ with TanStack Query hooks
+[x] Run orval -> verify generated hooks compile
 
-### 2.2 Credential Offer Resolution — src/services/vci/exchangeService.ts
+### 2.2 Credential Offer Resolution - src/services/vci/exchangeService.ts
 [ ] Install @sphereon/oid4vci-client via npx expo install
-[ ] Implement resolveOffer(offerUri: string) — parses openid-credential-offer:// URI
+[ ] Implement resolveOffer(offerUri: string) - parses openid-credential-offer:// URI
 [ ] Extract Issuer metadata for dynamic UI branding (name, logo, colors)
 [ ] Handle both QR scan and NFC NDEF offer URI inputs (same function, different call site)
 
-### 2.3 Credential Acquisition — claimCredential()
-[ ] Exchange Pre-Authorized Code at Token Endpoint → Access Token + c_nonce
+### 2.3 Credential Acquisition - claimCredential()
+[ ] Exchange Pre-Authorized Code at Token Endpoint -> Access Token + c_nonce
 [ ] Call signProof(c_nonce, issuerUrl) from crypto service (biometric fires here)
-[ ] Submit Credential Request with Access Token + signed PoP → receive VC JWT
+[ ] Submit Credential Request with Access Token + signed PoP -> receive VC JWT
 [ ] Normalize VC JWT into VerifiableCredentialRecord (id, type, rawVc, claims, issuedAt, expiresAt)
 [ ] Store in encrypted MMKV via getCredentialStorage()
 [ ] Prompt user for tx_code/PIN if Issuer metadata requires it
 
-### 2.4 Backend Sync — orval SDK hook
+### 2.4 Backend Sync - orval SDK hook
 [ ] Sync credential metadata to company backend via generated SDK hook
-[ ] Invalidate TanStack Query cache for credentials list → trigger UI re-render
+[ ] Invalidate TanStack Query cache for credentials list -> trigger UI re-render
 
 ---
 
@@ -68,7 +68,7 @@ Cross-reference: AGENTS.md (status) | ARCHITECTURE.md (design) | CONTEXT.md (ter
 ### 3.2 Dynamic Card Engine
 [ ] Define CardSchemaConfig JSON format (title, issuerName, primaryColor, logo, displayFields)
 [ ] Create configs for 3 initial cards: ThaID, DLT Driving Licence, Bangkok University Transcript
-[ ] Build generic CredentialCard component that renders from config — no hardcoded card types
+[ ] Build generic CredentialCard component that renders from config - no hardcoded card types
 [ ] Wire VerifiableCredentialRecord.type to CardSchemaConfig lookup
 
 ### 3.3 QR Scanner & NFC
@@ -88,6 +88,25 @@ Cross-reference: AGENTS.md (status) | ARCHITECTURE.md (design) | CONTEXT.md (ter
 
 ---
 
+## POST-V1: OID4VP 1.0 Online Presentation (Planned, Not Scheduled)
+
+Scope-only — not part of the 4-phase plan. No ADR, no library chosen yet.
+See docs/ROADMAP.md "Post-v1" and docs/ARCHITECTURE.md §2 Presentation Channels.
+
+Open decisions (resolve before starting):
+[ ] Choose OID4VP 1.0 library (e.g. @sphereon/* presentation pkg) vs build on existing stack
+[ ] Choose query language: DCQL vs Presentation Exchange (presentation_definition)
+[ ] Decide client_id scheme + Verifier trust model
+[ ] Decide flow shape: same-device redirect vs cross-device (request_uri + QR) + response mode
+
+Implementation (after decisions locked):
+[ ] src/services/vp/ - handle Authorization Request, build Verifiable Presentation
+[ ] Sign vp_token via src/services/crypto (hardware key, biometric sign-time gate)
+[ ] Device-to-Verifier direct - no company backend proxy (does not supersede ADR 0003)
+[ ] Tests: verifier.ts MSW handler group (see docs/TESTING.md)
+
+---
+
 ## Definition of Done (Per Session)
 
 Before ending a session or handing off:
@@ -100,8 +119,14 @@ Before ending a session or handing off:
 ## Active Session Notes & Blockers
 
 Session 2026-06-02:
-- crypto.ts written. Pending: yarn tsc green (last fix: .delete to .remove in resetWalletKey)
-- ARCHITECTURE.md, CONTEXT.md, docs/adr/0001-0003 all current
-- CLAUDE.md refactored — Architecture section moved to ARCHITECTURE.md
+- crypto.ts written and verified with yarn tsc.
+- docs/ARCHITECTURE.md, CONTEXT.md, docs/adr/0001-0003 all current.
+- CLAUDE.md refactored - Architecture section moved to docs/ARCHITECTURE.md.
 - walletApi.json is a reference example only. Real company spec TBD.
-- Installed: @animo-id/expo-secure-environment@0.1.5, react-native-nitro-modules@0.35.9, react-native-quick-base64@3.0.0
+- Installed: @animo-id/expo-secure-environment@0.1.5, react-native-nitro-modules@0.35.9, react-native-quick-base64@3.0.0.
+- storage.ts now owns wallet-meta and wallet-credentials MMKV setup, with the encrypted credential store unlocked from react-native-keychain.
+- app/_layout.tsx now calls generateWalletKeyIfNeeded() and initStorage() before rendering credential-accessible routes.
+- yarn tsc and yarn lint pass after storage/startup wiring.
+- Test blocker: Jest/jest-expo dependencies and config are not installed yet, so storage unit tests could not be added in this session.
+- Phase 2.1 SDK setup complete: orval@7.10.0 is pinned for Node 20 compatibility, `orval.config.ts` filters `walletApi.json` down to the allowed Protocol Boundary Matrix paths, and `src/sdk/walletApi.ts` exports `generateKey`, `createDidKey`, `importCredential`, plus TanStack Query mutation hooks.
+- Orval still prints a warning about `#/components/securitySchemes/auth-bearer-alternative` in the upstream OpenAPI 3.1 spec, but generation, TypeScript, and lint verification pass.

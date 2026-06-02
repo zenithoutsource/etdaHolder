@@ -155,6 +155,7 @@ src/__tests__/setup/
   handlers/
     issuer.ts       # /.well-known/openid-credential-issuer, /token, /credential
     walletApi.ts    # /wallet-api/wallet/{walletId}/credentials/import and other allowed endpoints
+    verifier.ts     # (post-v1) OID4VP Authorization Request/Response — added when online presentation lands
   index.ts          # re-exports all handlers
 ```
 

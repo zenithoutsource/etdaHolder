@@ -8,6 +8,9 @@ The Thai citizen end-user. Receives Verifiable Credentials from issuers via OID4
 ## Issuer
 A government or institutional authority that issues Verifiable Credentials. Initial issuers: ThaID (national ID), DLT (Driving License), Bangkok University (Transcript). Issuers are identified by `did:web` DIDs.
 
+## Verifier
+A party that requests and checks Verifiable Credentials from the Holder during a presentation. Examples: traffic police, border control, a car-rental agency. Distinct from the Issuer — a Verifier consumes credentials, it does not issue them.
+
 ## Verifiable Credential (VC)
 A signed, tamper-evident digital claim issued by an Issuer to the Holder. Stored in encrypted MMKV storage.
 
@@ -32,7 +35,10 @@ A URL (`openid-credential-offer://...`) returned by the company backend, read fr
 3. **In-app SDK call** — backend returns offer URL via Generated SDK
 
 ## NFC Presentation
-Proximity credential presentation via ISO 18013-5. User taps phone to verifier's NFC reader. Requires a native mdoc module (separate ADR pending). iOS uses BLE engagement fallback; Android supports full HCE.
+Proximity credential presentation via ISO 18013-5 — one of two presentation channels (contrast Online Presentation). User taps phone to the Verifier's NFC reader. Requires a native mdoc module (separate ADR pending). iOS uses BLE engagement fallback; Android supports full HCE. Decided in ADR 0003.
+
+## Online Presentation
+Remote credential presentation via OID4VP 1.0 (OpenID for Verifiable Presentations). The Verifier sends an Authorization Request (cross-device QR or same-device redirect) and the Holder returns a signed Verifiable Presentation. Distinct from NFC Presentation — online transport rather than tap-to-reader proximity. Planned post-v1; protocol mechanics not yet decided.
 
 ## Generated SDK
 TypeScript API client generated from the company's Swagger/OpenAPI spec via `orval`. Produces TanStack Query hooks directly. Lives in `src/sdk/`. All company backend calls go through this SDK — no raw fetch/axios.

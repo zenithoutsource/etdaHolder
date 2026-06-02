@@ -1,50 +1,55 @@
-# Welcome to your Expo app 👋
+OID4VCI Wallet Application
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Welcome to your universal decentralized digital wallet application developed using Expo.
 
-## Get started
+Getting Started
 
-1. Install dependencies
+1. Install Dependencies
 
-   ```bash
-   npm install
-   ```
+Run the following command to download and map dependencies using Yarn Classic:
 
-2. Start the app
+yarn install
 
-   ```bash
-   npx expo start
-   ```
 
-In the output, you'll find options to open the app in a
+2. Start the App
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Start the local Metro Bundler server:
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+yarn start
 
-## Get a fresh project
 
-When you're ready, run:
+In the output terminal, select options to open the application in:
 
-```bash
-npm run reset-project
-```
+A Development Build (via npx expo prebuild configuration)
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Android Emulator
 
-## Learn more
+iOS Simulator
 
-To learn more about developing your project with Expo, look at the following resources:
+Expo Go (development sandbox)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+You can begin UI or logic developments inside the app or src directory. This project utilizes file-based routing.
 
-## Join the community
+Project Structure
 
-Join our community of developers creating universal apps.
+This project enforces a clean separation of concerns and runs entirely on the Hermes JavaScript engine:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+src/services/crypto/ - Hardware key management via @animo-id/expo-secure-environment. (Phase 1, implemented)
+
+src/services/storage/ - Encrypted MMKV credential store + keychain key management. (Phase 1, implemented)
+
+src/services/vci/ - Handlers for credential exchange under OID4VCI 1.0. (Phase 2, planned)
+
+src/sdk/ - Compiled API client generated via Orval. (Phase 2, planned)
+
+Developer Documentation
+
+Refer to the following configuration rules in the root folder before committing code changes:
+
+CLAUDE.md - Command, environment, and development conventions.
+
+CONTEXT.md - Definition of domain glossaries.
+
+TASKS.md - Active daily micro-task checklist.
+
+AGENTS.md - Roadmap and project milestones.

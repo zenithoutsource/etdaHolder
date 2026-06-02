@@ -56,7 +56,7 @@ Every Proof of Possession (PoP) signature transaction must be gated by biometric
 - If the user cancels biometric authentication, the sign call rejects. The credential request flow surfaces an error to the user. No retry without a new biometric prompt.
 - Face ID, Touch ID, and Android biometric authentication are all acceptable modalities. Device PIN fallback is permitted only if the native module explicitly supports it — do not implement a manual PIN fallback in JavaScript.
 
-This gate applies to every PoP JWT construction during OID4VCI credential acquisition, and to every future signature operation added to the wallet (e.g., presentation proofs). No signature bypasses the gate.
+This gate applies to every PoP JWT construction during OID4VCI credential acquisition, and to every future signature operation added to the wallet — including OID4VP `vp_token` signing (online presentation, planned post-v1) and ISO 18013-5 device authentication. No signature bypasses the gate.
 
 ---
 
@@ -65,7 +65,8 @@ This gate applies to every PoP JWT construction during OID4VCI credential acquis
 - OID4VCI protocol traffic (credential offer resolution, token endpoint, credential endpoint) communicates directly from the device to the Issuer service. No company backend proxies this traffic.
 - The company backend receives only the finalized, validated VC JWT via `POST /wallet-api/wallet/{walletId}/credentials/import`. It does not participate in credential negotiation.
 - All HTTPS connections use system TLS. Certificate pinning may be added in a future ADR if the threat model requires it.
-- The Orval-generated SDK client is restricted to the allowed endpoints defined in `docs/API.md`. Forbidden endpoints must not be called from application code.
+- The Orval-generated SDK client is restricted to the allowed endpoints defined in `API.md`. Forbidden endpoints must not be called from application code.
+- OID4VP online presentation (planned post-v1) communicates device-to-Verifier directly. The company backend does not proxy, broker, or audit presentation traffic. Any backend-side presentation audit is out of scope until a future ADR.
 
 ---
 

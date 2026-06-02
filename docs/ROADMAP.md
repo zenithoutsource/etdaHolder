@@ -101,7 +101,7 @@ Goal: Render credential types using display metadata from Issuer configuration. 
   - Pull-to-refresh fetches updated credentials from company backend (GET endpoint, allowed per Protocol Boundary Matrix).
 - Implement credential detail screen (`src/screens/credentials/[id].tsx`):
   - Shows full claim set with labels derived from credential subject properties.
-  - Share / present button (wire to ISO 18013-5 presentation flow in a future phase).
+  - Share / present button (wire to presentation flows in a future phase: ISO 18013-5 proximity per ADR 0003, and OID4VP 1.0 online per the Post-v1 section below).
 - Implement QR scanner screen (`src/screens/scan.tsx`):
   - Parses `openid-credential-offer://...` from QR code.
   - Triggers the VCI acquisition flow from Phase 2.
@@ -150,3 +150,24 @@ Goal: Harden the release build, audit all security boundaries, and compile final
 - All physical device manual scenarios pass.
 - No credential data in log output on production build.
 - `v1.0.0-rc.1` tag pushed.
+
+---
+
+## Post-v1 — OID4VP 1.0 Online Presentation (Planned, Not Scheduled)
+
+> Scope-only. This is **not** part of the fixed 8-week / 4-phase plan above. It is recorded so the architecture and glossary stay consistent (see `ARCHITECTURE.md` §2 Presentation Channels, `../CONTEXT.md` "Online Presentation"). No ADR is written and no protocol mechanics are decided until this work is scheduled.
+
+Goal: add an online / cross-device presentation channel so the Holder can present credentials to a remote Verifier (browser redirect or cross-device QR), complementing the ISO 18013-5 proximity channel (ADR 0003). Does not supersede ADR 0003 — different transport.
+
+Open decisions to resolve before this phase can start (each may warrant an ADR):
+
+- **Library:** which OID4VP 1.0 implementation (e.g. a `@sphereon/*` presentation package) vs building on the existing stack. TBD.
+- **Query language:** DCQL vs Presentation Exchange (`presentation_definition`). TBD.
+- **`client_id` scheme** and Verifier trust model (how the wallet authenticates the Verifier). TBD.
+- **Flow shape:** same-device redirect vs cross-device (`request_uri` + QR), and response mode. TBD.
+
+Fixed constraints (already decided, inherited from the existing architecture):
+
+- `vp_token` is signed with the hardware Wallet Signing Key via `src/services/vp/` → `src/services/crypto`, under the same biometric sign-time gate (`SECURITY.md` §3).
+- Presentation runs device-to-Verifier directly. No company backend proxy or presentation audit (`SECURITY.md` §4).
+- Follows the OID4VP 1.0 spec — no wallet-specific protocol deviations.
