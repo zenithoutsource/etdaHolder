@@ -37,10 +37,10 @@ Cross-reference: AGENTS.md (status) | docs/ARCHITECTURE.md (design) | CONTEXT.md
 [x] Run orval -> verify generated hooks compile
 
 ### 2.2 Credential Offer Resolution - src/services/vci/exchangeService.ts
-[ ] Install @sphereon/oid4vci-client via npx expo install
-[ ] Implement resolveOffer(offerUri: string) - parses openid-credential-offer:// URI
-[ ] Extract Issuer metadata for dynamic UI branding (name, logo, colors)
-[ ] Handle both QR scan and NFC NDEF offer URI inputs (same function, different call site)
+[x] Verify @sphereon/oid4vci-client@0.20.1 is installed
+[x] Implement resolveOffer(offerUri: string) - parses openid-credential-offer:// URI
+[x] Extract Issuer metadata for dynamic UI branding (name, logo, colors)
+[x] Handle both QR scan and NFC NDEF offer URI inputs (same function, different call site)
 
 ### 2.3 Credential Acquisition - claimCredential()
 [ ] Exchange Pre-Authorized Code at Token Endpoint -> Access Token + c_nonce
@@ -130,3 +130,5 @@ Session 2026-06-02:
 - Test blocker: Jest/jest-expo dependencies and config are not installed yet, so storage unit tests could not be added in this session.
 - Phase 2.1 SDK setup complete: orval@7.10.0 is pinned for Node 20 compatibility, `orval.config.ts` filters `walletApi.json` down to the allowed Protocol Boundary Matrix paths, and `src/sdk/walletApi.ts` exports `generateKey`, `createDidKey`, `importCredential`, plus TanStack Query mutation hooks.
 - Orval still prints a warning about `#/components/securitySchemes/auth-bearer-alternative` in the upstream OpenAPI 3.1 spec, but generation, TypeScript, and lint verification pass.
+- Phase 2.2 Credential Offer Resolution complete: `resolveOffer()` parses inline and referenced OID4VCI offers with Sphereon, fetches Issuer metadata directly, and returns issuer/credential display data for dynamic UI branding. QR scan and NFC NDEF call sites should both pass their offer URI into this same function.
+- Test blocker remains: Jest/jest-expo dependencies and config are not installed yet, so `src/services/vci/exchangeService.test.ts` is a TypeScript contract test compiled by `yarn tsc` rather than an executable Jest test.

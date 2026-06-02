@@ -6,7 +6,7 @@ This is a production-ready playbook defining strict architectural rules, securit
 
 ## HANDOFF STATE (2026-06-02)
 
-**Immediate Next Task:** Begin Phase 2.2 Credential Offer Resolution in `src/services/vci/exchangeService.ts`.
+**Immediate Next Task:** Begin Phase 2.3 Credential Acquisition with `claimCredential()`.
 
 **Files to read before starting:**
 - `CLAUDE.md` - architecture rules
@@ -19,12 +19,14 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `app/_layout.tsx` - Phase 1 startup wiring
 - `orval.config.ts` - Phase 2.1 SDK generation config
 - `src/sdk/walletApi.ts` - generated company backend SDK
+- `src/services/vci/exchangeService.ts` - Phase 2.2 credential offer resolution
+- `src/services/vci/exchangeService.test.ts` - Phase 2.2 TypeScript contract test
 
 **Next concrete steps:**
-1. Implement `resolveOffer(offerUri: string)` in `src/services/vci/exchangeService.ts`.
-2. Use `@sphereon/oid4vci-client` for OID4VCI 1.0 offer parsing; do not call generated `/exchange/*` backend endpoints.
-3. Extract Issuer metadata needed for dynamic UI branding.
-4. Run `yarn tsc`, `yarn lint`, and update `TASKS.md`.
+1. Implement `claimCredential()` using the resolved offer, Issuer metadata, and Pre-Authorized Code flow.
+2. Exchange the Pre-Authorized Code at the token endpoint to obtain access token + c_nonce.
+3. Call `signProof(c_nonce, issuerUrl)` from `src/services/crypto/crypto.ts`; biometric must fire here.
+4. Submit the Credential Request, normalize the VC JWT into `VerifiableCredentialRecord`, store it in encrypted MMKV, then run `yarn tsc`, `yarn lint`, and update `TASKS.md`.
 
 ---
 
@@ -99,7 +101,7 @@ Implementation Status Tracker
 [x] Phase 1a: src/services/crypto/crypto.ts - written and yarn tsc green
 [x] Phase 1b: src/services/storage/storage.ts - encrypted MMKV storage written
 [x] Phase 1c: app/_layout.tsx startup wiring - written
-[ ] Phase 2: OID4VCI 1.0 Protocol Integration (Target: Week 3-4; Phase 2.1 SDK setup complete)
+[ ] Phase 2: OID4VCI 1.0 Protocol Integration (Target: Week 3-4; Phase 2.1 SDK setup and Phase 2.2 offer resolution complete)
 [ ] Phase 3: Dynamic Card & Config-Driven UI Mapping (Target: Week 5-6)
 [ ] Phase 4: Security Hardening & Release Build (Target: Week 7-8)
 [ ] Post-v1: OID4VP 1.0 Online Presentation (planned, scope-only - mechanics TBD)
