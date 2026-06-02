@@ -1,300 +1,465 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ETDA Wallet — Tech Overview</title>
+  <title>ETDA Wallet — ภาพรวมเทคนิค</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", sans-serif;
       background: #f7f8fc;
       color: #1a1d23;
-      line-height: 1.65;
+      line-height: 1.75;
     }
 
     header {
-      background: #1b2d5b;
+      background: linear-gradient(135deg, #1b2d5b 0%, #2d4fa3 100%);
       color: #fff;
       padding: 36px 48px;
     }
-    header h1 { font-size: 28px; font-weight: 700; }
-    header p { margin-top: 6px; font-size: 14px; opacity: .7; }
-
-    main { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
-
-    h2 {
-      font-size: 13px; font-weight: 700; letter-spacing: 1.5px;
-      text-transform: uppercase; color: #2d4fa3;
-      margin: 40px 0 16px;
+    header h1 { font-size: 26px; font-weight: 700; }
+    header .sub { margin-top: 6px; font-size: 13px; opacity: .7; }
+    header .tags { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+    header .tag {
+      background: rgba(255,255,255,.15); border-radius: 20px;
+      padding: 3px 12px; font-size: 12px;
     }
 
-    /* ── One-liner summary ── */
+    main { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    h2 {
+      font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: #2d4fa3;
+      margin: 44px 0 16px;
+    }
+
     .summary {
       background: #fff; border-radius: 10px;
-      padding: 24px 28px; font-size: 15px; color: #333;
+      padding: 22px 26px; font-size: 15px; color: #333;
       box-shadow: 0 2px 8px rgba(0,0,0,.06);
       border-left: 5px solid #2d4fa3;
     }
+    .summary .en { font-size: 12px; color: #999; margin-top: 8px; font-style: italic; }
 
-    /* ── How it works steps ── */
-    .steps { display: flex; flex-direction: column; gap: 0; }
+    .proto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .proto-box { background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); overflow: hidden; }
+    .proto-header { padding: 14px 20px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .proto-header.issuance    { background: #eff6ff; color: #1d4ed8; border-bottom: 2px solid #bfdbfe; }
+    .proto-header.presentation{ background: #f0fdf4; color: #15803d; border-bottom: 2px solid #bbf7d0; }
+    .proto-body { padding: 16px 20px; font-size: 13px; color: #444; }
+    .proto-body p { margin-bottom: 8px; }
+    .proto-body ul { padding-left: 18px; }
+    .proto-body ul li { margin-bottom: 4px; }
+    .proto-body code { font-size: 11px; background: #f1f5f9; color: #2d4fa3; padding: 1px 5px; border-radius: 4px; }
+
+    .flow-label {
+      font-size: 12px; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; padding: 6px 14px;
+      border-radius: 6px; margin-bottom: 12px; display: inline-block;
+    }
+    .flow-label.issuance    { background: #eff6ff; color: #1d4ed8; }
+    .flow-label.presentation{ background: #f0fdf4; color: #15803d; }
+
+    .steps { display: flex; flex-direction: column; }
     .step {
-      display: flex; gap: 20px; align-items: flex-start;
-      background: #fff; padding: 18px 24px;
+      display: flex; gap: 18px; align-items: flex-start;
+      background: #fff; padding: 16px 22px;
       border-bottom: 1px solid #eef0f6;
     }
     .step:first-child { border-radius: 10px 10px 0 0; }
     .step:last-child  { border-radius: 0 0 10px 10px; border-bottom: none; }
     .step-num {
-      min-width: 28px; height: 28px;
-      background: #2d4fa3; color: #fff;
-      border-radius: 50%; font-size: 12px; font-weight: 700;
+      min-width: 26px; height: 26px;
+      border-radius: 50%; font-size: 11px; font-weight: 700;
       display: flex; align-items: center; justify-content: center;
-      margin-top: 2px;
+      margin-top: 3px; flex-shrink: 0;
     }
+    .step-num.blue  { background: #2d4fa3; color: #fff; }
+    .step-num.green { background: #16a34a; color: #fff; }
     .step-body { flex: 1; }
-    .step-body strong { font-size: 14px; color: #1a1d23; display: block; margin-bottom: 3px; }
-    .step-body p { font-size: 13px; color: #555; }
+    .step-body strong { font-size: 14px; color: #1a1d23; display: block; }
+    .step-body .th { font-size: 13px; color: #555; margin-top: 2px; }
+    .step-body .en-note { font-size: 11px; color: #aaa; margin-top: 3px; font-style: italic; }
     .step-body code { font-size: 11px; background: #eff3ff; color: #2d4fa3; padding: 1px 5px; border-radius: 4px; }
     .step-tag {
-      font-size: 10px; font-weight: 700; letter-spacing: .5px;
-      padding: 3px 8px; border-radius: 10px; white-space: nowrap; margin-top: 2px;
+      font-size: 10px; font-weight: 700;
+      padding: 3px 8px; border-radius: 10px; white-space: nowrap; margin-top: 3px; flex-shrink: 0;
     }
-    .tag-device  { background: #dcfce7; color: #15803d; }
-    .tag-hw      { background: #fef3c7; color: #92400e; }
-    .tag-net     { background: #dbeafe; color: #1d4ed8; }
+    .tag-device { background: #dcfce7; color: #15803d; }
+    .tag-hw     { background: #fef3c7; color: #92400e; }
+    .tag-net    { background: #dbeafe; color: #1d4ed8; }
+    .tag-user   { background: #fce7f3; color: #be185d; }
 
-    /* ── Stack cards ── */
-    .stack { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+    .stack { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
     .card {
       background: #fff; border-radius: 10px;
-      padding: 18px 20px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      padding: 16px 18px; box-shadow: 0 2px 8px rgba(0,0,0,.06);
       border-top: 3px solid #dde1ed;
     }
     .card.blue   { border-top-color: #2d4fa3; }
     .card.green  { border-top-color: #22c55e; }
     .card.amber  { border-top-color: #f59e0b; }
     .card.purple { border-top-color: #a855f7; }
-    .card .pkg   { font-family: monospace; font-size: 12px; font-weight: 700; color: #2d4fa3; }
-    .card .role  { font-size: 12px; color: #666; margin-top: 6px; }
+    .card.red    { border-top-color: #ef4444; }
+    .card .pkg  { font-family: monospace; font-size: 12px; font-weight: 700; color: #2d4fa3; }
+    .card .role { font-size: 12px; color: #444; margin-top: 5px; }
+    .badge {
+      display: inline-block; font-size: 9px; font-weight: 700;
+      padding: 1px 6px; border-radius: 8px; margin-top: 6px;
+    }
+    .badge.planned { background: #fef9c3; color: #a16207; }
+    .badge.done    { background: #dcfce7; color: #16a34a; }
+    .badge.core    { background: #eff3ff; color: #2d4fa3; }
 
-    /* ── Security rules ── */
     .rules { background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); overflow: hidden; }
     .rule  { display: flex; gap: 14px; padding: 14px 20px; border-bottom: 1px solid #eef0f6; align-items: flex-start; }
     .rule:last-child { border-bottom: none; }
-    .rule-icon { font-size: 20px; line-height: 1; }
+    .rule-icon { font-size: 20px; line-height: 1.2; }
     .rule-text strong { font-size: 13px; color: #1a1d23; }
     .rule-text p { font-size: 12px; color: #666; margin-top: 2px; }
 
-    footer {
-      background: #1b2d5b; color: rgba(255,255,255,.5);
-      text-align: center; padding: 20px; font-size: 12px;
+    footer { background: #1b2d5b; color: rgba(255,255,255,.5); text-align: center; padding: 20px; font-size: 12px; }
+
+    @media (max-width: 640px) {
+      .proto-grid { grid-template-columns: 1fr; }
+      header { padding: 24px; }
     }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>ETDA Digital Wallet &mdash; Tech Overview</h1>
-  <p>OID4VCI 1.0 Holder Wallet &nbsp;&middot;&nbsp; Expo SDK 54 &nbsp;&middot;&nbsp; iOS &amp; Android</p>
+  <h1>ETDA Digital Wallet — ภาพรวมเทคนิค</h1>
+  <div class="sub">กระเป๋าเงินดิจิทัลสำหรับประชาชนไทย &nbsp;&middot;&nbsp; Expo SDK 54 &nbsp;&middot;&nbsp; iOS &amp; Android</div>
+  <div class="tags">
+    <span class="tag">OID4VCI 1.0</span>
+    <span class="tag">OID4VP 1.0</span>
+    <span class="tag">ISO 18013-5</span>
+    <span class="tag">W3C Verifiable Credentials</span>
+    <span class="tag">did:key</span>
+    <span class="tag">SD-JWT</span>
+  </div>
 </header>
 
 <main>
 
-  <!-- What it is -->
-  <h2>What It Is</h2>
+  <h2>แอปนี้คืออะไร</h2>
   <div class="summary">
-    Mobile wallet for Thai citizens. Receives government-issued Verifiable Credentials (national ID, driving licence, transcripts)
-    via the <strong>OID4VCI 1.0</strong> open standard, stores them encrypted on-device,
-    and presents them to verifiers via <strong>NFC (ISO 18013-5)</strong> or QR code.
-    Private keys never leave the device&rsquo;s hardware secure enclave.
+    กระเป๋าเงินดิจิทัลบนมือถือ ให้ประชาชนไทย <strong>รับ เก็บ และแสดง</strong> เอกสารราชการในรูปแบบดิจิทัล เช่น บัตรประชาชน ใบขับขี่ ทรานสคริปต์
+    ทำงานตามมาตรฐานเปิด <strong>OID4VCI 1.0</strong> (รับเอกสาร) และ <strong>OID4VP 1.0</strong> (แสดงเอกสาร)
+    กุญแจส่วนตัวไม่เคยออกจากชิปความปลอดภัยของอุปกรณ์
+    <div class="en">Mobile wallet — receives government VCs via OID4VCI 1.0, stores AES-256 on-device, presents to verifiers via OID4VP 1.0 and ISO 18013-5 NFC proximity exchange. Private keys are hardware-bound and non-extractable.</div>
   </div>
 
-  <!-- How it works -->
-  <h2>How It Works</h2>
+  <h2>สองมาตรฐานหลัก</h2>
+  <div class="proto-grid">
+
+    <div class="proto-box">
+      <div class="proto-header issuance">&#128229; OID4VCI 1.0 — รับเอกสาร (Issuance)</div>
+      <div class="proto-body">
+        <p>โปรโตคอลสำหรับ <strong>รับ</strong> Verifiable Credential จากผู้ออกเอกสาร (ThaID, กรมการขนส่ง, มหาวิทยาลัย)</p>
+        <ul>
+          <li>รับ Credential Offer ผ่าน QR / NFC / In-app</li>
+          <li>ดึง Metadata จาก Issuer (<code>/.well-known</code>)</li>
+          <li>แลก Token — Pre-authorized Code Flow</li>
+          <li>กรอก <code>tx_code</code> ถ้า Issuer ส่ง PIN มา</li>
+          <li>ส่ง PoP JWT พร้อมลายเซ็น hardware</li>
+          <li>รับ VC JWT หรือ SD-JWT VC กลับมา</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="proto-box">
+      <div class="proto-header presentation">&#128228; OID4VP 1.0 — แสดงเอกสาร (Presentation)</div>
+      <div class="proto-body">
+        <p>โปรโตคอลสำหรับ <strong>แสดง</strong> Verifiable Credential ให้ผู้ตรวจสอบ (ธนาคาร, สนามบิน, ห้างฯ)</p>
+        <ul>
+          <li>รับ Authorization Request จาก Verifier (QR / deeplink)</li>
+          <li>อ่าน Presentation Definition ว่าต้องการ claim อะไร</li>
+          <li>ผู้ใช้ยืนยันและเลือก claim (Selective Disclosure)</li>
+          <li>สร้างและเซ็น VP Token ด้วย hardware key</li>
+          <li>ส่ง <code>vp_token</code> + <code>presentation_submission</code> กลับ</li>
+          <li>NFC: ISO 18013-5 proximity mdoc exchange</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <h2>ขั้นตอน: รับเอกสาร (OID4VCI 1.0)</h2>
+  <span class="flow-label issuance">Credential Issuance Flow</span>
   <div class="steps">
 
     <div class="step">
-      <div class="step-num">1</div>
+      <div class="step-num blue">1</div>
       <div class="step-body">
-        <strong>Receive Credential Offer</strong>
-        <p>User scans a QR code, taps an NFC tag, or taps &ldquo;Claim&rdquo; inside the app.
-           This produces an <code>openid-credential-offer://</code> URI.</p>
+        <strong>รับ Credential Offer</strong>
+        <div class="th">สแกน QR code แตะ NFC หรือกด "รับเอกสาร" ในแอป — ได้ <code>openid-credential-offer://</code> URI มา</div>
       </div>
-      <span class="step-tag tag-device">On-Device</span>
+      <span class="step-tag tag-device">บนอุปกรณ์</span>
     </div>
 
     <div class="step">
-      <div class="step-num">2</div>
+      <div class="step-num blue">2</div>
       <div class="step-body">
-        <strong>Resolve Issuer Metadata</strong>
-        <p><code>@sphereon/oid4vci-client</code> fetches <code>/.well-known/openid-credential-issuer</code>
-           from the government Issuer (ThaID, DLT, etc.) to discover supported credential types and endpoints.</p>
+        <strong>ดึง Issuer Metadata</strong>
+        <div class="th"><code>@sphereon/oid4vci-client</code> ดึง <code>/.well-known/openid-credential-issuer</code> — รู้ว่า endpoint อยู่ที่ไหน รองรับ credential format อะไร</div>
       </div>
       <span class="step-tag tag-net">Network &rarr; Issuer</span>
     </div>
 
     <div class="step">
-      <div class="step-num">3</div>
+      <div class="step-num blue">3</div>
       <div class="step-body">
-        <strong>Token Exchange</strong>
-        <p>Pre-authorized code flow: exchanges the offer code at the Issuer&rsquo;s token endpoint
-           and receives an <strong>access token</strong> + <strong>c_nonce</strong>.</p>
+        <strong>แลก Token</strong>
+        <div class="th">ส่ง pre-authorized code ไปที่ token endpoint — ได้ <strong>access token</strong> + <strong>c_nonce</strong> กลับมา</div>
+        <div class="en-note">Primary: pre-authorized code flow &nbsp;|&nbsp; Planned Phase 4: authorization code flow</div>
       </div>
       <span class="step-tag tag-net">Network &rarr; Issuer</span>
     </div>
 
     <div class="step">
-      <div class="step-num">4</div>
+      <div class="step-num blue">4</div>
       <div class="step-body">
-        <strong>Proof of Possession (PoP) JWT</strong>
-        <p>App calls <code>signProof()</code> &rarr; native module uses the hardware key
-           (<code>etda_wallet_signing_key</code>) inside Secure Enclave / Android Keystore to sign the JWT.
-           Biometric fires here. Private key bytes never reach JavaScript.</p>
+        <strong>กรอก tx_code (ถ้ามี)</strong>
+        <div class="th">ถ้า Issuer ส่ง PIN มาทาง SMS/อีเมล — <code>tx_code</code> ใน Credential Offer จะบอกว่าต้องกรอกหรือไม่ และเป็นตัวเลขหรือตัวอักษร ผู้ใช้กรอกก่อน token exchange</div>
+      </div>
+      <span class="step-tag tag-user">User Input</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num blue">5</div>
+      <div class="step-body">
+        <strong>สร้าง Proof of Possession (PoP) JWT</strong>
+        <div class="th">เรียก <code>signProof()</code> → native module เซ็น JWT ด้วย <code>etda_wallet_signing_key</code> ภายใน Secure Enclave / Keystore — ต้องผ่าน biometric ทุกครั้ง private key bytes ไม่เคยถึง JavaScript</div>
       </div>
       <span class="step-tag tag-hw">Hardware Key</span>
     </div>
 
     <div class="step">
-      <div class="step-num">5</div>
+      <div class="step-num blue">6</div>
       <div class="step-body">
-        <strong>Claim Credential from Issuer</strong>
-        <p>PoP JWT is sent in the credential request. The Issuer returns a signed
-           <strong>VC JWT</strong>. App validates the JWT structure on-device.</p>
+        <strong>ขอรับ Credential จาก Issuer</strong>
+        <div class="th">ส่ง PoP JWT ไปกับ credential request — ได้ <strong>VC JWT</strong> หรือ <strong>SD-JWT VC</strong> กลับมา แอปตรวจสอบโครงสร้างบนอุปกรณ์</div>
       </div>
       <span class="step-tag tag-net">Network &rarr; Issuer</span>
     </div>
 
     <div class="step">
-      <div class="step-num">6</div>
+      <div class="step-num blue">7</div>
       <div class="step-body">
-        <strong>Store Locally (Encrypted)</strong>
-        <p>VC saved to <code>react-native-mmkv</code> with AES-256 encryption.
-           Encryption key lives in the hardware keychain, unlocked by biometric on first use.</p>
+        <strong>เก็บลงอุปกรณ์ (AES-256)</strong>
+        <div class="th">VC เข้ารหัสแล้วเก็บใน <code>react-native-mmkv</code> — กุญแจเข้ารหัสอยู่ใน hardware keychain ต้องผ่าน biometric ครั้งแรก</div>
       </div>
-      <span class="step-tag tag-device">On-Device</span>
+      <span class="step-tag tag-device">บนอุปกรณ์</span>
     </div>
 
     <div class="step">
-      <div class="step-num">7</div>
+      <div class="step-num blue">8</div>
       <div class="step-body">
-        <strong>Sync to Company Backend</strong>
-        <p>App calls <code>POST /wallet-api/wallet/{walletId}/credentials/import</code>
-           via the Orval-generated TanStack Query SDK. This is the <em>only</em> backend call in the entire flow.
-           The backend never sees OID4VCI traffic.</p>
+        <strong>ซิงก์ไป Company Backend</strong>
+        <div class="th">เรียก <code>POST /wallet-api/wallet/{walletId}/credentials/import</code> ผ่าน Orval SDK — <em>เรียก backend เพียงครั้งเดียวตลอด flow ทั้งหมด</em> backend ไม่เคยเห็น OID4VCI traffic</div>
       </div>
       <span class="step-tag tag-net">Network &rarr; Company API</span>
     </div>
 
+  </div>
+
+  <h2>ขั้นตอน: แสดงเอกสาร (OID4VP 1.0)</h2>
+  <span class="flow-label presentation">Credential Presentation Flow</span>
+  <div class="steps">
+
     <div class="step">
-      <div class="step-num">8</div>
+      <div class="step-num green">1</div>
       <div class="step-body">
-        <strong>Present Credential</strong>
-        <p>User taps phone to a verifier&rsquo;s NFC reader. ISO 18013-5 proximity mdoc exchange
-           transfers only the requested claims. iOS uses BLE engagement fallback.</p>
+        <strong>รับ Authorization Request จาก Verifier</strong>
+        <div class="th">สแกน QR code หรือรับ deeplink จากผู้ตรวจสอบ — Request ระบุ <code>presentation_definition</code> บอกว่าต้องการเอกสารอะไร</div>
+      </div>
+      <span class="step-tag tag-device">บนอุปกรณ์</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num green">2</div>
+      <div class="step-body">
+        <strong>จับคู่ Credential กับ Presentation Definition</strong>
+        <div class="th">แอปหาว่าเอกสารใน wallet ตรงกับที่ Verifier ขอหรือไม่ โดยใช้ DIF Presentation Exchange</div>
+      </div>
+      <span class="step-tag tag-device">บนอุปกรณ์</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num green">3</div>
+      <div class="step-body">
+        <strong>ผู้ใช้ยืนยันและเลือก Claim (Selective Disclosure)</strong>
+        <div class="th">แอปแสดงว่าจะเปิดเผยข้อมูลอะไรบ้าง ผู้ใช้กดยืนยัน — SD-JWT VC ให้เลือกได้ว่าจะส่ง claim ไหน เช่น แสดงแค่ "อายุ ≥ 20" โดยไม่เปิดวันเกิดจริง</div>
+      </div>
+      <span class="step-tag tag-user">User Consent</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num green">4</div>
+      <div class="step-body">
+        <strong>สร้างและเซ็น VP Token</strong>
+        <div class="th">สร้าง Verifiable Presentation รวม credential ที่เลือก แล้วเซ็นด้วย hardware key — ต้องผ่าน biometric อีกครั้ง</div>
+      </div>
+      <span class="step-tag tag-hw">Hardware Key</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num green">5</div>
+      <div class="step-body">
+        <strong>ส่ง Presentation Submission กลับ Verifier</strong>
+        <div class="th">ส่ง <code>vp_token</code> + <code>presentation_submission</code> ผ่าน <code>response_mode=direct_post</code> หรือผ่าน NFC</div>
+      </div>
+      <span class="step-tag tag-net">Network &rarr; Verifier</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num green">6</div>
+      <div class="step-body">
+        <strong>NFC Proximity — ISO 18013-5</strong>
+        <div class="th">กรณีแตะมือถือกับเครื่องอ่าน — ใช้ mdoc proximity exchange ถ่ายโอนเฉพาะ claim ที่ขอ iOS ใช้ BLE engagement เป็น fallback</div>
       </div>
       <span class="step-tag tag-hw">NFC / Hardware</span>
     </div>
 
   </div>
 
-  <!-- Tech Stack -->
-  <h2>Tech Stack</h2>
+  <h2>เทคโนโลยีที่ใช้ทั้งหมด</h2>
   <div class="stack">
 
     <div class="card blue">
       <div class="pkg">Expo SDK 54 + Hermes</div>
-      <div class="role">Runtime. Hermes engine required &mdash; all crypto on signing path is native JSI, not pure-JS.</div>
+      <div class="role">Runtime หลัก — Hermes จำเป็นต้องใช้เพราะ signing path ต้องเป็น native JSI ไม่ใช่ pure-JS</div>
+      <span class="badge core">Core</span>
     </div>
 
     <div class="card amber">
-      <div class="pkg">@animo-id/<br/>expo-secure-environment</div>
-      <div class="role">Generates &amp; uses the hardware EC P-256 key. Signs PoP JWT inside Secure Enclave / Keystore.</div>
+      <div class="pkg">@animo-id/expo-secure-environment</div>
+      <div class="role">สร้างและใช้ hardware EC P-256 key — เซ็น PoP JWT และ VP Token ภายใน Secure Enclave / Keystore</div>
+      <span class="badge done">Phase 1 &#10003;</span>
     </div>
 
     <div class="card green">
       <div class="pkg">react-native-mmkv</div>
-      <div class="role">AES-256 encrypted key-value store. Holds all credentials on-device.</div>
+      <div class="role">เก็บ credential บนอุปกรณ์ด้วยการเข้ารหัส AES-256</div>
+      <span class="badge done">Phase 1 &#10003;</span>
     </div>
 
     <div class="card green">
       <div class="pkg">react-native-quick-crypto</div>
-      <div class="role">Non-signing crypto: hashing, HMAC, base64url. Hermes-safe (no BigInt).</div>
+      <div class="role">Hashing, HMAC, base64url — Hermes-safe (ไม่ใช้ BigInt)</div>
+      <span class="badge done">Phase 1 &#10003;</span>
     </div>
 
     <div class="card blue">
-      <div class="pkg">@sphereon/<br/>oid4vci-client</div>
-      <div class="role">Runs the full OID4VCI 1.0 protocol on-device: offer &rarr; metadata &rarr; token &rarr; credential.</div>
+      <div class="pkg">@sphereon/oid4vci-client</div>
+      <div class="role">รัน OID4VCI 1.0 บนอุปกรณ์: offer &rarr; metadata &rarr; token (+tx_code) &rarr; credential</div>
+      <span class="badge planned">Phase 2</span>
     </div>
 
     <div class="card blue">
       <div class="pkg">orval + TanStack Query</div>
-      <div class="role">Auto-generates TypeScript hooks from company OpenAPI spec. All backend calls go through this.</div>
+      <div class="role">สร้าง TypeScript hooks จาก OpenAPI spec อัตโนมัติ — ทุก backend call ผ่านนี้เท่านั้น</div>
+      <span class="badge planned">Phase 2</span>
+    </div>
+
+    <div class="card blue">
+      <div class="pkg">@sphereon/did-auth-siop-oid4vp</div>
+      <div class="role">รัน OID4VP 1.0 บนอุปกรณ์: parse Authorization Request, สร้าง VP Token, ส่ง Presentation Submission</div>
+      <span class="badge planned">Phase 3</span>
+    </div>
+
+    <div class="card green">
+      <div class="pkg">@sd-jwt/core</div>
+      <div class="role">Selective Disclosure JWT — เลือกเปิดเผยเฉพาะ claim ที่จำเป็น ไม่เปิดทั้ง credential</div>
+      <span class="badge planned">Phase 3</span>
     </div>
 
     <div class="card purple">
       <div class="pkg">zustand</div>
-      <div class="role">Global state &mdash; credentials slice + session slice. Persisted via MMKV adapter.</div>
+      <div class="role">Global state — credentials slice + session slice เก็บถาวรผ่าน MMKV adapter</div>
+      <span class="badge planned">Phase 2</span>
     </div>
 
     <div class="card purple">
       <div class="pkg">expo-router</div>
-      <div class="role">File-system-based navigation (screens map to files in <code>app/</code>).</div>
+      <div class="role">Navigation ตามโครงสร้างไฟล์ — แต่ละ screen ตรงกับไฟล์ใน <code>app/</code></div>
+      <span class="badge planned">Phase 3</span>
     </div>
 
     <div class="card purple">
-      <div class="pkg">NativeWind</div>
-      <div class="role">Tailwind CSS utility classes for React Native UI. Config-driven card rendering.</div>
+      <div class="pkg">NativeWind (Tailwind CSS)</div>
+      <div class="role">Utility-class styling — render credential card จาก Issuer metadata แบบ dynamic ไม่ hardcode</div>
+      <span class="badge planned">Phase 3</span>
+    </div>
+
+    <div class="card red">
+      <div class="pkg">ISO 18013-5 mdoc module</div>
+      <div class="role">NFC proximity exchange — ยังอยู่ระหว่างเลือก native module (ADR 0003)</div>
+      <span class="badge planned">Phase 4</span>
     </div>
 
   </div>
 
-  <!-- Security rules -->
-  <h2>Security Rules</h2>
+  <h2>กฎความปลอดภัยหลัก</h2>
   <div class="rules">
+
     <div class="rule">
       <div class="rule-icon">&#128272;</div>
       <div class="rule-text">
-        <strong>Private key never in JavaScript</strong>
-        <p>Key lives in hardware only. JS calls the native module by alias &mdash; never touches key bytes.</p>
+        <strong>Private key ไม่เคยอยู่ใน JavaScript</strong>
+        <p>Key อยู่แค่ใน hardware chip — JS เรียกผ่าน alias เท่านั้น ไม่เคยแตะ key bytes โดยตรง</p>
       </div>
     </div>
+
     <div class="rule">
       <div class="rule-icon">&#128070;</div>
       <div class="rule-text">
-        <strong>Biometric on every sign</strong>
-        <p>Hardware-enforced. No software bypass. Cancelling biometric aborts credential acquisition.</p>
+        <strong>Biometric ทุกครั้งที่เซ็น</strong>
+        <p>บังคับระดับ hardware ทั้งตอนรับและแสดงเอกสาร — ไม่มี software bypass ยกเลิก biometric = ยกเลิก operation</p>
       </div>
     </div>
+
     <div class="rule">
       <div class="rule-icon">&#128683;</div>
       <div class="rule-text">
-        <strong>AsyncStorage is banned</strong>
-        <p>Blocked at lint + CI level. All credential data goes through encrypted MMKV only.</p>
+        <strong>ห้ามใช้ AsyncStorage</strong>
+        <p>บล็อกระดับ lint + CI — ข้อมูลทั้งหมดต้องผ่าน MMKV ที่เข้ารหัสเท่านั้น</p>
       </div>
     </div>
+
     <div class="rule">
       <div class="rule-icon">&#127981;</div>
       <div class="rule-text">
-        <strong>Backend never proxies OID4VCI</strong>
-        <p>Company server authenticates the user and hands back an offer URL &mdash; nothing more. Credential issuance is direct device &harr; Issuer.</p>
+        <strong>Backend ไม่เคย proxy OID4VCI/OID4VP</strong>
+        <p>Company server แค่ยืนยันตัวตนและส่ง offer URL กลับมา — issuance และ presentation ทำตรงระหว่างอุปกรณ์กับ Issuer/Verifier</p>
       </div>
     </div>
+
     <div class="rule">
       <div class="rule-icon">&#128203;</div>
       <div class="rule-text">
-        <strong>Self-sovereign Holder DID</strong>
-        <p><code>did:key</code> derived from the device&rsquo;s P-256 public key. No server needed to resolve it.</p>
+        <strong>Holder DID เป็นของตัวเอง (Self-Sovereign)</strong>
+        <p><code>did:key</code> derive จาก P-256 public key ของอุปกรณ์ — ไม่ต้องพึ่ง server ใดในการ resolve</p>
       </div>
     </div>
+
+    <div class="rule">
+      <div class="rule-icon">&#128065;</div>
+      <div class="rule-text">
+        <strong>Selective Disclosure — เปิดเผยเฉพาะที่จำเป็น</strong>
+        <p>SD-JWT VC ให้เลือกได้ว่าจะเปิด claim ไหน เช่น แสดงแค่ "อายุ &ge; 20" โดยไม่เปิดวันเกิดจริง ทำได้ผ่าน <code>@sd-jwt/core</code></p>
+      </div>
+    </div>
+
   </div>
 
 </main>
 
-<footer>ETDA OID4VCI Holder Wallet &nbsp;&middot;&nbsp; 2026-06-02 &nbsp;&middot;&nbsp; Internal reference</footer>
+<footer>ETDA OID4VCI / OID4VP Holder Wallet &nbsp;&middot;&nbsp; 2026-06-02 &nbsp;&middot;&nbsp; Internal reference</footer>
 
 </body>
 </html>
