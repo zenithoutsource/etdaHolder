@@ -110,10 +110,11 @@ The generated client uses the `fetch` API, which is available globally on both i
 Example usage from application code:
 
 ```typescript
+import { getHolderDid } from '../services/crypto/crypto';
 import { importCredential } from '../sdk/walletApi';
 
 async function saveCredential(walletId: string, vcJwt: string, sessionToken: string) {
-  const result = await importCredential(walletId, { vc: vcJwt }, {
+  const result = await importCredential(walletId, { jwt: vcJwt, associated_did: getHolderDid() }, {
     headers: {
       Authorization: `Bearer ${sessionToken}`,
     },

@@ -1,19 +1,21 @@
 OID4VCI Wallet Project - Playbook for AI Agents
 
+Must Respond in English Only!
+
 This is a production-ready playbook defining strict architectural rules, security gates, coding styles, and roadmap tracking for the OID4VCI 1.0 Mobile Wallet.
 
 ---
 
 ## HANDOFF STATE (2026-06-02)
 
-**Immediate Next Task:** Begin Phase 2.3 Credential Acquisition with `claimCredential()`.
+**Immediate Next Task:** Begin Phase 3.1 HTML to NativeWind Translation once design HTML/CSS files are available.
 
 **Files to read before starting:**
 - `CLAUDE.md` - architecture rules
 - `CONTEXT.md` - domain glossary (all terms resolved)
 - `docs/ARCHITECTURE.md` - protocol/storage boundaries
 - `docs/adr/0001`, `0002`, `0003` - locked decisions
-- `TASKS.md` - active backlog and current blockers
+- `docs/TASKS.md` - active backlog and current blockers
 - `src/services/crypto/crypto.ts` - Phase 1 crypto
 - `src/services/storage/storage.ts` - Phase 1 encrypted storage
 - `app/_layout.tsx` - Phase 1 startup wiring
@@ -23,10 +25,24 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `src/services/vci/exchangeService.test.ts` - Phase 2.2 TypeScript contract test
 
 **Next concrete steps:**
-1. Implement `claimCredential()` using the resolved offer, Issuer metadata, and Pre-Authorized Code flow.
-2. Exchange the Pre-Authorized Code at the token endpoint to obtain access token + c_nonce.
-3. Call `signProof(c_nonce, issuerUrl)` from `src/services/crypto/crypto.ts`; biometric must fire here.
-4. Submit the Credential Request, normalize the VC JWT into `VerifiableCredentialRecord`, store it in encrypted MMKV, then run `yarn tsc`, `yarn lint`, and update `TASKS.md`.
+1. Receive HTML/CSS design files from the design team.
+2. Extract layout structures, flex containers, typography, and reusable card/display patterns.
+3. Translate layouts into React Native primitives with NativeWind.
+4. Run `yarn tsc`, `yarn lint`, and update `docs/TASKS.md`.
+
+**Phase 2.3 resolved decisions:**
+- `claimCredential()` accepts `ResolvedCredentialOffer`, not raw offer URI.
+- Phase 2.3 supports OID4VCI 1.0 Pre-Authorized Code flow and JWT VC responses only.
+- `tx_code` is caller-supplied; protocol service throws `TransactionCodeRequired` when required and missing.
+- `claimCredential()` returns only the stored `VerifiableCredentialRecord`; token values stay inside the protocol service.
+- Store locally first in encrypted MMKV; backend sync remains separate Phase 2.4 work.
+
+**Phase 2.4 resolved decisions:**
+- `syncCredentialToBackend()` is separate from `claimCredential()`.
+- Backend sync requires explicit `walletId` and authenticated `sessionToken`.
+- Generated SDK `importCredential()` payload is `{ jwt: record.rawVc, associated_did: getHolderDid() }`.
+- Only HTTP 201 counts as sync success.
+- TanStack Query cache invalidation stays in caller/UI code.
 
 ---
 
@@ -101,7 +117,7 @@ Implementation Status Tracker
 [x] Phase 1a: src/services/crypto/crypto.ts - written and yarn tsc green
 [x] Phase 1b: src/services/storage/storage.ts - encrypted MMKV storage written
 [x] Phase 1c: app/_layout.tsx startup wiring - written
-[ ] Phase 2: OID4VCI 1.0 Protocol Integration (Target: Week 3-4; Phase 2.1 SDK setup and Phase 2.2 offer resolution complete)
+[x] Phase 2: OID4VCI 1.0 Protocol Integration (Target: Week 3-4; Phase 2.1 SDK setup, Phase 2.2 offer resolution, Phase 2.3 credential acquisition, and Phase 2.4 backend sync complete)
 [ ] Phase 3: Dynamic Card & Config-Driven UI Mapping (Target: Week 5-6)
 [ ] Phase 4: Security Hardening & Release Build (Target: Week 7-8)
 [ ] Post-v1: OID4VP 1.0 Online Presentation (planned, scope-only - mechanics TBD)

@@ -43,16 +43,32 @@ Cross-reference: AGENTS.md (status) | docs/ARCHITECTURE.md (design) | CONTEXT.md
 [x] Handle both QR scan and NFC NDEF offer URI inputs (same function, different call site)
 
 ### 2.3 Credential Acquisition - claimCredential()
-[ ] Exchange Pre-Authorized Code at Token Endpoint -> Access Token + c_nonce
-[ ] Call signProof(c_nonce, issuerUrl) from crypto service (biometric fires here)
-[ ] Submit Credential Request with Access Token + signed PoP -> receive VC JWT
-[ ] Normalize VC JWT into VerifiableCredentialRecord (id, type, rawVc, claims, issuedAt, expiresAt)
-[ ] Store in encrypted MMKV via getCredentialStorage()
-[ ] Prompt user for tx_code/PIN if Issuer metadata requires it
+[x] Accept `ResolvedCredentialOffer` as input; do not resolve raw offer URI inside `claimCredential()`
+[x] Return only the stored VerifiableCredentialRecord; do not expose access token or c_nonce outside protocol service
+[x] Support Pre-Authorized Code flow only for Phase 2.3; reject Authorization Code flow as `CredentialFlowUnsupported`
+[x] Support JWT VC credential responses only; reject unsupported formats as `CredentialFormatUnsupported`
+[x] Use stable prefixed Error messages for Phase 2.3 failures; avoid custom Error classes unless UI needs structured handling later
+[x] Exchange Pre-Authorized Code at Token Endpoint -> Access Token + c_nonce
+[x] Call signProof(c_nonce, issuerUrl) from crypto service (biometric fires here)
+[x] Submit Credential Request with Access Token + signed PoP -> receive VC JWT
+[x] Normalize VC JWT into VerifiableCredentialRecord (id, type, rawVc, claims, issuedAt, expiresAt); store full decoded VC payload in `claims` and parse as untrusted display data unless Sphereon validates issuer signature during acquisition
+[x] Normalize `issuedAt` / `expiresAt` to ISO 8601 strings from JWT seconds or VC date claims
+[x] Use VC `jti` / `id` as VerifiableCredentialRecord.id when present; fallback to deterministic hash of raw VC JWT
+[x] Derive VerifiableCredentialRecord.type from VC claims (`vc.type` / `type`), not from offered credential configuration ID
+[x] Store in encrypted MMKV via getCredentialStorage(); overwrite existing record with same normalized id
+[x] Store records under `credential:<id>` and maintain `credential:index` for listing IDs
+[x] Require caller-supplied `tx_code` when offer declares it; throw `TransactionCodeRequired` if missing
 
 ### 2.4 Backend Sync - orval SDK hook
-[ ] Sync credential metadata to company backend via generated SDK hook
-[ ] Invalidate TanStack Query cache for credentials list -> trigger UI re-render
+[x] Implement separate backend sync function; do not call backend from inside `claimCredential()`
+[x] Add `syncCredentialToBackend(record, { walletId, sessionToken })` in `src/services/vci/exchangeService.ts`
+[x] Require authenticated company session token; throw `BackendSyncUnauthorized` when missing
+[x] Require explicit `walletId`; throw `BackendSyncWalletMissing` when missing
+[x] Run backend sync after local credential storage succeeds; do not make claimCredential() depend on company backend availability
+[x] Sync only the signed VC JWT to company backend via generated SDK `importCredential(walletId, { jwt: record.rawVc, associated_did: getHolderDid() })`
+[x] Treat only HTTP 201 from `importCredential` as sync success; throw `BackendSyncFailed: HTTP <status>` otherwise
+[x] Return sync result only; do not add backend sync status fields to VerifiableCredentialRecord in Phase 2.4
+[x] Invalidate TanStack Query cache in caller/UI code after sync success; do not import React Query into the VCI service
 
 ---
 
@@ -83,6 +99,7 @@ Cross-reference: AGENTS.md (status) | docs/ARCHITECTURE.md (design) | CONTEXT.md
 [ ] Screen capture prevention (iOS/Android)
 [ ] Certificate pinning for company backend API calls
 [ ] Jailbreak/root detection
+[ ] Issuer signature validation for stored VC JWTs once issuer trust metadata is finalized
 [ ] ISO 18013-5 mdoc native module selection (ADR pending) + integration
 [ ] Release build validation (iOS TestFlight + Android internal track)
 
@@ -132,3 +149,5 @@ Session 2026-06-02:
 - Orval still prints a warning about `#/components/securitySchemes/auth-bearer-alternative` in the upstream OpenAPI 3.1 spec, but generation, TypeScript, and lint verification pass.
 - Phase 2.2 Credential Offer Resolution complete: `resolveOffer()` parses inline and referenced OID4VCI offers with Sphereon, fetches Issuer metadata directly, and returns issuer/credential display data for dynamic UI branding. QR scan and NFC NDEF call sites should both pass their offer URI into this same function.
 - Test blocker remains: Jest/jest-expo dependencies and config are not installed yet, so `src/services/vci/exchangeService.test.ts` is a TypeScript contract test compiled by `yarn tsc` rather than an executable Jest test.
+- Phase 2.3 Credential Acquisition complete: `claimCredential()` accepts a `ResolvedCredentialOffer`, supports Pre-Authorized Code + JWT VC only, requires caller-supplied `tx_code` when declared, signs PoP through `signProof(c_nonce, issuerUrl)`, normalizes the returned VC JWT, and stores the record under encrypted MMKV keys `credential:<id>` plus `credential:index`.
+- Phase 2.4 Backend Sync complete: `syncCredentialToBackend()` runs separately from `claimCredential()`, requires `walletId` + `sessionToken`, calls generated SDK `importCredential()` with `{ jwt, associated_did }`, treats only HTTP 201 as success, and leaves TanStack Query invalidation to caller/UI code.

@@ -77,7 +77,7 @@ POST /wallet-api/wallet/{walletId}/credentials/import
 Authorization: Bearer <session-token>
 Content-Type: application/json
 
-{ "vc": "<signed-vc-jwt>" }
+{ "jwt": "<signed-vc-jwt>", "associated_did": "<holder-did>" }
 ```
 
 This is the sole permitted write operation to the backend during credential acquisition. The Issuer's credential endpoint and the company backend are independent services. The wallet does not proxy or relay OID4VCI traffic through the company backend. See `API.md` for the full Protocol Boundary Matrix.

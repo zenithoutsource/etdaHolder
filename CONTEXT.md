@@ -29,6 +29,9 @@ The app runs the full OID4VCI 1.0 protocol on-device. Keys never leave device ha
 ## Credential Offer URL
 A URL (`openid-credential-offer://...`) returned by the company backend, read from a QR code, or received via NFC. Consumed by `@sphereon/oid4vci-client` to run the full issuance flow.
 
+## Transaction Code (`tx_code`)
+A Holder-entered code required by some Issuers during the OID4VCI 1.0 Pre-Authorized Code flow. The Issuer defines its input constraints in the Credential Offer. Distinct from device passcode, biometric authentication, and any wallet unlock secret.
+
 ## Offer Delivery Channels
 1. **QR Scan** — camera reads a QR code containing the offer URL
 2. **NFC** — NDEF tag read (issuance) or ISO 18013-5 proximity exchange (presentation)
