@@ -1,0 +1,4869 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "walt.id wallet",
+    "description" : "Interact with the walt.id wallet. Version is reported to be 0.20.1 and this service instance was started 2026-06-02T06:38:11Z.<br/>Questions about anything here? Visit <a href='https://walt.id/community'>support</a>.<br/><br/>Any HTTP status code of 200 - 299 indicates request success, 400 - 499 client error / invalid request, 500+ internal server processing exception.",
+    "contact" : {
+      "name" : "walt.id",
+      "url" : "https://walt.id",
+      "email" : "office@walt.id"
+    },
+    "license" : {
+      "name" : "Apache 2.0",
+      "url" : "https://www.apache.org/licenses/LICENSE-2.0.html"
+    },
+    "version" : "0.20.1"
+  },
+  "externalDocs" : {
+    "description" : "docs.walt.id",
+    "url" : "https://docs.walt.id"
+  },
+  "servers" : [ {
+    "url" : "/",
+    "description" : "Development Server"
+  } ],
+  "tags" : [ ],
+  "paths" : {
+    "/features/registered" : {
+      "get" : {
+        "tags" : [ "Feature management" ],
+        "summary" : "List registered features",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Registered features",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "object",
+                  "additionalProperties" : {
+                    "type" : "string",
+                    "title" : "String"
+                  },
+                  "title" : "LinkedHashMap<String,String>"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/features/state" : {
+      "get" : {
+        "tags" : [ "Feature management" ],
+        "summary" : "Show state of features",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "State of features",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.commons.web.modules.FeatureFlagInformationModule.FeatureFlagInformations"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/livez" : {
+      "get" : {
+        "tags" : [ ],
+        "parameters" : [ ],
+        "responses" : { },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/user-info" : {
+      "get" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Return user ID if logged in",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "User account",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.db.models.Account"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/session" : {
+      "get" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Return session ID if logged in",
+        "parameters" : [ ],
+        "responses" : {
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/register" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Register with [email + password] or [wallet address + ecosystem]",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.model.AccountRequest"
+              },
+              "examples" : {
+                "E-mail + password" : {
+                  "value" : {
+                    "type" : "email",
+                    "name" : "Max Mustermann",
+                    "email" : "user@email.com",
+                    "password" : "password"
+                  }
+                },
+                "Wallet address + ecosystem" : {
+                  "value" : {
+                    "type" : "address",
+                    "address" : "0xABC",
+                    "ecosystem" : "ecosystem"
+                  }
+                },
+                "OIDC" : {
+                  "value" : {
+                    "type" : "oidc",
+                    "token" : "ey..."
+                  }
+                },
+                "OIDC Unique Subject" : {
+                  "value" : {
+                    "type" : "oidc-unique-subject",
+                    "token" : "ey..."
+                  }
+                },
+                "Keycloak" : {
+                  "value" : {
+                    "type" : "keycloak"
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Registration succeeded ",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Registration failed",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "Account already exists!",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/login" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Login with [email + password] or [wallet address + ecosystem] or [oidc session]",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.model.AccountRequest"
+              },
+              "examples" : {
+                "E-mail + password" : {
+                  "value" : {
+                    "type" : "email",
+                    "email" : "user@email.com",
+                    "password" : "password"
+                  }
+                },
+                "Wallet address + ecosystem" : {
+                  "value" : {
+                    "type" : "address",
+                    "address" : "0xABC",
+                    "ecosystem" : "ecosystem"
+                  }
+                },
+                "OIDC" : {
+                  "value" : {
+                    "type" : "oidc",
+                    "token" : "ey..."
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Login successful",
+            "headers" : {
+              "set-cookie" : {
+                "description" : "A successful login will set a session cookie.",
+                "required" : false,
+                "deprecated" : false,
+                "schema" : {
+                  "type" : "string",
+                  "title" : "String"
+                }
+              }
+            },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.web.controllers.auth.LoginResponseData"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Login failed",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Login failed",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/logout" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Logout (delete session)",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Logged out.",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/keycloak/token" : {
+      "get" : {
+        "tags" : [ "Keycloak Authentication" ],
+        "summary" : "Returns Keycloak access token",
+        "description" : "Returns a access token to be used for all further operations towards Keycloak. Required Keycloak configuration in oidc.conf.",
+        "parameters" : [ ],
+        "responses" : { },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/keycloak/login" : {
+      "post" : {
+        "tags" : [ "Keycloak Authentication" ],
+        "summary" : "Keycloak login with [username + password]",
+        "description" : "Login of a user managed by Keycloak.",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.model.AccountRequest"
+              },
+              "examples" : {
+                "Keycloak username + password" : {
+                  "value" : {
+                    "type" : "keycloak",
+                    "username" : "Max_Mustermann",
+                    "password" : "password"
+                  }
+                },
+                "Keycloak username + Access Token " : {
+                  "value" : {
+                    "type" : "keycloak",
+                    "username" : "Max_Mustermann",
+                    "token" : "eyJhb..."
+                  }
+                },
+                "Keycloak user Access Token " : {
+                  "value" : {
+                    "type" : "keycloak",
+                    "token" : "eyJhb..."
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Login successful",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Unauthorized",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Bad request",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/keycloak/create" : {
+      "post" : {
+        "tags" : [ "Keycloak Authentication" ],
+        "summary" : "Keycloak registration with [username + email + password]",
+        "description" : "Creates a user in the configured Keycloak instance.",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.model.AccountRequest"
+              },
+              "examples" : {
+                "username + email + password" : {
+                  "value" : {
+                    "type" : "keycloak",
+                    "email" : "user@email.com",
+                    "username" : "Max_Mustermann",
+                    "password" : "password",
+                    "token" : "eyJhb..."
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Registration succeeded ",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Registration failed",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/keycloak/logout" : {
+      "post" : {
+        "tags" : [ "Keycloak Authentication" ],
+        "summary" : "Logout via Keycloak provider.",
+        "description" : "Terminates Keycloak and wallet session by the user identified by the Keycloak user ID.",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.model.KeycloakLogoutRequest"
+              },
+              "examples" : {
+                "keycloakUserId + token" : {
+                  "value" : {
+                    "keycloakUserId" : "3d09 ...",
+                    "token" : "eyJhb ..."
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Keycloak HTTP status code.",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/accounts/wallets" : {
+      "get" : {
+        "tags" : [ "Accounts" ],
+        "summary" : "Get wallets associated with account",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "List of wallets associated with account",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.db.models.AccountWalletListing"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys" : {
+      "get" : {
+        "tags" : [ "Keys" ],
+        "summary" : "List Keys",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Array of (key) strings",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "type" : "string",
+                    "title" : "String"
+                  },
+                  "title" : "ArrayList<String>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/generate" : {
+      "post" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Generate new key",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Key configuration (JSON)",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.crypto.keys.KeyGenerationRequest"
+              },
+              "examples" : {
+                "JWK key generation request" : {
+                  "value" : { }
+                },
+                "TSE key generation request" : {
+                  "value" : {
+                    "backend" : "tse",
+                    "config" : {
+                      "server" : "http://0.0.0.0:8200/v1/transit",
+                      "accessKey" : "dev-only-token"
+                    }
+                  }
+                },
+                "OCI key generation request SDK" : {
+                  "value" : {
+                    "backend" : "oci",
+                    "keyType" : "secp256r1",
+                    "config" : {
+                      "vaultId" : "ocid1.vault.oc1.eu-frankfurt-1.entbf645aabf2.abtheljshkb6dsuldqf324kitneb63vkz3dfd74dtqvkd5j2l2cxwyvmefeq",
+                      "compartmentId" : "ocid1.compartment.oc1..aaaaaaaawirugoz35riiybcxsvf7bmelqsxo3sajaav5w3i2vqowcwqrllxa"
+                    }
+                  }
+                },
+                "OCI API key generation request" : {
+                  "value" : {
+                    "backend" : "oci-rest-api",
+                    "keyType" : "secp256r1",
+                    "config" : {
+                      "tenancyOcid" : "ocid1.tenancy.oc1..aaaaaaaaiijfupfvsqwqwgupzdy5yclfzcccmie4ktp2wlgslftv5j7xpk6q",
+                      "compartmentOcid" : "ocid1.tenancy.oc1..aaaaaaaaiijfupfvsqwqwgupzdy5yclfzcccmie4ktp2wlgslftv5j7xpk6q",
+                      "userOcid" : "ocid1.user.oc1..aaaaaaaaxjkkfjqxdqk7ldfjrxjmacmbi7sci73rbfiwpioehikavpbtqx5q",
+                      "fingerprint" : "bb:d4:4b:0c:c8:3a:49:15:7f:87:55:d5:2b:7e:dd:bc",
+                      "cryptoEndpoint" : "entcvrlraabc4-crypto.kms.eu-frankfurt-1.oraclecloud.com",
+                      "managementEndpoint" : "entcvrlraabc4-management.kms.eu-frankfurt-1.oraclecloud.com",
+                      "signingKeyPem" : "privateKey"
+                    }
+                  }
+                },
+                "AWS API key generation request" : {
+                  "value" : {
+                    "backend" : "aws-rest-api",
+                    "keyType" : "secp256r1",
+                    "config" : {
+                      "auth" : {
+                        "accessKeyId" : "accessKey",
+                        "secretAccessKey" : "secretKey",
+                        "region" : "eu-central-1"
+                      }
+                    }
+                  }
+                },
+                "AWS key generation request SDK" : {
+                  "value" : {
+                    "backend" : "aws",
+                    "keyType" : "secp256r1",
+                    "config" : {
+                      "region" : "eu-central-1"
+                    }
+                  }
+                },
+                "Azure API key generation request" : {
+                  "value" : {
+                    "backend" : "azure-rest-api",
+                    "keyType" : "secp256r1",
+                    "config" : {
+                      "auth" : {
+                        "clientId" : "clientId",
+                        "clientSecret" : "clientSecret",
+                        "tenantId" : "tenantId",
+                        "keyVaultUrl" : "keyVaultUrl"
+                      }
+                    }
+                  }
+                },
+                "Azure key generation request SDK" : {
+                  "value" : {
+                    "backend" : "azure",
+                    "keyType" : "secp256r1",
+                    "config" : {
+                      "auth" : {
+                        "keyVaultUrl" : "keyVaultUrl"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "The generated key",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "string",
+                  "title" : "String"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/import" : {
+      "post" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Import an existing key",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "alias",
+          "in" : "query",
+          "description" : "the alias/name of the key",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "myKeyAlias"
+        } ],
+        "requestBody" : {
+          "description" : "Key in JWK or PEM format",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "string",
+                "title" : "String"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/verify" : {
+      "post" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Verify a signature with a specific key",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "JWK",
+          "in" : "query",
+          "description" : "The public key to verify the signature",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "{\n  \"kty\": \"OKP\",\n  \"crv\": \"Ed25519\",\n  \"kid\": \"viEJuASRBd06MPJW-XEEDkWahYnGmp6WIMjdkGKZezY\",\n  \"x\": \"7lTgGVKIeZdP9aEofIFwSTdyBGmxYqo4AhumkCLn3vs\"\n}"
+        } ],
+        "requestBody" : {
+          "description" : "The signature to verify",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "string",
+                "title" : "String"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "The verification result",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "boolean",
+                  "title" : "Boolean"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/{keyId}/load" : {
+      "get" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Show a specific key",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "path",
+          "description" : "the key id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "bc6fa6b0593648238c4616800bed7746"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The key document (JSON)",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/{keyId}/meta" : {
+      "get" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Show a specific key meta info",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "path",
+          "description" : "the key id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "bc6fa6b0593648238c4616800bed7746"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The key document (JSON)",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/{keyId}/export" : {
+      "get" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Load a specific key",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "path",
+          "description" : "the key id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "bc6fa6b0593648238c4616800bed7746"
+        }, {
+          "name" : "format",
+          "in" : "query",
+          "description" : "Select format to export the key, e.g. 'JWK' / 'PEM'. JWK by default.",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "PEM"
+        }, {
+          "name" : "loadPrivateKey",
+          "in" : "query",
+          "description" : "Select if the secret private key should be loaded - take special care in this case! False by default.",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        } ],
+        "responses" : {
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/{keyId}" : {
+      "delete" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Delete a specific key , will delete the key (AWS , OCI , TSE) and its reference in the wallet",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "path",
+          "description" : "the key id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "bc6fa6b0593648238c4616800bed7746"
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "Key deleted",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Key could not be deleted",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/{keyId}/remove" : {
+      "delete" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Remove a specific key from the wallet",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "path",
+          "description" : "the key id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "bc6fa6b0593648238c4616800bed7746"
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "Key removed",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Failed to remove the key",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/keys/{keyId}/sign" : {
+      "post" : {
+        "tags" : [ "Keys" ],
+        "summary" : "Sign a message with a specific key",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "path",
+          "description" : "the key id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "bc6fa6b0593648238c4616800bed7746"
+        } ],
+        "requestBody" : {
+          "description" : "The message to sign",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonElement"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "The signature",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "string",
+                  "title" : "String"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids" : {
+      "get" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "List DIDs",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Array of (DID) strings",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletDid"
+                  },
+                  "title" : "ArrayList<WalletDid>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/{did}" : {
+      "get" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Show a specific DID",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "did",
+          "in" : "path",
+          "description" : "The DID",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "did:web:walt.id"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The DID document",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      },
+      "delete" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Delete a specific DID",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "did",
+          "in" : "path",
+          "description" : "The DID",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "did:web:walt.id"
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "DID deleted",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "DID could not be deleted",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/default" : {
+      "post" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Set the default DID",
+        "description" : "Set the default DID (which is e.g. preselected in DID selection dropdown at presentation modal)",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "did",
+          "in" : "query",
+          "description" : "DID to set as default DID",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "did:web:walt.id"
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "Default DID updated",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/create/key" : {
+      "post" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Create a did:key",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "query",
+          "description" : "Optionally override a key ID to use (otherwise will generate a new one if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "alias",
+          "in" : "query",
+          "description" : "Optionally set key alias (otherwise will use hash of key if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "useJwkJcsPub",
+          "in" : "query",
+          "description" : "Optionally set JWK JCS Pub format (for e.g. EBSI)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "DID created",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "DID already exists",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "DID could not be created",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/create/jwk" : {
+      "post" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Create a did:jwk",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "query",
+          "description" : "Optionally override a key ID to use (otherwise will generate a new one if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "alias",
+          "in" : "query",
+          "description" : "Optionally set key alias (otherwise will use hash of key if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "DID created",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "DID already exists",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "DID could not be created",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/create/web" : {
+      "post" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Create a did:web",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "query",
+          "description" : "Optionally override a key ID to use (otherwise will generate a new one if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "alias",
+          "in" : "query",
+          "description" : "Optionally set key alias (otherwise will use hash of key if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "domain",
+          "in" : "query",
+          "description" : "Domain to use to host did:web document at",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "path",
+          "in" : "query",
+          "description" : "Path to host the did:web document at. Starting with a: \"/\"",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "DID created",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "DID already exists",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "DID could not be created",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/create/ebsi" : {
+      "post" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Create a did:ebsi",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "query",
+          "description" : "Optionally override a key ID to use (otherwise will generate a new one if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "alias",
+          "in" : "query",
+          "description" : "Optionally set key alias (otherwise will use hash of key if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "version",
+          "in" : "query",
+          "description" : "Version 2 (NaturalPerson) or 1 (LegalEntity)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "title" : "Int"
+          }
+        }, {
+          "name" : "bearerToken",
+          "in" : "query",
+          "description" : "Required for v1 (LegalEntity)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "DID created",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "DID already exists",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "DID could not be created",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/create/cheqd" : {
+      "post" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Create a did:cheqd",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "query",
+          "description" : "Optionally override a key ID to use (otherwise will generate a new one if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "alias",
+          "in" : "query",
+          "description" : "Optionally set key alias (otherwise will use hash of key if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "network",
+          "in" : "query",
+          "description" : "testnet or mainnet",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "DID created",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "DID already exists",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "DID could not be created",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/create/iota" : {
+      "post" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Create a did:iota",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "keyId",
+          "in" : "query",
+          "description" : "Optionally override a key ID to use (otherwise will generate a new one if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "alias",
+          "in" : "query",
+          "description" : "Optionally set key alias (otherwise will use hash of key if not present)",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "DID created",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "DID already exists",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "DID could not be created",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/dids/import" : {
+      "post" : {
+        "tags" : [ "DIDs" ],
+        "summary" : "Import an existing DID",
+        "description" : "Import a DID (did:key, did:web, did:jwk) into the wallet. Requires private key (PEM or JWK) to verify ownership.",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Payload containing the DID and required associated private key (JWK/PEM).",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.model.DidImportRequest"
+              }
+            }
+          },
+          "required" : false
+        },
+        "responses" : {
+          "201" : {
+            "description" : "DID imported successfully",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Invalid DID or missing/invalid key material",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "DID already exists",
+            "headers" : { }
+          },
+          "415" : {
+            "description" : "Unsupported key format",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/credentials" : {
+      "get" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "List credentials",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "category",
+          "in" : "query",
+          "description" : "list of category names",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "ArrayList<String>"
+          }
+        }, {
+          "name" : "showDeleted",
+          "in" : "query",
+          "description" : "include the deleted credentials in the query result",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        }, {
+          "name" : "showPending",
+          "in" : "query",
+          "description" : "include the pending credentials in the query result",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        }, {
+          "name" : "sortBy",
+          "in" : "query",
+          "description" : "The property to sort by",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "addedOn"
+        }, {
+          "name" : "descending",
+          "in" : "query",
+          "description" : "Sort descending",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Array of (verifiable credentials) JSON documents",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletCredential"
+                  },
+                  "title" : "List<WalletCredential>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      },
+      "put" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Store credential",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/credentials/import" : {
+      "post" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Import a signed VC JWT into the wallet",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Request containing the signed VC JWT and associated DID",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.model.CredentialImportRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Credential imported successfully",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletCredential"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Invalid JWT or VC structure",
+            "headers" : { }
+          },
+          "409" : {
+            "description" : "Credential already exists",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/credentials/{credentialId}" : {
+      "get" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "View a credential",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "the credential id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "urn:uuid:d36986f1-3cc0-4156-b5a4-6d3deab84270"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "WalletCredential in JWT (String starting with 'ey' or JSON_LD (JSON with proof) format",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletCredential"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      },
+      "delete" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Delete a credential",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "the credential id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "urn:uuid:d36986f1-3cc0-4156-b5a4-6d3deab84270"
+        }, {
+          "name" : "permanent",
+          "in" : "query",
+          "description" : "Permanently delete the credential",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "WalletCredential deleted",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "WalletCredential could not be deleted",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/credentials/{credentialId}/restore" : {
+      "post" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Attempt to restore a soft delete credential",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "the credential id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "urn:uuid:d36986f1-3cc0-4156-b5a4-6d3deab84270"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "WalletCredential in JWT (String starting with 'ey' or JSON_LD (JSON with proof) format",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletCredential"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "WalletCredential could not be restored",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/credentials/{credentialId}/accept" : {
+      "post" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Accept credential",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "the credential id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "urn:uuid:d36986f1-3cc0-4156-b5a4-6d3deab84270"
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "Credential accepted successfully",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Credential acceptance failed",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/credentials/{credentialId}/reject" : {
+      "post" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Reject credential",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "the credential id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "urn:uuid:d36986f1-3cc0-4156-b5a4-6d3deab84270"
+        } ],
+        "requestBody" : {
+          "description" : "Request data",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.parameter.NoteRequestParameter"
+              },
+              "examples" : {
+                "Note" : {
+                  "value" : {
+                    "note" : "note"
+                  }
+                }
+              }
+            }
+          },
+          "required" : false
+        },
+        "responses" : {
+          "202" : {
+            "description" : "Credential rejected successfully",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Credential rejection failed",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/credentials/{credentialId}/status" : {
+      "get" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Get credential status",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "the credential id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "urn:uuid:d36986f1-3cc0-4156-b5a4-6d3deab84270"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "List of credential statuses",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.usecase.credential.CredentialStatusResult"
+                  },
+                  "title" : "ArrayList<CredentialStatusResult>"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Credential status could not be established or an error occured",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/credentials/{credentialId}/category" : {
+      "put" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Attach category to a credential",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "the credential id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "urn:uuid:d36986f1-3cc0-4156-b5a4-6d3deab84270"
+        } ],
+        "requestBody" : {
+          "description" : "The list of category names",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "array",
+                "items" : {
+                  "type" : "string",
+                  "title" : "String"
+                },
+                "title" : "ArrayList<String>"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "WalletCredential category added",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "WalletCredential category could not be added",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      },
+      "delete" : {
+        "tags" : [ "WalletCredentials" ],
+        "summary" : "Detach category from credential",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "the credential id (or alias)",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "urn:uuid:d36986f1-3cc0-4156-b5a4-6d3deab84270"
+        } ],
+        "requestBody" : {
+          "description" : "The list of category names",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "array",
+                "items" : {
+                  "type" : "string",
+                  "title" : "String"
+                },
+                "title" : "ArrayList<String>"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "description" : "WalletCredential category deleted",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "WalletCredential category could not be deleted",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/exchange/useOfferRequest" : {
+      "post" : {
+        "tags" : [ "Credential exchange" ],
+        "summary" : "Claim credential(s) from an issuer",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "did",
+          "in" : "query",
+          "description" : "The DID to issue the credential(s) to",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "requireUserInput",
+          "in" : "query",
+          "description" : "Whether to claim as pending acceptance",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        }, {
+          "name" : "pinOrTxCode",
+          "in" : "query",
+          "description" : "The `pin` (Draft11), or `tx_code` (Draft13 and onwards), value that may be required as part of a pre-authorized code (credential issuance) flow",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "The offer request to use",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "string",
+                "title" : "String"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "List of credentials",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletCredential"
+                  },
+                  "title" : "List<WalletCredential>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/exchange/matchCredentialsForPresentationDefinition" : {
+      "post" : {
+        "tags" : [ "Credential exchange" ],
+        "summary" : "Returns the credentials stored in the wallet that match the passed presentation definition",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Presentation definition to match credentials against",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.PresentationDefinition"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Credentials that match the presentation definition",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                  },
+                  "title" : "ArrayList<JsonObject>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/exchange/unmatchedCredentialsForPresentationDefinition" : {
+      "post" : {
+        "tags" : [ "Credential exchange" ],
+        "summary" : "Returns the credentials that are required by the presentation definition but not found in the wallet",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Presentation definition",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.PresentationDefinition"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Filters that failed to fulfill the presentation definition",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.usecase.exchange.FilterData"
+                  },
+                  "title" : "ArrayList<FilterData>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/exchange/usePresentationRequest" : {
+      "post" : {
+        "tags" : [ "Credential exchange" ],
+        "summary" : "Present credential(s) to a Relying Party",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.controllers.exchange.UsePresentationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Successfully presented credentials",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Presentation was not accepted",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/exchange/resolvePresentationRequest" : {
+      "post" : {
+        "tags" : [ "Credential exchange" ],
+        "summary" : "Return resolved / parsed presentation request",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "PresentationRequest to resolve/parse",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "string",
+                "title" : "String"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Resolved presentation request",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "string",
+                  "title" : "String"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/exchange/resolveCredentialOffer" : {
+      "post" : {
+        "tags" : [ "Credential exchange" ],
+        "summary" : "Return resolved / parsed credential offer",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Credential offer request to resolve/parse",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "string",
+                "title" : "String"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Resolved credential offer",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.oid4vc.data.CredentialOffer"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/exchange/resolveVctUrl" : {
+      "get" : {
+        "tags" : [ "Credential exchange" ],
+        "summary" : "Receive an verifiable credential type (VCT) URL and return resolved vct object as described in IETF SD-JWT VC",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "vct",
+          "in" : "query",
+          "description" : "The value of the vct in URL format",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "https://example.com/mycustomvct"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Resolved VCT",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.sdjwt.metadata.type.SdJwtVcTypeMetadataDraft04"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/exchange/resolveIssuerOpenIDMetadata" : {
+      "get" : {
+        "tags" : [ "Credential exchange" ],
+        "summary" : "Resolved Issuer OpenID Metadata",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "issuer",
+          "in" : "query",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Resolved Issuer OpenID Metadata",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.oid4vc.data.OpenIDProviderMetadata"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/history" : {
+      "get" : {
+        "tags" : [ "History" ],
+        "summary" : "Show operation history",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Operation history",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletOperationHistory"
+                  },
+                  "title" : "ArrayList<WalletOperationHistory>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/issuers" : {
+      "get" : {
+        "tags" : [ "Issuers" ],
+        "summary" : "List the configured issuers",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Array of issuer objects",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.service.issuers.IssuerDataTransferObject"
+                  },
+                  "title" : "ArrayList<IssuerDataTransferObject>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/issuers/add" : {
+      "post" : {
+        "tags" : [ "Issuers" ],
+        "summary" : "Add issuer to wallet",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Issuer data",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.controllers.IssuerParameter"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Issuer added successfully",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Failed to add issuer to wallet",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/issuers/{issuer}" : {
+      "get" : {
+        "tags" : [ "Issuers" ],
+        "summary" : "Fetch issuer data",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "issuer",
+          "in" : "path",
+          "description" : "The issuer name",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "walt.id"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Issuer data object",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.service.issuers.IssuerDataTransferObject"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Error message",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "string",
+                  "title" : "String"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/issuers/{issuer}/authorize" : {
+      "put" : {
+        "tags" : [ "Issuers" ],
+        "summary" : "Authorize issuer to automatically add credentials to the wallet in future",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "issuer",
+          "in" : "path",
+          "description" : "The issuer name",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "walt.id"
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "Authorization succeed",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Authorization failed",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/issuers/{issuer}/credentials" : {
+      "get" : {
+        "tags" : [ "Issuers" ],
+        "summary" : "Show supported credentials for the given issuer",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "issuer",
+          "in" : "path",
+          "description" : "The issuer name",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "walt.id"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Array of issuer credential objects",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.service.issuers.CredentialDataTransferObject"
+                  },
+                  "title" : "ArrayList<CredentialDataTransferObject>"
+                }
+              }
+            }
+          },
+          "500" : {
+            "description" : "Error message",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "string",
+                  "title" : "String"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/eventlog" : {
+      "get" : {
+        "tags" : [ "Event Log" ],
+        "summary" : "Retrieve event logs for currently signed in account wallet",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Page size",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "title" : "Int"
+          }
+        }, {
+          "name" : "filter",
+          "in" : "query",
+          "description" : "List of key=value pairs for filtering",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "ArrayList<String>"
+          }
+        }, {
+          "name" : "startingAfter",
+          "in" : "query",
+          "description" : "Starting after page",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "sortBy",
+          "in" : "query",
+          "description" : "The property to sort by",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "sortOrder",
+          "in" : "query",
+          "description" : "The sort order [ASC|DESC]",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "example" : "DESC"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The event log result",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "object",
+                  "title" : "*"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/eventlog/{id}" : {
+      "delete" : {
+        "tags" : [ "Event Log" ],
+        "summary" : "Delete event log",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "id",
+          "in" : "path",
+          "description" : "Event log ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "title" : "Int"
+          }
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "Event log deleted",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Event log could not be deleted",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/manifest/{credentialId}" : {
+      "get" : {
+        "tags" : [ "WalletCredential manifest" ],
+        "summary" : "Get credential manifest, if available, otherwise null",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "Credential id",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The display info json object",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "204" : {
+            "description" : "The display info json object",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/manifest/{credentialId}/display" : {
+      "get" : {
+        "tags" : [ "WalletCredential manifest" ],
+        "summary" : "Get offer display info, if available, otherwise empty object",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "Credential id",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The display info json object",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/manifest/{credentialId}/issuer" : {
+      "get" : {
+        "tags" : [ "WalletCredential manifest" ],
+        "summary" : "Get offer issuer info, if available, otherwise empty object",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "credentialId",
+          "in" : "path",
+          "description" : "Credential id",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The issuer info json object",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/manifest/extract" : {
+      "get" : {
+        "tags" : [ "WalletCredential manifest" ],
+        "summary" : "Extract manifest info from issuance request offer, if available, otherwise empty object",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "offer",
+          "in" : "query",
+          "description" : "Offer request URI",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The manifest issuer info json object",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "204" : {
+            "description" : "No/empty manifest",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Error message",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "string",
+                  "title" : "String"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/categories" : {
+      "get" : {
+        "tags" : [ "WalletCategories" ],
+        "summary" : "List categories",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Array of categories",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletCategoryData"
+                  },
+                  "title" : "ArrayList<WalletCategoryData>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/categories/{name}/add" : {
+      "post" : {
+        "tags" : [ "WalletCategories" ],
+        "summary" : "Add category",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "name",
+          "in" : "path",
+          "description" : "the category name",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "201" : {
+            "description" : "Category added",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Category could not be added",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/categories/{name}" : {
+      "delete" : {
+        "tags" : [ "WalletCategories" ],
+        "summary" : "Delete category",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "name",
+          "in" : "path",
+          "description" : "the category name",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "Category deleted",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Category could not be deleted",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/categories/{name}/rename/{newName}" : {
+      "put" : {
+        "tags" : [ "WalletCategories" ],
+        "summary" : "Rename category",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "name",
+          "in" : "path",
+          "description" : "the category name",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "newName",
+          "in" : "path",
+          "description" : "the category new name",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "202" : {
+            "description" : "Category renamed",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Category could not be renamed",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/reports/frequent/credentials" : {
+      "get" : {
+        "tags" : [ "WalletReports" ],
+        "summary" : "Credentials",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "The max number of items to return",
+          "required" : false,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "title" : "Int"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The list of the most frequently used credentials",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/id.walt.webwallet.db.models.WalletCredential"
+                  },
+                  "title" : "List<WalletCredential>"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/wallet/{wallet}/settings" : {
+      "get" : {
+        "tags" : [ "Settings" ],
+        "summary" : "Wallet settings",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Wallet settings object",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.service.settings.WalletSetting"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Error fetching wallet settings",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      },
+      "post" : {
+        "tags" : [ "Settings" ],
+        "summary" : "Update wallet settings",
+        "parameters" : [ {
+          "name" : "wallet",
+          "in" : "path",
+          "description" : "Wallet ID",
+          "required" : true,
+          "deprecated" : false,
+          "allowEmptyValue" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Wallet setting object",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Wallet settings updated successfully",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Error updating wallet settings",
+            "headers" : { }
+          },
+          "401" : {
+            "description" : "Invalid authentication",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/registry" : {
+      "get" : {
+        "tags" : [ "DID Web Registry" ],
+        "summary" : "List registered DIDs",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Array of (DID) strings",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "type" : "string",
+                    "title" : "String"
+                  },
+                  "title" : "ArrayList<String>"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/registry/{id}/did.json" : {
+      "get" : {
+        "tags" : [ "DID Web Registry" ],
+        "summary" : "Show a specific DID",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "description" : "ID",
+          "required" : true,
+          "deprecated" : false,
+          "explode" : false,
+          "schema" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The DID document",
+            "headers" : { },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/util/parseMDoc" : {
+      "post" : {
+        "tags" : [ "Utilities" ],
+        "summary" : "Parse MDOC document to JSON element",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "type" : "string",
+                "title" : "String"
+              },
+              "examples" : {
+                "Sample mdoc" : {
+                  "value" : "a267646f6354797065756f72672e69736f2e31383031332e352e312e6d444c6c6973737565725369676e6564a26a6e616d65537061636573a1716f72672e69736f2e31383031332e352e3183d8185852a4686469676573744944006672616e646f6d50fce6b21d930b5b99fad34980ab06c8ee71656c656d656e744964656e7469666965726b66616d696c795f6e616d656c656c656d656e7456616c756563446f65d8185852a4686469676573744944016672616e646f6d5058daba0e58ae65726d9ba1aaa62256ee71656c656d656e744964656e7469666965726a676976656e5f6e616d656c656c656d656e7456616c7565644a6f686ed8185858a4686469676573744944026672616e646f6d5063fd5066277bce71963369771b78c1f671656c656d656e744964656e7469666965726a62697274685f646174656c656c656d656e7456616c75656a313938302d30312d30316a697373756572417574688443a10126a1182159014b308201473081eea003020102020839edc87a9a78f92a300a06082a8648ce3d04030230173115301306035504030c0c4d444f4320524f4f54204341301e170d3234303530323133313333305a170d3235303530323133313333305a301b3119301706035504030c104d444f432054657374204973737565723059301306072a8648ce3d020106082a8648ce3d030107034200041b4448341885fa84140f77790c69de810b977a7236f490da306a0cbe2a0a441379ddde146b36a44b6ba7bbc067b04b71bad4b692a4616013d893d440ae253781a320301e300c0603551d130101ff04023000300e0603551d0f0101ff040403020780300a06082a8648ce3d04030203480030450221008e70041000ddec2a230b2586ecc59f8acd156f5d933d9363bc5e2263bb0ab69802201885a8b537327a69b022620f07c5c45d6293b86eed927a3f04e82cc51cadf8635901c3d8185901bea66776657273696f6e63312e306f646967657374416c676f726974686d675348412d3235366c76616c756544696765737473a1716f72672e69736f2e31383031332e352e31a3005820ac6801aa40d9871db115c9ba804bbccbddf7f29a6773d626cb6604d468e8714e015820066fc7c19bce2aeaf2d655351da21dbb12561db212e21e8c3e969fa469fd1c7c025820dbf831a97d5b504ca70c212224109e243f01f82cb4cde7c704a7166fd671ed326d6465766963654b6579496e666fa1696465766963654b6579a4010220012158200f08fd91a6b62e757e090514cd54d506ea4fb4354e10cdaa24c7748f59fb5e10225820ffa4113b5aef1a4dbd3fb4b9da126bc1ffc09b9cc679b4673dd321f021f2fc2167646f6354797065756f72672e69736f2e31383031332e352e312e6d444c6c76616c6964697479496e666fa3667369676e6564c0781e323032342d30372d32355431333a30353a33312e3438333237373433355a6976616c696446726f6dc0781e323032342d30372d32355431333a30353a33312e3438333237373738305a6a76616c6964556e74696cc0781e323032352d30372d32355431333a30353a33312e3438333237373836335a5840d57ee4f1a38cf49860b2f9b7c8f2469faa68720a8b731eae1d727e681bf0299fe86c0c120407cc8f0a7b951a6db6eac4c1905f07436fc556be1a65c13e432490"
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "MDoc successfully parsed to JSON",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "id.walt.commons.web.modules.FeatureFlagInformationModule.FeatureFlagInformation" : {
+        "type" : "object",
+        "properties" : {
+          "features" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "LinkedHashMap<String,String>"
+          },
+          "total" : {
+            "type" : "integer",
+            "format" : "int32",
+            "title" : "Int"
+          }
+        },
+        "required" : [ "features", "total" ],
+        "title" : "FeatureFlagInformationModule.FeatureFlagInformation"
+      },
+      "id.walt.commons.web.modules.FeatureFlagInformationModule.FeatureFlagInformations" : {
+        "type" : "object",
+        "properties" : {
+          "enabled" : {
+            "$ref" : "#/components/schemas/id.walt.commons.web.modules.FeatureFlagInformationModule.FeatureFlagInformation"
+          },
+          "disabled" : {
+            "$ref" : "#/components/schemas/id.walt.commons.web.modules.FeatureFlagInformationModule.FeatureFlagInformation"
+          },
+          "defaultedDisabled" : {
+            "$ref" : "#/components/schemas/id.walt.commons.web.modules.FeatureFlagInformationModule.FeatureFlagInformation"
+          }
+        },
+        "required" : [ "defaultedDisabled", "disabled", "enabled" ],
+        "title" : "FeatureFlagInformationModule.FeatureFlagInformations"
+      },
+      "id.walt.webwallet.db.models.Account" : {
+        "type" : "object",
+        "properties" : {
+          "tenant" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid",
+            "title" : "Uuid"
+          },
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "email" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "createdOn" : {
+            "type" : "string",
+            "format" : "date-time",
+            "title" : "Instant"
+          }
+        },
+        "required" : [ "createdOn", "id", "tenant" ],
+        "title" : "Account"
+      },
+      "address" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "address" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "ecosystem" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "type" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "address", "ecosystem" ],
+        "title" : ""
+      },
+      "email" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "email" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "password" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "type" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "email", "password" ],
+        "title" : ""
+      },
+      "keycloak" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "email" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "username" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "password" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "token" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "type" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "title" : ""
+      },
+      "oidc" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "token" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "type" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "token" ],
+        "title" : ""
+      },
+      "oidc-unique-subject" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "token" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "type" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "token" ],
+        "title" : ""
+      },
+      "x5c" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "token" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "type" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "token" ],
+        "title" : ""
+      },
+      "id.walt.webwallet.web.model.AccountRequest" : {
+        "anyOf" : [ {
+          "$ref" : "#/components/schemas/address"
+        }, {
+          "$ref" : "#/components/schemas/email"
+        }, {
+          "$ref" : "#/components/schemas/keycloak"
+        }, {
+          "$ref" : "#/components/schemas/oidc"
+        }, {
+          "$ref" : "#/components/schemas/oidc-unique-subject"
+        }, {
+          "$ref" : "#/components/schemas/x5c"
+        } ],
+        "discriminator" : {
+          "propertyName" : "type"
+        },
+        "title" : "AccountRequest"
+      },
+      "id.walt.webwallet.web.controllers.auth.LoginResponseData" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "title" : "Uuid"
+          },
+          "token" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "username" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "address" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "keycloakUserId" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "id", "token" ],
+        "title" : "LoginResponseData"
+      },
+      "id.walt.webwallet.web.model.KeycloakLogoutRequest" : {
+        "type" : "object",
+        "properties" : {
+          "keycloakUserId" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "token" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "title" : "KeycloakLogoutRequest"
+      },
+      "id.walt.webwallet.db.models.AccountWalletListing.WalletListing" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid",
+            "title" : "Uuid"
+          },
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "createdOn" : {
+            "type" : "string",
+            "format" : "date-time",
+            "title" : "Instant"
+          },
+          "addedOn" : {
+            "type" : "string",
+            "format" : "date-time",
+            "title" : "Instant"
+          },
+          "permission" : {
+            "$ref" : "#/components/schemas/id.walt.webwallet.db.models.AccountWalletPermissions"
+          }
+        },
+        "required" : [ "addedOn", "createdOn", "id", "name", "permission" ],
+        "title" : "AccountWalletListing.WalletListing"
+      },
+      "id.walt.webwallet.db.models.AccountWalletPermissions" : {
+        "type" : "string",
+        "enum" : [ "ADMINISTRATE", "USE", "READ_ONLY" ],
+        "title" : "AccountWalletPermissions"
+      },
+      "id.walt.webwallet.db.models.AccountWalletListing" : {
+        "type" : "object",
+        "properties" : {
+          "account" : {
+            "type" : "string",
+            "format" : "uuid",
+            "title" : "Uuid"
+          },
+          "wallets" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/id.walt.webwallet.db.models.AccountWalletListing.WalletListing"
+            },
+            "title" : "ArrayList<AccountWalletListing.WalletListing>"
+          }
+        },
+        "required" : [ "account", "wallets" ],
+        "title" : "AccountWalletListing"
+      },
+      "id.walt.crypto.keys.KeyType" : {
+        "type" : "string",
+        "enum" : [ "Ed25519", "secp256k1", "secp256r1", "secp384r1", "secp521r1", "RSA", "RSA3072", "RSA4096" ],
+        "title" : "KeyType"
+      },
+      "kotlinx.serialization.json.JsonObject" : {
+        "type" : "object",
+        "title" : "JsonObject"
+      },
+      "id.walt.crypto.keys.KeyGenerationRequest" : {
+        "type" : "object",
+        "properties" : {
+          "backend" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "keyType" : {
+            "$ref" : "#/components/schemas/id.walt.crypto.keys.KeyType"
+          },
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "config" : {
+            "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+          }
+        },
+        "required" : [ "backend", "keyType" ],
+        "title" : "KeyGenerationRequest"
+      },
+      "kotlinx.serialization.json.JsonElement" : {
+        "type" : "object",
+        "title" : "JsonElement"
+      },
+      "id.walt.webwallet.db.models.WalletDid" : {
+        "type" : "object",
+        "properties" : {
+          "did" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "alias" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "document" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "keyId" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "default" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          },
+          "createdOn" : {
+            "type" : "string",
+            "format" : "date-time",
+            "title" : "Instant"
+          }
+        },
+        "required" : [ "alias", "createdOn", "default", "did", "document", "keyId" ],
+        "title" : "WalletDid"
+      },
+      "id.walt.webwallet.web.model.DidImportRequest" : {
+        "type" : "object",
+        "properties" : {
+          "did" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "key" : {
+            "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonElement"
+          },
+          "alias" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "did" ],
+        "title" : "DidImportRequest"
+      },
+      "id.walt.webwallet.db.models.WalletCredential" : {
+        "type" : "object",
+        "properties" : {
+          "addedOn" : {
+            "type" : "string",
+            "format" : "date-time",
+            "title" : "Instant"
+          },
+          "deletedOn" : {
+            "type" : "string",
+            "format" : "date-time",
+            "title" : "Instant"
+          },
+          "disclosures" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "document" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "format" : {
+            "$ref" : "#/components/schemas/id.walt.oid4vc.data.CredentialFormat"
+          },
+          "id" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "manifest" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "parsedDocument" : {
+            "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+          },
+          "parsedManifest" : {
+            "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+          },
+          "pending" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          },
+          "wallet" : {
+            "type" : "string",
+            "format" : "uuid",
+            "title" : "Uuid"
+          }
+        },
+        "required" : [ "addedOn", "document", "format", "id", "pending", "wallet" ],
+        "title" : "WalletCredential"
+      },
+      "id.walt.oid4vc.data.CredentialFormat" : {
+        "type" : "string",
+        "enum" : [ "jwt_vc_json", "jwt_vc_json_ld", "ldp_vc", "sd_jwt_dc", "sd_jwt_vc", "mso_mdoc", "jwt_vp_json", "jwt_vp_json_ld", "ldp_vp", "jwt_vc", "jwt_vp" ],
+        "title" : "CredentialFormat"
+      },
+      "id.walt.webwallet.web.model.CredentialImportRequest" : {
+        "type" : "object",
+        "properties" : {
+          "jwt" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "associated_did" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "associated_did", "jwt" ],
+        "title" : "CredentialImportRequest"
+      },
+      "id.walt.webwallet.web.parameter.NoteRequestParameter" : {
+        "type" : "object",
+        "properties" : {
+          "note" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "note" ],
+        "title" : "NoteRequestParameter"
+      },
+      "id.walt.webwallet.usecase.credential.CredentialStatusResult" : {
+        "type" : "object",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "result" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          },
+          "message" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "message", "result", "type" ],
+        "title" : "CredentialStatusResult"
+      },
+      "id.walt.oid4vc.data.dif.InputDescriptor" : {
+        "type" : "object",
+        "additionalProperties" : { },
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "purpose" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "format" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.VCFormatDefinition"
+            },
+            "title" : "LinkedHashMap<VCFormat,VCFormatDefinition>"
+          },
+          "constraints" : {
+            "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.InputDescriptorConstraints"
+          },
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.InputDescriptorSchema"
+            },
+            "title" : "ArrayList<InputDescriptorSchema>"
+          },
+          "group" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "LinkedHashSet<String>"
+          }
+        },
+        "required" : [ "id" ],
+        "title" : "InputDescriptor"
+      },
+      "id.walt.oid4vc.data.dif.VCFormatDefinition" : {
+        "type" : "object",
+        "additionalProperties" : { },
+        "properties" : {
+          "alg" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "LinkedHashSet<String>"
+          },
+          "proof_type" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "LinkedHashSet<String>"
+          }
+        },
+        "title" : "VCFormatDefinition"
+      },
+      "id.walt.oid4vc.data.dif.InputDescriptorConstraints" : {
+        "type" : "object",
+        "additionalProperties" : { },
+        "properties" : {
+          "fields" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.InputDescriptorField"
+            },
+            "title" : "ArrayList<InputDescriptorField>"
+          },
+          "limit_disclosure" : {
+            "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.DisclosureLimitation"
+          }
+        },
+        "title" : "InputDescriptorConstraints"
+      },
+      "id.walt.oid4vc.data.dif.InputDescriptorField" : {
+        "type" : "object",
+        "additionalProperties" : { },
+        "properties" : {
+          "path" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "ArrayList<String>"
+          },
+          "id" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "purpose" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "filter" : {
+            "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+          },
+          "optional" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          },
+          "intent_to_retain" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        },
+        "required" : [ "path" ],
+        "title" : "InputDescriptorField"
+      },
+      "id.walt.oid4vc.data.dif.DisclosureLimitation" : {
+        "type" : "string",
+        "enum" : [ "required", "preferred" ],
+        "title" : "DisclosureLimitation"
+      },
+      "id.walt.oid4vc.data.dif.InputDescriptorSchema" : {
+        "type" : "object",
+        "additionalProperties" : { },
+        "properties" : {
+          "uri" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "uri" ],
+        "title" : "InputDescriptorSchema"
+      },
+      "id.walt.oid4vc.data.dif.SubmissionRequirement" : {
+        "type" : "object",
+        "additionalProperties" : { },
+        "properties" : {
+          "rule" : {
+            "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.SubmissionRequirementRule"
+          },
+          "from" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "from_nested" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.SubmissionRequirement"
+            },
+            "title" : "ArrayList<SubmissionRequirement>"
+          },
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "purpose" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "count" : {
+            "type" : "integer",
+            "format" : "int32",
+            "title" : "Int"
+          },
+          "min" : {
+            "type" : "integer",
+            "format" : "int32",
+            "title" : "Int"
+          },
+          "max" : {
+            "type" : "integer",
+            "format" : "int32",
+            "title" : "Int"
+          }
+        },
+        "required" : [ "rule" ],
+        "title" : "SubmissionRequirement"
+      },
+      "id.walt.oid4vc.data.dif.SubmissionRequirementRule" : {
+        "type" : "string",
+        "enum" : [ "pick", "all" ],
+        "title" : "SubmissionRequirementRule"
+      },
+      "id.walt.oid4vc.data.dif.PresentationDefinition" : {
+        "type" : "object",
+        "additionalProperties" : { },
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "input_descriptors" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.InputDescriptor"
+            },
+            "title" : "ArrayList<InputDescriptor>"
+          },
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "purpose" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "format" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.VCFormatDefinition"
+            },
+            "title" : "LinkedHashMap<VCFormat,VCFormatDefinition>"
+          },
+          "submission_requirements" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/id.walt.oid4vc.data.dif.SubmissionRequirement"
+            },
+            "title" : "ArrayList<SubmissionRequirement>"
+          }
+        },
+        "required" : [ "id", "input_descriptors" ],
+        "title" : "PresentationDefinition"
+      },
+      "id.walt.webwallet.usecase.exchange.FilterData" : {
+        "type" : "object",
+        "properties" : {
+          "credential" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "filters" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/id.walt.webwallet.usecase.exchange.TypeFilter"
+            },
+            "title" : "ArrayList<TypeFilter>"
+          }
+        },
+        "required" : [ "credential", "filters" ],
+        "title" : "FilterData"
+      },
+      "id.walt.webwallet.usecase.exchange.TypeFilter" : {
+        "type" : "object",
+        "properties" : {
+          "path" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "ArrayList<String>"
+          },
+          "type" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "pattern" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "path", "pattern" ],
+        "title" : "TypeFilter"
+      },
+      "id.walt.webwallet.web.controllers.exchange.UsePresentationRequest" : {
+        "type" : "object",
+        "properties" : {
+          "did" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "presentationRequest" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "selectedCredentials" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "ArrayList<String>"
+          },
+          "disclosures" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "array",
+              "items" : {
+                "type" : "string",
+                "title" : "String"
+              },
+              "title" : "ArrayList<String>"
+            },
+            "title" : "LinkedHashMap<String,ArrayList<String>>"
+          },
+          "note" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "presentationRequest", "selectedCredentials" ],
+        "title" : "UsePresentationRequest"
+      },
+      "id.walt.oid4vc.data.CredentialOffer" : {
+        "type" : "object",
+        "properties" : { },
+        "title" : "CredentialOffer"
+      },
+      "id.walt.sdjwt.metadata.type.SdJwtVcTypeMetadataDraft04" : {
+        "type" : "object",
+        "additionalProperties" : { },
+        "properties" : {
+          "vct" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "description" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "extends" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "extends#integrity" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "schema" : {
+            "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+          },
+          "schema_uri" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "schema_uri#integrity" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "title" : "SdJwtVcTypeMetadataDraft04"
+      },
+      "id.walt.oid4vc.data.OpenIDProviderMetadata" : {
+        "type" : "object",
+        "properties" : { },
+        "title" : "OpenIDProviderMetadata"
+      },
+      "id.walt.webwallet.db.models.WalletOperationHistory" : {
+        "type" : "object",
+        "properties" : {
+          "tenant" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid",
+            "title" : "Uuid"
+          },
+          "account" : {
+            "type" : "string",
+            "format" : "uuid",
+            "title" : "Uuid"
+          },
+          "wallet" : {
+            "type" : "string",
+            "format" : "uuid",
+            "title" : "Uuid"
+          },
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time",
+            "title" : "Instant"
+          },
+          "operation" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "data" : {
+            "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+          }
+        },
+        "required" : [ "account", "data", "operation", "tenant", "timestamp", "wallet" ],
+        "title" : "WalletOperationHistory"
+      },
+      "id.walt.webwallet.service.issuers.IssuerDataTransferObject" : {
+        "type" : "object",
+        "properties" : {
+          "wallet" : {
+            "type" : "string",
+            "format" : "uuid",
+            "title" : "Uuid"
+          },
+          "did" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "description" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "uiEndpoint" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "configurationEndpoint" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "authorized" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        },
+        "required" : [ "authorized", "configurationEndpoint", "did", "uiEndpoint", "wallet" ],
+        "title" : "IssuerDataTransferObject"
+      },
+      "id.walt.webwallet.web.controllers.IssuerParameter" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "description" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "uiEndpoint" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "configurationEndpoint" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "configurationEndpoint", "name", "uiEndpoint" ],
+        "title" : "IssuerParameter"
+      },
+      "id.walt.webwallet.service.issuers.CredentialDataTransferObject" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "format" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "types" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "title" : "String"
+            },
+            "title" : "ArrayList<String>"
+          }
+        },
+        "required" : [ "format", "id", "types" ],
+        "title" : "CredentialDataTransferObject"
+      },
+      "id.walt.webwallet.db.models.WalletCategoryData" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "name" ],
+        "title" : "WalletCategoryData"
+      },
+      "id.walt.webwallet.service.settings.WalletSetting" : {
+        "type" : "object",
+        "properties" : {
+          "settings" : {
+            "$ref" : "#/components/schemas/kotlinx.serialization.json.JsonObject"
+          }
+        },
+        "required" : [ "settings" ],
+        "title" : "WalletSetting"
+      }
+    },
+    "examples" : { },
+    "securitySchemes" : {
+      "auth-session" : {
+        "type" : "apiKey",
+        "name" : "Session-Cookie Authentication",
+        "in" : "cookie"
+      },
+      "auth-bearer" : {
+        "type" : "http",
+        "description" : "Set as \"Authorization: Bearer %token-here%\" to authenticate.",
+        "scheme" : "bearer"
+      },
+      "auth-bearer-alternative" : {
+        "type" : "http",
+        "description" : "Set alternative header \"waltid-authorization: Bearer %token-here%\" to authenticate.",
+        "in" : "header",
+        "scheme" : "bearer"
+      }
+    }
+  },
+  "webhooks" : { }
+}
