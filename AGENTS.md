@@ -8,7 +8,7 @@ This is a production-ready playbook defining strict architectural rules, securit
 
 ## HANDOFF STATE (2026-06-02)
 
-**Immediate Next Task:** Begin Phase 3.1 HTML to NativeWind Translation once design HTML/CSS files are available.
+**Immediate Next Task:** Begin Phase 3.2 Dynamic Card Engine.
 
 **Files to read before starting:**
 - `CLAUDE.md` - architecture rules
@@ -21,14 +21,17 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `app/_layout.tsx` - Phase 1 startup wiring
 - `orval.config.ts` - Phase 2.1 SDK generation config
 - `src/sdk/walletApi.ts` - generated company backend SDK
-- `src/services/vci/exchangeService.ts` - Phase 2.2 credential offer resolution
-- `src/services/vci/exchangeService.test.ts` - Phase 2.2 TypeScript contract test
+- `src/services/vci/exchangeService.ts` - Phase 2 protocol service
+- `src/services/vci/exchangeService.test.ts` - Phase 2 TypeScript contract test
+- `app/(tabs)/index.tsx` - Phase 3.1 Wallet home screen
+- `app/(tabs)/_layout.tsx` - Phase 3.1 tab shell
+- `tailwind.config.js`, `global.css`, `metro.config.js` - NativeWind runtime wiring
 
 **Next concrete steps:**
-1. Receive HTML/CSS design files from the design team.
-2. Extract layout structures, flex containers, typography, and reusable card/display patterns.
-3. Translate layouts into React Native primitives with NativeWind.
-4. Run `yarn tsc`, `yarn lint`, and update `docs/TASKS.md`.
+1. Define `CardSchemaConfig` JSON format for dynamic credential display.
+2. Create initial configs for ThaID, DLT Driving Licence, and Bangkok University Transcript.
+3. Build a generic `CredentialCard` component that renders from config; no hardcoded card types.
+4. Wire `VerifiableCredentialRecord.type` to `CardSchemaConfig` lookup, then run `yarn tsc`, `yarn lint`, and update `docs/TASKS.md`.
 
 **Phase 2.3 resolved decisions:**
 - `claimCredential()` accepts `ResolvedCredentialOffer`, not raw offer URI.
@@ -43,6 +46,14 @@ This is a production-ready playbook defining strict architectural rules, securit
 - Generated SDK `importCredential()` payload is `{ jwt: record.rawVc, associated_did: getHolderDid() }`.
 - Only HTTP 201 counts as sync success.
 - TanStack Query cache invalidation stays in caller/UI code.
+
+**Phase 3.1 resolved decisions:**
+- `docs/ui-reference/home.html` is the current design reference for the Wallet home tab.
+- `app/(tabs)/index.tsx` uses React Native primitives and NativeWind classes; credential menu rows are rendered from a config array.
+- Missing HTML image assets are represented with vector icons and an initials avatar until real assets are provided.
+- Bottom tab shell is Wallet, My QR, Scan, History Log; QR/Scan/History routes are placeholders until Phase 3.3 workflow wiring.
+- NativeWind runtime wiring is present through `tailwind.config.js`, `global.css`, `nativewind-env.d.ts`, `metro.config.js`, and `tailwindcss@3.4.4`.
+- `app/_layout.tsx` dynamically imports native startup services only on non-web platforms so static web export can render without evaluating hardware-signing dependencies.
 
 ---
 
@@ -118,7 +129,7 @@ Implementation Status Tracker
 [x] Phase 1b: src/services/storage/storage.ts - encrypted MMKV storage written
 [x] Phase 1c: app/_layout.tsx startup wiring - written
 [x] Phase 2: OID4VCI 1.0 Protocol Integration (Target: Week 3-4; Phase 2.1 SDK setup, Phase 2.2 offer resolution, Phase 2.3 credential acquisition, and Phase 2.4 backend sync complete)
-[ ] Phase 3: Dynamic Card & Config-Driven UI Mapping (Target: Week 5-6)
+[ ] Phase 3: Dynamic Card & Config-Driven UI Mapping (Target: Week 5-6; Phase 3.1 HTML to NativeWind translation complete)
 [ ] Phase 4: Security Hardening & Release Build (Target: Week 7-8)
 [ ] Post-v1: OID4VP 1.0 Online Presentation (planned, scope-only - mechanics TBD)
 
@@ -128,5 +139,5 @@ Signing: @animo-id/expo-secure-environment@0.1.5
 Storage: react-native-mmkv v4 via createMMKV() - requires react-native-nitro-modules
 Crypto (non-signing): react-native-quick-crypto
 State: @tanstack/react-query
-Styles: NativeWind (Tailwind CSS)
+Styles: NativeWind + tailwindcss@3.4.4
 SDK generation: orval (TanStack Query hooks from OpenAPI spec -> src/sdk/)

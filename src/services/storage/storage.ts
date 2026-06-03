@@ -23,20 +23,30 @@ function generateEncryptionKey(): string {
 }
 
 function getKeychainSetOptions(): Keychain.SetOptions {
+  if (Platform.OS === 'android') {
+    return {
+      service: KEYCHAIN_SERVICE,
+      securityLevel: Keychain.SECURITY_LEVEL.SECURE_SOFTWARE,
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+    }
+  }
   return {
     service: KEYCHAIN_SERVICE,
     accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
     accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
-    ...(Platform.OS === 'android'
-      ? {
-          securityLevel: Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
-          storage: Keychain.STORAGE_TYPE.AES_GCM,
-        }
-      : {}),
   }
 }
 
 function getKeychainGetOptions(): Keychain.GetOptions {
+  if (Platform.OS === 'android') {
+    return {
+      service: KEYCHAIN_SERVICE,
+      authenticationPrompt: {
+        title: 'Unlock Wallet Storage',
+        cancel: 'Cancel',
+      },
+    }
+  }
   return {
     service: KEYCHAIN_SERVICE,
     accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
@@ -52,11 +62,9 @@ function toErrorMessage(error: unknown): string {
 }
 
 async function getOrCreateEncryptionKey(): Promise<string> {
-  const hasStoredKey = await Keychain.hasGenericPassword({ service: KEYCHAIN_SERVICE })
+  const credentials = await Keychain.getGenericPassword(getKeychainGetOptions())
 
-  if (hasStoredKey) {
-    const credentials = await Keychain.getGenericPassword(getKeychainGetOptions())
-    if (!credentials) throw new Error('KeychainReadFailed')
+  if (credentials) {
     if (credentials.password.length !== MMKV_AES_256_KEY_BYTES) {
       throw new Error(
         `InvalidStoredStorageKeyLength: expected ${MMKV_AES_256_KEY_BYTES}, got ${credentials.password.length}`

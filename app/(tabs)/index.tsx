@@ -1,98 +1,67 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+type CredentialMenuItem = {
+  id: string;
+  title: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  badge?: string;
+};
 
-export default function HomeScreen() {
+const credentialMenu: CredentialMenuItem[] = [
+  { id: 'id-card', title: 'ID Card', icon: 'card-account-details-outline' },
+  { id: 'driving-license', title: 'Driving License', icon: 'car-outline' },
+  { id: 'transcript', title: 'Transcript', icon: 'school-outline' },
+  { id: 'medical-certificate', title: 'Medical certificate', icon: 'medical-bag', badge: 'ขอเอกสาร' },
+];
+
+export default function WalletHomeScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView className="flex-1 bg-wallet-bg" edges={['top']}>
+      <View className="bg-wallet-navy px-6 pb-5 pt-1.5">
+        <Text className="text-center text-2xl font-semibold tracking-wide text-white">Wallet</Text>
+      </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="gap-3.5 px-4 pb-24 pt-5"
+        showsVerticalScrollIndicator={false}>
+
+        <View
+          className="flex-row items-center gap-[18px] overflow-hidden rounded-[18px] bg-wallet-card p-5"
+          style={{ elevation: 5, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.13, shadowRadius: 10 }}>
+          <View className="h-[141px] w-[120px] items-center justify-center rounded-xl bg-white/15">
+            <Text className="text-4xl font-bold text-white">ET</Text>
+          </View>
+          <View className="min-w-0 flex-1">
+            <Text className="text-base font-semibold leading-snug text-white">ETDA Wallet Holder</Text>
+            <Text className="mt-1.5 text-[13px] text-white/65">Holder ID: etda-wallet-demo</Text>
+          </View>
+        </View>
+
+        <View className="gap-2.5">
+          {credentialMenu.map((item) => (
+            <Pressable
+              key={item.id}
+              accessibilityRole="button"
+              className="flex-row items-center rounded-[14px] bg-white px-[18px] py-4 active:scale-[0.98]"
+              style={{ elevation: 2, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6 }}>
+              <View className="h-11 w-11 items-center justify-center">
+                <MaterialCommunityIcons name={item.icon} size={32} color="#002887" />
+              </View>
+              <Text className="ml-3.5 flex-1 text-base font-medium text-[#1a2a42]">{item.title}</Text>
+              {item.badge ? (
+                <View className="rounded-full bg-wallet-navy px-3.5 py-1.5">
+                  <Text className="text-[13px] font-medium text-white">{item.badge}</Text>
+                </View>
+              ) : (
+                <MaterialCommunityIcons name="chevron-right" size={24} color="#6d7a8d" />
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});

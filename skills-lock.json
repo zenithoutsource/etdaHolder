@@ -48,6 +48,12 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
       "computedHash": "7c212cee6a823b956aaec7dff2a846814fe9986caa2e62313734010c7bd3db70"
+    },
+    "vercel-react-native-skills": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-native-skills/SKILL.md",
+      "computedHash": "41d24eafa7c3d82e270439808f7cfbc4d51aeb2d14f2809a2267c16275784d06"
     }
   }
 }

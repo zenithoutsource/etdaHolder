@@ -3,12 +3,11 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import '../global.css';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { generateWalletKeyIfNeeded } from '@/src/services/crypto/crypto';
-import { initStorage } from '@/src/services/storage/storage';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -34,6 +33,25 @@ export default function RootLayout() {
 
     async function prepareWallet(): Promise<void> {
       try {
+        if (Platform.OS === 'web') {
+          if (isMounted) setStartupState({ status: 'ready' });
+          return;
+        }
+
+        const [{ generateWalletKeyIfNeeded }, { initStorage }, { softwareSecureEnvironment }] = await Promise.all([
+          import('@/src/services/crypto/crypto'),
+          import('@/src/services/storage/storage'),
+          import('@/src/services/crypto/softwareSecureEnvironment'),
+        ]);
+
+        const { isLocalSecureEnvironmentSupported, setFallbackSecureEnvironment, shouldUseFallbackSecureEnvironment } =
+          await import('@animo-id/expo-secure-environment');
+
+        if (!isLocalSecureEnvironmentSupported()) {
+          setFallbackSecureEnvironment(softwareSecureEnvironment);
+          shouldUseFallbackSecureEnvironment(true);
+        }
+
         await generateWalletKeyIfNeeded();
         await initStorage();
         if (isMounted) setStartupState({ status: 'ready' });

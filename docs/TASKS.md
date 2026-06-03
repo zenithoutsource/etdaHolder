@@ -75,11 +75,11 @@ Cross-reference: AGENTS.md (status) | docs/ARCHITECTURE.md (design) | CONTEXT.md
 ## PHASE 3: Config-Driven UI (Week 5-6)
 
 ### 3.1 HTML to NativeWind Translation
-[ ] Receive HTML/CSS design files from design team
-[ ] Extract layout structures, flex containers, typography from HTML
-[ ] Translate to React Native primitives (View, Text, Pressable)
-[ ] Convert CSS to NativeWind Tailwind utility classes
-[ ] Implement skeleton loaders for async states
+[x] Receive HTML/CSS design files from design team (`docs/ui-reference/home.html`)
+[x] Extract layout structures, flex containers, typography from HTML
+[x] Translate to React Native primitives (View, Text, Pressable)
+[x] Convert CSS to NativeWind Tailwind utility classes
+[x] Implement skeleton loaders for async states
 
 ### 3.2 Dynamic Card Engine
 [ ] Define CardSchemaConfig JSON format (title, issuerName, primaryColor, logo, displayFields)
@@ -151,3 +151,9 @@ Session 2026-06-02:
 - Test blocker remains: Jest/jest-expo dependencies and config are not installed yet, so `src/services/vci/exchangeService.test.ts` is a TypeScript contract test compiled by `yarn tsc` rather than an executable Jest test.
 - Phase 2.3 Credential Acquisition complete: `claimCredential()` accepts a `ResolvedCredentialOffer`, supports Pre-Authorized Code + JWT VC only, requires caller-supplied `tx_code` when declared, signs PoP through `signProof(c_nonce, issuerUrl)`, normalizes the returned VC JWT, and stores the record under encrypted MMKV keys `credential:<id>` plus `credential:index`.
 - Phase 2.4 Backend Sync complete: `syncCredentialToBackend()` runs separately from `claimCredential()`, requires `walletId` + `sessionToken`, calls generated SDK `importCredential()` with `{ jwt, associated_did }`, treats only HTTP 201 as success, and leaves TanStack Query invalidation to caller/UI code.
+- Phase 3.1 HTML to NativeWind Translation complete: `app/(tabs)/index.tsx` now renders the Wallet home screen from `docs/ui-reference/home.html` with React Native primitives, NativeWind utility classes, config-driven credential rows, vector-icon placeholders for missing design assets, and a skeleton card placeholder.
+- Bottom tabs now match the design shell: Wallet, My QR, Scan, History Log. QR, Scan, and History Log are route-scoped placeholders for Phase 3.3 and later workflow wiring.
+- NativeWind runtime setup added: `tailwind.config.js`, `global.css`, `nativewind-env.d.ts`, `metro.config.js`, and `tailwindcss@3.4.4`.
+- `app/_layout.tsx` now dynamically imports native wallet startup services only on non-web platforms so Expo Router static web rendering does not evaluate hardware-signing dependencies.
+- Removed unused Expo starter UI/assets: Explore route, HelloWave, ParallaxScrollView, ExternalLink, Collapsible, IconSymbol, and React logo PNGs. App icon, favicon, Android icons, and splash image remain because `app.json` references them.
+- Verification after Phase 3.1: `yarn.cmd tsc --noEmit`, `yarn.cmd lint`, and `yarn.cmd expo export --platform web --output-dir .expo/codex-web-export` pass.

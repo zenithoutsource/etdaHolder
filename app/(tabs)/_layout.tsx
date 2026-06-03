@@ -2,32 +2,58 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarActiveTintColor: '#002887',
+        tabBarInactiveTintColor: '#94a3b8',
+        tabBarStyle: {
+          borderTopWidth: 0,
+          elevation: 0,
+          height: 66,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
         headerShown: false,
         tabBarButton: HapticTab,
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Wallet',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons size={26} name="wallet-outline" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="qr"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'My QR',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons size={26} name="qrcode" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="scan"
+        options={{
+          title: 'Scan',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons size={26} name="line-scan" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'History Log',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons size={26} name="history" color={color} />
+          ),
         }}
       />
     </Tabs>
