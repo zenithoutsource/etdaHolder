@@ -1,159 +1,153 @@
-TASKS.md - Active Implementation Backlog
+# TASKS.md - Active Implementation Backlog
 
-Controls execution of local AI agent coding sessions. Isolates immediate steps from long-term milestones.
-Cross-reference: AGENTS.md (status) | docs/ARCHITECTURE.md (design) | CONTEXT.md (terms) | docs/adr/ (decisions)
+Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
 
----
+## Phase 1: Cryptography and Secure Storage
 
-## PHASE 1: Cryptography & Secure Storage (Week 1-2)
+Status: Complete.
 
-### 1.1 Crypto Service - src/services/crypto/crypto.ts
-[x] Generate EC P-256 hardware keypair via @animo-id/expo-secure-environment
-[x] Derive did:key from compressed P-256 key (multicodec prefix [0x80, 0x24], base58btc)
-[x] Implement signProof(nonce, audience) - PoP JWT with kid/DID header, biometric sign-time gate
-[x] Implement getHolderDid(), getPublicKeyJwk(), hasWalletKey(), resetWalletKey()
-[x] Run yarn tsc - verify zero TypeScript errors
+[x] Hardware-backed EC P-256 keypair through `@animo-id/expo-secure-environment`
+[x] Holder DID derivation from compressed P-256 key
+[x] PoP JWT signing with biometric sign-time gate
+[x] Encrypted MMKV credential store
+[x] Keychain-backed MMKV encryption key
+[x] Startup wiring in `app/_layout.tsx`
 
-### 1.2 Storage Service - src/services/storage/storage.ts
-[x] Generate random 256-bit encryption key at first launch
-[x] Store encryption key in react-native-keychain with biometric access control
-[x] Expose initStorage(): Promise<void> - retrieves key from Keychain, unlocks MMKV
-[x] Expose getCredentialStorage(): MMKV - returns encrypted wallet-credentials instance
-[x] Two MMKV instances: wallet-meta (unencrypted) | wallet-credentials (AES-256 encrypted)
+## Phase 2: OID4VCI 1.0 Protocol Integration
 
-### 1.3 App Startup Wiring - app/_layout.tsx
-[x] Call generateWalletKeyIfNeeded() on first launch
-[x] Call initStorage() before any credential access
-[x] Show error boundary if hardware key or storage init fails (do not silently swallow)
+Status: Complete.
 
----
+[x] Orval SDK generation setup
+[x] Generated SDK endpoint filtering
+[x] `resolveOffer(offerUri)` through `@sphereon/oid4vci-client`
+[x] Issuer metadata extraction for UI branding
+[x] Pre-Authorized Code credential acquisition
+[x] `tx_code` required when declared by offer
+[x] PoP signing through `signProof(c_nonce, issuerUrl)`
+[x] JWT VC normalization
+[x] SD-JWT VC normalization, including transcript `dc+sd-jwt` / `vc+sd-jwt`
+[x] Deterministic credential ID fallback from compact credential hash
+[x] `VerifiableCredentialRecord.type` derived from VC/SD-JWT claims
+[x] Encrypted local save under `credential:<id>` and `credential:index`
+[x] Separate `syncCredentialToBackend(record, { walletId, sessionToken })`
+[x] Backend import payload `{ jwt: record.rawVc, associated_did: getHolderDid() }`
+[x] HTTP 201-only backend sync success
 
-## PHASE 2: OID4VCI 1.0 Protocol Integration (Week 3-4)
+## Phase 3: Config-Driven UI
 
-### 2.1 SDK Generation Setup
-[x] Install orval: yarn add --dev orval@7.10.0
-[x] Configure orval.config.ts -> input: walletApi.json (swap for real company spec when available)
-[x] Output target: src/sdk/ with TanStack Query hooks
-[x] Run orval -> verify generated hooks compile
-
-### 2.2 Credential Offer Resolution - src/services/vci/exchangeService.ts
-[x] Verify @sphereon/oid4vci-client@0.20.1 is installed
-[x] Implement resolveOffer(offerUri: string) - parses openid-credential-offer:// URI
-[x] Extract Issuer metadata for dynamic UI branding (name, logo, colors)
-[x] Handle both QR scan and NFC NDEF offer URI inputs (same function, different call site)
-
-### 2.3 Credential Acquisition - claimCredential()
-[x] Accept `ResolvedCredentialOffer` as input; do not resolve raw offer URI inside `claimCredential()`
-[x] Return only the stored VerifiableCredentialRecord; do not expose access token or c_nonce outside protocol service
-[x] Support Pre-Authorized Code flow only for Phase 2.3; reject Authorization Code flow as `CredentialFlowUnsupported`
-[x] Support JWT VC credential responses only; reject unsupported formats as `CredentialFormatUnsupported`
-[x] Use stable prefixed Error messages for Phase 2.3 failures; avoid custom Error classes unless UI needs structured handling later
-[x] Exchange Pre-Authorized Code at Token Endpoint -> Access Token + c_nonce
-[x] Call signProof(c_nonce, issuerUrl) from crypto service (biometric fires here)
-[x] Submit Credential Request with Access Token + signed PoP -> receive VC JWT
-[x] Normalize VC JWT into VerifiableCredentialRecord (id, type, rawVc, claims, issuedAt, expiresAt); store full decoded VC payload in `claims` and parse as untrusted display data unless Sphereon validates issuer signature during acquisition
-[x] Normalize `issuedAt` / `expiresAt` to ISO 8601 strings from JWT seconds or VC date claims
-[x] Use VC `jti` / `id` as VerifiableCredentialRecord.id when present; fallback to deterministic hash of raw VC JWT
-[x] Derive VerifiableCredentialRecord.type from VC claims (`vc.type` / `type`), not from offered credential configuration ID
-[x] Store in encrypted MMKV via getCredentialStorage(); overwrite existing record with same normalized id
-[x] Store records under `credential:<id>` and maintain `credential:index` for listing IDs
-[x] Require caller-supplied `tx_code` when offer declares it; throw `TransactionCodeRequired` if missing
-
-### 2.4 Backend Sync - orval SDK hook
-[x] Implement separate backend sync function; do not call backend from inside `claimCredential()`
-[x] Add `syncCredentialToBackend(record, { walletId, sessionToken })` in `src/services/vci/exchangeService.ts`
-[x] Require authenticated company session token; throw `BackendSyncUnauthorized` when missing
-[x] Require explicit `walletId`; throw `BackendSyncWalletMissing` when missing
-[x] Run backend sync after local credential storage succeeds; do not make claimCredential() depend on company backend availability
-[x] Sync only the signed VC JWT to company backend via generated SDK `importCredential(walletId, { jwt: record.rawVc, associated_did: getHolderDid() })`
-[x] Treat only HTTP 201 from `importCredential` as sync success; throw `BackendSyncFailed: HTTP <status>` otherwise
-[x] Return sync result only; do not add backend sync status fields to VerifiableCredentialRecord in Phase 2.4
-[x] Invalidate TanStack Query cache in caller/UI code after sync success; do not import React Query into the VCI service
-
----
-
-## PHASE 3: Config-Driven UI (Week 5-6)
+Status: In progress.
 
 ### 3.1 HTML to NativeWind Translation
-[x] Receive HTML/CSS design files from design team (`docs/ui-reference/home.html`)
-[x] Extract layout structures, flex containers, typography from HTML
-[x] Translate to React Native primitives (View, Text, Pressable)
-[x] Convert CSS to NativeWind Tailwind utility classes
-[x] Implement skeleton loaders for async states
+
+[x] Translate `docs/ui-reference/home.html` into Wallet home tab
+[x] React Native primitives and NativeWind utility classes
+[x] Config-driven credential menu rows
+[x] Bottom tab shell: Wallet, My QR, Scan, History Log
+[x] Static web export guard for native startup services
 
 ### 3.2 Dynamic Card Engine
-[ ] Define CardSchemaConfig JSON format (title, issuerName, primaryColor, logo, displayFields)
-[ ] Create configs for 3 initial cards: ThaID, DLT Driving Licence, Bangkok University Transcript
-[ ] Build generic CredentialCard component that renders from config - no hardcoded card types
-[ ] Wire VerifiableCredentialRecord.type to CardSchemaConfig lookup
 
-### 3.3 QR Scanner & NFC
-[ ] Integrate camera QR scanner (reference legacy repo for UI/UX only)
-[ ] Integrate NFC NDEF reader for offer URI (npx expo install react-native-nfc-manager)
-[ ] Both funnel into resolveOffer() from Phase 2.2
+[x] Define `CardSchemaConfig`
+[x] Add ThaID schema
+[x] Add DLT Driving Licence schema
+[x] Add Bangkok University Transcript schema
+[x] Build generic `CredentialCard`
+[x] Wire `VerifiableCredentialRecord.type` to `getCardSchema()`
+[x] Add credential detail route with configured fields and extra disclosed claims
 
----
+### 3.3 QR Scanner and NFC
 
-## PHASE 4: Security Hardening & Release (Week 7-8)
+[x] Integrate QR scanner with `expo-camera`
+[x] Funnel QR offer URI into `resolveOffer()`
+[x] Add Holder Confirmation screen for resolved offers
+[x] Save credential only after Holder confirmation
+[x] Decide Holder Confirmation semantics: confirm resolved offer before credential acquisition, then acquire and save immediately after successful issuance
+[x] Fix remaining corrupted UI labels in scanner confirmation screen
+[ ] Integrate NFC NDEF reader for offer URI after device testing is available
 
-[ ] Screen capture prevention (iOS/Android)
-[ ] Certificate pinning for company backend API calls
-[ ] Jailbreak/root detection
-[ ] Issuer signature validation for stored VC JWTs once issuer trust metadata is finalized
-[ ] ISO 18013-5 mdoc native module selection (ADR pending) + integration
-[ ] Release build validation (iOS TestFlight + Android internal track)
+## Phase 4: Security Hardening and Release
 
----
+[x] Screen capture prevention
+[x] Certificate pinning decision and implementation if required
+[x] Jailbreak/root detection
+[ ] Issuer signature validation after trust metadata is finalized
+[ ] ISO 18013-5 mdoc native module selection ADR
+[ ] Release build validation for iOS and Android (Android prebuild smoke-checked 2026-06-07; EAS builds + device walkthrough still required)
+[x] Production bundle/log scan for credential data leaks
 
-## POST-V1: OID4VP 1.0 Online Presentation (Planned, Not Scheduled)
+## Post-v1: OID4VP 1.0 Online Presentation
 
-Scope-only — not part of the 4-phase plan. No ADR, no library chosen yet.
-See docs/ROADMAP.md "Post-v1" and docs/ARCHITECTURE.md §2 Presentation Channels.
+Scope-only; not part of the fixed four-phase v1 plan.
 
-Open decisions (resolve before starting):
-[ ] Choose OID4VP 1.0 library (e.g. @sphereon/* presentation pkg) vs build on existing stack
-[ ] Choose query language: DCQL vs Presentation Exchange (presentation_definition)
-[ ] Decide client_id scheme + Verifier trust model
-[ ] Decide flow shape: same-device redirect vs cross-device (request_uri + QR) + response mode
+Open decisions:
 
-Implementation (after decisions locked):
-[ ] src/services/vp/ - handle Authorization Request, build Verifiable Presentation
-[ ] Sign vp_token via src/services/crypto (hardware key, biometric sign-time gate)
-[ ] Device-to-Verifier direct - no company backend proxy (does not supersede ADR 0003)
-[ ] Tests: verifier.ts MSW handler group (see docs/TESTING.md)
+[ ] Choose OID4VP 1.0 library
+[ ] Choose query language: DCQL vs Presentation Exchange
+[ ] Decide `client_id` scheme and Verifier trust model
+[ ] Decide same-device redirect vs cross-device request URI and QR
+[ ] Decide response mode
 
----
+Implementation after decisions:
 
-## Definition of Done (Per Session)
+[ ] `src/services/vp/` for Authorization Request handling and Verifiable Presentation construction
+[ ] Sign `vp_token` via `src/services/crypto`
+[ ] Device-to-Verifier direct transport
+[ ] MSW verifier handler group for tests
 
-Before ending a session or handing off:
-1. yarn tsc must pass with zero errors
-2. Update checkboxes [x] for completed sub-tasks
-3. Write blockers/notes below
+## Definition of Done Per Session
 
----
+1. `yarn tsc --noEmit` passes.
+2. `yarn lint` passes or blockers are recorded.
+3. Relevant tests pass or blockers are recorded.
+4. Completed checkboxes are updated.
+5. Session notes below are updated.
 
-## Active Session Notes & Blockers
+## Active Session Notes and Blockers
 
-Session 2026-06-02:
-- crypto.ts written and verified with yarn tsc.
-- docs/ARCHITECTURE.md, CONTEXT.md, docs/adr/0001-0003 all current.
-- CLAUDE.md refactored - Architecture section moved to docs/ARCHITECTURE.md.
-- walletApi.json is a reference example only. Real company spec TBD.
-- Installed: @animo-id/expo-secure-environment@0.1.5, react-native-nitro-modules@0.35.9, react-native-quick-base64@3.0.0.
-- storage.ts now owns wallet-meta and wallet-credentials MMKV setup, with the encrypted credential store unlocked from react-native-keychain.
-- app/_layout.tsx now calls generateWalletKeyIfNeeded() and initStorage() before rendering credential-accessible routes.
-- yarn tsc and yarn lint pass after storage/startup wiring.
-- Test blocker: Jest/jest-expo dependencies and config are not installed yet, so storage unit tests could not be added in this session.
-- Phase 2.1 SDK setup complete: orval@7.10.0 is pinned for Node 20 compatibility, `orval.config.ts` filters `walletApi.json` down to the allowed Protocol Boundary Matrix paths, and `src/sdk/walletApi.ts` exports `generateKey`, `createDidKey`, `importCredential`, plus TanStack Query mutation hooks.
-- Orval still prints a warning about `#/components/securitySchemes/auth-bearer-alternative` in the upstream OpenAPI 3.1 spec, but generation, TypeScript, and lint verification pass.
-- Phase 2.2 Credential Offer Resolution complete: `resolveOffer()` parses inline and referenced OID4VCI offers with Sphereon, fetches Issuer metadata directly, and returns issuer/credential display data for dynamic UI branding. QR scan and NFC NDEF call sites should both pass their offer URI into this same function.
-- Test blocker remains: Jest/jest-expo dependencies and config are not installed yet, so `src/services/vci/exchangeService.test.ts` is a TypeScript contract test compiled by `yarn tsc` rather than an executable Jest test.
-- Phase 2.3 Credential Acquisition complete: `claimCredential()` accepts a `ResolvedCredentialOffer`, supports Pre-Authorized Code + JWT VC only, requires caller-supplied `tx_code` when declared, signs PoP through `signProof(c_nonce, issuerUrl)`, normalizes the returned VC JWT, and stores the record under encrypted MMKV keys `credential:<id>` plus `credential:index`.
-- Phase 2.4 Backend Sync complete: `syncCredentialToBackend()` runs separately from `claimCredential()`, requires `walletId` + `sessionToken`, calls generated SDK `importCredential()` with `{ jwt, associated_did }`, treats only HTTP 201 as success, and leaves TanStack Query invalidation to caller/UI code.
-- Phase 3.1 HTML to NativeWind Translation complete: `app/(tabs)/index.tsx` now renders the Wallet home screen from `docs/ui-reference/home.html` with React Native primitives, NativeWind utility classes, config-driven credential rows, vector-icon placeholders for missing design assets, and a skeleton card placeholder.
-- Bottom tabs now match the design shell: Wallet, My QR, Scan, History Log. QR, Scan, and History Log are route-scoped placeholders for Phase 3.3 and later workflow wiring.
-- NativeWind runtime setup added: `tailwind.config.js`, `global.css`, `nativewind-env.d.ts`, `metro.config.js`, and `tailwindcss@3.4.4`.
-- `app/_layout.tsx` now dynamically imports native wallet startup services only on non-web platforms so Expo Router static web rendering does not evaluate hardware-signing dependencies.
-- Removed unused Expo starter UI/assets: Explore route, HelloWave, ParallaxScrollView, ExternalLink, Collapsible, IconSymbol, and React logo PNGs. App icon, favicon, Android icons, and splash image remain because `app.json` references them.
-- Verification after Phase 3.1: `yarn.cmd tsc --noEmit`, `yarn.cmd lint`, and `yarn.cmd expo export --platform web --output-dir .expo/codex-web-export` pass.
+### Session 2026-06-02
+
+- Phase 1 crypto and storage services completed.
+- ADR 0001 through 0003 accepted.
+- Phase 2 SDK setup, offer resolution, credential acquisition, and backend sync completed.
+- Phase 3.1 Wallet home and tab shell completed.
+- NativeWind runtime setup added.
+- Static web export guard added for native startup services.
+
+### Session 2026-06-04
+
+- Local Wallet Backend added under `server/` for development auth against local XAMPP MySQL database `etda_wallet`.
+- Mobile app remains forbidden from direct MySQL access; it calls generated `/wallet-api/*` SDK functions through the local backend.
+- Local backend covers Wallet Account register/login/logout, authenticated wallet listing, and credential import.
+- SDK base URL adapter added via `src/sdk/installWalletApiFetch.ts`.
+- Root `.env` should set `EXPO_PUBLIC_WALLET_API_BASE_URL=http://<windows-lan-ip>:4000` for physical device testing.
+- Transcript QR flow uses OID4VCI `dc+sd-jwt` and maps to `BangkokUniversityTranscript`.
+- Credential response extraction accepts compact credentials from top-level `credential`, `credentials[].credential`, or direct string `credentials[]`.
+- Wallet home displays stored Transcript as a summary card when no ID Card is present.
+- Transcript document row opens `/credential/[id]`.
+- QR scan acquires an unsaved credential record, then shows a Holder Confirmation screen with the actual credential data the Holder will receive before local save.
+- Holder Confirmation preview should show decoded credential values from the acquired record, not issuer/credential metadata rows.
+- Scanner confirmed flow should call `saveCredentialRecord()` only after confirmation; cancellation discards the unsaved acquired record.
+- When a resolved offer requires `tx_code`, prompt for it after Holder Confirmation and before credential acquisition.
+- Unknown credential configurations remain claimable through a generic Digital Document/credential fallback instead of being blocked.
+- NFC issuance remains documentation-only until device testing is available; do not add disabled or placeholder NFC controls to app UI.
+- After successful QR acquisition and local save, navigate to the saved credential detail screen when a record id is available.
+- QR acquisition does not auto-sync to the Wallet Backend in Phase 3.3; backend sync stays an explicit authenticated flow.
+- Scanner confirmation app-owned fallback copy should use English labels; issuer-provided credential names and configured claim labels may remain localized.
+- Scanner now resolves QR offers, acquires an unsaved credential record, shows actual credential claim values, saves only after `Confirm`, and routes to credential detail after local save.
+- Security review resolved startup hardware environment assertion, removed software signing fallback, hardened Keychain storage policy, and mapped startup errors to user-facing messages.
+- Current blocker: NFC NDEF issuance remains deferred until a test device is available.
+
+### Session 2026-06-07
+
+- Phase 4 sequenced: 5 executable items (screen capture, root detection, cert pinning, bundle/log scan, release validation) ordered as a dependency chain; mdoc ADR and issuer signature validation remain parked on their stated external blockers (test device, finalized trust metadata).
+- Screen capture prevention added via `expo-screen-capture` `usePreventScreenCapture()` on Wallet home, credential detail, scanner Holder Confirmation, and History Log; "My QR" intentionally excluded as a share surface.
+- Jailbreak/root detection added via `jail-monkey`, wired into `app/_layout.tsx` startup alongside the existing hardware secure environment assertion (`src/services/security/deviceIntegrityPolicy.ts`); response is a hard block at startup with no bypass — see `docs/adr/0004-root-jailbreak-detection-response.md`.
+- Backend certificate pinning added via `react-native-ssl-pinning`, scoped to the backend SDK host only (not Issuer hosts) inside `src/sdk/installWalletApiFetch.ts` / `src/sdk/walletApiCertPinning.ts`, gated on HTTPS + hostname match + `EXPO_PUBLIC_WALLET_API_PINNED_CERTS` config — see `docs/adr/0005-backend-only-certificate-pinning.md`.
+- Production bundle/log leak scan script added at `scripts/scan-bundle-leaks.ts` (run via `yarn scan:bundle-leaks <path>`); manual pre-release tool, not wired into CI; verified against synthetic positive and clean controls.
+- Remaining for Phase 4: release build validation (EAS production builds + golden-path walkthrough on physical iOS/Android hardware) — requires physical devices and EAS credentials not available in this session.
+- Bug found in testing: `usePreventScreenCapture()` toggles a window-level flag (Android `FLAG_SECURE` / iOS app-wide), not a per-view one. Bottom-tab screens stay mounted once visited, so Wallet home (always-mounted first tab) kept the flag on globally, leaking onto "My QR" and blocking its capture. Fixed by replacing all four call sites with a new focus-scoped `src/hooks/useScreenCaptureGuard.ts` (`useFocusEffect` + `preventScreenCaptureAsync`/`allowScreenCaptureAsync`), so the flag is only active while a guarded screen is focused; "My QR" is unaffected and capturable again.
+- Headless smoke check run: `npx expo prebuild --clean` succeeds for Android (full native project generated under `/android`, gitignored). iOS prebuild is platform-gated by Expo CLI itself ("Run npx expo prebuild again from macOS or Linux to generate the iOS project") — cannot be exercised on Windows. EAS production builds and the physical-device golden-path walkthrough remain the user's manual step.
+
+### Session 2026-06-08
+
+- Bug found in testing: Wallet home showed no stored credentials on cold launch (only appeared after switching tabs and back). Root cause: `app/_layout.tsx` mounted `<Stack>` (and therefore Wallet home / `useStoredCredentials`) immediately, in parallel with async `initStorage()`; the mount-time `refresh()` hit `StorageNotInitialized`, was silently caught, and nothing re-triggered it once storage became ready — only an incidental tab-focus event did. Fixed by gating `<Stack>` mount behind `startupState.status === 'ready'` in `RootLayout`, so no screen exists (and therefore no storage read can happen) until startup completes. See `docs/superpowers/specs/2026-06-08-gate-stack-on-startup-ready-design.md`.
