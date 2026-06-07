@@ -26,8 +26,10 @@ function getKeychainSetOptions(): Keychain.SetOptions {
   if (Platform.OS === 'android') {
     return {
       service: KEYCHAIN_SERVICE,
-      securityLevel: Keychain.SECURITY_LEVEL.SECURE_SOFTWARE,
-      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+      securityLevel: __DEV__
+        ? Keychain.SECURITY_LEVEL.SECURE_SOFTWARE
+        : Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
+      storage: Keychain.STORAGE_TYPE.AES_GCM,
     }
   }
   return {

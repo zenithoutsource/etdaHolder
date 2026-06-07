@@ -106,6 +106,8 @@ export type ClaimCredentialOptions = {
   dependencies?: Partial<ClaimCredentialDependencies>
 }
 
+export type AcquireCredentialRecordOptions = ClaimCredentialOptions
+
 export type BackendSyncResult = {
   status: 201
 }
@@ -177,6 +179,20 @@ export async function claimCredential(
   resolvedOffer: ResolvedCredentialOffer,
   options: ClaimCredentialOptions = {},
 ): Promise<VerifiableCredentialRecord> {
+  const dependencies = {
+    ...createDefaultClaimCredentialDependencies(),
+    ...options.dependencies,
+  }
+  const record = await acquireCredentialRecord(resolvedOffer, { ...options, dependencies })
+  saveCredentialRecord(record, { getCredentialStorage: dependencies.getCredentialStorage })
+
+  return record
+}
+
+export async function acquireCredentialRecord(
+  resolvedOffer: ResolvedCredentialOffer,
+  options: AcquireCredentialRecordOptions = {},
+): Promise<VerifiableCredentialRecord> {
   if (resolvedOffer.txCode && !options.tx_code) {
     throw new Error('TransactionCodeRequired: tx_code is required')
   }
@@ -185,7 +201,7 @@ export async function claimCredential(
     throw new Error('CredentialFlowUnsupported: Pre-Authorized Code flow is required')
   }
 
-  assertJwtCredentialFormat(resolvedOffer)
+  assertSupportedCredentialFormat(resolvedOffer)
 
   const dependencies = {
     ...createDefaultClaimCredentialDependencies(),
@@ -195,10 +211,16 @@ export async function claimCredential(
   const token = await dependencies.acquireAccessToken({ resolvedOffer, tx_code: options.tx_code })
   const proof = await dependencies.signProof(token.cNonce, resolvedOffer.issuer)
   const rawVc = await dependencies.requestCredential({ resolvedOffer, accessToken: token.accessToken, proof })
-  const record = normalizeCredentialRecord(rawVc)
-  storeCredentialRecord(dependencies.getCredentialStorage(), record)
+  return normalizeCredentialRecord(rawVc, resolvedOffer)
+}
 
-  return record
+export function saveCredentialRecord(
+  record: VerifiableCredentialRecord,
+  dependencies: Pick<ClaimCredentialDependencies, 'getCredentialStorage'> = {
+    getCredentialStorage: getDefaultCredentialStorage,
+  },
+): void {
+  storeCredentialRecord(dependencies.getCredentialStorage(), record)
 }
 
 export async function syncCredentialToBackend(
@@ -339,8 +361,11 @@ function toCredentialDisplay(
   }
 }
 
-function normalizeCredentialRecord(rawVc: string): VerifiableCredentialRecord {
-  const claims = decodeJwtPayload(rawVc)
+function normalizeCredentialRecord(
+  rawVc: string,
+  resolvedOffer?: Pick<ResolvedCredentialOffer, 'credentialConfigurations'>,
+): VerifiableCredentialRecord {
+  const claims = decodeCredentialClaims(rawVc)
   const vc = readRecord(claims.vc)
   const id = readString(claims.jti) ?? readString(vc?.id) ?? readString(claims.id) ?? hashCredential(rawVc)
   const issuedAt = normalizeDate(readString(vc?.issuanceDate) ?? readNumber(claims.iat) ?? readNumber(claims.nbf) ?? Date.now() / 1000)
@@ -349,7 +374,7 @@ function normalizeCredentialRecord(rawVc: string): VerifiableCredentialRecord {
 
   return {
     id,
-    type: readCredentialType(claims, vc),
+    type: readCredentialType(claims, vc, resolvedOffer),
     rawVc,
     claims,
     issuedAt,
@@ -394,8 +419,8 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
       try {
         const credentialConfiguration = resolvedOffer.credentialConfigurations[0]
 
-        if (!credentialConfiguration || !isJwtVcFormat(credentialConfiguration.format)) {
-          throw new Error('CredentialFormatUnsupported: JWT VC response is required')
+        if (!credentialConfiguration || !isSupportedCredentialFormat(credentialConfiguration.format)) {
+          throw new Error('CredentialFormatUnsupported: JWT VC or SD-JWT VC response is required')
         }
 
         const credentialClient = CredentialRequestClientBuilder.fromCredentialOffer({
@@ -408,13 +433,7 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
           proofInput: { proof_type: 'jwt', jwt: proof },
           format: credentialConfiguration.format as OID4VCICredentialFormat,
         })
-        const credential = response.successBody?.credentials?.[0]?.credential
-
-        if (typeof credential !== 'string') {
-          throw new Error('CredentialFormatUnsupported: JWT VC response is required')
-        }
-
-        return credential
+        return readCompactCredentialFromResponse(response)
       } catch (error) {
         if (error instanceof Error && error.message.startsWith('CredentialFormatUnsupported')) {
           throw error
@@ -428,17 +447,130 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
   }
 }
 
+export function readCompactCredentialFromResponse(response: unknown): string {
+  const successBody = readRecord(readRecord(response)?.successBody)
+  const topLevelCredential = readString(successBody?.credential)
+
+  if (topLevelCredential) {
+    return topLevelCredential
+  }
+
+  const credentials = successBody?.credentials
+  if (Array.isArray(credentials)) {
+    for (const item of credentials) {
+      const directCredential = readString(item)
+      if (directCredential) return directCredential
+
+      const nestedCredential = readString(readRecord(item)?.credential)
+      if (nestedCredential) return nestedCredential
+    }
+  }
+
+  throw new Error(
+    `CredentialFormatUnsupported: compact credential response is required (${describeCredentialResponseShape(successBody)})`,
+  )
+}
+
+function describeCredentialResponseShape(successBody: Record<string, unknown> | undefined): string {
+  if (!successBody) {
+    return 'missing successBody'
+  }
+
+  const keys = Object.keys(successBody)
+  if (keys.length === 0) {
+    return 'empty successBody'
+  }
+
+  const credentials = successBody.credentials
+  const credentialsShape = Array.isArray(credentials)
+    ? `credentials[${credentials.map((item) => typeof item).join(',')}]`
+    : `credentials:${typeof credentials}`
+
+  return `keys:${keys.join(',')}; ${credentialsShape}; credential:${typeof successBody.credential}`
+}
+
 function isJwtVcFormat(format: string): boolean {
   return format === 'jwt_vc_json' || format === 'jwt_vc'
 }
 
-function assertJwtCredentialFormat(resolvedOffer: ResolvedCredentialOffer): void {
+function isSdJwtVcFormat(format: string): boolean {
+  return format === 'dc+sd-jwt' || format === 'vc+sd-jwt'
+}
+
+function isSupportedCredentialFormat(format: string): boolean {
+  return isJwtVcFormat(format) || isSdJwtVcFormat(format)
+}
+
+function assertSupportedCredentialFormat(resolvedOffer: ResolvedCredentialOffer): void {
   const unsupportedConfiguration = resolvedOffer.credentialConfigurations.find(
-    (configuration) => !isJwtVcFormat(configuration.format),
+    (configuration) => !isSupportedCredentialFormat(configuration.format),
   )
 
   if (unsupportedConfiguration) {
-    throw new Error('CredentialFormatUnsupported: JWT VC response is required')
+    throw new Error('CredentialFormatUnsupported: JWT VC or SD-JWT VC response is required')
+  }
+}
+
+function decodeCredentialClaims(rawVc: string): Record<string, unknown> {
+  if (isCompactSdJwt(rawVc)) {
+    return decodeSdJwtClaims(rawVc)
+  }
+
+  return flattenCredentialSubject(decodeJwtPayload(rawVc))
+}
+
+function isCompactSdJwt(rawVc: string): boolean {
+  return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
+}
+
+function decodeSdJwtClaims(compactSdJwt: string): Record<string, unknown> {
+  const [issuerJwt, ...segments] = compactSdJwt.split('~')
+  const issuerClaims = decodeJwtPayload(issuerJwt)
+  const disclosureClaims = decodeSdJwtDisclosureClaims(segments)
+
+  return flattenCredentialSubject({
+    ...issuerClaims,
+    ...disclosureClaims,
+  })
+}
+
+function decodeSdJwtDisclosureClaims(segments: string[]): Record<string, unknown> {
+  const claims: Record<string, unknown> = {}
+
+  for (const segment of segments) {
+    if (!segment || segment.includes('.')) {
+      continue
+    }
+
+    try {
+      const disclosure = JSON.parse(base64UrlDecodeToString(segment)) as unknown
+
+      if (
+        Array.isArray(disclosure) &&
+        disclosure.length >= 3 &&
+        typeof disclosure[1] === 'string'
+      ) {
+        claims[disclosure[1]] = disclosure[2]
+      }
+    } catch {
+      // Ignore malformed disclosure segments; the signed issuer payload is still retained.
+    }
+  }
+
+  return claims
+}
+
+function flattenCredentialSubject(claims: Record<string, unknown>): Record<string, unknown> {
+  const vc = readRecord(claims.vc)
+  const credentialSubject = readRecord(claims.credentialSubject) ?? readRecord(vc?.credentialSubject)
+
+  if (!credentialSubject) {
+    return claims
+  }
+
+  return {
+    ...claims,
+    ...credentialSubject,
   }
 }
 
@@ -476,11 +608,42 @@ function base64UrlDecodeToString(value: string): string {
   return new TextDecoder().decode(bytes)
 }
 
-function readCredentialType(claims: Record<string, unknown>, vc: Record<string, unknown> | undefined): string {
+function readCredentialType(
+  claims: Record<string, unknown>,
+  vc: Record<string, unknown> | undefined,
+  resolvedOffer?: Pick<ResolvedCredentialOffer, 'credentialConfigurations'>,
+): string {
   const vcType = readTypeValue(vc?.type)
-  if (vcType) return vcType
+  if (vcType) return canonicalCredentialType(vcType)
 
-  return readTypeValue(claims.type) ?? 'VerifiableCredential'
+  const sdJwtType = readString(claims.vct)
+  if (sdJwtType) return canonicalCredentialType(sdJwtType)
+
+  const claimType = readTypeValue(claims.type)
+  if (claimType) return canonicalCredentialType(claimType)
+
+  const offeredType = resolvedOffer?.credentialConfigurations[0]?.id
+  if (offeredType) return canonicalCredentialType(offeredType)
+
+  return 'VerifiableCredential'
+}
+
+function canonicalCredentialType(type: string): string {
+  const normalized = type.toLowerCase()
+
+  if (normalized.includes('transcript')) {
+    return 'BangkokUniversityTranscript'
+  }
+
+  if (normalized.includes('driving') || normalized.includes('licence') || normalized.includes('license')) {
+    return 'DLTDrivingLicence'
+  }
+
+  if (normalized.includes('thai') || normalized.includes('nationalid') || normalized.includes('national_id')) {
+    return 'ThaiNationalID'
+  }
+
+  return type
 }
 
 function readTypeValue(value: unknown): string | undefined {

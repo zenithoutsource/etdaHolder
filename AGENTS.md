@@ -6,36 +6,48 @@ This is a production-ready playbook defining strict architectural rules, securit
 
 ---
 
-## HANDOFF STATE (2026-06-02)
+## HANDOFF STATE (2026-06-07)
 
-**Immediate Next Task:** Begin Phase 3.2 Dynamic Card Engine.
+**Immediate Next Task:** Finish Phase 4 release build validation — `npx expo prebuild --clean` already verified for Android in a headless session (succeeds; iOS prebuild is platform-gated by Expo CLI to macOS/Linux and cannot run on Windows). Remaining: EAS production builds for iOS and Android, then a golden-path walkthrough (enroll → claim credential via QR → view detail → sign PoP) on physical hardware. Requires physical devices and EAS credentials not available in a headless session — this is the user's manual step.
+
+**Phase 4 progress (2026-06-07):** Screen capture prevention, jailbreak/root detection (hard block, ADR 0004), backend-only certificate pinning (ADR 0005), and the production bundle/log leak scan script (`yarn scan:bundle-leaks`) are complete — see `docs/TASKS.md` Session 2026-06-07 notes. Issuer signature validation and the ISO 18013-5 mdoc native module ADR remain parked on their stated blockers (finalized trust metadata, physical NFC test device).
 
 **Files to read before starting:**
-- `CLAUDE.md` - architecture rules
-- `CONTEXT.md` - domain glossary (all terms resolved)
-- `docs/ARCHITECTURE.md` - protocol/storage boundaries
-- `docs/adr/0001`, `0002`, `0003` - locked decisions
-- `docs/TASKS.md` - active backlog and current blockers
-- `src/services/crypto/crypto.ts` - Phase 1 crypto
-- `src/services/storage/storage.ts` - Phase 1 encrypted storage
-- `app/_layout.tsx` - Phase 1 startup wiring
-- `orval.config.ts` - Phase 2.1 SDK generation config
-- `src/sdk/walletApi.ts` - generated company backend SDK
-- `src/services/vci/exchangeService.ts` - Phase 2 protocol service
-- `src/services/vci/exchangeService.test.ts` - Phase 2 TypeScript contract test
-- `app/(tabs)/index.tsx` - Phase 3.1 Wallet home screen
-- `app/(tabs)/_layout.tsx` - Phase 3.1 tab shell
-- `tailwind.config.js`, `global.css`, `metro.config.js` - NativeWind runtime wiring
+- `CLAUDE.md` - architecture rules and commands
+- `CONTEXT.md` - domain glossary
+- `docs/ARCHITECTURE.md` - protocol, storage, and UI boundaries
+- `docs/API.md` - generated SDK boundary and local backend URL adapter
+- `docs/SECURITY.md` - crypto, storage, biometric, network, and build rules
+- `docs/SECURITY_FINDINGS.md` - latest auth/crypto review status
+- `docs/TASKS.md` - active backlog and blockers
+- `docs/adr/0001-hardware-backed-signing-key.md`
+- `docs/adr/0002-native-signing-module.md`
+- `docs/adr/0003-nfc-presentation-protocol.md`
+- `src/services/crypto/crypto.ts`
+- `src/services/crypto/secureEnvironmentPolicy.ts`
+- `src/services/storage/storage.ts`
+- `src/services/vci/exchangeService.ts`
+- `src/services/auth/authService.ts`
+- `src/sdk/installWalletApiFetch.ts`
+- `src/config/cardSchemas.ts`
+- `src/components/CredentialCard.tsx`
+- `app/_layout.tsx`
+- `app/(tabs)/index.tsx`
+- `app/(tabs)/scan.tsx`
+- `app/(tabs)/credential/[id].tsx`
+- `server/README.md`
 
 **Next concrete steps:**
-1. Define `CardSchemaConfig` JSON format for dynamic credential display.
-2. Create initial configs for ThaID, DLT Driving Licence, and Bangkok University Transcript.
-3. Build a generic `CredentialCard` component that renders from config; no hardcoded card types.
-4. Wire `VerifiableCredentialRecord.type` to `CardSchemaConfig` lookup, then run `yarn tsc`, `yarn lint`, and update `docs/TASKS.md`.
+1. Replace any remaining mojibake or corrupted Thai labels in `app/(tabs)/scan.tsx` with intentional localized strings or English fallback.
+2. Add NFC NDEF issuance only when a test device is available; do not wire unverified NFC behavior.
+3. Keep QR offer flow routed through `resolveOffer()` and the pre-save confirmation screen.
+4. Run `yarn tsc --noEmit`, `yarn lint`, and focused tests after edits.
+5. Update `docs/TASKS.md` after every completed implementation slice.
 
 **Phase 2.3 resolved decisions:**
-- `claimCredential()` accepts `ResolvedCredentialOffer`, not raw offer URI.
-- Phase 2.3 supports OID4VCI 1.0 Pre-Authorized Code flow and JWT VC responses only.
+- `claimCredential()` accepts `ResolvedCredentialOffer`, not a raw offer URI.
+- Phase 2.3 supports OID4VCI 1.0 Pre-Authorized Code flow only.
+- Credential responses support compact JWT VC plus compact SD-JWT VC profiles, including `dc+sd-jwt` and `vc+sd-jwt` transcript responses.
 - `tx_code` is caller-supplied; protocol service throws `TransactionCodeRequired` when required and missing.
 - `claimCredential()` returns only the stored `VerifiableCredentialRecord`; token values stay inside the protocol service.
 - Store locally first in encrypted MMKV; backend sync remains separate Phase 2.4 work.
@@ -47,97 +59,90 @@ This is a production-ready playbook defining strict architectural rules, securit
 - Only HTTP 201 counts as sync success.
 - TanStack Query cache invalidation stays in caller/UI code.
 
-**Phase 3.1 resolved decisions:**
+**Phase 3 resolved decisions:**
 - `docs/ui-reference/home.html` is the current design reference for the Wallet home tab.
-- `app/(tabs)/index.tsx` uses React Native primitives and NativeWind classes; credential menu rows are rendered from a config array.
-- Missing HTML image assets are represented with vector icons and an initials avatar until real assets are provided.
-- Bottom tab shell is Wallet, My QR, Scan, History Log; QR/Scan/History routes are placeholders until Phase 3.3 workflow wiring.
-- NativeWind runtime wiring is present through `tailwind.config.js`, `global.css`, `nativewind-env.d.ts`, `metro.config.js`, and `tailwindcss@3.4.4`.
-- `app/_layout.tsx` dynamically imports native startup services only on non-web platforms so static web export can render without evaluating hardware-signing dependencies.
+- `app/(tabs)/index.tsx` uses React Native primitives and NativeWind classes.
+- `CardSchemaConfig` lives in `src/config/cardSchemas.ts`.
+- Initial card configs are ThaID, DLT Driving Licence, and Bangkok University Transcript.
+- `CredentialCard` renders from config; do not create issuer-specific card components.
+- `VerifiableCredentialRecord.type` maps to `CardSchemaConfig` through `getCardSchema()`.
+- QR scanner uses `expo-camera` `CameraView`; NFC NDEF issuance is deferred for lack of device verification.
+- Bottom tab shell is Wallet, My QR, Scan, History Log.
+- `app/_layout.tsx` imports native startup services only on non-web platforms so static web export does not evaluate hardware-signing dependencies.
 
 ---
 
-Core Principles
+## Core Principles
 
-Decoupled Architecture - Separate the public OID4VCI 1.0 protocol layer from the internal wallet state storage.
+Decoupled Architecture - Separate the public OID4VCI 1.0 protocol layer from internal wallet state storage.
 
 Config-Driven UI - Map all credential cards dynamically. Never build single-purpose hardcoded screen layouts.
 
-Hardware-Backed Isolation - Never expose private keys or raw cryptographic seeds to the JavaScript memory space.
+Hardware-Backed Isolation - Never expose private keys or raw cryptographic seeds to JavaScript memory.
 
-SDK-First Communication - All company backend operations must pass through the auto-generated TypeScript SDK (generated via orval from the company OpenAPI spec).
+SDK-First Communication - All company backend operations must pass through the auto-generated TypeScript SDK generated by Orval from the company OpenAPI spec.
 
 Plan Before Execute - Always design data flow and verify interface mappings before writing UI or logic code.
 
-Key Developer Rules & Constraints
+## Key Developer Rules and Constraints
 
-1. Expo SDK 54 & Hermes Compliance
+### 1. Expo SDK 54 and Hermes Compliance
 
-Rule: Use Yarn for package installations, but always install Expo/React Native libraries using npx expo install <package_name>.
+Use Yarn for package installations, but install Expo/React Native native libraries using `npx expo install <package_name>`.
 
-Reason: This enforces strict peer-dependency matching against the Expo SDK 54 runtime.
+All code must be compatible with Hermes. Avoid legacy or pure-JS cryptographic dependencies on the signing path.
 
-Engine: All code must be optimized for the Hermes JavaScript Engine. Avoid legacy, unoptimized JavaScript modules or large dependencies that block JSI bindings.
+### 2. No Direct Database Connections
 
-2. No Direct Database Connections
+The mobile application must never query MySQL directly.
 
-Rule: The mobile application must never query the MySQL database directly.
+Allowed path: Mobile Wallet App -> TypeScript SDK -> API Gateway or local development backend -> MySQL.
 
-Execution: Mobile Wallet App -> TypeScript SDK (orval/TanStack Query) -> API Gateway -> MySQL -> App.
+### 3. Decoupled Protocol Execution
 
-3. Decoupled Protocol Execution
+Use `@sphereon/oid4vci-client` for OID4VCI offer parsing and Pre-Authorized Code flows. Legacy `/exchange/*` endpoints in the backend spec are forbidden from mobile code.
 
-Rule: Use @sphereon/oid4vci-client exclusively to parse credential offers and handle Pre-Authorized Code token flows.
+### 4. Self-Sovereign Architecture
 
-Reason: The legacy /exchange endpoints in the provided Swagger SDK are outdated and do not support OID4VCI 1.0.
+The app claims credentials directly from Issuers. The company backend authenticates the user and returns or stores wallet data; it does not run OID4VCI on behalf of the app.
 
-Integration: Once @sphereon successfully claims a VC JWT from an Issuer, push the raw payload to storage using the encrypted MMKV credentials store.
+## Security Guidelines
 
-4. Self-Sovereign Architecture
+- Zero raw key exposure: keys are generated inside `@animo-id/expo-secure-environment`; JS accesses only alias `etda_wallet_signing_key`.
+- Holder DID: `did:key` derived from compressed P-256 public key using multicodec prefix `[0x80, 0x24]`.
+- PoP JWT: uses `kid` header, not `jwk`; payload `iss` is the Holder DID.
+- No AsyncStorage: credentials are stored in encrypted MMKV; encryption key is held in `react-native-keychain`.
+- Biometric sign-time gate: biometric authentication fires on every `signProof()` call.
+- NFC Presentation: ISO 18013-5 proximity channel; native mdoc module not yet selected.
+- Online Presentation: OID4VP 1.0 planned post-v1; protocol mechanics are not decided.
 
-Rule: The app claims credentials directly from Issuers. The company backend authenticates the user and returns a Credential Offer URL only - it does not run OID4VCI on behalf of the app.
+## Coding Style
 
-Security Guidelines
+- Strict immutability: copy state objects instead of mutating Zustand slices.
+- Generic adapter pattern: convert backend or issuer payloads into `VerifiableCredentialRecord` before storage.
+- Error handling: wrap async SDK calls and crypto operations; do not block Hermes threads.
 
-Zero Raw Key Exposure: Keys generated inside hardware secure enclave (@animo-id/expo-secure-environment). JS runtime accesses only the key alias (etda_wallet_signing_key).
+## Implementation Status Tracker
 
-Holder DID: did:key derived from compressed P-256 public key (multicodec prefix [0x80, 0x24] = varint(0x1200)). PoP JWT uses kid header (not jwk), iss = Holder DID.
-
-No AsyncStorage: Credentials stored in react-native-mmkv with full encryption. Encryption key stored in react-native-keychain (biometric-gated).
-
-Biometric Sign-Time Gate: Biometric fires on every signProof() call.
-
-NFC Presentation: ISO 18013-5 (mdoc) proximity channel - see ADR 0003. Native mdoc module not yet selected.
-
-Online Presentation: OID4VP 1.0 (online/cross-device channel) - planned post-v1, scope-only. Protocol mechanics (library, query language, client_id scheme) not yet decided. Reuses the hardware Wallet Signing Key via src/services/crypto with the same biometric sign-time gate. Device-to-Verifier direct - no company backend proxy. Does not supersede ADR 0003 (different transport).
-
-Coding Style
-
-Strict Immutability: Copy state objects instead of mutating Zustand slices.
-
-Generic Adapter Pattern: Convert any backend payload into the generic VerifiableCredentialRecord format before storing in MMKV.
-
-Error Handling: Wrap all async SDK calls and crypto operations in try-catch to prevent thread-blocking on Hermes.
-
-Implementation Status Tracker
-
-[x] Tech Stack & System Requirements Alignment
-[x] ADR 0001: Hardware-backed non-extractable signing key (EC P-256)
-[x] ADR 0002: @animo-id/expo-secure-environment as native signing module
+[x] Tech Stack and System Requirements Alignment
+[x] ADR 0001: Hardware-backed non-extractable signing key
+[x] ADR 0002: `@animo-id/expo-secure-environment` as native signing module
 [x] ADR 0003: ISO 18013-5 for NFC credential presentation
-[x] Phase 1a: src/services/crypto/crypto.ts - written and yarn tsc green
-[x] Phase 1b: src/services/storage/storage.ts - encrypted MMKV storage written
-[x] Phase 1c: app/_layout.tsx startup wiring - written
-[x] Phase 2: OID4VCI 1.0 Protocol Integration (Target: Week 3-4; Phase 2.1 SDK setup, Phase 2.2 offer resolution, Phase 2.3 credential acquisition, and Phase 2.4 backend sync complete)
-[ ] Phase 3: Dynamic Card & Config-Driven UI Mapping (Target: Week 5-6; Phase 3.1 HTML to NativeWind translation complete)
-[ ] Phase 4: Security Hardening & Release Build (Target: Week 7-8)
-[ ] Post-v1: OID4VP 1.0 Online Presentation (planned, scope-only - mechanics TBD)
+[x] Phase 1: Cryptography and secure storage
+[x] Phase 2: OID4VCI 1.0 protocol integration and backend sync
+[x] Phase 3.1: Wallet home HTML to NativeWind translation
+[x] Phase 3.2: Dynamic card engine
+[x] Phase 3.3: QR scanner and pre-save credential confirmation
+[ ] Phase 3.3: NFC NDEF issuance reader, deferred until test device
+[ ] Phase 4: Security hardening and release build
+[ ] Post-v1: OID4VP 1.0 online presentation
 
-Key Package Decisions
+## Key Package Decisions
 
-Signing: @animo-id/expo-secure-environment@0.1.5
-Storage: react-native-mmkv v4 via createMMKV() - requires react-native-nitro-modules
-Crypto (non-signing): react-native-quick-crypto
-State: @tanstack/react-query
-Styles: NativeWind + tailwindcss@3.4.4
-SDK generation: orval (TanStack Query hooks from OpenAPI spec -> src/sdk/)
+- Signing: `@animo-id/expo-secure-environment@0.1.5`
+- Storage: `react-native-mmkv` v4 via `createMMKV()`, requiring `react-native-nitro-modules`
+- Crypto, non-signing: `react-native-quick-crypto`
+- State: `zustand`, with TanStack Query for SDK-generated API hooks
+- Styles: NativeWind + `tailwindcss@3.4.4`
+- Camera QR: `expo-camera@17.0.10`
+- SDK generation: Orval TanStack Query client into `src/sdk/`

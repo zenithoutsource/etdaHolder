@@ -1,12 +1,20 @@
 import { defineConfig, type InputTransformerFn } from 'orval'
 
 const ALLOWED_PATHS = new Set([
+  '/wallet-api/auth/login',
+  '/wallet-api/auth/register',
+  '/wallet-api/auth/logout',
+  '/wallet-api/wallet/accounts/wallets',
   '/wallet-api/wallet/{wallet}/keys/generate',
   '/wallet-api/wallet/{wallet}/dids/create/key',
   '/wallet-api/wallet/{wallet}/credentials/import',
 ])
 
 const OPERATION_NAMES: Record<string, string> = {
+  'post /wallet-api/auth/login': 'loginUser',
+  'post /wallet-api/auth/register': 'registerUser',
+  'post /wallet-api/auth/logout': 'logoutUser',
+  'get /wallet-api/wallet/accounts/wallets': 'getWallets',
   'post /wallet-api/wallet/{wallet}/keys/generate': 'generateKey',
   'post /wallet-api/wallet/{wallet}/dids/create/key': 'createDidKey',
   'post /wallet-api/wallet/{wallet}/credentials/import': 'importCredential',
@@ -20,11 +28,13 @@ const filterAllowedWalletApi: InputTransformerFn = (spec) => {
         if (!pathItem || typeof pathItem !== 'object') return [path, pathItem]
 
         const nextPathItem = { ...pathItem } as Record<string, unknown>
-        const postOperation = nextPathItem.post
-        const operationId = OPERATION_NAMES[`post ${path}`]
 
-        if (operationId && postOperation && typeof postOperation === 'object') {
-          nextPathItem.post = { ...postOperation, operationId }
+        for (const method of ['post', 'get'] as const) {
+          const operation = nextPathItem[method]
+          const operationId = OPERATION_NAMES[`${method} ${path}`]
+          if (operationId && operation && typeof operation === 'object') {
+            nextPathItem[method] = { ...operation, operationId }
+          }
         }
 
         return [path, nextPathItem]

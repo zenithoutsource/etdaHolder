@@ -1,21 +1,48 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { Image, type ImageSourcePropType } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+
+type TabIconProps = {
+  color: string;
+  focused: boolean;
+  source: ImageSourcePropType;
+};
+
+function TabAssetIcon({ color, focused, source }: TabIconProps) {
+  return (
+    <Image
+      source={source}
+      resizeMode="contain"
+      style={{
+        height: focused ? 27 : 25,
+        opacity: focused ? 1 : 0.72,
+        tintColor: color,
+        width: focused ? 27 : 25,
+      }}
+    />
+  );
+}
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#002887',
-        tabBarInactiveTintColor: '#94a3b8',
+        tabBarInactiveTintColor: '#6d7a8d',
         tabBarStyle: {
-          borderTopWidth: 0,
-          elevation: 0,
+          backgroundColor: '#ffffff',
+          borderTopColor: '#e5e7eb',
+          borderTopWidth: 1,
+          elevation: 8,
           height: 66,
           paddingBottom: 8,
           paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
         },
         headerShown: false,
         tabBarButton: HapticTab,
@@ -24,8 +51,8 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Wallet',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons size={26} name="wallet-outline" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabAssetIcon color={color} focused={focused} source={require('../../assets/images/wallet.png')} />
           ),
         }}
       />
@@ -33,8 +60,8 @@ export default function TabLayout() {
         name="qr"
         options={{
           title: 'My QR',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons size={26} name="qrcode" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabAssetIcon color={color} focused={focused} source={require('../../assets/images/qr_code.png')} />
           ),
         }}
       />
@@ -42,8 +69,8 @@ export default function TabLayout() {
         name="scan"
         options={{
           title: 'Scan',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons size={26} name="line-scan" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabAssetIcon color={color} focused={focused} source={require('../../assets/images/scanner.png')} />
           ),
         }}
       />
@@ -51,9 +78,16 @@ export default function TabLayout() {
         name="history"
         options={{
           title: 'History Log',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons size={26} name="history" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabAssetIcon color={color} focused={focused} source={require('../../assets/images/history_log.png')} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="credential/[id]"
+        options={{
+          href: null,
+          title: 'Wallet',
         }}
       />
     </Tabs>

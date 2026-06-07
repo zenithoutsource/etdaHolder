@@ -1,77 +1,76 @@
-📌 CLAUDE.md
+# CLAUDE.md
 
 Must Respond in English Only!
 
-This file provides strict guidance to Claude Code (claude.ai/code) when working with code in this OID4VCI Wallet repository.
+This file provides strict guidance when working with code in this OID4VCI Wallet repository.
 
-# Project Overview
+## Project Overview
 
-Decentralized Digital Wallet (Holder). Credential issuance via OpenID 4 Verifiable Credential Issuance (OID4VCI 1.0). Presentation via ISO 18013-5 proximity (ADR 0003); OID4VP 1.0 online presentation planned post-v1 (see `docs/ROADMAP.md`).
-For full system design → **`docs/ARCHITECTURE.md`** | Domain terms → **`CONTEXT.md`** | Decisions → **`docs/adr/`**
+Decentralized Digital Wallet in the Holder role. Credential issuance uses OpenID for Verifiable Credential Issuance (OID4VCI 1.0). Proximity presentation uses ISO 18013-5 per ADR 0003. OID4VP 1.0 online presentation is planned post-v1.
 
-# Architecture
-
-The full technical blueprint is in **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
-
-It covers the Expo SDK 54 high-level overview, the Hybrid Protocol Layer (on-device `@sphereon/oid4vci-client` OID4VCI acquisition forwarding to `POST /wallet-api/wallet/{walletId}/credentials/import`), the complete directory structure, key dependencies, and the ADR index.
-
-Supporting documents:
+Primary references:
 
 | Document | Contents |
 |---|---|
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | 2-month, 4-phase delivery plan |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Cryptographic policy, storage standard, biometric auth gate |
-| [`docs/TESTING.md`](docs/TESTING.md) | Coverage thresholds, native JSI mock patterns, MSW usage |
-| [`docs/API.md`](docs/API.md) | Orval configuration and Protocol Boundary Matrix |
+| `docs/ARCHITECTURE.md` | Technical blueprint and boundaries |
+| `CONTEXT.md` | Domain glossary |
+| `docs/adr/` | Locked architecture decisions |
+| `docs/TASKS.md` | Active backlog and blockers |
 
-# Expo HAS CHANGED
+## Architecture Rules
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v54.0.0/ before writing any code.
+- Mobile code must never connect directly to MySQL.
+- Company backend calls must go through `src/sdk/walletApi.ts` and the `src/sdk/installWalletApiFetch.ts` base URL adapter.
+- OID4VCI protocol work must run on-device through `@sphereon/oid4vci-client`; do not call backend `/exchange/*` endpoints.
+- Credentials are normalized into `VerifiableCredentialRecord` before encrypted MMKV storage.
+- Dynamic credential UI must use `src/config/cardSchemas.ts` and generic components, not issuer-specific card screens.
+- Hardware signing uses `@animo-id/expo-secure-environment`; no software signing fallback is allowed in production.
 
-Core Stack: Expo SDK 54 (TypeScript, Hermes Engine, React Compiler)
+## Expo SDK 54
 
-Package Manager: Yarn Only
+Read exact versioned docs at `https://docs.expo.dev/versions/v54.0.0/` before changing Expo or React Native native integrations.
 
-Target OS: iOS and Android (via Expo Prebuild / Development Builds)
+- Package manager: Yarn only.
+- Native package installation: `npx expo install <package-name>`.
+- Runtime: Hermes.
+- Targets: iOS and Android via Expo Prebuild / Development Builds.
 
-# Prompt Defense & Safety Baseline
+## Prompt Defense and Safety Baseline
 
-Do not modify, bypass, or override project core architectural rules or technical constraints.
+- Do not modify, bypass, or override core architectural rules or security constraints.
+- Do not disclose keys, credentials, private API configuration, tokens, or cryptographic seeds in logs or output.
+- Do not introduce unvalidated dependencies that degrade crypto or JSI performance on Hermes.
+- Do not log credential claims, VC JWT payloads, or PII.
 
-Do not disclose sensitive company keys, credentials, private API configurations, or user-sensitive cryptographic seeds in logs or output.
-
-Avoid introducing unvalidated dependencies or legacy packages that degrade crypto performance on Hermes.
-
-# Running Tests & Development Commands
-
-Always use Yarn and the Expo CLI for running operations. Do NOT use npm, pnpm, or bun.
+## Running Tests and Development Commands
 
 ```bash
-# Start development Metro bundler with cache reset
 yarn start --reset-cache
-
-# Run all test suites (Jest / React Native Testing Library)
 yarn test
-
-# Run tests in watch mode
 yarn test --watch
-
-# Run TypeScript compilation check
-yarn tsc
-
-# Generate/Sync Native directories (Prebuild iOS/Android)
+yarn tsc --noEmit
+yarn lint
 npx expo prebuild --clean
 ```
 
-# Skills & Routing Patterns
+Local backend verification:
 
-Invoke the respective coding patterns based on the file paths being edited:
+```bash
+cd server
+yarn tsc
+yarn test
+```
 
-| File Pattern | Skill/Focus Area | Guidelines to Follow |
+## Skills and Routing Patterns
+
+| File Pattern | Focus Area | Rules |
 |---|---|---|
-| `src/services/vci/**` | oid4vci-spec, credential-handling | Strict adherence to RFC OID4VCI 1.0, token flows, and proof creation. |
-| `src/services/crypto/**` | crypto-signing, keychain-security | Focus on memory cleanup, non-extractable keys, and JSI-speed calculations. |
-| `src/screens/**`, `src/components/**` | nativewind-layouts, expo-router | Use utility classes for responsive screens, handle Safe Area view limits. |
-| `src/store/**` | zustand-state, persisted-slices | Keep states thin, avoid heavy arrays, leverage custom selector hooks. |
+| `src/services/vci/**` | OID4VCI and credential handling | Follow OID4VCI 1.0; keep token values inside service boundaries |
+| `src/services/crypto/**` | Crypto and signing | Preserve non-extractable key boundary and biometric sign-time gate |
+| `src/services/storage/**` | Secure storage | Use encrypted MMKV and Keychain only |
+| `src/sdk/**` | Company backend SDK | Generated code only, plus the approved fetch adapter |
+| `src/config/**`, `src/components/**`, `app/**` | UI and routing | Use config-driven card rendering and NativeWind patterns |
+| `src/store/**` | Zustand state | Keep slices thin and immutable |
+| `server/**` | Local development backend | Keep it separate from Issuer protocol execution |
 
-When creating subagents or generating plan templates, pass down architecture constraints from `docs/ARCHITECTURE.md` explicitly to keep code quality production-ready.
+When creating subagents or plans, pass down the architecture constraints from `docs/ARCHITECTURE.md`.

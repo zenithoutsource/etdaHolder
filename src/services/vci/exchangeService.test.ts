@@ -1,15 +1,60 @@
 import {
+  acquireCredentialRecord,
   claimCredential,
+  readCompactCredentialFromResponse,
   resolveOffer,
+  saveCredentialRecord,
   syncCredentialToBackend,
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from './exchangeService'
 
+test('exchange service contract module loads', () => {
+  expect(typeof resolveOffer).toBe('function')
+  expect(typeof acquireCredentialRecord).toBe('function')
+  expect(typeof claimCredential).toBe('function')
+  expect(typeof saveCredentialRecord).toBe('function')
+  expect(typeof syncCredentialToBackend).toBe('function')
+})
+
+describe('readCompactCredentialFromResponse', () => {
+  test('reads nested OID4VCI 1.0 credentials array entry', () => {
+    expect(
+      readCompactCredentialFromResponse({
+        successBody: {
+          credentials: [{ credential: 'issuer.jwt.sd-jwt~disclosure~' }],
+        },
+      }),
+    ).toBe('issuer.jwt.sd-jwt~disclosure~')
+  })
+
+  test('reads top-level credential response body', () => {
+    expect(
+      readCompactCredentialFromResponse({
+        successBody: {
+          credential: 'issuer.jwt.sd-jwt~disclosure~',
+        },
+      }),
+    ).toBe('issuer.jwt.sd-jwt~disclosure~')
+  })
+
+  test('reads direct string credentials array entry', () => {
+    expect(
+      readCompactCredentialFromResponse({
+        successBody: {
+          credentials: ['issuer.jwt.sd-jwt~disclosure~'],
+        },
+      }),
+    ).toBe('issuer.jwt.sd-jwt~disclosure~')
+  })
+})
+
 const offerUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22ThaiNationalID%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%2C%22tx_code%22%3A%7B%22input_mode%22%3A%22numeric%22%2C%22length%22%3A6%7D%7D%7D%7D'
 const missingConfigurationIdsOfferUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
+const transcriptOfferUri =
+  'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22TranscriptCredential_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
 
 async function expectErrorPrefix(operation: () => Promise<unknown>, prefix: string): Promise<void> {
   try {
@@ -30,6 +75,10 @@ function unsignedJwt(payload: Record<string, unknown>): string {
     btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 
   return `${encode({ alg: 'none' })}.${encode(payload)}.signature`
+}
+
+function disclosure(key: string, value: unknown): string {
+  return btoa(JSON.stringify(['salt', key, value])).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
 async function contract(): Promise<ResolvedCredentialOffer> {
@@ -192,6 +241,112 @@ async function claimCredentialContract(): Promise<VerifiableCredentialRecord> {
 }
 
 void claimCredentialContract()
+
+async function acquireCredentialRecordDoesNotStoreContract(): Promise<VerifiableCredentialRecord> {
+  const resolved = await contract()
+  const writes = new Map<string, string>()
+  const vc = unsignedJwt({
+    jti: 'preview-vc-1',
+    iat: 1760000000,
+    vc: {
+      type: ['VerifiableCredential', 'ThaiNationalID'],
+      credentialSubject: { givenName: 'Grace', nationalId: '1-1009-000XX-XX-XX' },
+    },
+  })
+
+  const record = await acquireCredentialRecord(resolved, {
+    tx_code: '123456',
+    dependencies: {
+      acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+      signProof: async () => 'proof.jwt',
+      requestCredential: async () => vc,
+      getCredentialStorage: () => ({
+        getString: (key: string) => writes.get(key),
+        set: (key: string, value: string) => {
+          writes.set(key, value)
+        },
+      }),
+    },
+  })
+
+  if (record.id !== 'preview-vc-1') throw new Error('preview record id mismatch')
+  if (record.claims.givenName !== 'Grace') throw new Error('preview claims not decoded')
+  if (writes.size !== 0) throw new Error('acquire should not write storage before confirmation')
+
+  saveCredentialRecord(record, {
+    getCredentialStorage: () => ({
+      getString: (key: string) => writes.get(key),
+      set: (key: string, value: string) => {
+        writes.set(key, value)
+      },
+    }),
+  })
+
+  if (!writes.has('credential:preview-vc-1')) throw new Error('confirmed preview record not stored')
+
+  return record
+}
+
+void acquireCredentialRecordDoesNotStoreContract()
+
+async function transcriptSdJwtContract(): Promise<VerifiableCredentialRecord> {
+  const resolved = await resolveOffer(transcriptOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        'TranscriptCredential_dc+sd-jwt': {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/TranscriptCredential',
+          claims: [],
+          display: [{ name: 'Academic Transcript', locale: 'en' }],
+        },
+      },
+    }),
+  })
+  const writes = new Map<string, string>()
+  const credential = [
+    unsignedJwt({
+      jti: 'transcript-1',
+      vct: 'https://issuer.example.com/vct/TranscriptCredential',
+      iat: 1760000000,
+      exp: 1760003600,
+      _sd_alg: 'sha-256',
+    }),
+    disclosure('givenName', 'Ada'),
+    disclosure('familyName', 'Lovelace'),
+    disclosure('studentId', 'BU-123'),
+    disclosure('degree', 'Computer Science'),
+    disclosure('faculty', 'School of Information Technology'),
+    disclosure('gpa', '3.91'),
+    '',
+  ].join('~')
+
+  const record = await claimCredential(resolved, {
+    dependencies: {
+      acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+      signProof: async () => 'proof.jwt',
+      requestCredential: async () => credential,
+      getCredentialStorage: () => ({
+        getString: (key: string) => writes.get(key),
+        set: (key: string, value: string) => {
+          writes.set(key, value)
+        },
+      }),
+    },
+  })
+
+  if (record.id !== 'transcript-1') throw new Error('transcript id mismatch')
+  if (record.type !== 'BangkokUniversityTranscript') throw new Error('transcript type mismatch')
+  if (record.rawVc !== credential) throw new Error('transcript raw credential mismatch')
+  if (record.claims.studentId !== 'BU-123') throw new Error('studentId disclosure missing')
+  if (record.claims.gpa !== '3.91') throw new Error('gpa disclosure missing')
+  if (!writes.has('credential:transcript-1')) throw new Error('transcript record not stored')
+
+  return record
+}
+
+void transcriptSdJwtContract()
 
 async function unsupportedFlowContract(): Promise<void> {
   const resolved = await contract()

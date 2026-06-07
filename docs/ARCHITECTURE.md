@@ -1,211 +1,149 @@
 # Architecture
 
-> For domain terms → `../CONTEXT.md` | For locked decisions → `./adr/` | For task state → `../AGENTS.md`
+For domain terms see `../CONTEXT.md`. For locked decisions see `./adr/`. For task state see `../AGENTS.md` and `./TASKS.md`.
 
----
+## 1. High-Level Overview
 
-## 1. High-Level Architecture Overview
+This project is an OID4VCI 1.0 Holder Wallet built on Expo SDK 54, TypeScript, Hermes, React Compiler, Expo Router, and NativeWind. It targets iOS and Android through Expo Prebuild and Development Builds.
 
-This project is an OID4VCI 1.0 Holder Wallet built on Expo SDK 54 (TypeScript, Hermes Engine, React Compiler). It targets iOS and Android via Expo Prebuild / Development Builds. The runtime is Hermes, which requires all cryptographic operations on the signing path to be offloaded to native modules — no pure-JS `BigInt`-dependent cryptography is permitted for PoP JWT signing.
+The wallet acquires credentials directly from Issuer services, stores them locally with AES-256 encrypted MMKV, renders credentials through config-driven UI schemas, and can sync finalized credentials to the company Wallet Backend through an Orval-generated SDK.
 
-The wallet fulfills the Holder role in the W3C Verifiable Credentials data model and the OID4VCI 1.0 specification. It acquires credentials from Issuer services (OID4VCI 1.0), stores them locally on-device with AES-256 encryption, and presents them to Verifier services over two channels split by transport: ISO 18013-5 proximity (NFC/BLE tap-to-reader, ADR 0003) and — planned post-v1 — OID4VP 1.0 online/cross-device presentation. See the Presentation Channels table in §2.
-
-```
-+-----------------------------------------------------------------------------------+
-|                                 MOBILE APPLICATION                                |
-|                                                                                   |
-|  +-------------------+   QR / NFC / SDK Call  +--------------------------------+  |
-|  |  NativeWind UI    | ---------------------> |   @sphereon/oid4vci-client     |  |
-|  |  (Config-Driven)  |                        |   (Strict OID4VCI 1.0 Flow)    |  |
-|  +-------------------+                        +--------------------------------+  |
-|           ^                                                    |                  |
-|           | Refresh                                            | VC JWT           |
-|           | Trigger                                            v                  |
-|  +-------------------+                        +--------------------------------+  |
-|  |   Zustand Store   | <--------------------- |  src/services/vci/exchange.ts  |  |
-|  |   (Local State)   |                        |  (Adapter & Hybrid Layer)      |  |
-|  +-------------------+                        +--------------------------------+  |
-|                                                                |                  |
-|                                                                | Secure Payload   |
-|                                                                v                  |
-|                                               +--------------------------------+  |
-|                                               |   Orval SDK + TanStack Query   |  |
-|                                               |   (src/sdk/ — company backend) |  |
-|                                               +--------------------------------+  |
-+---------------------------------------------------------------+-------------------+
-                                                                |
-                                                                | HTTPS
-                                                                v
-                                                +--------------------------------+
-                                                |    Company API Gateway         |
-                                                |    (auth + offer brokering)    |
-                                                +--------------------------------+
-                                                                |
-                                                                v
-                                                +--------------------------------+
-                                                |         MySQL Database         |
-                                                +--------------------------------+
+```text
+Mobile UI
+  -> QR / NFC / SDK offer delivery
+  -> @sphereon/oid4vci-client
+  -> src/services/vci/exchangeService.ts
+  -> src/services/crypto/crypto.ts for biometric-gated PoP signing
+  -> src/services/storage/storage.ts encrypted MMKV
+  -> optional src/sdk/walletApi.ts backend import
 ```
 
----
+The mobile app never connects directly to MySQL. The local development backend under `server/` exists only behind the same SDK/API boundary used by the mobile app.
 
-## 2. Hybrid Protocol Layer
+## 2. Protocol Boundary
 
-Credential acquisition is split across two execution environments. The boundary between them is a deliberate security decision documented in ADR 0001 and ADR 0002.
+### On-Device OID4VCI
 
-### Client-Side (On-Device) — @sphereon/oid4vci-client
+All OID4VCI issuance mechanics run on-device:
 
-All OID4VCI 1.0 protocol negotiation runs entirely on-device using `@sphereon/oid4vci-client`:
+1. Resolve `openid-credential-offer://...` from QR, NFC NDEF, or backend-provided offer.
+2. Fetch Issuer metadata.
+3. Execute Pre-Authorized Code token exchange.
+4. Build a PoP JWT with `kid` header and Holder DID `iss`.
+5. Sign with the hardware Wallet Signing Key under alias `etda_wallet_signing_key`.
+6. Submit credential request to the Issuer credential endpoint.
+7. Normalize compact JWT VC or compact SD-JWT VC into `VerifiableCredentialRecord`.
+8. Save locally in encrypted MMKV.
 
-1. Resolve credential offer URI (`openid-credential-offer://...`) received via QR scan or NFC tag read.
-2. Fetch Issuer metadata from `/.well-known/openid-credential-issuer`.
-3. Execute the token endpoint exchange (pre-authorized code flow or authorization code flow) to obtain an access token and `c_nonce`.
-4. Construct the Proof of Possession (PoP) JWT:
-   - Header: `{ alg: "ES256", typ: "openid4vci-proof+jwt", kid: "<holderDid>#<keyFragment>" }`
-   - Payload: `{ iss: "<holderDid>", aud: "<issuerUrl>", iat, nonce }`
-   - Signed via `@animo-id/expo-secure-environment` under alias `etda_wallet_signing_key`. Biometric authentication gates every sign call at the hardware layer.
-5. Submit the credential request to the Issuer's credential endpoint and receive the Verifiable Credential JWT.
+Authorization Code flow is intentionally unsupported in the current implementation.
 
-No network call to the company backend occurs during steps 1 through 5. These steps run entirely in the Hermes runtime with native JSI calls for cryptography.
+### Backend Import
 
-### Server-Side Import — Orval-Generated Company SDK
+Backend sync is separate from credential acquisition. After local storage succeeds, callers may invoke:
 
-After step 5 succeeds and the VC JWT is validated on-device, the wallet forwards the finalized credential to the company database via the Orval-generated SDK:
-
-```
+```http
 POST /wallet-api/wallet/{walletId}/credentials/import
 Authorization: Bearer <session-token>
 Content-Type: application/json
 
-{ "jwt": "<signed-vc-jwt>", "associated_did": "<holder-did>" }
+{ "jwt": "<compact-signed-credential>", "associated_did": "<holder-did>" }
 ```
 
-This is the sole permitted write operation to the backend during credential acquisition. The Issuer's credential endpoint and the company backend are independent services. The wallet does not proxy or relay OID4VCI traffic through the company backend. See `API.md` for the full Protocol Boundary Matrix.
+Only HTTP 201 is a sync success. TanStack Query invalidation belongs in caller/UI code, not the VCI service.
 
-### Credential Offer Delivery Channels
+## 3. Offer Delivery and Presentation Channels
 
-| Channel | Flow |
-|---|---|
-| QR Scan | Camera reads `openid-credential-offer://` URI → passed to `@sphereon/oid4vci-client` |
-| NFC (issuance) | NDEF tag read → extract offer URI → same flow as QR |
-| NFC (presentation) | ISO 18013-5 proximity mdoc exchange (ADR 0003) |
-| In-app | User taps "claim" → SDK call → backend returns offer URL → `@sphereon/oid4vci-client` |
-
-### Presentation Channels
-
-Credential presentation (Holder → Verifier) is separate from acquisition and split by transport:
-
-| Channel | Protocol | Status |
+| Channel | Purpose | Status |
 |---|---|---|
-| Proximity (tap-to-reader) | ISO 18013-5 mdoc (NFC/BLE engagement) | Decided — ADR 0003 |
-| Online / cross-device | OID4VP 1.0 (Authorization Request → signed Verifiable Presentation) | Planned post-v1 — scope-only, mechanics TBD |
+| QR Scan | Reads `openid-credential-offer://...` and routes to `resolveOffer()` | Implemented with `expo-camera` |
+| NFC NDEF | Reads issuance offer URI from an NFC tag | Deferred until test device |
+| In-app SDK | Backend returns an offer URL | Supported boundary; UI wiring is incremental |
+| NFC Presentation | ISO 18013-5 mdoc proximity presentation | Decided by ADR 0003; native module TBD |
+| Online Presentation | OID4VP 1.0 remote/cross-device presentation | Post-v1 scope only |
 
-The two are complementary, not alternatives — different transports. OID4VP online does **not** supersede ADR 0003, which scopes the proximity channel only. Online presentation runs device-to-Verifier directly with no company backend proxy, and reuses the hardware Wallet Signing Key via `src/services/crypto` under the same biometric sign-time gate. Protocol mechanics (library, query language, `client_id` scheme) are deferred — see `ROADMAP.md` Post-v1.
+Presentation is separate from acquisition. OID4VP online presentation does not supersede ADR 0003 because it uses a different transport.
 
----
+## 4. Security Boundary
 
-## 3. Security Boundary and Hardware Sandbox
+### Wallet Signing Key
 
-See `SECURITY.md` for the full cryptographic policy and storage standard.
+- Generated inside iOS Secure Enclave or Android Keystore through `@animo-id/expo-secure-environment`.
+- Key alias: `etda_wallet_signing_key`.
+- Private key is non-extractable and never available to JavaScript.
+- Biometric authentication gates every sign operation.
+- Production startup fails when a hardware secure environment is unavailable.
 
-**Non-Extractable Signing Key (ADR 0001, ADR 0002)**
+### Holder DID
 
-- Generated inside iOS Secure Enclave / Android Keystore via `@animo-id/expo-secure-environment`.
-- Key alias: `etda_wallet_signing_key` — the JS runtime never sees the private key bytes.
-- Biometric verification required on every `signProof()` call at the native hardware layer.
-- No software fallback — fail loudly on devices without hardware attestation.
+`did:key` is derived from compressed P-256 public key bytes:
 
-**Holder DID**
-
-- `did:key` derived deterministically from compressed P-256 public key.
-- Format: `did:key:z<base58btc(varint(0x1200) + compressedKey)>`
-- Self-contained — no server required for DID resolution.
-
-**Local Storage**
-
-- `AsyncStorage` is unconditionally forbidden. Blocked at lint and CI level.
-- VC storage: `react-native-mmkv` (`createMMKV({ id: 'wallet-credentials' })`) with AES-256 encryption.
-- MMKV encryption key: hardware-derived random key stored in `react-native-keychain` (biometric-gated on first unlock).
-
----
-
-## 4. Config-Driven Dynamic UI Engine
-
-Layouts are strictly decoupled from rendering logic. No issuer-specific screen files (no `ThaiIdCard.tsx`).
-
-The app matches `VerifiableCredentialRecord.type` against local JSON schema configs to resolve styling, display fields, and brand assets dynamically from Issuer metadata `display` arrays.
-
-```typescript
-interface CardStyle {
-  title: string
-  issuerName: string
-  primaryColor: string
-  logo: string
-}
-
-interface VerifiableCredentialRecord {
-  id: string
-  type: string
-  rawVc: string
-  claims: Record<string, unknown>
-  issuedAt: string
-  expiresAt?: string
-}
+```text
+did:key:z<base58btc(varint(0x1200) + compressed_P256_public_key)>
 ```
 
----
+### Local Storage
 
-## 5. Directory Structure
+- `AsyncStorage` is forbidden.
+- Credential records live in encrypted `react-native-mmkv`.
+- The MMKV encryption key is generated with a CSPRNG and stored in `react-native-keychain`.
+- Production storage uses hardware-backed Keychain constraints where available.
+
+## 5. Dynamic Card Engine
+
+Credential rendering is config-driven:
+
+- Schema registry: `src/config/cardSchemas.ts`
+- Generic card: `src/components/CredentialCard.tsx`
+- Detail route: `app/(tabs)/credential/[id].tsx`
+- Record hook: `src/hooks/useStoredCredentials.ts`
+
+`VerifiableCredentialRecord.type` maps to a `CardSchemaConfig`. Initial configs:
+
+- `ThaiNationalID`
+- `DLTDrivingLicence`
+- `BangkokUniversityTranscript`
+
+No issuer-specific card components should be added. Extend schemas instead.
+
+## 6. Directory Structure
 
 | Path | Responsibility |
 |---|---|
-| `src/services/vci/` | OID4VCI 1.0 protocol adapter: credential offer parsing, Issuer metadata discovery, token exchange, PoP JWT construction, credential request/response handling via `@sphereon/oid4vci-client`. |
-| `src/services/crypto/` | Hardware key management via `@animo-id/expo-secure-environment`. Key alias `etda_wallet_signing_key`. Non-signing hashing and encoding via `react-native-quick-crypto`. No software fallback on signing path. |
-| `src/services/vp/` | OID4VP 1.0 online presentation: Authorization Request handling, Verifiable Presentation construction and signing via the crypto service. Planned post-v1 — not yet implemented, mechanics TBD. |
-| `src/services/storage/` | Encrypted MMKV VC store, keychain encryption key management. |
-| `src/sdk/` | Orval-generated TanStack Query hooks from `walletApi.json` (company OpenAPI spec). Only allowed endpoints are generated. See `API.md`. |
-| `src/store/` | Zustand global state — thin slices, no heavy arrays. Persisted via MMKV storage adapter. |
-| `src/screens/` | Expo Router file-based route screens. Screen-level state stays local unless shared via a store slice. |
-| `src/components/` | Atomic UI (Buttons, Cards, Scanner Views) via NativeWind. Safe Area aware. React Compiler compatible. |
+| `app/` | Expo Router app shell, auth screens, tabs, scanner, credential detail |
+| `src/services/crypto/` | Hardware key policy, Holder DID, PoP signing |
+| `src/services/storage/` | Encrypted MMKV and Keychain integration |
+| `src/services/vci/` | OID4VCI offer resolution, acquisition, credential normalization, backend sync |
+| `src/services/auth/` | Wallet Account login/register/logout and session persistence |
+| `src/config/` | Dynamic credential card schema registry |
+| `src/components/` | Reusable UI components |
+| `src/hooks/` | UI-facing credential storage hooks |
+| `src/sdk/` | Orval-generated Wallet Backend SDK and fetch base URL adapter |
+| `src/store/` | Thin Zustand state |
+| `server/` | Local development Wallet Backend backed by XAMPP MySQL |
+| `docs/` | Architecture, API, security, testing, roadmap, ADRs |
 
----
-
-## 6. Key Dependencies
+## 7. Key Dependencies
 
 | Package | Role |
 |---|---|
-| `@sphereon/oid4vci-client` | OID4VCI 1.0 client-side credential acquisition protocol |
-| `@animo-id/expo-secure-environment` | Hardware-bound EC P-256 key generation and signing (Secure Enclave / Android Keystore) |
-| `react-native-quick-crypto` | Non-signing crypto: hashing, HMAC, base64url encoding |
-| `react-native-mmkv` | AES-256 encrypted local key-value storage |
-| `zustand` | Global state management with persisted slices |
-| `expo-router` | File-system-based navigation |
-| `nativewind` | Utility-first styling via Tailwind CSS class names |
-| `orval` | TypeScript API client generation from `walletApi.json` |
+| `@sphereon/oid4vci-client` | OID4VCI credential acquisition |
+| `@animo-id/expo-secure-environment` | Hardware-backed key generation and signing |
+| `react-native-quick-crypto` | Non-signing hashing, random bytes, encoding support |
+| `react-native-mmkv` | Encrypted local key-value storage |
+| `react-native-keychain` | Native keychain storage for MMKV key and session |
+| `expo-camera` | QR scanner |
+| `nativewind` | Tailwind-style React Native styling |
+| `expo-router` | File-based navigation |
+| `@tanstack/react-query` | Generated SDK hooks and API state |
+| `orval` | TypeScript SDK generation |
+| `zustand` | Local UI/session state |
 
----
-
-## 7. Architecture Decision Records
-
-All significant, hard-to-reverse technical choices are recorded as ADRs in `adr/`. Once accepted, ADRs are immutable. Superseding an ADR requires a new numbered record that references the original.
+## 8. ADR Index
 
 | ADR | Decision |
 |---|---|
-| 0001 | Hardware-backed non-extractable signing key over software key |
-| 0002 | `@animo-id/expo-secure-environment` as the native signing module |
+| 0001 | Hardware-backed non-extractable signing key |
+| 0002 | `@animo-id/expo-secure-environment` as native signing module |
 | 0003 | ISO 18013-5 for NFC proximity credential presentation |
 
-> OID4VP 1.0 online presentation is planned post-v1 as scope-only; no ADR is recorded until the protocol mechanics are decided. ADR 0003 covers the proximity channel only and is not superseded.
-
----
-
-## 8. Reference Documents
-
-| Document | Contents |
-|---|---|
-| `ROADMAP.md` | 2-month, 4-phase delivery plan with week-by-week milestones, plus Post-v1 backlog |
-| `SECURITY.md` | Cryptographic policy, storage standard, biometric auth gate specification |
-| `TESTING.md` | Coverage thresholds, native module mock patterns, MSW usage |
-| `API.md` | Orval configuration and Protocol Boundary Matrix |
-| `../CONTEXT.md` | Domain glossary and OID4VCI 1.0 terminology |
-| `./adr/` | Numbered, immutable architecture decision records |
+OID4VP 1.0 online presentation remains post-v1 and has no ADR until its mechanics are decided.

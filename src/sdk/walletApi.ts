@@ -6,13 +6,22 @@
  * OpenAPI spec version: 0.20.1
  */
 import {
-  useMutation
+  useMutation,
+  useQuery
 } from '@tanstack/react-query';
 import type {
+  DataTag,
+  DefinedInitialDataOptions,
+  DefinedUseQueryResult,
   MutationFunction,
   QueryClient,
+  QueryFunction,
+  QueryKey,
+  UndefinedInitialDataOptions,
   UseMutationOptions,
-  UseMutationResult
+  UseMutationResult,
+  UseQueryOptions,
+  UseQueryResult
 } from '@tanstack/react-query';
 
 export type IdWaltCommonsWebModulesFeatureFlagInformationModuleFeatureFlagInformationFeatures = {[key: string]: string};
@@ -377,6 +386,400 @@ alias?: string;
  */
 useJwkJcsPub?: boolean;
 };
+
+/**
+ * @summary Register with [email + password] or [wallet address + ecosystem]
+ */
+export type registerUserResponse201 = {
+  data: void
+  status: 201
+}
+
+export type registerUserResponse400 = {
+  data: void
+  status: 400
+}
+    
+export type registerUserResponseComposite = registerUserResponse201 | registerUserResponse400;
+    
+export type registerUserResponse = registerUserResponseComposite & {
+  headers: Headers;
+}
+
+export const getRegisterUserUrl = () => {
+
+
+  
+
+  return `/wallet-api/auth/register`
+}
+
+export const registerUser = async (idWaltWebwalletWebModelAccountRequest: IdWaltWebwalletWebModelAccountRequest, options?: RequestInit): Promise<registerUserResponse> => {
+  
+  const res = await fetch(getRegisterUserUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      idWaltWebwalletWebModelAccountRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text()
+  const data: registerUserResponse['data'] = body ? JSON.parse(body) : {}
+
+  return { data, status: res.status, headers: res.headers } as registerUserResponse
+}
+
+
+
+
+export const getRegisterUserMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerUser>>, TError,{data: IdWaltWebwalletWebModelAccountRequest}, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof registerUser>>, TError,{data: IdWaltWebwalletWebModelAccountRequest}, TContext> => {
+
+const mutationKey = ['registerUser'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerUser>>, {data: IdWaltWebwalletWebModelAccountRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  registerUser(data,fetchOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterUserMutationResult = NonNullable<Awaited<ReturnType<typeof registerUser>>>
+    export type RegisterUserMutationBody = IdWaltWebwalletWebModelAccountRequest
+    export type RegisterUserMutationError = void
+
+    /**
+ * @summary Register with [email + password] or [wallet address + ecosystem]
+ */
+export const useRegisterUser = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerUser>>, TError,{data: IdWaltWebwalletWebModelAccountRequest}, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof registerUser>>,
+        TError,
+        {data: IdWaltWebwalletWebModelAccountRequest},
+        TContext
+      > => {
+
+      const mutationOptions = getRegisterUserMutationOptions(options);
+
+      return useMutation(mutationOptions , queryClient);
+    }
+    
+/**
+ * @summary Login with [email + password] or [wallet address + ecosystem] or [oidc session]
+ */
+export type loginUserResponse200 = {
+  data: IdWaltWebwalletWebControllersAuthLoginResponseData
+  status: 200
+}
+
+export type loginUserResponse400 = {
+  data: void
+  status: 400
+}
+    
+export type loginUserResponseComposite = loginUserResponse200 | loginUserResponse400;
+    
+export type loginUserResponse = loginUserResponseComposite & {
+  headers: Headers;
+}
+
+export const getLoginUserUrl = () => {
+
+
+  
+
+  return `/wallet-api/auth/login`
+}
+
+export const loginUser = async (idWaltWebwalletWebModelAccountRequest: IdWaltWebwalletWebModelAccountRequest, options?: RequestInit): Promise<loginUserResponse> => {
+  
+  const res = await fetch(getLoginUserUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      idWaltWebwalletWebModelAccountRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text()
+  const data: loginUserResponse['data'] = body ? JSON.parse(body) : {}
+
+  return { data, status: res.status, headers: res.headers } as loginUserResponse
+}
+
+
+
+
+export const getLoginUserMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginUser>>, TError,{data: IdWaltWebwalletWebModelAccountRequest}, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof loginUser>>, TError,{data: IdWaltWebwalletWebModelAccountRequest}, TContext> => {
+
+const mutationKey = ['loginUser'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginUser>>, {data: IdWaltWebwalletWebModelAccountRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginUser(data,fetchOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginUserMutationResult = NonNullable<Awaited<ReturnType<typeof loginUser>>>
+    export type LoginUserMutationBody = IdWaltWebwalletWebModelAccountRequest
+    export type LoginUserMutationError = void
+
+    /**
+ * @summary Login with [email + password] or [wallet address + ecosystem] or [oidc session]
+ */
+export const useLoginUser = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginUser>>, TError,{data: IdWaltWebwalletWebModelAccountRequest}, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof loginUser>>,
+        TError,
+        {data: IdWaltWebwalletWebModelAccountRequest},
+        TContext
+      > => {
+
+      const mutationOptions = getLoginUserMutationOptions(options);
+
+      return useMutation(mutationOptions , queryClient);
+    }
+    
+/**
+ * @summary Logout (delete session)
+ */
+export type logoutUserResponse200 = {
+  data: void
+  status: 200
+}
+    
+export type logoutUserResponseComposite = logoutUserResponse200;
+    
+export type logoutUserResponse = logoutUserResponseComposite & {
+  headers: Headers;
+}
+
+export const getLogoutUserUrl = () => {
+
+
+  
+
+  return `/wallet-api/auth/logout`
+}
+
+export const logoutUser = async ( options?: RequestInit): Promise<logoutUserResponse> => {
+  
+  const res = await fetch(getLogoutUserUrl(),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text()
+  const data: logoutUserResponse['data'] = body ? JSON.parse(body) : {}
+
+  return { data, status: res.status, headers: res.headers } as logoutUserResponse
+}
+
+
+
+
+export const getLogoutUserMutationOptions = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutUser>>, TError,void, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof logoutUser>>, TError,void, TContext> => {
+
+const mutationKey = ['logoutUser'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutUser>>, void> = () => {
+          
+
+          return  logoutUser(fetchOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogoutUserMutationResult = NonNullable<Awaited<ReturnType<typeof logoutUser>>>
+    
+    export type LogoutUserMutationError = unknown
+
+    /**
+ * @summary Logout (delete session)
+ */
+export const useLogoutUser = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutUser>>, TError,void, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof logoutUser>>,
+        TError,
+        void,
+        TContext
+      > => {
+
+      const mutationOptions = getLogoutUserMutationOptions(options);
+
+      return useMutation(mutationOptions , queryClient);
+    }
+    
+/**
+ * @summary Get wallets associated with account
+ */
+export type getWalletsResponse200 = {
+  data: IdWaltWebwalletDbModelsAccountWalletListing
+  status: 200
+}
+
+export type getWalletsResponse401 = {
+  data: void
+  status: 401
+}
+    
+export type getWalletsResponseComposite = getWalletsResponse200 | getWalletsResponse401;
+    
+export type getWalletsResponse = getWalletsResponseComposite & {
+  headers: Headers;
+}
+
+export const getGetWalletsUrl = () => {
+
+
+  
+
+  return `/wallet-api/wallet/accounts/wallets`
+}
+
+export const getWallets = async ( options?: RequestInit): Promise<getWalletsResponse> => {
+  
+  const res = await fetch(getGetWalletsUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text()
+  const data: getWalletsResponse['data'] = body ? JSON.parse(body) : {}
+
+  return { data, status: res.status, headers: res.headers } as getWalletsResponse
+}
+
+
+
+export const getGetWalletsQueryKey = () => {
+    return [`/wallet-api/wallet/accounts/wallets`] as const;
+    }
+
+    
+export const getGetWalletsQueryOptions = <TData = Awaited<ReturnType<typeof getWallets>>, TError = void>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWalletsQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWallets>>> = ({ signal }) => getWallets({ signal, ...fetchOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetWalletsQueryResult = NonNullable<Awaited<ReturnType<typeof getWallets>>>
+export type GetWalletsQueryError = void
+
+
+export function useGetWallets<TData = Awaited<ReturnType<typeof getWallets>>, TError = void>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWallets>>,
+          TError,
+          Awaited<ReturnType<typeof getWallets>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetWallets<TData = Awaited<ReturnType<typeof getWallets>>, TError = void>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWallets>>,
+          TError,
+          Awaited<ReturnType<typeof getWallets>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetWallets<TData = Awaited<ReturnType<typeof getWallets>>, TError = void>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get wallets associated with account
+ */
+
+export function useGetWallets<TData = Awaited<ReturnType<typeof getWallets>>, TError = void>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getWallets>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetWalletsQueryOptions(options)
+
+  const query = useQuery(queryOptions , queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
 
 /**
  * @summary Generate new key

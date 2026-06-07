@@ -1,78 +1,91 @@
 # Security Policy
 
-This document defines the mandatory security constraints for the ETDA Wallet. These are not guidelines — they are hard requirements. Any code that violates them must not be merged.
-
----
+This document defines mandatory security constraints for the ETDA Wallet. Any code that violates them must not be merged.
 
 ## 1. Cryptographic Key Policy
 
 ### Signing Key
 
-The wallet uses exactly one hardware-bound EC P-256 keypair for all Proof of Possession (PoP) JWT signatures.
+The wallet uses exactly one hardware-bound EC P-256 keypair for Proof of Possession signatures.
 
-- **Native module:** `@animo-id/expo-secure-environment`
-- **Key alias:** `etda_wallet_signing_key`
-- **Backed by:** iOS Secure Enclave on iOS, Android Keystore on Android
-- **Non-extractable:** The private key never leaves the secure element. It is never present as bytes in JavaScript memory, never logged, never serialized, and never transmitted.
-- **Generation:** Generated once on first launch. If already present under the alias, no new key is generated. Key rotation requires explicit user-initiated re-enrollment.
-- **No software fallback:** If the device does not have hardware attestation support, the wallet throws a hard error. Silent downgrade to a software signing path is forbidden.
+- Native module: `@animo-id/expo-secure-environment`
+- Key alias: `etda_wallet_signing_key`
+- Backing store: iOS Secure Enclave or Android Keystore
+- Private key: non-extractable, never present in JavaScript memory
+- Generation: once on first launch
+- Rotation: explicit user-initiated re-enrollment only
+- Fallback: no production software fallback
 
-### Key Usage Boundary
+Production startup must fail if the native hardware secure environment is unavailable.
 
-`react-native-quick-crypto` is present in the stack for non-signing operations only: hashing (SHA-256), HMAC, base64url encoding. It must not be used for EC key generation or ECDSA signing. Any PR that routes signing through `react-native-quick-crypto` must be rejected.
+### Non-Signing Crypto
 
-### Public Key Format
+`react-native-quick-crypto` is allowed for non-signing operations only:
 
-The public key is returned from `@animo-id/expo-secure-environment` as raw bytes. Before use in a PoP JWT `cnf` claim or `jwk` header, it must be converted to JWK format (key type `EC`, curve `P-256`, coordinates `x` and `y` as base64url). This conversion happens in `src/services/crypto/signingKey.ts`.
+- random bytes
+- hashing
+- HMAC
+- base64url and encoding support
 
----
+It must not be used for EC key generation or ECDSA signing.
+
+### Public Key and Holder DID
+
+The public key is exported as public bytes only. The Holder DID is:
+
+```text
+did:key:z<base58btc(varint(0x1200) + compressed_P256_public_key)>
+```
+
+PoP JWT headers use `kid`, not embedded `jwk`.
 
 ## 2. Local Storage Standard
 
 ### Required
 
-All persistent on-device storage uses `react-native-mmkv` initialized with AES-256 encryption.
-
-The AES-256 encryption key is not hardcoded. It is fetched at runtime from the native hardware keychain:
-- iOS: Keychain Services (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`)
-- Android: Android Keystore (via `react-native-keychain`)
-
-On first launch, the encryption key is generated using `react-native-quick-crypto` (CSPRNG), stored in the hardware keychain, and then used to initialize the MMKV instance. On subsequent launches, the key is loaded from the keychain.
+- Credentials are stored in encrypted `react-native-mmkv`.
+- MMKV encryption key is generated at first launch with a CSPRNG.
+- The encryption key is stored in `react-native-keychain`.
+- Production storage must use hardware-backed Keychain constraints when available.
+- Session data is stored in Keychain, not AsyncStorage.
 
 ### Forbidden
 
-`AsyncStorage` is unconditionally forbidden. It stores data in plaintext on the device filesystem. It must not appear in any import statement within `src/`. This is enforced by a lint rule or CI grep check.
-
-No credential claim data (VC JWT payload, PII fields) is written to `console.log`, crash reporters, or analytics pipelines. Log sanitization is enforced before any production release.
-
----
+- `AsyncStorage` imports in app source.
+- Credential claims, VC JWTs, tokens, or PII in `console.log`, crash reporters, analytics, build logs, or screenshots.
+- Hardcoded secrets or local `.env` values committed to git.
 
 ## 3. Biometric Authentication Gate
 
-Every Proof of Possession (PoP) signature transaction must be gated by biometric authentication.
+Every signature operation must be gated by biometric authentication through the native signing module.
 
-- The `sign` function exposed by `@animo-id/expo-secure-environment` enforces biometric authentication internally at the native layer before accessing the Secure Enclave / Android Keystore.
-- There is no JavaScript-level gate that can be bypassed. The hardware enforces authentication at the key usage boundary.
-- If the user cancels biometric authentication, the sign call rejects. The credential request flow surfaces an error to the user. No retry without a new biometric prompt.
-- Face ID, Touch ID, and Android biometric authentication are all acceptable modalities. Device PIN fallback is permitted only if the native module explicitly supports it — do not implement a manual PIN fallback in JavaScript.
-
-This gate applies to every PoP JWT construction during OID4VCI credential acquisition, and to every future signature operation added to the wallet — including OID4VP `vp_token` signing (online presentation, planned post-v1) and ISO 18013-5 device authentication. No signature bypasses the gate.
-
----
+- The gate applies at key usage time, not just wallet startup.
+- User cancellation rejects the sign call.
+- JavaScript must not implement a manual PIN fallback.
+- Future OID4VP and ISO 18013-5 signing must reuse this gate.
 
 ## 4. Network and API Boundaries
 
-- OID4VCI protocol traffic (credential offer resolution, token endpoint, credential endpoint) communicates directly from the device to the Issuer service. No company backend proxies this traffic.
-- The company backend receives only the finalized, validated VC JWT via `POST /wallet-api/wallet/{walletId}/credentials/import`. It does not participate in credential negotiation.
-- All HTTPS connections use system TLS. Certificate pinning may be added in a future ADR if the threat model requires it.
-- The Orval-generated SDK client is restricted to the allowed endpoints defined in `API.md`. Forbidden endpoints must not be called from application code.
-- OID4VP online presentation (planned post-v1) communicates device-to-Verifier directly. The company backend does not proxy, broker, or audit presentation traffic. Any backend-side presentation audit is out of scope until a future ADR.
-
----
+- OID4VCI Issuer traffic goes directly from device to Issuer.
+- The company backend does not proxy credential negotiation.
+- Backend sync receives only finalized compact credentials through `importCredential`.
+- Mobile app calls only allowed Orval-generated SDK endpoints from `docs/API.md`.
+- Mobile app never connects directly to MySQL.
+- Local development backend under `server/` is acceptable only behind the SDK/API boundary.
+- OID4VP online presentation, when implemented, must run device-to-Verifier directly.
 
 ## 5. Bundle and Build Security
 
-- MSW (Mock Service Worker) must not be included in the production Expo EAS build. All MSW imports must be in test files only, gated by `process.env.NODE_ENV === 'test'` or equivalent jest setup files.
-- Source maps for production builds must not be committed to the repository or shipped to end users.
-- Environment variables containing API base URLs, tenant IDs, or other configuration must be defined in `.env` files excluded from version control (see `.env.example` for the required keys).
-- No private key material, VC JWT payloads, or user PII may appear in Metro bundle output, Hermes bytecode dumps, or EAS build logs.
+- MSW must not be included in production EAS builds.
+- Production source maps must not be committed or shipped.
+- API base URLs and local secrets belong in ignored `.env` files.
+- Metro bundles, Hermes bytecode, and EAS logs must be checked for leaked credential data before release.
+
+## 6. Current Security Findings
+
+See `SECURITY_FINDINGS.md` for the June 4 auth and crypto review. Latest resolved items:
+
+- Startup now asserts the hardware secure environment.
+- Software signing fallback was removed.
+- Android production MMKV key storage uses hardware-backed constraints where available.
+- Startup errors are mapped to user-facing messages.

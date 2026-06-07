@@ -26,3 +26,11 @@ export class MMKV {
     this.store.clear()
   }
 }
+
+export function createMMKV(_config?: {
+  id?: string
+  encryptionKey?: string
+  encryptionType?: string
+}): MMKV {
+  return new MMKV()
+}
