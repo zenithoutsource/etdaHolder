@@ -6,6 +6,8 @@ Wallet home shows no stored credentials immediately after app launch, even when 
 
 ## Root Cause
 
+> Note for future `git log`/`git show` readers: the buggy shape described below existed only in **uncommitted working-tree edits** at the time this bug was reported — never as a discrete prior commit. The last committed revision before this fix (`0dfa172`) already gated `<Stack>` behind a `status === 'loading' → return null` check; the regression was introduced by later uncommitted changes (which also carried unrelated Phase 4 work) that replaced that gate with the overlay-on-top-of-mounted-Stack pattern below. So `git show` on the fix commit will not show a clean "buggy → fixed" diff for this file — the fix and the bug both landed in the same commit, on top of already-correct history. The description below reflects what was actually running (and reported) at bug-discovery time, i.e. the working-tree state, not any pushed commit.
+
 `app/_layout.tsx` (`RootLayout`) renders `<Stack>` — including `(tabs)` and therefore the Wallet home screen — unconditionally on every render. While `prepareWallet()` runs asynchronously (`initStorage()`, `generateWalletKeyIfNeeded()`, `loadSession()`), a full-screen loading overlay is drawn *on top* of the already-mounted `<Stack>`, purely as a visual mask.
 
 Because `(tabs)` is mounted in parallel with `prepareWallet()`:
