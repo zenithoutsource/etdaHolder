@@ -37,6 +37,8 @@ function toUserMessage(message: string): string {
     return 'ไม่สามารถสร้าง Wallet Key ได้ กรุณาลองใหม่อีกครั้ง'
   if (message.includes('DeviceIntegrityCompromised'))
     return 'ไม่สามารถใช้งาน Wallet บนอุปกรณ์ที่ผ่านการ Root หรือ Jailbreak ได้'
+  if (message.includes('WalletApiTransportSecurityRequired') || message.includes('WalletApiCertificatePinsRequired'))
+    return 'Wallet Backend security configuration is incomplete for this build.'
   return 'เกิดข้อผิดพลาดในการเริ่มต้น Wallet กรุณาลองใหม่อีกครั้ง'
 }
 
@@ -59,15 +61,23 @@ export default function RootLayout() {
           return;
         }
 
-        const [{ generateWalletKeyIfNeeded }, { initStorage }, { assertHardwareSecureEnvironmentSupported }, { assertDeviceIntegrity }] = await Promise.all([
+        const [
+          { generateWalletKeyIfNeeded },
+          { initStorage },
+          { assertHardwareSecureEnvironmentSupported },
+          { assertDeviceIntegrity },
+          { assertConfiguredWalletApiRuntimePolicy },
+        ] = await Promise.all([
           import('@/src/services/crypto/crypto'),
           import('@/src/services/storage/storage'),
           import('@/src/services/crypto/secureEnvironmentPolicy'),
           import('@/src/services/security/deviceIntegrityPolicy'),
+          import('@/src/sdk/walletApiRuntimePolicy'),
         ]);
 
         const { default: JailMonkey } = await import('jail-monkey');
         assertDeviceIntegrity({ isJailBroken: JailMonkey.isJailBroken() });
+        assertConfiguredWalletApiRuntimePolicy();
 
         const secureEnvironment = await import('@animo-id/expo-secure-environment');
         assertHardwareSecureEnvironmentSupported(secureEnvironment);

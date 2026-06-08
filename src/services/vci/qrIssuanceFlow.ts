@@ -4,7 +4,7 @@ import {
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from './exchangeService'
-import type { DisplayField } from '../../config/cardSchemas'
+import { getCardSchema, type DisplayField, type CardSchemaConfig } from '../../config/cardSchemas'
 
 export type OfferConfirmationPreview = {
   issuerName: string
@@ -22,6 +22,12 @@ export type CredentialInformationRow = {
   key: string
   label: string
   value: string
+}
+
+export type CredentialPreviewDisplay = {
+  documentTitle: string
+  imageKey: CardSchemaConfig['imageKey']
+  rows: CredentialInformationRow[]
 }
 
 type ClaimConfirmedOfferOptions = {
@@ -69,6 +75,16 @@ export function readCredentialInformationRows(
   return Object.entries(record.claims)
     .filter(([key, value]) => !key.startsWith('_') && !HIDDEN_CLAIM_KEYS.has(key) && stringifyClaim(value).trim().length > 0)
     .map(([key, value]) => ({ key, label: key, value: stringifyClaim(value) }))
+}
+
+export function readCredentialPreviewDisplay(record: VerifiableCredentialRecord): CredentialPreviewDisplay {
+  const schema = getCardSchema(record.type)
+
+  return {
+    documentTitle: schema.documentTitle,
+    imageKey: schema.imageKey,
+    rows: readCredentialInformationRows(record, schema.displayFields),
+  }
 }
 
 function readFriendlyCredentialName(configurationId?: string): string {

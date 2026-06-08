@@ -4,6 +4,7 @@ dotenv.config()
 
 export type ServerConfig = {
   port: number
+  allowedOrigins: string[]
   db: {
     host: string
     port: number
@@ -43,12 +44,16 @@ export function readConfig(): ServerConfig {
   if (jwtSecret.length === 0) {
     throw new Error('ConfigInvalid: JWT_SECRET')
   }
-  if (process.env.NODE_ENV === 'production' && jwtSecret === 'local-dev-change-me') {
+  if (process.env.NODE_ENV !== 'test' && jwtSecret === 'local-dev-change-me') {
     throw new Error('ConfigInvalid: JWT_SECRET')
   }
 
   return {
     port: readPort('PORT', '4000'),
+    allowedOrigins: readString('WALLET_API_ALLOWED_ORIGINS', 'http://localhost:19006,http://localhost:8081')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0),
     db: {
       host: readString('DB_HOST', '127.0.0.1'),
       port: readPort('DB_PORT', '3306'),

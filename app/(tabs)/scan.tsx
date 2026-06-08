@@ -2,21 +2,9 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  type ImageSourcePropType,
-} from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getCardSchema } from '../../src/config/cardSchemas';
-import { useScreenCaptureGuard } from '../../src/hooks/useScreenCaptureGuard';
 import {
   acquireCredentialRecord,
   resolveOffer,
@@ -24,7 +12,7 @@ import {
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from '../../src/services/vci/exchangeService';
-import { readCredentialInformationRows } from '../../src/services/vci/qrIssuanceFlow';
+import { readCredentialPreviewDisplay } from '../../src/services/vci/qrIssuanceFlow';
 
 type ScanPhase =
   | { tag: 'scanning' }
@@ -35,21 +23,14 @@ type ScanPhase =
   | { tag: 'saving' }
   | { tag: 'error'; message: string }
 
-function readPreviewTitle(type: string): string {
-  if (type === 'BangkokUniversityTranscript') return 'TRANSCRIPT';
-  if (type === 'DLTDrivingLicence') return 'DRIVING LICENSE';
-  if (type === 'ThaiNationalID') return 'ID CARD';
-  return 'DIGITAL DOCUMENT';
-}
-
-function readPreviewImage(type: string): ImageSourcePropType {
-  if (type === 'BangkokUniversityTranscript') return require('../../assets/images/transcript.png');
-  if (type === 'DLTDrivingLicence') return require('../../assets/images/car.png');
-  return require('../../assets/images/user_profile.png');
-}
+const credentialImages: Record<string, ImageSourcePropType> = {
+  profile: require('../../assets/images/profile.png'),
+  id: require('../../assets/images/user_profile.png'),
+  car: require('../../assets/images/car.png'),
+  transcript: require('../../assets/images/transcript.png'),
+};
 
 export default function ScanScreen() {
-  useScreenCaptureGuard();
   const [permission, requestPermission] = useCameraPermissions();
   const [phase, setPhase] = useState<ScanPhase>({ tag: 'scanning' });
   const [txCode, setTxCode] = useState('');
@@ -127,6 +108,55 @@ export default function ScanScreen() {
     );
   }
 
+  if (phase.tag === 'preview') {
+    const preview = readCredentialPreviewDisplay(phase.record);
+
+    return (
+      <SafeAreaView style={styles.previewRoot} edges={['top', 'bottom']}>
+        <View style={styles.previewHeader}>
+          <Pressable style={styles.headerBackButton} onPress={resetScanner} accessibilityLabel="Back to scanner">
+            <MaterialCommunityIcons name="chevron-left" size={28} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Wallet</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+
+        <View style={styles.previewScreen}>
+          <ScrollView contentContainerStyle={styles.previewContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.previewCard}>
+              <View style={styles.previewCardBand}>
+                <Text style={styles.previewCardBandText}>{preview.documentTitle}</Text>
+              </View>
+
+              <View style={styles.previewCardBody}>
+                <View style={styles.previewImageWrap}>
+                  <Image source={credentialImages[preview.imageKey]} style={styles.previewImage} resizeMode="contain" />
+                </View>
+
+                <View style={styles.previewRows}>
+                  <Text style={styles.infoSectionTitle}>Information to receive</Text>
+                  {preview.rows.map((row) => (
+                    <View key={row.key} style={styles.previewDataRow}>
+                      <Text style={styles.previewDataLabel}>{row.label}</Text>
+                      <Text style={styles.previewDataValue}>{row.value}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Pressable style={styles.confirmButton} onPress={() => handleSave(phase.record)}>
+                  <Text style={styles.confirmButtonText}>Confirm</Text>
+                </Pressable>
+                <Pressable style={styles.cancelButton} onPress={resetScanner}>
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (phase.tag === 'txCode') {
     const canContinue = txCode.trim().length > 0;
 
@@ -167,57 +197,6 @@ export default function ScanScreen() {
     );
   }
 
-  if (phase.tag === 'preview') {
-    const { record } = phase;
-    const schema = getCardSchema(record.type);
-    const rows = readCredentialInformationRows(record, schema.displayFields);
-
-    return (
-      <SafeAreaView style={styles.previewRoot} edges={['top', 'bottom']}>
-        <View style={styles.previewHeader}>
-          <Pressable style={styles.headerBackButton} onPress={resetScanner} accessibilityLabel="Back to scanner">
-            <MaterialCommunityIcons name="chevron-left" size={28} color="#fff" />
-          </Pressable>
-          <Text style={styles.headerTitle}>Wallet</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-
-        <View style={styles.previewScreen}>
-          <ScrollView contentContainerStyle={styles.previewContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.previewCard}>
-              <View style={styles.previewCardBand}>
-                <Text style={styles.previewCardBandText}>{readPreviewTitle(record.type)}</Text>
-              </View>
-
-              <View style={styles.previewCardBody}>
-                <View style={styles.previewImageWrap}>
-                  <Image source={readPreviewImage(record.type)} style={styles.previewImage} resizeMode="contain" />
-                </View>
-
-                <View style={styles.previewRows}>
-                  <Text style={styles.infoSectionTitle}>Information to receive</Text>
-                  {rows.map((row) => (
-                    <View key={row.key} style={styles.previewDataRow}>
-                      <Text style={styles.previewDataLabel}>{row.label}</Text>
-                      <Text style={styles.previewDataValue}>{row.value}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                <Pressable style={styles.confirmButton} onPress={() => handleSave(record)}>
-                  <Text style={styles.confirmButtonText}>Confirm</Text>
-                </Pressable>
-                <Pressable style={styles.cancelButton} onPress={resetScanner}>
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </Pressable>
-              </View>
-            </View>
-          </ScrollView>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (phase.tag === 'error') {
     return (
       <SafeAreaView style={styles.center}>
@@ -240,7 +219,7 @@ export default function ScanScreen() {
         onBarcodeScanned={isLoading ? undefined : ({ data }) => { void handleBarcode(data); }}
       />
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']} pointerEvents="box-none">
-        <Text style={styles.scanTitle}>Scan QR Code</Text>
+        <Text style={styles.scanTitle}>{phase.tag === 'saving' ? 'Saving Credential' : 'Scan QR Code'}</Text>
         <View style={styles.reticle} />
         {isLoading ? (
           <ActivityIndicator size="large" color="#fff" style={styles.spinner} />

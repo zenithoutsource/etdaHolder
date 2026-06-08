@@ -10,8 +10,8 @@ export class MMKV {
     this.store.set(key, value)
   }
 
-  delete(key: string): void {
-    this.store.delete(key)
+  remove(key: string): boolean {
+    return this.store.delete(key)
   }
 
   contains(key: string): boolean {

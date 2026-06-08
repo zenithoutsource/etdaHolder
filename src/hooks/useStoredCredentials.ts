@@ -5,6 +5,7 @@ import { getCredentialStorage } from '../services/storage/storage'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
 type UseStoredCredentialsResult = {
+  status: 'ready' | 'storage-not-ready' | 'error'
   credentials: VerifiableCredentialRecord[]
   error: string | null
   refresh: () => void
@@ -25,20 +26,24 @@ function isStorageNotInitialized(error: unknown): boolean {
 }
 
 export function useStoredCredentials(): UseStoredCredentialsResult {
+  const [status, setStatus] = useState<UseStoredCredentialsResult['status']>('ready')
   const [credentials, setCredentials] = useState<VerifiableCredentialRecord[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
     try {
       setCredentials(readCredentialsFromStorage())
+      setStatus('ready')
       setError(null)
     } catch (err) {
       if (isStorageNotInitialized(err)) {
         setCredentials([])
-        setError(null)
+        setStatus('storage-not-ready')
+        setError('Wallet storage is not ready.')
         return
       }
 
+      setStatus('error')
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [])
@@ -49,5 +54,5 @@ export function useStoredCredentials(): UseStoredCredentialsResult {
 
   useFocusEffect(refresh)
 
-  return { credentials, error, refresh }
+  return { status, credentials, error, refresh }
 }

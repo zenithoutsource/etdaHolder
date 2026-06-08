@@ -8,9 +8,9 @@ This is a production-ready playbook defining strict architectural rules, securit
 
 ## HANDOFF STATE (2026-06-07)
 
-**Immediate Next Task:** Finish Phase 4 release build validation — `npx expo prebuild --clean` already verified for Android in a headless session (succeeds; iOS prebuild is platform-gated by Expo CLI to macOS/Linux and cannot run on Windows). Remaining: EAS production builds for iOS and Android, then a golden-path walkthrough (enroll → claim credential via QR → view detail → sign PoP) on physical hardware. Requires physical devices and EAS credentials not available in a headless session — this is the user's manual step.
+**Immediate Next Task:** Finish Phase 4 release build validation. Phase 4.1 release-blocking fixes are complete. Android `npx expo prebuild --clean` already succeeds in a headless Windows session; iOS prebuild is platform-gated by Expo CLI to macOS/Linux and cannot run on Windows. Remaining release validation: EAS production builds for iOS and Android, then a golden-path walkthrough (enroll → claim credential via QR → confirm issuance → complete biometric-gated issuance → view saved credential detail) on physical hardware. Requires user-held EAS credentials, physical iOS and Android devices, and a real or test Issuer QR issuance source not available in a headless session — this is the user's manual step.
 
-**Phase 4 progress (2026-06-07):** Screen capture prevention, jailbreak/root detection (hard block, ADR 0004), backend-only certificate pinning (ADR 0005), and the production bundle/log leak scan script (`yarn scan:bundle-leaks`) are complete — see `docs/TASKS.md` Session 2026-06-07 notes. Issuer signature validation and the ISO 18013-5 mdoc native module ADR remain parked on their stated blockers (finalized trust metadata, physical NFC test device).
+**Phase 4 progress (2026-06-07):** Screen capture prevention, jailbreak/root detection (hard block, ADR 0004), backend-only certificate pinning (ADR 0005), and the production bundle/log leak scan script (`yarn scan:bundle-leaks`) are complete — see `docs/TASKS.md` Session 2026-06-07 notes. ADR 0006 records ISO 18013-5 mdoc native module selection criteria; final module selection remains parked on physical iOS/Android validation. Issuer signature validation remains parked on finalized trust metadata.
 
 **Files to read before starting:**
 - `CLAUDE.md` - architecture rules and commands
@@ -23,6 +23,9 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `docs/adr/0001-hardware-backed-signing-key.md`
 - `docs/adr/0002-native-signing-module.md`
 - `docs/adr/0003-nfc-presentation-protocol.md`
+- `docs/adr/0004-root-jailbreak-detection-response.md`
+- `docs/adr/0005-backend-only-certificate-pinning.md`
+- `docs/adr/0006-mdoc-native-module-selection-criteria.md`
 - `src/services/crypto/crypto.ts`
 - `src/services/crypto/secureEnvironmentPolicy.ts`
 - `src/services/storage/storage.ts`
@@ -38,7 +41,7 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `server/README.md`
 
 **Next concrete steps:**
-1. Replace any remaining mojibake or corrupted Thai labels in `app/(tabs)/scan.tsx` with intentional localized strings or English fallback.
+1. Run Phase 4 release validation: EAS production builds and physical-device golden-path walkthrough.
 2. Add NFC NDEF issuance only when a test device is available; do not wire unverified NFC behavior.
 3. Keep QR offer flow routed through `resolveOffer()` and the pre-save confirmation screen.
 4. Run `yarn tsc --noEmit`, `yarn lint`, and focused tests after edits.

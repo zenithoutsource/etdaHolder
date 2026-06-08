@@ -25,6 +25,7 @@ import { getCredentialStorage as getDefaultCredentialStorage } from '../storage/
 
 const CREDENTIAL_INDEX_KEY = 'credential:index'
 const CREDENTIAL_KEY_PREFIX = 'credential:'
+const CREDENTIAL_LIFECYCLE_KEY_PREFIX = 'credential:lifecycle:'
 
 export type FetchIssuerMetadata = (issuer: string) => Promise<IssuerMetadataV1_0_15>
 
@@ -74,6 +75,7 @@ export type VerifiableCredentialRecord = {
 export type CredentialStorage = {
   getString: (key: string) => string | undefined
   set: (key: string, value: string) => void
+  remove?: (key: string) => boolean
 }
 
 export type SignProof = (cNonce: string, issuerUrl: string) => Promise<string>
@@ -680,11 +682,38 @@ function storeCredentialRecord(storage: CredentialStorage, record: VerifiableCre
     const existingIndex = storage.getString(CREDENTIAL_INDEX_KEY)
     const parsedIndex = existingIndex ? (JSON.parse(existingIndex) as unknown) : []
     const index = Array.isArray(parsedIndex) ? parsedIndex.filter((item): item is string => typeof item === 'string') : []
-    const nextIndex = index.includes(record.id) ? index : [...index, record.id]
+    const replacementIds = index.filter((id) => isReplaceableCredentialId(storage, id, record))
+    const nextIndex = [
+      ...index.filter((id) => id !== record.id && !replacementIds.includes(id)),
+      record.id,
+    ]
 
     storage.set(CREDENTIAL_INDEX_KEY, JSON.stringify(nextIndex))
+    for (const id of replacementIds) {
+      storage.remove?.(`${CREDENTIAL_KEY_PREFIX}${id}`)
+      storage.remove?.(`${CREDENTIAL_LIFECYCLE_KEY_PREFIX}${id}`)
+    }
+    storage.remove?.(`${CREDENTIAL_LIFECYCLE_KEY_PREFIX}${record.id}`)
   } catch (error) {
     throw new Error(`CredentialStorageFailed: ${toErrorMessage(error)}`)
+  }
+}
+
+function isReplaceableCredentialId(
+  storage: CredentialStorage,
+  credentialId: string,
+  replacement: VerifiableCredentialRecord,
+): boolean {
+  if (credentialId === replacement.id) return false
+
+  const existingRaw = storage.getString(`${CREDENTIAL_KEY_PREFIX}${credentialId}`)
+  if (!existingRaw) return false
+
+  try {
+    const existing = JSON.parse(existingRaw) as Partial<VerifiableCredentialRecord>
+    return existing.type === replacement.type
+  } catch {
+    return false
   }
 }
 

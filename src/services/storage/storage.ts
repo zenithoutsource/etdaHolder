@@ -4,6 +4,8 @@ import type { MMKV } from 'react-native-mmkv'
 import { createMMKV } from 'react-native-mmkv'
 import { randomBytes } from 'react-native-quick-crypto'
 
+import { isBiometricDisabledForTesting } from '@/src/config/runtimeFlags'
+
 const KEYCHAIN_SERVICE = 'etda.wallet.credential_storage_key'
 const KEYCHAIN_USERNAME = 'wallet-credentials'
 const META_STORAGE_ID = 'wallet-meta'
@@ -23,6 +25,13 @@ function generateEncryptionKey(): string {
 }
 
 function getKeychainSetOptions(): Keychain.SetOptions {
+  if (isBiometricDisabledForTesting()) {
+    return {
+      service: KEYCHAIN_SERVICE,
+      accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    }
+  }
+
   if (Platform.OS === 'android') {
     return {
       service: KEYCHAIN_SERVICE,
@@ -40,6 +49,12 @@ function getKeychainSetOptions(): Keychain.SetOptions {
 }
 
 function getKeychainGetOptions(): Keychain.GetOptions {
+  if (isBiometricDisabledForTesting()) {
+    return {
+      service: KEYCHAIN_SERVICE,
+    }
+  }
+
   if (Platform.OS === 'android') {
     return {
       service: KEYCHAIN_SERVICE,

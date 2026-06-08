@@ -74,6 +74,16 @@ Every signature operation must be gated by biometric authentication through the 
 - Local development backend under `server/` is acceptable only behind the SDK/API boundary.
 - OID4VP online presentation, when implemented, must run device-to-Verifier directly.
 
+### Local Backend Hardening
+
+The `server/` backend is development-only and is not the production Wallet Backend. Real local runs still require:
+
+- Explicit non-default `JWT_SECRET`; only tests may use a deterministic default.
+- Configured development CORS origins instead of wildcard origin.
+- Rate limiting on login and registration routes.
+- HS256-only JWT verification.
+- Distinct logging and responses for invalid authentication versus infrastructure failures.
+
 ## 5. Bundle and Build Security
 
 - MSW must not be included in production EAS builds.

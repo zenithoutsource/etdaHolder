@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ETDA Wallet</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Sarabun',sans-serif;background:#bfc8d4;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;padding:20px 0}
+::-webkit-scrollbar{width:0}
+button{font-family:'Sarabun',sans-serif}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+/* ─── QR DATA ─── */
+const QR_STR =
+  "111111100101001111111"+
+  "100000100110001000001"+
+  "101110100100001011101"+
+  "101110101011001011101"+
+  "101110100101001011101"+
+  "100000100001001000001"+
+  "111111101010101111111"+
+  "000000001011000000000"+
+  "110101110100010110101"+
+  "010100001001000011010"+
+  "110011110101110011011"+
+  "010001001001001010010"+
+  "110110110100101001101"+
+  "000001001001010010010"+
+  "111111101010000100011"+
+  "100000100100100110001"+
+  "101110100101010101011"+
+  "101110100100101000100"+
+  "101110101001010010101"+
+  "100000101000101001010"+
+  "111111101010010110101";
+
+/* ─── ICONS ─── */
+const IcoBack = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M13 3L7 10L13 17" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+const IcoClose = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <path d="M3 3L15 15M15 3L3 15" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+  </svg>
+);
+const IcoLock = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <rect x="3" y="9" width="14" height="9" rx="2" fill="#c0cad8"/>
+    <path d="M6 9V7a4 4 0 018 0v2" stroke="#c0cad8" strokeWidth="2" fill="none" strokeLinecap="round"/>
+  </svg>
+);
+const IcoCheck = ({c="#22a65a",s=20}) => (
+  <svg width={s} height={s} viewBox="0 0 20 20" fill="none">
+    <circle cx="10" cy="10" r="9" fill={c}/>
+    <path d="M6 10l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+const IcoInfo = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <circle cx="9" cy="9" r="8" stroke="#aab8c8" strokeWidth="1.5"/>
+    <path d="M9 8.5v4M9 6.5h.01" stroke="#aab8c8" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+);
+const IcoQ = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <circle cx="9" cy="9" r="8" stroke="#c0cad8" strokeWidth="1.5"/>
+    <path d="M7 7a2 2 0 114 0c0 1-1 1.5-2 2.2V11M9 13h.01" stroke="#c0cad8" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+);
+const IcoEye = ({c}) => (
+  <svg width="13" height="10" viewBox="0 0 13 10" fill="none">
+    <path d="M1 5s2.2-4 5.5-4S12 5 12 5s-2.2 4-5.5 4S1 5 1 5z" stroke={c} strokeWidth="1.2" fill="none"/>
+    <circle cx="6.5" cy="5" r="1.8" fill={c}/>
+  </svg>
+);
+
+/* ─── NAV ICONS ─── */
+const NavWallet = ({a}) => {
+  const c = a?'#002887':'#9aabbf';
+  return (
+    <svg width="26" height="22" viewBox="0 0 26 22" fill="none">
+      <rect x="1" y="3" width="24" height="17" rx="3" stroke={c} strokeWidth="2"/>
+      <path d="M1 9h24" stroke={c} strokeWidth="2"/>
+      <rect x="16" y="12" width="6" height="4" rx="2" fill={c}/>
+    </svg>
+  );
+};
+const NavQR = ({a}) => {
+  const c = a?'#002887':'#9aabbf';
+  return (
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+      <rect x="1" y="1" width="10" height="10" rx="1.5" stroke={c} strokeWidth="1.8"/>
+      <rect x="3.5" y="3.5" width="5" height="5" rx="0.5" fill={c}/>
+      <rect x="15" y="1" width="10" height="10" rx="1.5" stroke={c} strokeWidth="1.8"/>
+      <rect x="17.5" y="3.5" width="5" height="5" rx="0.5" fill={c}/>
+      <rect x="1" y="15" width="10" height="10" rx="1.5" stroke={c} strokeWidth="1.8"/>
+      <rect x="3.5" y="17.5" width="5" height="5" rx="0.5" fill={c}/>
+      <rect x="15" y="15" width="4" height="4" rx="0.5" fill={c}/>
+      <rect x="21" y="15" width="4" height="4" rx="0.5" fill={c}/>
+      <rect x="15" y="21" width="4" height="4" rx="0.5" fill={c}/>
+      <rect x="21" y="21" width="4" height="4" rx="0.5" fill={c}/>
+    </svg>
+  );
+};
+const NavScan = ({a}) => {
+  const c = a?'#002887':'#9aabbf';
+  return (
+    <svg width="28" height="26" viewBox="0 0 28 26" fill="none">
+      <path d="M3 9V3.5a1 1 0 011-1H9" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <path d="M25 9V3.5a1 1 0 00-1-1h-5" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <path d="M25 17v5.5a1 1 0 01-1 1h-5" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <path d="M3 17v5.5a1 1 0 001 1h5" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <line x1="5" y1="13" x2="23" y2="13" stroke={c} strokeWidth="2.2" strokeLinecap="round"/>
+    </svg>
+  );
+};
+const NavHistory = ({a}) => {
+  const c = a?'#002887':'#9aabbf';
+  return (
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+      <circle cx="13" cy="13" r="11" stroke={c} strokeWidth="2"/>
+      <path d="M13 7v7l4.5 3" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+};
+
+/* ─── PERSON PHOTO ─── */
+const PersonPhoto = ({style={}}) => (
+  <div style={{overflow:'hidden',background:'#c8d3e0',...style}}>
+    <svg viewBox="0 0 100 130" width="100%" height="100%">
+      <rect width="100" height="130" fill="#c8d4e0"/>
+      <circle cx="50" cy="45" r="23" fill="#98adc0"/>
+      <ellipse cx="50" cy="125" rx="44" ry="38" fill="#98adc0"/>
+      <rect x="22" y="88" width="56" height="42" rx="2" fill="#2a3e6a" opacity="0.55"/>
+    </svg>
+  </div>
+);
+
+/* ─── QR CODE ─── */
+const QRCodeSVG = () => {
+  const N=21, cell=9, size=N*cell;
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{display:'block'}}>
+      <rect width={size} height={size} fill="white"/>
+      {QR_STR.split('').map((v,i) => {
+        if(v!=='1') return null;
+        const r=Math.floor(i/N), c=i%N;
+        return <rect key={i} x={c*cell} y={r*cell} width={cell} height={cell} fill="#0a1432"/>;
+      })}
+    </svg>
+  );
+};
+
+/* ─── STATUS BAR ─── */
+const StatusBar = () => (
+  <div style={{background:'#002887',padding:'13px 22px 7px',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+    <span style={{color:'white',fontSize:14,fontWeight:600}}>9:51 PM</span>
+    <div style={{display:'flex',gap:7,alignItems:'center'}}>
+      <svg width="17" height="12" viewBox="0 0 17 12" fill="white">
+        <rect x="0" y="6" width="3" height="6" rx="0.5"/>
+        <rect x="4.5" y="4" width="3" height="8" rx="0.5"/>
+        <rect x="9" y="2" width="3" height="10" rx="0.5"/>
+        <rect x="13.5" y="0" width="3" height="12" rx="0.5"/>
+      </svg>
+      <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+        <path d="M8 9.5m-1.5 0a1.5 1.5 0 103 0 1.5 1.5 0 10-3 0" fill="white"/>
+        <path d="M5 7.2C5.9 6.2 6.9 5.7 8 5.7s2.1.5 3 1.5" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+        <path d="M2.5 4.8C4 3 5.9 2.2 8 2.2s4 .8 5.5 2.6" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.65"/>
+        <circle cx="8" cy="9.5" r="1.5" fill="white"/>
+      </svg>
+      <svg width="26" height="12" viewBox="0 0 26 12" fill="none">
+        <rect x="0.5" y="1" width="22" height="10" rx="2" stroke="white" strokeWidth="1.5"/>
+        <rect x="23" y="4" width="2" height="4" rx="1" fill="white" opacity="0.6"/>
+        <rect x="2" y="2.5" width="17" height="7" rx="1" fill="white"/>
+      </svg>
+    </div>
+  </div>
+);
+
+/* ─── TOP BAR ─── */
+const TopBar = ({title, onBack, onClose}) => (
+  <div style={{background:'#002887',padding:'6px 20px 14px',display:'flex',alignItems:'center',position:'relative',minHeight:50,flexShrink:0}}>
+    {onBack && (
+      <button onClick={onBack} style={{position:'absolute',left:14,background:'rgba(255,255,255,0.18)',border:'none',borderRadius:'50%',width:34,height:34,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>
+        <IcoBack/>
+      </button>
+    )}
+    <span style={{color:'white',fontSize:20,fontWeight:600,flex:1,textAlign:'center',letterSpacing:'.2px'}}>{title}</span>
+    {onClose && (
+      <button onClick={onClose} style={{position:'absolute',right:16,background:'none',border:'none',cursor:'pointer',padding:6}}>
+        <IcoClose/>
+      </button>
+    )}
+  </div>
+);
+
+/* ─── BOTTOM NAV ─── */
+const BottomNav = ({active, onNav}) => (
+  <div style={{position:'absolute',bottom:0,left:0,right:0,height:76,background:'white',borderTop:'1px solid #e2e8f0',display:'flex',alignItems:'flex-start',justifyContent:'space-around',paddingTop:7,boxShadow:'0 -4px 20px rgba(15,40,73,0.08)'}}>
+    {[{id:'wallet',lbl:'Wallet',I:NavWallet},{id:'myqr',lbl:'My QR',I:NavQR},{id:'scan',lbl:'Scan',I:NavScan},{id:'history',lbl:'History Log',I:NavHistory}].map(({id,lbl,I}) => (
+      <div key={id} onClick={()=>onNav(id)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3,padding:'2px 8px',cursor:'pointer',flex:1,position:'relative'}}>
+        <I a={active===id}/>
+        <span style={{fontSize:11,color:active===id?'#002887':'#9aabbf',fontWeight:active===id?600:400,textAlign:'center'}}>{lbl}</span>
+        {active===id && <div style={{position:'absolute',bottom:-3,width:28,height:3,background:'#002887',borderRadius:'2px 2px 0 0'}}></div>}
+      </div>
+    ))}
+  </div>
+);
+
+/* ═══════════════════════════════════════
+   SCREEN: HOME
+═══════════════════════════════════════ */
+const HomeScreen = ({navigate}) => {
+  const menuIcons = {
+    id: <svg width="26" height="28" viewBox="0 0 26 28" fill="none"><circle cx="13" cy="10" r="5.5" fill="#002887"/><ellipse cx="13" cy="22" rx="10" ry="6.5" fill="#002887"/></svg>,
+    car: <svg width="28" height="20" viewBox="0 0 28 20" fill="none"><path d="M5 11l2.5-6h13l2.5 6" stroke="#002887" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><rect x="2" y="11" width="24" height="7" rx="3" stroke="#002887" strokeWidth="2"/><circle cx="8" cy="18" r="2.5" fill="#002887"/><circle cx="20" cy="18" r="2.5" fill="#002887"/></svg>,
+    doc: <svg width="22" height="28" viewBox="0 0 22 28" fill="none"><rect x="1" y="1" width="20" height="26" rx="3" stroke="#002887" strokeWidth="2"/><path d="M5 8h12M5 13h12M5 18h8" stroke="#002887" strokeWidth="1.8" strokeLinecap="round"/></svg>,
+    med: <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="1" y="1" width="26" height="26" rx="4" stroke="#002887" strokeWidth="2"/><path d="M14 7v14M7 14h14" stroke="#002887" strokeWidth="2.5" strokeLinecap="round"/></svg>,
+  };
+  const items = [
+    {lbl:'ID Card', icon:'id', action:'id_card'},
+    {lbl:'Driving License', icon:'car', action:null},
+    {lbl:'Transcript', icon:'doc', action:null},
+    {lbl:'Medical Certificate', icon:'med', badge:'ขอเอกสาร', action:null},
+  ];
+  return (
+    <div>
+      <TopBar title="Wallet"/>
+      <div style={{padding:'14px 14px',display:'flex',flexDirection:'column',gap:10}}>
+        <div style={{background:'#002854',borderRadius:18,padding:18,display:'flex',gap:16,alignItems:'center',boxShadow:'0 4px 20px rgba(15,40,73,0.18)'}}>
+          <div style={{width:76,height:90,borderRadius:6,overflow:'hidden',border:'2px solid rgba(255,255,255,0.15)',flexShrink:0}}>
+            <PersonPhoto style={{width:'100%',height:'100%'}}/>
+          </div>
+          <div>
+            <div style={{color:'white',fontSize:16,fontWeight:600,lineHeight:1.45}}>นางสาว พิชญา รุ่งเรืองกิต</div>
+            <div style={{color:'rgba(255,255,255,0.5)',fontSize:12,marginTop:5}}>ID card : 1-1009-000XX-XX-XX</div>
+          </div>
+        </div>
+        {items.map(({lbl,icon,badge,action})=>(
+          <div key={lbl} onClick={action?()=>navigate(action):undefined}
+            style={{background:'white',borderRadius:14,padding:'14px 16px',display:'flex',alignItems:'center',gap:14,boxShadow:'0 2px 10px rgba(15,40,73,0.07)',cursor:action?'pointer':'default'}}>
+            <div style={{width:40,height:40,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{menuIcons[icon]}</div>
+            <span style={{flex:1,fontSize:16,fontWeight:500,color:'#1a2a42'}}>{lbl}</span>
+            {badge
+              ? <span style={{background:'#002887',color:'white',fontSize:12,fontWeight:500,padding:'4px 12px',borderRadius:20}}>{badge}</span>
+              : <span style={{color:'#c0cad8',fontSize:22,fontWeight:300}}>›</span>
+            }
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════
+   SCREEN: ID CARD (wallet_document)
+═══════════════════════════════════════ */
+const IDCardScreen = ({navigate, goBack}) => (
+  <div>
+    <TopBar title="Wallet" onBack={goBack}/>
+    <div style={{padding:14}}>
+      <div style={{background:'white',borderRadius:16,overflow:'hidden',boxShadow:'0 2px 16px rgba(15,40,73,0.12)'}}>
+        {/* Header */}
+        <div style={{background:'linear-gradient(110deg,#001e6e 0%,#1a3a8a 60%,#2a55b0 100%)',padding:'11px 16px'}}>
+          <span style={{color:'white',fontSize:15,fontWeight:800,letterSpacing:1.5}}>ID CARD</span>
+        </div>
+        {/* Top: photo + name/id */}
+        <div style={{display:'flex',height:148,borderBottom:'1px solid #eef2f8'}}>
+          {/* Photo */}
+          <div style={{width:120,flexShrink:0,overflow:'hidden',background:'#c8d4e0'}}>
+            <PersonPhoto style={{width:'100%',height:'100%'}}/>
+          </div>
+          {/* Name & ID */}
+          <div style={{flex:1,padding:'12px 12px 12px 12px',display:'flex',flexDirection:'column',justifyContent:'center',gap:3}}>
+            <Label>ชื่อ - นามสกุล</Label>
+            <div style={{fontSize:15,fontWeight:700,color:'#002887',lineHeight:1.3}}>นางสาว พิชญา รุ่งเรืองกิต</div>
+            <div style={{fontSize:10.5,color:'#8a9bb0',marginBottom:6}}>Miss Pitchaya Rungruangkit</div>
+            <Label>เลขบัตรประจำตัวประชาชน</Label>
+            <div style={{fontSize:14,fontWeight:800,color:'#002887',lineHeight:1.3,letterSpacing:.4}}>1-1009-000XX-XX-XX</div>
+          </div>
+        </div>
+        {/* Bottom: 2-column info */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0'}}>
+          {/* Left col */}
+          <div style={{padding:'10px 12px',borderRight:'1px solid #eef2f8'}}>
+            <Label>วันเดือนปีเกิด</Label>
+            <div style={{fontSize:13,fontWeight:700,color:'#1a2a42',marginBottom:8}}>15 พฤษภาคม 2546</div>
+            <Label>ที่อยู่ตามทะเบียนบ้าน</Label>
+            <div style={{fontSize:11.5,fontWeight:500,color:'#1a2a42',lineHeight:1.5}}>123/45 ถนนราชดำเนิน แขวง พระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200</div>
+          </div>
+          {/* Right col */}
+          <div style={{padding:'10px 12px'}}>
+            <Label>ศาสนา</Label>
+            <div style={{fontSize:13,fontWeight:700,color:'#1a2a42',marginBottom:8}}>พุทธ</div>
+            <Label>วันอนุญาต / Issue Date</Label>
+            <div style={{fontSize:13,fontWeight:700,color:'#1a2a42',marginBottom:8}}>8 กันยาย 2561</div>
+            <Label>วันหมดอายุ / Exp iry Date</Label>
+            <div style={{fontSize:13,fontWeight:700,color:'#e53935'}}>27 สิงหาคม 2570</div>
+          </div>
+        </div>
+      </div>
+      {/* My QR button — outside card, bottom-right */}
+      <div style={{display:'flex',justifyContent:'flex-end',marginTop:10}}>
+        <div onClick={()=>navigate('my_qr')} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:'white',borderRadius:12,padding:'8px 12px',cursor:'pointer',border:'1px solid #e2e8f0',boxShadow:'0 2px 8px rgba(15,40,73,0.1)'}}>
+          <NavQR a={false}/>
+          <span style={{fontSize:10,color:'#002887',fontWeight:600}}>My QR</span>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+/* ─── tiny helpers ─── */
+const Label = ({children}) => <div style={{fontSize:10.5,color:'#8a9bb0',marginBottom:2}}>{children}</div>;
+const Val   = ({children}) => <div style={{fontSize:13,fontWeight:600,color:'#1a2a42'}}>{children}</div>;
+
+/* ═══════════════════════════════════════
+   SCREEN: MY QR
+═══════════════════════════════════════ */
+const MyQRScreen = ({goBack}) => (
+  <div>
+    <TopBar title="Wallet" onBack={goBack}/>
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'36px 24px 30px',gap:6}}>
+      <div style={{fontSize:26,fontWeight:700,color:'#1a2a42',textAlign:'center',lineHeight:1.45}}>My ID Card<br/>QR Code</div>
+      <div style={{height:18}}/>
+      <div style={{background:'#001e6e',borderRadius:20,padding:16,boxShadow:'0 6px 28px rgba(0,40,135,0.28)'}}>
+        <div style={{background:'white',borderRadius:10,padding:10,overflow:'hidden'}}>
+          <QRCodeSVG/>
+        </div>
+      </div>
+      <div style={{height:14}}/>
+      <div style={{fontSize:15,fontWeight:600,color:'#002887',textAlign:'center',lineHeight:1.7}}>
+        สแกน QR Code ของฉัน<br/>เพื่อตรวจดูเอกสาร
+      </div>
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════
+   SCREEN: HISTORY LOG
+═══════════════════════════════════════ */
+const companyIcon = (type) => {
+  const map = {
+    wine:(
+      <div style={{width:36,height:36,borderRadius:'50%',background:'#dde8f5',display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <svg width="20" height="22" viewBox="0 0 20 22" fill="none">
+          <path d="M10 14V20M7 20h6" stroke="#3a5fa0" strokeWidth="2" strokeLinecap="round"/>
+          <path d="M4 2h12l-1.5 7A6 6 0 014 9" fill="none" stroke="#3a5fa0" strokeWidth="2"/>
+          <path d="M4 2l-1.5 7a6 6 0 0015 0" fill="none" stroke="#3a5fa0" strokeWidth="2"/>
+        </svg>
+      </div>
+    ),
+    seven:(
+      <div style={{width:36,height:36,borderRadius:'50%',background:'#e8f5e9',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:16,color:'#1b5e20'}}>7</div>
+    ),
+    central:(
+      <div style={{width:36,height:36,borderRadius:'50%',background:'#ffebee',display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <svg width="20" height="20" viewBox="0 0 20 20">
+          <path d="M10 2 L18 6 L18 14 L10 18 L2 14 L2 6 Z" fill="#e53935" opacity="0.85"/>
+          <path d="M10 5 L14 7 L14 13 L10 15 L6 13 L6 7 Z" fill="none" stroke="white" strokeWidth="1"/>
+        </svg>
+      </div>
+    ),
+    hosp:(
+      <div style={{width:36,height:36,borderRadius:'50%',background:'#fff3e0',display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <rect x="1" y="1" width="16" height="16" rx="3" stroke="#e65100" strokeWidth="1.5"/>
+          <path d="M9 4v10M4 9h10" stroke="#e65100" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+      </div>
+    ),
+    bank:(
+      <div style={{width:36,height:36,borderRadius:'50%',background:'#e3f2fd',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:14,color:'#1565c0'}}>฿</div>
+    ),
+  };
+  return map[type] || map.bank;
+};
+
+const PRESENT_ITEMS = [
+  {id:1,name:'ร้านอาหาร',type:'wine',date:'29 มกราคม 2569',time:'20 : 00 น.',accepted:true,status:'ยอมรับ',dataType:'การตรวจสอบอายุ ( Verified Age )'},
+  {id:2,name:'บริษัท เซเว่น อีเลฟเว่น',type:'seven',date:'24 กุมภาพันธ์ 2569',time:'11 : 20 น.',accepted:true,status:'ยอมรับ',dataType:'ข้อมูลบัตรประชาชน'},
+  {id:3,name:'Central',type:'central',date:'1 มีนาคม 2569',time:'12 : 00 น.',accepted:false,status:'ไม่ยอมรับ',dataType:'ใบขับขี่ดิจิทัล (Digital Driving License)'},
+  {id:4,name:'โรงพยาบาล',type:'hosp',date:'7 มีนาคม 2569',time:'09 : 00 น.',accepted:true,status:'ยอมรับ',dataType:'ข้อมูลทางการแพทย์'},
+];
+
+const TX_ITEMS = [
+  ...PRESENT_ITEMS.map(i=>({...i,status:'สำเร็จแล้ว'})),
+  {id:5,name:'ร้านอาหาร B',type:'wine',date:'15 มีนาคม 2569',time:'19 : 30 น.',accepted:true,status:'สำเร็จแล้ว',dataType:'การตรวจสอบอายุ'},
+  {id:6,name:'บริษัท ABC',type:'bank',date:'20 มีนาคม 2569',time:'10 : 00 น.',accepted:true,status:'สำเร็จแล้ว',dataType:'ข้อมูลบัตรประชาชน'},
+  {id:7,name:'ห้างสรรพสินค้า',type:'central',date:'22 มีนาคม 2569',time:'15 : 00 น.',accepted:true,status:'สำเร็จแล้ว',dataType:'ใบขับขี่ดิจิทัล'},
+  {id:8,name:'คลินิก',type:'hosp',date:'25 มีนาคม 2569',time:'08 : 30 น.',accepted:true,status:'สำเร็จแล้ว',dataType:'ข้อมูลทางการแพทย์'},
+  {id:9,name:'ธนาคาร',type:'bank',date:'28 มีนาคม 2569',time:'14 : 00 น.',accepted:true,status:'สำเร็จแล้ว',dataType:'ข้อมูลบัตรประชาชน'},
+  {id:10,name:'บริษัท XYZ',type:'bank',date:'1 เมษายน 2569',time:'09 : 00 น.',accepted:true,status:'สำเร็จแล้ว',dataType:'การตรวจสอบอายุ'},
+];
+
+const HistItem = ({item, isTx, onTap}) => {
+  const [open,setOpen] = useState(false);
+  return (
+    <div style={{background:'white',borderRadius:12,overflow:'hidden',marginBottom:8,boxShadow:'0 1px 8px rgba(15,40,73,0.07)'}}>
+      <div onClick={()=>setOpen(!open)} style={{padding:'11px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+        <div style={{flexShrink:0}}>{companyIcon(item.type)}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:600,color:'#1a2a42',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
+          <div style={{fontSize:12,color:'#9aabbf',marginTop:1}}>{item.date}&nbsp;&nbsp;{item.time}</div>
+        </div>
+        {isTx ? (
+          <div style={{display:'flex',alignItems:'center',gap:4,background:'#eaf7ef',borderRadius:20,padding:'4px 9px',flexShrink:0,whiteSpace:'nowrap'}}>
+            <IcoCheck s={12}/>
+            <span style={{fontSize:12,fontWeight:600,color:'#22a65a'}}>สำเร็จแล้ว</span>
+          </div>
+        ) : (
+          <div style={{background:item.accepted?'#22a65a':'#e53935',borderRadius:8,padding:'4px 11px',flexShrink:0,whiteSpace:'nowrap'}}>
+            <span style={{fontSize:12,fontWeight:600,color:'white'}}>{item.status}</span>
+          </div>
+        )}
+      </div>
+      {open && (
+        <div style={{background:'#f6f8fb',padding:'8px 14px 12px',borderTop:'1px solid #eef2f8'}}>
+          <div style={{fontSize:11,color:'#8a9bb0',marginBottom:4}}>ประเภทข้อมูลที่เข้าถึง</div>
+          <div style={{fontSize:13,color:'#1a2a42',fontWeight:500}}>{item.dataType}</div>
+          {isTx && (
+            <div style={{marginTop:10,background:'#fff5f5',border:'1px solid #ffd0d0',borderRadius:8,padding:'8px 12px',display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+              <svg width="14" height="14" viewBox="0 0 14 14"><rect width="14" height="14" rx="2" fill="#e53935"/><path d="M4 4l6 6M10 4l-6 6" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              <span style={{fontSize:12,color:'#e53935',fontWeight:500}}>ขอให้บริษัทนี้ลบข้อมูลของฉันทั้งหมด</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const HistoryScreen = ({navigate, goBack}) => {
+  const [tab, setTab] = useState('tx');
+  const items = tab==='tx' ? TX_ITEMS : PRESENT_ITEMS;
+  const title = tab==='tx' ? 'Wallet Transaction' : 'Present Log';
+  return (
+    <div>
+      <TopBar title={title} onBack={goBack}/>
+      <div style={{background:'white',display:'flex',borderBottom:'1px solid #e8eef5'}}>
+        {[{id:'tx',lbl:'Wallet Transaction'},{id:'present',lbl:'Present Log'}].map(t=>(
+          <div key={t.id} onClick={()=>setTab(t.id)}
+            style={{flex:1,padding:'10px 4px',textAlign:'center',fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?'#002887':'#9aabbf',borderBottom:tab===t.id?'2px solid #002887':'2px solid transparent',cursor:'pointer'}}>
+            {t.lbl}
+          </div>
+        ))}
+      </div>
+      <div style={{padding:'12px 14px'}}>
+        <div style={{fontSize:12,color:'#8a9bb0',marginBottom:2}}>รายการทั้งหมด</div>
+        <div style={{marginBottom:12}}>
+          <span style={{fontSize:24,fontWeight:700,color:'#002887'}}>{items.length}</span>
+          <span style={{fontSize:13,color:'#8a9bb0',marginLeft:6}}>รายการ</span>
+        </div>
+        {items.map(item=>(
+          <HistItem key={item.id} item={item} isTx={tab==='tx'} onTap={()=>navigate('verifier')}/>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════
+   SCREEN: SCAN QR
+═══════════════════════════════════════ */
+const ScanQRScreen = ({navigate, goTo}) => {
+  const [lineY, setLineY] = useState(10);
+  const [scanned, setScanned] = useState(false);
+
+  /* scan-line animation */
+  useEffect(() => {
+    let pos = 10, dir = 1;
+    const id = setInterval(() => {
+      pos += dir * 1.8;
+      if (pos >= 88) dir = -1;
+      if (pos <= 10) dir = 1;
+      setLineY(pos);
+    }, 14);
+    return () => clearInterval(id);
+  }, []);
+
+  /* auto-navigate after 3s */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setScanned(true);
+      setTimeout(() => navigate('consent_request'), 600);
+    }, 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleTap = () => {
+    if (scanned) return;
+    setScanned(true);
+    setTimeout(() => navigate('consent_request'), 400);
+  };
+
+  return (
+    <div style={{background:'#e8ecf0',flex:1,display:'flex',flexDirection:'column',minHeight:700}}>
+      <TopBar title="Wallet"/>
+      {/* blue divider */}
+      <div style={{height:3,background:'#002887'}}/>
+      <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',padding:'22px 20px 24px',gap:18}}>
+        <div style={{fontSize:20,fontWeight:700,color:'#002887',whiteSpace:'nowrap'}}>Scan QR code</div>
+        {/* scanner box */}
+        <div onClick={handleTap}
+          style={{width:'100%',maxWidth:310,aspectRatio:'1',background:'#c8cdd4',borderRadius:8,position:'relative',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'inset 0 2px 12px rgba(0,0,0,0.12)'}}>
+          {/* corner brackets */}
+          <div style={{position:'absolute',top:14,left:14,width:36,height:36,borderTop:'3.5px solid white',borderLeft:'3.5px solid white',borderRadius:'4px 0 0 0'}}/>
+          <div style={{position:'absolute',top:14,right:14,width:36,height:36,borderTop:'3.5px solid white',borderRight:'3.5px solid white',borderRadius:'0 4px 0 0'}}/>
+          <div style={{position:'absolute',bottom:14,left:14,width:36,height:36,borderBottom:'3.5px solid white',borderLeft:'3.5px solid white',borderRadius:'0 0 0 4px'}}/>
+          <div style={{position:'absolute',bottom:14,right:14,width:36,height:36,borderBottom:'3.5px solid white',borderRight:'3.5px solid white',borderRadius:'0 0 4px 0'}}/>
+          {/* QR code */}
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,padding:16}}>
+            <QRCodeSVG/>
+            <div style={{fontSize:13,fontWeight:700,color:'#002887',letterSpacing:.3,whiteSpace:'nowrap'}}>QR Code</div>
+          </div>
+          {/* scan line */}
+          {!scanned && (
+            <div style={{position:'absolute',left:14,right:14,height:2,top:`${lineY}%`,background:'rgba(0,40,135,0.55)',boxShadow:'0 0 8px 1px rgba(0,40,135,0.35)',borderRadius:2}}/>
+          )}
+          {/* success flash */}
+          {scanned && (
+            <div style={{position:'absolute',inset:0,background:'rgba(34,166,90,0.18)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <div style={{width:64,height:64,borderRadius:'50%',background:'#22a65a',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 20px rgba(34,166,90,0.4)'}}>
+                <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+                  <path d="M7 17l7 7 13-13" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{fontSize:13,color:'#6d7a8d',textAlign:'center'}}>แตะพื้นที่สแกนเพื่อจำลองการตรวจจับ QR Code</div>
+        <div style={{flex:1}}/>
+        <button onClick={()=>goTo('home')}
+          style={{width:'100%',background:'#001e6e',color:'white',border:'none',borderRadius:30,padding:'15px',fontSize:16,fontWeight:600,cursor:'pointer'}}>
+          ย้อนกลับ
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════
+   SCREEN: CONSENT REQUEST (vp_consent_verification)
+═══════════════════════════════════════ */
+const ConsentRequestScreen = ({navigate, goBack}) => (
+  <div style={{display:'flex',flexDirection:'column',minHeight:700}}>
+    <TopBar title="Wallet" onBack={goBack}/>
+    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',padding:'28px 22px',gap:10}}>
+      <div style={{width:82,height:82,background:'#dce9f7',borderRadius:18,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:4}}>
+        <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
+          <path d="M21 28V38M16 38h10" stroke="#1e4db7" strokeWidth="2.5" strokeLinecap="round"/>
+          <path d="M9 4h24l-2.5 12A12 12 0 019 16" fill="none" stroke="#1e4db7" strokeWidth="2.5"/>
+          <path d="M9 4l-2.5 12a12 12 0 0027 0" fill="none" stroke="#1e4db7" strokeWidth="2.5"/>
+        </svg>
+      </div>
+      <div style={{fontSize:19,fontWeight:700,color:'#1a2a42',textAlign:'center',lineHeight:1.5}}>ข้อมูลที่สถานบันเทิงต้องการ</div>
+      <div style={{fontSize:13,color:'#8a9bb0',alignSelf:'flex-start',marginTop:6}}>ข้อมูลที่ร้องขอ</div>
+      <div style={{width:'100%',background:'white',borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',boxShadow:'0 1px 8px rgba(15,40,73,0.08)'}}>
+        <div>
+          <div style={{fontSize:15,fontWeight:600,color:'#1a2a42'}}>อายุเกิน 20 ปี</div>
+          <div style={{fontSize:12,color:'#8a9bb0',marginTop:2}}>Age Verification</div>
+        </div>
+        <IcoCheck s={24}/>
+      </div>
+      <div style={{flex:1,minHeight:40}}/>
+      <div style={{alignSelf:'flex-start',marginBottom:8}}>
+        <div style={{fontSize:13,color:'#8a9bb0',marginBottom:6}}>ต้องใช้การยืนยันตัวตนโดย</div>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <svg width="30" height="22" viewBox="0 0 30 22" fill="none">
+            <rect x="1" y="1" width="28" height="20" rx="4" stroke="#002887" strokeWidth="1.5"/>
+            <circle cx="10" cy="11" r="3.5" stroke="#002887" strokeWidth="1.5"/>
+            <circle cx="20" cy="11" r="3.5" stroke="#002887" strokeWidth="1.5"/>
+            <path d="M7 8C7 6.3 8.3 5 10 5M20 5c1.7 0 3 1.3 3 3" stroke="#002887" strokeWidth="1.3" strokeLinecap="round"/>
+            <path d="M7 14c0 1.7 1.3 3 3 3M20 17c1.7 0 3-1.3 3-3" stroke="#002887" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          <span style={{fontSize:15,fontWeight:600,color:'#002887'}}>Face ID</span>
+        </div>
+      </div>
+      <button onClick={()=>navigate('id_card_confirm')}
+        style={{width:'100%',background:'#002887',color:'white',border:'none',borderRadius:30,padding:'15px',fontSize:16,fontWeight:600,cursor:'pointer',marginBottom:10}}>
+        รับทราบและยินยอมส่งข้อมูล
+      </button>
+      <button onClick={goBack}
+        style={{width:'100%',background:'transparent',color:'#002887',border:'2px solid #002887',borderRadius:30,padding:'13px',fontSize:16,fontWeight:600,cursor:'pointer'}}>
+        ไม่ยินยอม
+      </button>
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════
+   SCREEN: ID CARD CONFIRM (consent-1)
+═══════════════════════════════════════ */
+const IDCardConfirmScreen = ({navigate, goBack}) => (
+  <div>
+    <TopBar title="Wallet" onBack={goBack}/>
+    <div style={{padding:'14px 14px 24px'}}>
+      <div style={{background:'white',borderRadius:16,overflow:'hidden',boxShadow:'0 2px 16px rgba(15,40,73,0.12)'}}>
+        <div style={{background:'linear-gradient(120deg,#002887 0%,#1e4db7 55%,#6a9de4 100%)',padding:'10px 16px'}}>
+          <span style={{color:'white',fontSize:15,fontWeight:700,letterSpacing:1}}>ID CARD</span>
+        </div>
+        <div style={{display:'flex',gap:12,padding:14}}>
+          <div style={{width:100,flexShrink:0,borderRadius:4,overflow:'hidden',alignSelf:'stretch',minHeight:120}}>
+            <PersonPhoto style={{width:'100%',height:'100%'}}/>
+          </div>
+          <div style={{flex:1}}>
+            <Label>ชื่อ - นามสกุล</Label>
+            <div style={{fontSize:15,fontWeight:700,color:'#002887',lineHeight:1.35}}>นางสาว พิชญา รุ่งเรืองกิต</div>
+            <div style={{fontSize:11,color:'#8a9bb0',marginBottom:10}}>Miss Pitchaya Rungruangkit</div>
+            <Label>เลขบัตรประจำตัวประชาชน</Label>
+            <div style={{fontSize:13,fontWeight:700,color:'#002887'}}>1-1009-000XX-XX-XX</div>
+          </div>
+        </div>
+        <div style={{padding:'0 14px'}}>
+          <Divider/><FRow label="วันเดือนปีเกิด" val="15 พฤษภาคม 2546"/>
+          <Divider/><FRow label="ศาสนา" val="พุทธ"/>
+          <Divider/><FRow label="ที่อยู่ตามทะเบียนบ้าน" val="123/45 ถนนราชดำเนิน แขวง พระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200"/>
+        </div>
+        <div style={{padding:'14px 14px 20px'}}>
+          <button onClick={()=>navigate('face_prep')}
+            style={{width:'100%',background:'#22a65a',color:'white',border:'none',borderRadius:30,padding:'15px',fontSize:17,fontWeight:700,cursor:'pointer'}}>
+            ยืนยัน
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+const Divider = () => <div style={{height:1,background:'#eef2f8',margin:'8px 0'}}/>;
+const FRow = ({label,val}) => (
+  <div style={{marginBottom:4}}>
+    <Label>{label}</Label>
+    <div style={{fontSize:14,fontWeight:700,color:'#002887',lineHeight:1.5}}>{val}</div>
+  </div>
+);
+
+/* ═══════════════════════════════════════
+   SCREEN: FACE PREP (vp_verification_scan_face)
+═══════════════════════════════════════ */
+const FacePrepScreen = ({navigate, goBack}) => {
+  const tips = [
+    {emoji:'💡', txt:'อยู่ในที่ที่แสงเหมาะสม ไม่มืดหรือสว่างเกินไป'},
+    {emoji:'👤', txt:<>ขยับใบหน้าตรงกรอบ จนกรอบเป็น<strong style={{color:'#22a65a'}}>สีเขียว</strong></>, hl:true},
+    {emoji:'👁', txt:'พยายามมีตาให้กว้าง'},
+    {emoji:'🚫', txt:'ต้องเห็น ตา จมูก ปาก ชัดเจน ไม่สวมแว่น หน้ากากอนามัยและไม่สวมหมวก'},
+  ];
+  return (
+    <div>
+      <TopBar title="Wallet" onBack={goBack}/>
+      <div style={{padding:'20px 20px 28px',display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
+        <div style={{fontSize:20,fontWeight:700,color:'#1a2a42'}}>สแกนใบหน้า</div>
+        <div style={{width:150,height:120,background:'#eaf0fc',borderRadius:20,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+          <svg viewBox="0 0 110 90" width="140" height="112">
+            <ellipse cx="38" cy="80" rx="24" ry="13" fill="#6bbf6b"/>
+            <rect x="16" y="48" width="44" height="38" rx="10" fill="#5aaa5a"/>
+            <circle cx="38" cy="38" r="18" fill="#f5c598"/>
+            <ellipse cx="38" cy="22" rx="18" ry="9" fill="#2a1a10"/>
+            <circle cx="31" cy="38" r="2.5" fill="#1a0a05"/>
+            <circle cx="45" cy="38" r="2.5" fill="#1a0a05"/>
+            <path d="M33 46a5 3 0 0010 0" stroke="#c47058" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
+            <path d="M58 44 Q56 56 58 72 Q60 78 64 76" fill="#5aaa5a" stroke="#4a9a4a" strokeWidth="1"/>
+            <rect x="68" y="28" width="32" height="52" rx="6" fill="#1e2e4e"/>
+            <rect x="71" y="31" width="26" height="46" rx="4" fill="#4a8adc"/>
+            <circle cx="84" cy="54" r="11" fill="none" stroke="#5adc8a" strokeWidth="2"/>
+            <circle cx="84" cy="54" r="4" fill="rgba(90,220,138,0.3)"/>
+          </svg>
+        </div>
+        <div style={{textAlign:'center'}}>
+          <div style={{fontSize:19,fontWeight:700,color:'#1a2a42'}}>เตรียมสแกนใบหน้า</div>
+          <div style={{fontSize:13,color:'#8a9bb0',marginTop:4,lineHeight:1.6}}>สำหรับใช้ในการยืนยันตัวตน<br/>เพื่อความปลอดภัยของคุณ</div>
+        </div>
+        <div style={{width:'100%',borderTop:'1px solid #eef2f8',paddingTop:14,display:'flex',flexDirection:'column',gap:14}}>
+          {tips.map((t,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'flex-start',gap:12}}>
+              <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>{t.emoji}</span>
+              <div style={{fontSize:14,color:'#1a2a42',lineHeight:1.55}}>{t.txt}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>navigate('face_scan')}
+          style={{width:'100%',background:'#002887',color:'white',border:'none',borderRadius:30,padding:'15px',fontSize:16,fontWeight:600,cursor:'pointer',marginTop:6}}>
+          สแกนใบหน้า
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════
+   SCREEN: FACE SCAN (scan_face)
+═══════════════════════════════════════ */
+const FaceScanScreen = ({navigate, goBack, faceDest}) => {
+  const [pct, setPct] = useState(0);
+  useEffect(()=>{
+    let id;
+    id = setInterval(()=>{
+      setPct(p=>{
+        if(p>=100){clearInterval(id);return 100;}
+        return p+1.4;
+      });
+    }, 46);
+    return ()=>clearInterval(id);
+  },[]);
+  useEffect(()=>{
+    if(pct>=100){
+      const t=setTimeout(()=>navigate(faceDest||'consent_success'),650);
+      return ()=>clearTimeout(t);
+    }
+  },[pct]);
+
+  const R=92, circ=2*Math.PI*R;
+  const offset=circ*(1-Math.min(pct,100)/100);
+  return (
+    <div style={{background:'white',flex:1}}>
+      <TopBar title="Wallet" onClose={goBack}/>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'32px 20px 24px',gap:22}}>
+        <div style={{fontSize:21,fontWeight:700,color:'#002887'}}>กำลังสแกนใบหน้า...</div>
+        <svg width="214" height="214" viewBox="0 0 214 214">
+          <circle cx="107" cy="107" r={R} fill="#dde4ed"/>
+          <circle cx="107" cy="107" r={R} fill="none" stroke="#e2e8f0" strokeWidth="7"/>
+          <circle cx="107" cy="107" r={R} fill="none" stroke="#22a65a" strokeWidth="7"
+            strokeDasharray={circ} strokeDashoffset={offset}
+            strokeLinecap="round" transform="rotate(-90 107 107)" style={{transition:'stroke-dashoffset 0.1s linear'}}/>
+          <clipPath id="fc"><circle cx="107" cy="107" r={R-4}/></clipPath>
+          <g clipPath="url(#fc)">
+            <rect x="15" y="15" width="184" height="184" fill="#c5d0de"/>
+            <ellipse cx="107" cy="94" rx="32" ry="38" fill="#a0b2c6"/>
+            <ellipse cx="107" cy="58" rx="34" ry="16" fill="#3a2515"/>
+            <rect x="93" y="130" width="28" height="18" fill="#b0c0d0"/>
+            <ellipse cx="107" cy="190" rx="60" ry="38" fill="#8a9daf"/>
+            <rect x="56" y="166" width="102" height="48" fill="#1e2e4e" opacity="0.5"/>
+            <ellipse cx="93" cy="94" rx="5" ry="4" fill="#1a0a05"/>
+            <ellipse cx="121" cy="94" rx="5" ry="4" fill="#1a0a05"/>
+            <path d="M97 113 Q107 120 117 113" stroke="#9a6858" strokeWidth="2" fill="none" strokeLinecap="round"/>
+          </g>
+        </svg>
+        <div style={{fontSize:13,color:'#8a9bb0',textAlign:'center'}}>กรุณาวางใบหน้าให้อยู่ในกรอบและกระพิบตา</div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════
+   SCREEN: CONSENT SUCCESS (vp_consent_success)
+═══════════════════════════════════════ */
+const ConsentSuccessScreen = ({goTo}) => (
+  <div>
+    <TopBar title="Consent" onBack={()=>goTo('home')}/>
+    <div style={{padding:'22px 20px'}}>
+      <div style={{textAlign:'center',marginBottom:18}}>
+        <div style={{fontSize:22,fontWeight:700,color:'#002887',lineHeight:1.4}}>แชร์ข้อมูลสำเร็จ</div>
+        <div style={{fontSize:13,color:'#8a9bb0',marginTop:8,lineHeight:1.7}}>วันที่ 27 มีนาคม 2569 คุณได้แชร์ข้อมูล<br/>ตำรวจแห่งชาติ</div>
+      </div>
+      <div style={{background:'#f0f4fa',borderRadius:16,padding:18,marginBottom:22}}>
+        <div style={{fontSize:14,fontWeight:600,color:'#1a2a42',marginBottom:16}}>รายละเอียดการทำรายการ</div>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          {[
+            {ico:<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 14V20M8 20h6" stroke="#3a5fa0" strokeWidth="2" strokeLinecap="round"/><path d="M5 2h12l-1.5 6A5.5 5.5 0 015 8" fill="none" stroke="#3a5fa0" strokeWidth="2"/><path d="M5 2l-1.5 6a5.5 5.5 0 0013 0" fill="none" stroke="#3a5fa0" strokeWidth="2"/></svg>, lbl:'Recipient', val:'ร้านอาหาร'},
+            {ico:<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1" y="3" width="20" height="18" rx="3" stroke="#6a7a8d" strokeWidth="1.8"/><path d="M1 8h20M7 1v4M15 1v4" stroke="#6a7a8d" strokeWidth="1.8" strokeLinecap="round"/></svg>, lbl:'Shared Date', val:'1 มกราคม 2569'},
+            {ico:<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1" y="1" width="20" height="20" rx="4" stroke="#22a65a" strokeWidth="1.8"/><path d="M5 11l4 4 8-8" stroke="#22a65a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>, lbl:'Age', val:'22 ปี'},
+          ].map(({ico,lbl,val})=>(
+            <div key={lbl} style={{display:'flex',alignItems:'center',gap:14}}>
+              <div style={{width:38,height:38,background:'white',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,boxShadow:'0 1px 4px rgba(15,40,73,0.08)'}}>{ico}</div>
+              <div><div style={{fontSize:11,color:'#8a9bb0'}}>{lbl}</div><div style={{fontSize:14,fontWeight:600,color:'#1a2a42'}}>{val}</div></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <button onClick={()=>goTo('home')}
+        style={{width:'100%',background:'#001e6e',color:'white',border:'none',borderRadius:30,padding:'15px',fontSize:16,fontWeight:600,cursor:'pointer'}}>
+        ยอมรับ
+      </button>
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════
+   SCREEN: VERIFIER (vp_consent-1/2)
+═══════════════════════════════════════ */
+const VerifierScreen = ({navigate, goBack}) => {
+  const fields = [
+    {lbl:'อายุ', sub:'ข้อมูลที่แชร์', shared:true},
+    {lbl:'ชื่อ - นามสกุล', sub:'ไม่เปิดเผยข้อมูล', shared:false},
+    {lbl:'บัตรประจำตัวประชาชน 13 หลัก', sub:'ไม่เปิดเผยข้อมูล', shared:false},
+    {lbl:'หมู่เลือด', sub:'ไม่เปิดเผยข้อมูล', shared:false},
+    {lbl:'เชื้อชาติ', sub:'ไม่เปิดเผยข้อมูล', shared:false},
+    {lbl:'ศาสนา', sub:'ไม่เปิดเผยข้อมูล', shared:false},
+  ];
+  return (
+    <div>
+      <TopBar title="Verifier" onBack={goBack}/>
+      <div style={{margin:'12px 14px 0',borderRadius:14,overflow:'hidden',height:130,position:'relative',background:'linear-gradient(135deg,#060e22 0%,#1a3268 45%,#0c1e48 100%)'}}>
+        {Array.from({length:24}).map((_,i)=>(
+          <div key={i} style={{position:'absolute',left:`${(i*13+5)%88}%`,top:`${15+(i*17)%60}%`,width:1+i%3,height:8+i%22,background:`hsl(${30+i*12},90%,65%)`,opacity:0.55}}/>
+        ))}
+        <div style={{position:'absolute',bottom:14,left:16,color:'white',fontSize:16,fontWeight:700,textShadow:'0 1px 8px rgba(0,0,0,0.7)'}}>ตรวจสอบข้อมูลเข้าสถานบันเทิง</div>
+      </div>
+      <div style={{padding:'12px 14px'}}>
+        <div style={{fontSize:14,fontWeight:700,color:'#002887',marginBottom:10}}>รายการข้อมูลที่ร้องขอ</div>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {fields.map((f,i)=>(
+            <div key={i} style={{background:'white',borderRadius:12,padding:'11px 14px',display:'flex',alignItems:'center',gap:12,borderLeft:`4px solid ${f.shared?'#22a65a':'#e2e8f0'}`,boxShadow:'0 1px 6px rgba(15,40,73,0.07)'}}>
+              <div style={{width:26,height:26,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                {f.shared ? <IcoCheck s={22}/> : <IcoLock/>}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:600,color:f.shared?'#1a2a42':'#9aabbf'}}>{f.lbl}</div>
+                <div style={{fontSize:12,marginTop:2,display:'flex',alignItems:'center',gap:4,color:f.shared?'#22a65a':'#9aabbf'}}>
+                  <IcoEye c={f.shared?'#22a65a':'#9aabbf'}/>{f.sub}
+                </div>
+              </div>
+              {f.shared ? <IcoInfo/> : <IcoQ/>}
+            </div>
+          ))}
+        </div>
+        <div style={{height:14}}/>
+        <button onClick={()=>navigate('face_prep','verifier_success')}
+          style={{width:'100%',background:'#001e6e',color:'white',border:'none',borderRadius:30,padding:'15px',fontSize:16,fontWeight:600,cursor:'pointer'}}>
+          ยืนยันและส่งข้อมูล
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════
+   SCREEN: VERIFIER SUCCESS (vp_verification_success)
+═══════════════════════════════════════ */
+const VerifierSuccessScreen = ({goTo}) => (
+  <div style={{background:'#f0f4fa',flex:1,minHeight:640}}>
+    <TopBar title="Verifier" onClose={()=>goTo('home')}/>
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'70px 30px 30px',gap:20}}>
+      <div style={{width:104,height:104,background:'#22a65a',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 10px 32px rgba(34,166,90,0.35)'}}>
+        <svg width="54" height="54" viewBox="0 0 54 54" fill="none">
+          <path d="M13 27l10 10 18-18" stroke="white" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+      <div style={{textAlign:'center'}}>
+        <div style={{fontSize:22,fontWeight:700,color:'#22a65a'}}>ส่งข้อมูลสำเร็จ</div>
+        <div style={{fontSize:14,color:'#6d7a8d',marginTop:8,lineHeight:1.7}}>ข้อมูลของคุณถูกส่งให้<br/>Verifier เรียบร้อยแล้ว</div>
+      </div>
+      <div style={{flex:1,minHeight:80}}/>
+      <button onClick={()=>goTo('home')}
+        style={{width:'100%',maxWidth:320,background:'#001e6e',color:'white',border:'none',borderRadius:30,padding:'15px',fontSize:16,fontWeight:600,cursor:'pointer'}}>
+        เสร็จสิ้น
+      </button>
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════
+   APP
+═══════════════════════════════════════ */
+const App = () => {
+  const [stack, setStack] = useState(['home']);
+  const [tab, setTab] = useState('wallet');
+  const [faceDest, setFaceDest] = useState('consent_success');
+
+  const navigate = (scr, dest) => {
+    if(dest) setFaceDest(dest);
+    setStack(p=>[...p, scr]);
+  };
+  const goBack = () => setStack(p => p.length>1 ? p.slice(0,-1) : p);
+  const goTo = (scr) => {
+    setStack([scr]);
+    const t={home:'wallet',my_qr:'myqr',history:'history'};
+    if(t[scr]) setTab(t[scr]);
+  };
+  const navToTab = (t) => {
+    setTab(t);
+    const s={wallet:'home',myqr:'my_qr',scan:'scan_qr',history:'history'};
+    setStack([s[t]]);
+  };
+
+  const cur = stack[stack.length-1];
+  const hideNav = ['face_scan','scan_qr'].includes(cur);
+  const sp = {navigate, goBack, goTo, faceDest};
+
+  return (
+    <div style={{display:'flex',justifyContent:'center',alignItems:'flex-start',minHeight:'100vh',background:'#bfc8d4',padding:'20px 0',fontFamily:"'Sarabun', sans-serif"}}>
+      <div style={{width:390,height:844,background:'#f0f3f8',borderRadius:44,overflow:'hidden',boxShadow:'0 24px 60px rgba(0,0,0,0.32)',display:'flex',flexDirection:'column',position:'relative'}}>
+        <StatusBar/>
+        <div style={{flex:1,overflowY:'auto',paddingBottom:hideNav?0:76,display:'flex',flexDirection:'column'}}>
+          {cur==='home'            && <HomeScreen {...sp}/>}
+          {cur==='id_card'         && <IDCardScreen {...sp}/>}
+          {cur==='my_qr'           && <MyQRScreen {...sp}/>}
+          {cur==='history'         && <HistoryScreen {...sp}/>}
+          {cur==='scan_qr'          && <ScanQRScreen {...sp}/>}
+          {cur==='consent_request' && <ConsentRequestScreen {...sp}/>}
+          {cur==='id_card_confirm' && <IDCardConfirmScreen {...sp}/>}
+          {cur==='face_prep'       && <FacePrepScreen {...sp}/>}
+          {cur==='face_scan'       && <FaceScanScreen {...sp}/>}
+          {cur==='consent_success' && <ConsentSuccessScreen {...sp}/>}
+          {cur==='verifier'        && <VerifierScreen {...sp}/>}
+          {cur==='verifier_success'&& <VerifierSuccessScreen {...sp}/>}
+        </div>
+        {!hideNav && <BottomNav active={tab} onNav={navToTab}/>}
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

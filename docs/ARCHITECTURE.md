@@ -145,5 +145,8 @@ No issuer-specific card components should be added. Extend schemas instead.
 | 0001 | Hardware-backed non-extractable signing key |
 | 0002 | `@animo-id/expo-secure-environment` as native signing module |
 | 0003 | ISO 18013-5 for NFC proximity credential presentation |
+| 0004 | Root/jailbreak detection response |
+| 0005 | Backend-only certificate pinning |
+| 0006 | ISO 18013-5 mdoc native module selection criteria |
 
 OID4VP 1.0 online presentation remains post-v1 and has no ADR until its mechanics are decided.

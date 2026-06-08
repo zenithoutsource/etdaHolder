@@ -21,6 +21,8 @@ type JwtPayload = {
   sid: string
 }
 
+const DUMMY_PASSWORD_HASH = '$2b$12$C6UzMDM.H6dfI/f/IKcEeOeP7gKdz1A7fN8AtJ5QyH88f6g1z5F2Re'
+
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12)
 }
@@ -42,15 +44,20 @@ export function issueToken(userId: string, sessionId: string): string {
 
   return jwt.sign({ sid: sessionId }, config.jwtSecret, {
     ...signOptions,
+    algorithm: 'HS256',
   })
 }
 
 export function verifyToken(token: string): JwtPayload {
-  const decoded = jwt.verify(token, readConfig().jwtSecret)
+  const decoded = jwt.verify(token, readConfig().jwtSecret, { algorithms: ['HS256'] })
   if (typeof decoded !== 'object' || typeof decoded.sub !== 'string' || typeof decoded.sid !== 'string') {
     throw new Error('AuthTokenInvalid')
   }
   return { sub: decoded.sub, sid: decoded.sid }
+}
+
+export function getDummyPasswordHash(): string {
+  return DUMMY_PASSWORD_HASH
 }
 
 export async function storeSession(
@@ -87,8 +94,15 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
     return
   }
 
+  let payload: JwtPayload
   try {
-    const payload = verifyToken(token)
+    payload = verifyToken(token)
+  } catch {
+    res.status(401).json({ message: 'Unauthorized' })
+    return
+  }
+
+  try {
     const tokenHash = hashToken(token)
     const [rows] = await pool.execute<RowDataPacket[]>(
       `SELECT id FROM sessions
@@ -106,8 +120,9 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
     }
     req.auth = { userId: payload.sub, token, tokenHash }
     next()
-  } catch {
-    res.status(401).json({ message: 'Unauthorized' })
+  } catch (error) {
+    console.error('requireAuth session lookup failed', error)
+    res.status(500).json({ message: 'Internal Server Error' })
   }
 }
 

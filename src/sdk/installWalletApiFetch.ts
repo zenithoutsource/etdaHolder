@@ -14,16 +14,16 @@ type InstallWalletApiFetchOptions = {
   fetchImpl?: FetchFn
 }
 
-function getConfiguredBaseUrl(): string {
+export function getConfiguredWalletApiBaseUrl(): string {
   return process.env.EXPO_PUBLIC_WALLET_API_BASE_URL ?? DEFAULT_WALLET_API_BASE_URL
 }
 
-export function normalizeWalletApiBaseUrl(baseUrl = getConfiguredBaseUrl()): string {
+export function normalizeWalletApiBaseUrl(baseUrl = getConfiguredWalletApiBaseUrl()): string {
   const trimmed = baseUrl.trim()
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
 }
 
-export function resolveWalletApiUrl(input: FetchInput, baseUrl = getConfiguredBaseUrl()): FetchInput {
+export function resolveWalletApiUrl(input: FetchInput, baseUrl = getConfiguredWalletApiBaseUrl()): FetchInput {
   if (typeof input !== 'string') return input
   if (!input.startsWith(WALLET_API_PREFIX)) return input
 

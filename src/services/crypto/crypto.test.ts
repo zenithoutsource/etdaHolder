@@ -50,9 +50,16 @@ function base64UrlDecode(value: string): Record<string, unknown> {
 }
 
 describe('wallet did:key crypto service', () => {
+  const originalFlag = process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING
+
   beforeEach(() => {
     getMetaStorage().clearAll()
     jest.clearAllMocks()
+    delete process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING
+  })
+
+  afterEach(() => {
+    process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING = originalFlag
   })
 
   test('derives Holder DID from compressed P-256 did:key bytes', async () => {
@@ -86,6 +93,22 @@ describe('wallet did:key crypto service', () => {
       'etda_wallet_signing_key',
       expect.any(Uint8Array),
       true,
+    )
+  })
+
+  test('disables native biometric prompts for tester builds when the dev-only flag is enabled', async () => {
+    process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING = 'true'
+    jest.mocked(getPublicBytesForKeyId).mockResolvedValue(p256CompressedKeyFromDidKey(P256_DID_KEY_VECTOR))
+    jest.mocked(sign).mockResolvedValue(new Uint8Array(64).fill(7))
+
+    await generateWalletKeyIfNeeded()
+    await signProof('nonce-123', 'https://issuer.example.com')
+
+    expect(generateKeypair).toHaveBeenCalledWith('etda_wallet_signing_key', false)
+    expect(sign).toHaveBeenCalledWith(
+      'etda_wallet_signing_key',
+      expect.any(Uint8Array),
+      false,
     )
   })
 })

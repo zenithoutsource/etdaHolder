@@ -91,6 +91,20 @@ describe('auth routes', () => {
     expect(response.body).toEqual({ message: 'Email already exists' })
   })
 
+  it('register rejects email addresses with invalid domain suffixes', async () => {
+    const response = await request(app).post('/wallet-api/auth/register').send({
+      type: 'email',
+      name: 'Test User',
+      email: 'example@gmail.commmm',
+      password: 'correct-password',
+    })
+
+    expect(response.status).toBe(400)
+    expect(response.body).toEqual({ message: 'Invalid email format' })
+    expect(hashPasswordMock).not.toHaveBeenCalled()
+    expect(withTransactionMock).not.toHaveBeenCalled()
+  })
+
   it('login returns id and token for valid credentials', async () => {
     executeMock.mockResolvedValueOnce([[{ id: 'user-1', password_hash: 'hashed-password' }]])
 
@@ -127,6 +141,21 @@ describe('auth routes', () => {
     expect(response.status).toBe(400)
     expect(response.body).toEqual({ message: 'Invalid email or password' })
     expect(verifyPasswordMock).toHaveBeenCalledWith('wrong-password', 'hashed-password')
+    expect(storeSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('login still verifies password against a dummy hash when user is unknown', async () => {
+    executeMock.mockResolvedValueOnce([[]])
+
+    const response = await request(app).post('/wallet-api/auth/login').send({
+      type: 'email',
+      email: 'unknown@example.com',
+      password: 'wrong-password',
+    })
+
+    expect(response.status).toBe(400)
+    expect(response.body).toEqual({ message: 'Invalid email or password' })
+    expect(verifyPasswordMock).toHaveBeenCalledWith('wrong-password', expect.any(String))
     expect(storeSessionMock).not.toHaveBeenCalled()
   })
 })

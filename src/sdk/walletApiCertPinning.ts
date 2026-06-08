@@ -21,12 +21,24 @@ type PinnedFetchModule = {
   }>
 }
 
-function getPinnedCertificateNames(): string[] {
+export function getPinnedCertificateNames(): string[] {
   const raw = process.env.EXPO_PUBLIC_WALLET_API_PINNED_CERTS ?? ''
   return raw
     .split(',')
     .map((name) => name.trim())
     .filter((name) => name.length > 0)
+}
+
+export type WalletApiPinningConfig = {
+  backendBaseUrl: string
+  pinnedCertificates: string[]
+}
+
+export function readWalletApiPinningConfig(backendBaseUrl: string): WalletApiPinningConfig {
+  return {
+    backendBaseUrl,
+    pinnedCertificates: getPinnedCertificateNames(),
+  }
 }
 
 function matchesPinnedHost(input: FetchInput, backendHost: string): input is string {

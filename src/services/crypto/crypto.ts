@@ -5,6 +5,8 @@ import {
   sign,
 } from '@animo-id/expo-secure-environment'
 
+import { isBiometricDisabledForTesting } from '@/src/config/runtimeFlags'
+
 import { getMetaStorage } from '../storage/storage'
 
 const KEY_ID = 'etda_wallet_signing_key'
@@ -123,7 +125,7 @@ function compressedKeyToDidKey(compressedKey: Uint8Array): string {
 export async function generateWalletKeyIfNeeded(): Promise<void> {
   if (metaStorage.getString(COMPRESSED_KEY_STORAGE)) return
 
-  await generateKeypair(KEY_ID, true)
+  await generateKeypair(KEY_ID, !isBiometricDisabledForTesting())
   const compressedKey = await getPublicBytesForKeyId(KEY_ID)
   metaStorage.set(COMPRESSED_KEY_STORAGE, uint8ArrayToBase64(compressedKey))
 }
@@ -173,7 +175,11 @@ export async function signProof(nonce: string, audience: string): Promise<string
 
   // Hardware applies SHA-256 internally; pass raw UTF-8 bytes.
   // sign() returns raw R‖S — DER→raw conversion done inside the module.
-  const signatureBytes = await sign(KEY_ID, new TextEncoder().encode(signingInput), true)
+  const signatureBytes = await sign(
+    KEY_ID,
+    new TextEncoder().encode(signingInput),
+    !isBiometricDisabledForTesting(),
+  )
 
   if (signatureBytes.length !== 64) {
     throw new Error(`InvalidSignatureLength: expected 64 bytes, got ${signatureBytes.length}`)

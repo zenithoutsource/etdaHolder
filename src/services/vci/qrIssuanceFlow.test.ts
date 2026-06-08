@@ -1,5 +1,6 @@
 import {
   claimConfirmedOffer,
+  readCredentialPreviewDisplay,
   readCredentialInformationRows,
   readOfferConfirmationPreview,
 } from './qrIssuanceFlow'
@@ -135,6 +136,30 @@ test('readCredentialInformationRows shows actual credential values from the acqu
   ])
 
   expect(rows).toEqual([
+    { key: 'studentId', label: 'Student ID', value: 'BU-123' },
+    { key: 'degree', label: 'Degree', value: 'Computer Science' },
+    { key: 'gpa', label: 'GPA', value: '3.91' },
+  ])
+})
+
+test('readCredentialPreviewDisplay shows actual values for the scan confirmation screen', () => {
+  const record: VerifiableCredentialRecord = {
+    id: 'record-1',
+    type: 'BangkokUniversityTranscript',
+    rawVc: 'header.payload.signature',
+    claims: {
+      studentId: 'BU-123',
+      degree: 'Computer Science',
+      gpa: '3.91',
+    },
+    issuedAt: '2026-06-04T00:00:00.000Z',
+  }
+
+  const preview = readCredentialPreviewDisplay(record)
+
+  expect(preview.documentTitle).toBe('TRANSCRIPT')
+  expect(preview.imageKey).toBe('transcript')
+  expect(preview.rows).toEqual([
     { key: 'studentId', label: 'Student ID', value: 'BU-123' },
     { key: 'degree', label: 'Degree', value: 'Computer Science' },
     { key: 'gpa', label: 'GPA', value: '3.91' },

@@ -1,7 +1,24 @@
-export const createHash = jest.fn(() => ({
-  update: jest.fn().mockReturnThis(),
-  digest: jest.fn().mockReturnValue(Buffer.alloc(32, 0xab).toString('hex')),
-}))
+export const createHash = jest.fn(() => {
+  let input = ''
+  type MockHash = {
+    update: jest.Mock<MockHash, [unknown]>
+    digest: jest.Mock<string, []>
+  }
+  const hash: MockHash = {
+    update: jest.fn((value: unknown) => {
+      input += typeof value === 'string' ? value : JSON.stringify(value)
+      return hash
+    }),
+    digest: jest.fn(() => {
+      const bytes = Buffer.alloc(32, 0xab)
+      for (let index = 0; index < input.length; index += 1) {
+        bytes[index % bytes.length] = bytes[index % bytes.length] ^ input.charCodeAt(index)
+      }
+      return bytes.toString('hex')
+    }),
+  }
+  return hash
+})
 
 export const randomBytes = jest.fn((size: number) => Buffer.alloc(size, 0))
 

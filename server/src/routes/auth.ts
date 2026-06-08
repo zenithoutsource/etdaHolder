@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2'
 
 import {
+  getDummyPasswordHash,
   hashPassword,
   issueToken,
   readBearerToken,
@@ -24,6 +25,23 @@ type MysqlError = Error & {
 
 const authRouter = Router()
 
+const ALLOWED_EMAIL_TLDS = new Set([
+  'ac',
+  'biz',
+  'co',
+  'com',
+  'edu',
+  'go',
+  'gov',
+  'info',
+  'io',
+  'mil',
+  'net',
+  'or',
+  'org',
+  'th',
+])
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -34,6 +52,24 @@ function isNonEmptyString(value: unknown): value is string {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
+}
+
+function isValidEmailFormat(email: string): boolean {
+  if (email.length > 254 || email.includes('..')) {
+    return false
+  }
+
+  const match = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@([a-z0-9-]+\.)+([a-z]{2,24})$/i.exec(email)
+  if (!match) {
+    return false
+  }
+
+  const domain = email.slice(email.lastIndexOf('@') + 1)
+  if (domain.split('.').some((label) => label.startsWith('-') || label.endsWith('-'))) {
+    return false
+  }
+
+  return ALLOWED_EMAIL_TLDS.has(match[2].toLowerCase())
 }
 
 function isDuplicateEmail(error: unknown): boolean {
@@ -56,6 +92,10 @@ authRouter.post('/register', async (req, res) => {
   const name = body.name.trim()
   const email = normalizeEmail(body.email)
   const password = body.password
+  if (!isValidEmailFormat(email)) {
+    res.status(400).json({ message: 'Invalid email format' })
+    return
+  }
 
   try {
     const passwordHash = await hashPassword(password)
@@ -109,7 +149,10 @@ authRouter.post('/login', async (req, res) => {
       [email],
     )
     const user = rows[0]
-    if (!user || !(await verifyPassword(body.password, user.password_hash))) {
+    const passwordHash = user?.password_hash ?? getDummyPasswordHash()
+    const isPasswordValid = await verifyPassword(body.password, passwordHash)
+
+    if (!user || !isPasswordValid) {
       res.status(400).json({ message: 'Invalid email or password' })
       return
     }

@@ -289,6 +289,106 @@ async function acquireCredentialRecordDoesNotStoreContract(): Promise<Verifiable
 
 void acquireCredentialRecordDoesNotStoreContract()
 
+test('saveCredentialRecord clears a stale local lifecycle status for a reissued credential', () => {
+  const writes = new Map<string, string>([
+    [
+      'credential:lifecycle:transcript-1',
+      JSON.stringify({
+        credentialId: 'transcript-1',
+        action: 'Revoke',
+        status: 'revoked',
+        occurredAt: '2026-06-08T10:00:00.000Z',
+      }),
+    ],
+  ])
+  const storage = {
+    getString: jest.fn((key: string) => writes.get(key)),
+    set: jest.fn((key: string, value: string) => {
+      writes.set(key, value)
+    }),
+    remove: jest.fn((key: string) => {
+      writes.delete(key)
+      return true
+    }),
+  }
+
+  saveCredentialRecord(
+    {
+      id: 'transcript-1',
+      type: 'BangkokUniversityTranscript',
+      rawVc: 'new.header.payload',
+      claims: {},
+      issuedAt: '2026-06-08T11:00:00.000Z',
+    },
+    {
+      getCredentialStorage: () => storage,
+    },
+  )
+
+  expect(storage.remove).toHaveBeenCalledWith('credential:lifecycle:transcript-1')
+  expect(writes.has('credential:lifecycle:transcript-1')).toBe(false)
+})
+
+test('saveCredentialRecord replaces older local records of the same credential type', () => {
+  const oldRecord: VerifiableCredentialRecord = {
+    id: 'old-transcript',
+    type: 'BangkokUniversityTranscript',
+    rawVc: 'old.header.payload',
+    claims: {},
+    issuedAt: '2026-06-08T10:00:00.000Z',
+  }
+  const thaiIdRecord: VerifiableCredentialRecord = {
+    id: 'thai-id-1',
+    type: 'ThaiNationalID',
+    rawVc: 'thai.header.payload',
+    claims: {},
+    issuedAt: '2026-06-08T09:00:00.000Z',
+  }
+  const writes = new Map<string, string>([
+    ['credential:index', JSON.stringify(['old-transcript', 'thai-id-1'])],
+    ['credential:old-transcript', JSON.stringify(oldRecord)],
+    ['credential:thai-id-1', JSON.stringify(thaiIdRecord)],
+    [
+      'credential:lifecycle:old-transcript',
+      JSON.stringify({
+        credentialId: 'old-transcript',
+        action: 'Revoke',
+        status: 'revoked',
+        occurredAt: '2026-06-08T10:30:00.000Z',
+      }),
+    ],
+  ])
+  const storage = {
+    getString: jest.fn((key: string) => writes.get(key)),
+    set: jest.fn((key: string, value: string) => {
+      writes.set(key, value)
+    }),
+    remove: jest.fn((key: string) => {
+      writes.delete(key)
+      return true
+    }),
+  }
+
+  saveCredentialRecord(
+    {
+      id: 'new-transcript',
+      type: 'BangkokUniversityTranscript',
+      rawVc: 'new.header.payload',
+      claims: {},
+      issuedAt: '2026-06-08T11:00:00.000Z',
+    },
+    {
+      getCredentialStorage: () => storage,
+    },
+  )
+
+  expect(JSON.parse(writes.get('credential:index') ?? '[]')).toEqual(['thai-id-1', 'new-transcript'])
+  expect(writes.has('credential:old-transcript')).toBe(false)
+  expect(writes.has('credential:lifecycle:old-transcript')).toBe(false)
+  expect(writes.has('credential:thai-id-1')).toBe(true)
+  expect(writes.has('credential:new-transcript')).toBe(true)
+})
+
 async function transcriptSdJwtContract(): Promise<VerifiableCredentialRecord> {
   const resolved = await resolveOffer(transcriptOfferUri, {
     fetchIssuerMetadata: async () => ({
