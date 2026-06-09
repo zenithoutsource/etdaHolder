@@ -61,6 +61,12 @@ yarn tsc
 yarn test
 ```
 
+## Styling Rules
+
+- **Always use NativeWind (`className`) for styling.** Do not use `StyleSheet.create` or inline `style` props.
+- Exception: only use `StyleSheet` / `style` when a specific effect is genuinely impossible with NativeWind (e.g., dynamic `Animated` interpolated values that require a style object at runtime).
+- Migrate any existing `StyleSheet` usage to NativeWind when touching a file.
+
 ## Skills and Routing Patterns
 
 | File Pattern | Focus Area | Rules |

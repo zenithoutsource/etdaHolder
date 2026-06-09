@@ -1,76 +1,107 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { WalletHeader } from '../../src/components/WalletHeader';
 import { useStoredCredentials } from '../../src/hooks/useStoredCredentials';
 import { readCredentialLifecycleStatuses } from '../../src/services/credentials/credentialLifecycle';
 import { readWalletHistory, type WalletHistoryEvent } from '../../src/services/history/walletHistory';
 
-type HistoryTab = 'transactions' | 'presentations';
+type MaterialIconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
-function formatDate(value: string): string {
+function formatDateParts(value: string): { date: string; time: string } {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  if (Number.isNaN(date.getTime())) return { date: value, time: '' };
+
+  return {
+    date: new Intl.DateTimeFormat('th-TH', { day: '2-digit', month: 'short', year: 'numeric' }).format(date),
+    time: new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(date),
+  };
+}
+
+function readIssuerIcon(documentType: string): MaterialIconName {
+  if (/driving|licence|license/i.test(documentType)) return 'card-account-details-outline';
+  if (/transcript|academic/i.test(documentType)) return 'school-outline';
+  if (/id|national/i.test(documentType)) return 'account-card-outline';
+  return 'file-document-outline';
 }
 
 function HistoryItem({ item }: { item: WalletHistoryEvent }) {
+  const dateParts = formatDateParts(item.occurredAt);
   const statusConfig = {
-    completed: { label: 'สำเร็จ', icon: 'check-circle' as const, color: '#22a65a', bg: '#eaf7ef' },
-    revoked: { label: 'ถูกระงับ', icon: 'close-circle' as const, color: '#c00000', bg: '#fff0f0' },
-    deleted: { label: 'ถูกลบ', icon: 'trash-can' as const, color: '#c00000', bg: '#fff0f0' },
+    completed: { label: 'สำเร็จ', color: '#118f4b', bg: '#e8f8ef' },
+    revoked: { label: 'ถูกระงับ', color: '#c00000', bg: '#fff0f0' },
+    deleted: { label: 'ถูกลบ', color: '#c00000', bg: '#fff0f0' },
   }[item.status];
 
   return (
     <View
-      className="rounded-[12px] bg-white px-4 py-3"
+      className="overflow-hidden rounded-[12px] bg-white"
       style={{
-        elevation: 1,
+        elevation: 2,
         shadowColor: '#0f2849',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.07,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
       }}>
-      <View className="flex-row items-center gap-3">
-        <View className="h-10 w-10 items-center justify-center rounded-full bg-[#eaf0fc]">
-          <MaterialCommunityIcons name={statusConfig.icon} size={22} color={statusConfig.color} />
+      <View className="flex-row">
+        <View className="w-1.5 bg-wallet-navy" />
+        <View className="min-w-0 flex-1 px-3.5 py-3.5">
+          <View className="flex-row items-start gap-3">
+            <View className="h-11 w-11 items-center justify-center rounded-full bg-[#eef4ff]">
+              <MaterialCommunityIcons name={readIssuerIcon(item.documentType)} size={24} color="#002887" />
+            </View>
+            <View className="min-w-0 flex-1">
+              <Text className="text-[13px] font-semibold text-[#002887]" numberOfLines={1}>
+                {item.issuerName}
+              </Text>
+              <Text className="mt-1 text-xs text-[#6b7280]" numberOfLines={1}>
+                {item.documentType}
+              </Text>
+              <View className="mt-2 flex-row flex-wrap items-center gap-x-2 gap-y-1">
+                <Text className="text-[11px] text-[#6b7280]">{dateParts.date}</Text>
+                {dateParts.time ? <Text className="text-[11px] text-[#6b7280]">{dateParts.time}</Text> : null}
+              </View>
+            </View>
+            <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: statusConfig.bg }}>
+              <Text className="text-[11px] font-semibold" style={{ color: statusConfig.color }}>
+                {statusConfig.label}
+              </Text>
+            </View>
+          </View>
+
+          <View className="mt-3 rounded-lg bg-[#f3f5f8] px-3 py-2.5">
+            <Text className="text-[12px] font-medium text-[#364152]" numberOfLines={2}>
+              {item.actionLabel}
+            </Text>
+            <Text className="mt-1 text-[11px] text-[#7b8794]" numberOfLines={1}>
+              {item.subtitle}
+            </Text>
+          </View>
+
+          <View className="mt-3 self-start rounded-full border border-[#d12d2d] px-3 py-1.5">
+            <View className="flex-row items-center gap-1.5">
+              <MaterialCommunityIcons name="trash-can-outline" size={14} color="#c00000" />
+              <Text className="text-[11px] font-semibold text-[#c00000]">ลบรายการ</Text>
+            </View>
+          </View>
         </View>
-        <View className="min-w-0 flex-1">
-          <Text className="text-sm font-semibold text-[#1a2a42]" numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text className="mt-1 text-xs text-[#9aabbf]">{formatDate(item.occurredAt)}</Text>
-        </View>
-        <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: statusConfig.bg }}>
-          <Text className="text-xs font-semibold" style={{ color: statusConfig.color }}>
-            {statusConfig.label}
-          </Text>
-        </View>
-      </View>
-      <View className="mt-3 border-t border-[#eef2f8] pt-3">
-        <Text className="text-[11px] text-[#8a9bb0]">Activity</Text>
-        <Text className="mt-1 text-[13px] font-medium text-[#1a2a42]">{item.subtitle}</Text>
       </View>
     </View>
   );
 }
 
-function EmptyState({ tab }: { tab: HistoryTab }) {
+function EmptyState() {
   return (
     <View className="rounded-[12px] bg-white px-5 py-6">
       <View className="flex-row items-center gap-3">
         <View className="h-11 w-11 items-center justify-center rounded-lg bg-wallet-bg">
-          <MaterialCommunityIcons name={tab === 'transactions' ? 'history' : 'shield-account'} size={25} color="#002887" />
+          <MaterialCommunityIcons name="history" size={25} color="#002887" />
         </View>
         <View className="min-w-0 flex-1">
-          <Text className="text-base font-semibold text-[#1f2937]">
-            {tab === 'transactions' ? 'No wallet transactions yet' : 'Presentation history is post-v1'}
-          </Text>
+          <Text className="text-base font-semibold text-[#1f2937]">ยังไม่มีประวัติ</Text>
           <Text className="mt-1 text-sm leading-5 text-[#64748b]">
-            {tab === 'transactions'
-              ? 'Credential save events will appear here after issuance.'
-              : 'Verifier presentation protocols are not enabled in this release.'}
+            การออกเอกสารและการยื่นแสดงเอกสารยืนยันตัวตนจะแสดงขึ้นที่นี่
           </Text>
         </View>
       </View>
@@ -79,47 +110,23 @@ function EmptyState({ tab }: { tab: HistoryTab }) {
 }
 
 export default function HistoryLogScreen() {
-  const [tab, setTab] = useState<HistoryTab>('transactions');
   const { credentials, error } = useStoredCredentials();
   const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
   const history = readWalletHistory(credentials, lifecycleStatuses);
-  const items = tab === 'transactions' ? history.transactions : history.presentations;
+  const items = [...history.transactions, ...history.presentations].sort(
+    (left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt),
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
-      <View className="bg-wallet-navy px-6 pb-5 pt-1.5">
-        <Text className="text-center text-xl font-semibold text-white">
-          {tab === 'transactions' ? 'Wallet Transaction' : 'Present Log'}
-        </Text>
-      </View>
+      <WalletHeader title="History Log" />
 
       <View className="flex-1 bg-wallet-bg">
-        <View className="flex-row border-b border-[#e8eef5] bg-white">
-          {[
-            { id: 'transactions' as const, label: 'Wallet Transaction' },
-            { id: 'presentations' as const, label: 'Present Log' },
-          ].map((item) => (
-            <Pressable
-              key={item.id}
-              className={`flex-1 border-b-2 px-1 py-3 ${
-                tab === item.id ? 'border-wallet-navy' : 'border-transparent'
-              }`}
-              onPress={() => setTab(item.id)}>
-              <Text
-                className={`text-center text-[13px] ${
-                  tab === item.id ? 'font-semibold text-wallet-navy' : 'font-normal text-[#9aabbf]'
-                }`}>
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
         <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-24 pt-4" showsVerticalScrollIndicator={false}>
-          <Text className="text-xs text-[#8a9bb0]">Total items</Text>
+          <Text className="text-md text-black">รายการทั้งหมด</Text>
           <View className="mb-1 flex-row items-end">
             <Text className="text-2xl font-bold text-wallet-navy">{items.length}</Text>
-            <Text className="mb-1 ml-1.5 text-[13px] text-[#8a9bb0]">items</Text>
+            <Text className="mb-1 ml-1.5 text-sm text-black">รายการ</Text>
           </View>
 
           {error ? (
@@ -128,7 +135,7 @@ export default function HistoryLogScreen() {
             </View>
           ) : null}
 
-          {items.length > 0 ? items.map((item) => <HistoryItem key={item.id} item={item} />) : <EmptyState tab={tab} />}
+          {items.length > 0 ? items.map((item) => <HistoryItem key={item.id} item={item} />) : <EmptyState />}
         </ScrollView>
       </View>
     </SafeAreaView>

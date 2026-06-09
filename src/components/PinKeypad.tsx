@@ -5,6 +5,7 @@ type PinKeypadProps = {
   onDigit: (digit: string) => void
   onBackspace: () => void
   onFingerprint: () => void
+  showFingerprint?: boolean
 }
 
 const KEY_CLASS_NAME =
@@ -16,7 +17,7 @@ const digitRows = [
   ['7', '8', '9'],
 ]
 
-export function PinKeypad({ onDigit, onBackspace, onFingerprint }: PinKeypadProps) {
+export function PinKeypad({ onDigit, onBackspace, onFingerprint, showFingerprint = true }: PinKeypadProps) {
   return (
     <View className="mt-8 w-full max-w-[270px] flex-row flex-wrap justify-center gap-3">
       {digitRows.flat().map((digit) => (
@@ -29,14 +30,18 @@ export function PinKeypad({ onDigit, onBackspace, onFingerprint }: PinKeypadProp
           <Text className="text-xl font-semibold text-[#1a2a42]">{digit}</Text>
         </Pressable>
       ))}
-      <Pressable
-        testID="pin-key-fingerprint"
-        className={KEY_CLASS_NAME}
-        onPress={onFingerprint}
-        accessibilityLabel="Use fingerprint"
-      >
-        <MaterialCommunityIcons name="fingerprint" size={28} color="#002887" />
-      </Pressable>
+      {showFingerprint ? (
+        <Pressable
+          testID="pin-key-fingerprint"
+          className={KEY_CLASS_NAME}
+          onPress={onFingerprint}
+          accessibilityLabel="Use fingerprint"
+        >
+          <MaterialCommunityIcons name="fingerprint" size={28} color="#002887" />
+        </Pressable>
+      ) : (
+        <View className={KEY_CLASS_NAME} />
+      )}
       <Pressable
         testID="pin-key-0"
         className={KEY_CLASS_NAME}

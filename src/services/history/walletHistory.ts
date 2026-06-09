@@ -7,6 +7,9 @@ export type WalletHistoryEvent = {
   credentialId: string
   title: string
   subtitle: string
+  issuerName: string
+  documentType: string
+  actionLabel: string
   occurredAt: string
   status: 'completed' | 'revoked' | 'deleted'
 }
@@ -21,17 +24,21 @@ export function readWalletHistory(
   lifecycleStatuses: Record<string, CredentialLifecycleStatus> = {},
 ): WalletHistory {
   const lifecycleEvents = credentials.reduce<WalletHistoryEvent[]>((events, record) => {
+      const schema = getCardSchema(record.type)
       const lifecycleStatus = lifecycleStatuses[record.id]
       if (!lifecycleStatus) return events
 
       events.push({
         id: `credential-lifecycle:${record.id}:${lifecycleStatus.status}`,
         credentialId: record.id,
-        title: getCardSchema(record.type).title,
+        title: schema.title,
         subtitle:
           lifecycleStatus.action === 'Revoke'
             ? 'Credential revocation approved by Wallet'
             : 'Credential deletion approved by Wallet',
+        issuerName: schema.issuerName,
+        documentType: schema.title,
+        actionLabel: lifecycleStatus.action === 'Revoke' ? 'Credential revoked' : 'Credential deleted',
         occurredAt: lifecycleStatus.occurredAt,
         status: lifecycleStatus.status,
       })
@@ -40,14 +47,20 @@ export function readWalletHistory(
 
   return {
     transactions: [
-      ...credentials.map((record) => ({
-        id: `credential-issued:${record.id}`,
-        credentialId: record.id,
-        title: getCardSchema(record.type).title,
-        subtitle: 'Credential saved to Wallet',
-        occurredAt: record.issuedAt,
-        status: 'completed' as const,
-      })),
+      ...credentials.map((record) => {
+        const schema = getCardSchema(record.type)
+        return {
+          id: `credential-issued:${record.id}`,
+          credentialId: record.id,
+          title: schema.title,
+          subtitle: 'Credential saved to Wallet',
+          issuerName: schema.issuerName,
+          documentType: schema.title,
+          actionLabel: 'Credential received',
+          occurredAt: record.issuedAt,
+          status: 'completed' as const,
+        }
+      }),
       ...lifecycleEvents,
     ]
       .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt)),

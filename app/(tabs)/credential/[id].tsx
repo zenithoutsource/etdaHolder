@@ -1,17 +1,18 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { CredentialDocumentDetailCard } from "../../../src/components/CredentialDocumentDetailCard";
 import { PinKeypad } from "../../../src/components/PinKeypad";
+import { WalletHeader } from "../../../src/components/WalletHeader";
 import { getHolderDid } from "../../../src/services/crypto/crypto";
 import {
   recordCredentialLifecycleAction,
   type CredentialLifecycleAction,
 } from "../../../src/services/credentials/credentialLifecycle";
-import { readCredentialDetailDisplay } from "../../../src/services/credentials/credentialDisplay";
+import { readCredentialDetailDisplay, readCredentialHolderProfile } from "../../../src/services/credentials/credentialDisplay";
 import { shouldResetCredentialDetailSession } from "../../../src/services/credentials/credentialDetailSession";
 import { hasWalletPin, setWalletPin, verifyWalletPin } from "../../../src/services/auth/walletPin";
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
@@ -36,29 +37,6 @@ function readHolderDidForDisplay(): string {
   }
 }
 
-function Header({
-  title,
-  onBack,
-}: {
-  title: string
-  onBack: () => void
-}) {
-  return (
-    <View className="h-[70px] flex-row items-center bg-wallet-navy px-4">
-      <Pressable
-        className="h-9 w-9 items-center justify-center rounded-full border border-white"
-        onPress={onBack}
-        accessibilityLabel="Back"
-      >
-        <MaterialCommunityIcons name="chevron-left" size={28} color="#ffffff" />
-      </Pressable>
-      <Text className="min-w-0 flex-1 pr-9 text-center text-xl font-semibold text-white">
-        {title}
-      </Text>
-    </View>
-  )
-}
-
 export default function CredentialDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -73,6 +51,31 @@ export default function CredentialDetailScreen() {
     ? readCredentialDetailDisplay(credential)
     : undefined;
   const isTranscript = credential?.type === "BangkokUniversityTranscript";
+  const thaiIdCredential = credentials.find((record) => record.type === "ThaiNationalID");
+  const thaiIdHolderProfile = useMemo(
+    () => (thaiIdCredential ? readCredentialHolderProfile(thaiIdCredential) : undefined),
+    [thaiIdCredential],
+  );
+  const currentHolderProfile = useMemo(
+    () => (credential ? readCredentialHolderProfile(credential) : undefined),
+    [credential],
+  );
+  const holderProfile = useMemo(
+    () => ({
+      ...currentHolderProfile,
+      ...thaiIdHolderProfile,
+    }),
+    [currentHolderProfile, thaiIdHolderProfile],
+  );
+
+  useEffect(() => {
+    if (!__DEV__ || !isTranscript) return;
+    console.log("[TranscriptDetail] holder profile source", {
+      transcriptClaimKeys: credential ? Object.keys(credential.claims) : [],
+      thaiIdClaimKeys: thaiIdCredential ? Object.keys(thaiIdCredential.claims) : [],
+      holderProfile,
+    });
+  }, [credential, holderProfile, isTranscript, thaiIdCredential]);
 
   useEffect(() => {
     if (!shouldResetCredentialDetailSession(previousCredentialIdRef.current, id)) {
@@ -153,14 +156,14 @@ export default function CredentialDetailScreen() {
       verify: "Enter Password",
     }[phase.mode];
     const messageByMode = {
-      setup: "Create a 6-digit Wallet PIN before approving protected actions.",
-      confirm: "Enter the same 6-digit PIN again to confirm.",
-      verify: "Enter your 6-digit PIN to approve this wallet action.",
+      setup: "โปรดตั้งรหัส PIN 6 หลักของคุณเพื่อความปลอดภัย",
+      confirm: "โปรดใส่รหัส PIN 6 หลักอีกครั้งเพื่อยืนยัน",
+      verify: "โปรดระบุรหัส PIN 6 หลักเพื่อเข้าถึงข้อมูลของคุณ",
     }[phase.mode];
 
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
-        <Header title="Security Access" onBack={() => setPhase({ tag: "detail" })} />
+        <WalletHeader title="Security Access" onBack={() => setPhase({ tag: "detail" })} />
         <View className="flex-1 items-center bg-[#eef1f4] px-5 pt-8">
           <MaterialCommunityIcons name="lock" size={48} color="#f2c230" />
           <Text className="mt-3 text-2xl font-semibold text-[#1a2a42]">{titleByMode}</Text>
@@ -196,11 +199,12 @@ export default function CredentialDetailScreen() {
 
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
-        <Header title="Wallet" onBack={() => setPhase({ tag: "detail" })} />
+        <WalletHeader onBack={() => setPhase({ tag: "detail" })} />
         <View className="flex-1 bg-[#eef1f4]">
           <ScrollView className="flex-1" contentContainerClassName="px-4 pb-8 pt-4">
             <CredentialDocumentDetailCard
               display={display}
+              holderProfile={display.imageKey === "id" || isTranscript ? holderProfile : undefined}
               onOpenQr={() => router.push("/(tabs)/qr")}
             />
 
@@ -262,7 +266,7 @@ export default function CredentialDetailScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
-      <Header title="Wallet" onBack={() => router.back()} />
+      <WalletHeader onBack={() => router.back()} />
 
       <View className="flex-1 bg-[#eef1f4]">
         <ScrollView
@@ -274,6 +278,7 @@ export default function CredentialDetailScreen() {
             <View>
               <CredentialDocumentDetailCard
                 display={display}
+                holderProfile={display.imageKey === "id" || isTranscript ? holderProfile : undefined}
                 onOpenQr={() => router.push("/(tabs)/qr")}
               />
               {isTranscript ? (
@@ -299,7 +304,7 @@ export default function CredentialDetailScreen() {
                         disabled
                       >
                         <MaterialCommunityIcons name="trash-can-outline" size={18} color="#6d7a8d" />
-                        <Text className="text-sm font-semibold text-[#6d7a8d]">Delete this document</Text>
+                        <Text className="text-sm font-semibold text-[#6d7a8d]">ลบเอกสารนี้</Text>
                       </Pressable>
                     </View>
                   ) : null}
@@ -308,7 +313,7 @@ export default function CredentialDetailScreen() {
             </View>
           ) : (
             <View className="rounded-[8px] bg-white px-5 py-6">
-              <Text className="text-center text-base font-semibold text-[#1a2a42]">
+              <Text className="text-center text-base font-semibold">
                 ไม่มีบัตรหรือเอกสารดิจิทัลใน Wallet
               </Text>
               {error ? (

@@ -10,6 +10,10 @@ The Thai citizen end-user. Receives Verifiable Credentials from Issuers via OID4
 
 The Holder's login identity in the Wallet Backend. Used for authentication, sessions, and wallet ownership. Distinct from any Issuer-side account or eligibility record.
 
+## Wallet PIN
+
+A local 6-digit secret set by the Holder after first successful Wallet Account login. Used only to approve protected in-app actions. It is not a cold-start app unlock, not a resume-from-background lock, and not an Issuer transaction code.
+
 ## Issuer
 
 A government or institutional authority that issues Verifiable Credentials. Initial issuers: ThaID for national ID, DLT for driving licence, and Bangkok University for transcript credentials. Issuers are identified by DIDs, initially `did:web`.
@@ -21,6 +25,10 @@ A party that requests and checks Verifiable Credentials from the Holder during a
 ## Verifiable Credential (VC)
 
 A signed, tamper-evident digital claim issued by an Issuer to the Holder. Stored in encrypted MMKV storage as a compact JWT VC or compact SD-JWT VC.
+
+## PID VC
+
+The foundational personal identification credential in the Wallet. In this app it is represented by the `ThaiNationalID` credential type and must exist before the Holder requests other credentials.
 
 ## VerifiableCredentialRecord
 
@@ -53,6 +61,14 @@ The development backend under `server/`. It mirrors the allowed Wallet Backend b
 ## Credential Offer URL
 
 A URL such as `openid-credential-offer://...` returned by the company backend, read from a QR code, or received via NFC. Consumed by `@sphereon/oid4vci-client` to run issuance.
+
+## Credential Configuration ID
+
+An OID4VCI 1.0 identifier for a credential configuration in Issuer metadata. A Credential Offer names one or more configuration IDs; the Wallet requests issuance using the matched configuration ID.
+
+## Credential Identifier
+
+An OID4VCI 1.0 issuer-issued identifier returned after token exchange for a specific credential instance. When present, it is used in the Credential Request instead of a Credential Configuration ID.
 
 ## Holder Confirmation
 

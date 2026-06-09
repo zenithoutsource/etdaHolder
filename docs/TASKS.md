@@ -55,6 +55,23 @@ Status: In progress.
 [x] Wire `VerifiableCredentialRecord.type` to `getCardSchema()`
 [x] Add credential detail route with configured fields and extra disclosed claims
 
+### 3.4 P1 PID VC Bootstrap Flow (ThaiNationalID mandatory first credential)
+
+Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operational"; it becomes legally "Valid" only after the Holder stores the PID VC (ThaiNationalID). All other credential requests are gated behind PID existence. No real PID Issuer exists yet — uses existing OID4VCI backend with credential type `idcard` mapped to `ThaiNationalID`.
+
+[x] Map credential type `idcard` → `ThaiNationalID` in `canonicalCredentialType()` (`src/services/vci/exchangeService.ts`)
+[x] Create `src/services/credentials/credentialGuard.ts` exporting `hasPidCredential(credentials: VerifiableCredentialRecord[]): boolean`
+[x] Wallet Home summary card (`app/(tabs)/index.tsx` `summaryCredential`) shows only ThaiNationalID — remove Transcript and `credentials[0]` fallback
+[x] Gate "ขอเอกสาร" taps on non-ThaiNationalID rows: when no PID stored, show `Alert.alert` "ต้องมี ThaID ก่อน" with "ขอ ThaID" → Scan action (`app/(tabs)/index.tsx`)
+[x] Gate QR scan: after `resolveOffer()` succeeds, block acquisition of non-ThaiNationalID offers when `!hasPidCredential()`, set `phase = { tag: 'error', message: 'กรุณาขอ ThaID ก่อน' }` (`app/(tabs)/scan.tsx`)
+
+#### P1 ID Card scan sub-flow (screens 2.1–2.4, `docs/ui-reference/P1IDCard/`)
+
+[x] **P1-2.2** After idcard QR resolves, show "ยืนยันตัวตนผ่าน ThaID" interstitial screen (ThaID logo, "ยืนยัน" button) before credential acquisition — represents LoA High identity verification redirect to ThaID app; simulate with a proceed button that continues the OID4VCI flow (`app/(tabs)/scan.tsx` new `thaIdVerify` phase or separate screen)
+[x] **P1-2.3** After ThaID verification returns, show Holder Confirmation matching `P1-2.3-ThaID_success_page.png`: issuer seal/logo (กรมการปกครอง), document name (บัตรประชาชน), receiving unit, green checkmark ribbon, "ยืนยัน" button — replaces generic preview for ThaiNationalID offers
+[ ] **P1-3** After tapping ยืนยัน on P1-2.3, show full credential data preview before final save — reference `P1-3-Receive_page.png` / `P1-2.5-idcard_vc.png`: ID CARD header band, holder photo, ชื่อ-นามสกุล (Thai + English romanised), เลขบัตรประจำตัวประชาชน (masked), วันเดือนปีเกิด, ศาสนา, ที่อยู่ตามทะเบียนบ้าน, "ยืนยัน" button that triggers `saveCredentialRecord()` and navigates to Wallet home
+[x] **P1-2.4** History Log screen lists issuance/presentation events; each row: issuer logo, issuer name, document type, date/time, status badge, action label — reference `P1-2.4-history_log_page.png` (10 records: ธนาคาร, โรงพยาบาล, 7-Eleven, Central/Driving License)
+
 ### 3.3 QR Scanner and NFC
 
 [x] Integrate QR scanner with `expo-camera`
@@ -189,3 +206,37 @@ Implementation after decisions:
 - PIN security keypad now renders the fingerprint scan action as the same styled keypad cell as number buttons, positioned in the lower-left slot beside `0` and backspace.
 - Fixed P6 Revoke reissue state: saving a newly scanned credential now clears any stale local `credential:lifecycle:<id>` marker for the same credential id, replaces older local records of the same credential type when the issuer returns a new credential id, and Wallet home ignores/removes lifecycle markers older than the saved credential `issuedAt`.
 - Fixed stale Credential Detail approval state after reissue: when Expo Router reuses the dynamic `/credential/[id]` screen for a newly scanned credential id, local detail state now resets from the prior `approve`/PIN/action-menu phase back to the normal document detail view.
+
+### Session 2026-06-09
+
+- Scan QR save flow now shows a post-save success screen matching `docs/ui-reference/scan_success.png`, populated from the actual saved `VerifiableCredentialRecord` through schema-driven credential display metadata.
+- Scan QR `Information to receive` preview now uses `assets/images/user_profile.png` for Transcript holder artwork.
+- Newly received credentials are marked in encrypted credential storage and Wallet Home renders the green `เอกสารใหม่` badge from `docs/ui-reference/after_scan_success_show_new_badge.png` until the Holder opens that document row.
+- Wallet Home status badges such as new-document and unavailable lifecycle labels now sit at the top-right of the document button; the request-document pill stays inline as a Scan action button.
+- Wallet PIN flow fixed: first successful native Wallet Account login without an existing Wallet PIN routes to PIN setup, while cold start and resume no longer invoke PIN setup or PIN lock. Wallet PIN remains scoped to protected in-app actions.
+- Wallet Home document buttons now keep `p-1` on the tappable content and move visible spacing to the outer document card with `m-2`, because the card background lives on the wrapper.
+- PIN setup now hides the biometric keypad button while leaving other PIN keypad screens unchanged.
+- Wallet Home request-document rows are temporarily disabled; missing-credential rows no longer navigate to Scan while keeping the existing request pill styling.
+- Blue Wallet screen headers now use one shared `WalletHeader` component across Wallet Home, My QR, Scan, History, and Credential Detail screens.
+- P1 PID VC bootstrap flow tasks added (section 3.4): `idcard` → `ThaiNationalID` type mapping, `hasPidCredential()` guard, Wallet Home summary card scoped to ThaiNationalID only, and scan/request gates blocking non-PID credentials until ThaiNationalID is stored.
+- P1 PID VC bootstrap implemented: `idcard` remains mapped to `ThaiNationalID`, credential guard helpers now cover PID existence plus PID offer/request checks, Wallet Home shows only ThaiNationalID in the summary card, request buttons require ThaID before non-PID documents, and Scan blocks non-PID QR acquisition until ThaID exists.
+- App-themed dialog system added through `AppDialogProvider`/`useAppDialog`, replacing native alerts for register success, forgot-PIN logout confirmation, and ThaID-first credential gating.
+- Fixed ID card QR compatibility: OID4VCI offers using format-suffixed configuration IDs such as `IdCard_dc+sd-jwt` now resolve against canonical issuer metadata keys like `idcard` instead of failing with `CredentialConfigurationNotSupported`.
+- Fixed OID4VCI 1.0 credential request shape: credential acquisition now sends the matched issuer metadata `credential_configuration_id` instead of relying on `format` alone or blindly echoing a format-suffixed offer alias, which is required for `IdCard_dc+sd-jwt` offers that resolve to canonical metadata keys such as `idcard`.
+- Fixed OID4VCI 1.0 credential identifier handling: if token exchange returns `authorization_details[].credential_identifiers`, the Wallet now sends `credential_identifier` in the Credential Request instead of `credential_configuration_id`.
+- Hardened ID card QR resolution for issuer metadata that uses a non-identical configuration key: `IdCard_dc+sd-jwt` offers can now match a compatible `dc+sd-jwt` metadata entry by `vct`, credential definition type, or display name, while still sending the issuer metadata key in the Credential Request.
+- Fixed the current ID card issuer shape: `IDCard_dc+sd-jwt` offers now resolve to metadata key `IDCardCredential_dc+sd-jwt` and request that exact issuer key.
+- Credential response parsing now accepts direct issuer response bodies and nested `credential_response` wrappers, not only Sphereon `successBody`, and reports response-shape failures separately from unsupported credential formats.
+- Credential endpoint failures now surface issuer `errorBody.error` / `error_description` in Scan instead of collapsing every request failure to a generic issuer-declined message.
+- Non-standard credential endpoint errors now include HTTP status and serialized `errorBody` when issuer response has no standard OAuth `error` field.
+- Credential Request client now builds from the matched issuer metadata configuration ID instead of the original Credential Offer, preventing `IDCard_dc+sd-jwt` from leaking into the request when the issuer metadata key is `IDCardCredential_dc+sd-jwt`.
+- Wallet Home ThaiNationalID summary card now matches `docs/ui-reference/idcard.png`: navy rounded ID card, portrait photo on the left, Holder name and ID card number on the right using actual credential claims.
+- Added a final PID QR resolver fallback for `IDCard_dc+sd-jwt`: when no key/content match exists but issuer metadata has exactly one compatible credential configuration for the offered format, the Wallet uses that metadata key instead of failing with `CredentialConfigurationNotSupported`.
+- Scan camera screen styling updated: the `Scan QR code` title sits in a full-width top translucent band without parent margin, the scan square stays outside translucent panels, the bottom translucent band fills the lower area/cancel placement without parent padding gaps, the scan box shadow/frame was removed, and white corner brackets are more rounded.
+- P1-2.2 ID Card scan sub-flow implemented: idcard/ThaiNationalID QR offers now show a simulated ThaID verification interstitial using `assets/images/thaid.png` before tx_code/acquisition continues.
+- P1-2.3 ID Card Holder Confirmation implemented: ThaiNationalID preview now uses a dedicated Department of Provincial Administration card with ThaID artwork, green check ribbon, document/receiving-unit labels, and a `ยืนยัน` save action instead of the generic `Information to receive` preview.
+- P1-2.4 History Log implemented: issuance/lifecycle events now carry issuer/document/action metadata and render in a unified P1-style History Log list with issuer icon, issuer name, document type, Thai date/time, status badge, and action label.
+- Transcript Credential Detail now follows `docs/ui-reference/transcript_document.png` with a transcript-specific pink document layout, `user_profile.png` portrait, Thai field labels, two-column academic details, red expiry text, and existing My QR action.
+- Transcript detail data mapping now exposes `issuedAt`/`expiresAt` from the stored credential display object, adds transcript aliases for birth/graduation/expiry fields, and uses credential `expiresAt` as the transcript expiry fallback when no expiry claim is disclosed.
+- Transcript detail now pulls holder Thai/English name and birth date from stored ThaiNationalID when the transcript credential omits them; name renders Thai on the first line and English on the second line instead of falling back to `Academic Transcript`.
+- ID Card Credential Detail now follows `docs/ui-reference/idcard_document.png` with an ID-card-specific blue card layout, portrait, Thai/English holder name, national ID, birth date, address, religion, issue date, expiry date, and existing My QR action.

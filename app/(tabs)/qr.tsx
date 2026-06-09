@@ -2,12 +2,12 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { WalletHeader } from '../../src/components/WalletHeader';
+
 export default function MyQrScreen() {
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
-      <View className="bg-wallet-navy px-6 pb-5 pt-1.5">
-        <Text className="text-center text-2xl font-semibold tracking-wide text-white">Wallet</Text>
-      </View>
+      <WalletHeader />
 
       <View className="flex-1 items-center bg-wallet-bg px-6 pt-12">
         <Text className="text-center text-[26px] font-bold leading-9 text-[#1a2a42]">My ID Card{'\n'}QR Code</Text>

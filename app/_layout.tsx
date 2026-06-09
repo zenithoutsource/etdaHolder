@@ -3,13 +3,15 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import '../global.css';
 import '@/src/styles/nativewindInterop';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AppDialogProvider } from '@/src/components/AppDialog';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
+import { readStartupRoute } from '@/src/services/auth/walletPinNavigation';
 import { useAuthStore } from '@/src/store/authStore';
 
 export const unstable_settings = {
@@ -49,7 +51,8 @@ export default function RootLayout() {
   const loadSession = useAuthStore((s) => s.loadSession);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const router = useRouter();
-  const isTabRoute = segments[0] === '(tabs)';
+  const currentSegment = segments[0];
+  const isTabRoute = currentSegment === '(tabs)';
 
   useEffect(() => {
     let isMounted = true;
@@ -107,24 +110,23 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (startupState.status !== 'ready') return;
-    if (!isAuthenticated) {
-      router.replace('/login');
-    }
-  }, [startupState.status, isAuthenticated, router]);
+    const route = readStartupRoute({ isAuthenticated, currentSegment });
+    if (route) router.replace(route);
+  }, [startupState.status, isAuthenticated, router, currentSegment]);
 
   if (startupState.status !== 'ready') {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <View style={styles.overlayScreen}>
+        <View className="absolute inset-0 flex-1 items-center justify-center gap-3 bg-white p-6">
           {startupState.status === 'loading' ? (
             <>
               <ActivityIndicator color="#002887" />
-              <Text style={styles.loadingText}>Starting wallet...</Text>
+              <Text className="text-sm text-[#6b7280]">Starting wallet...</Text>
             </>
           ) : (
             <>
-              <Text style={styles.errorTitle}>Wallet startup failed</Text>
-              <Text style={styles.errorMessage}>{startupState.message}</Text>
+              <Text className="text-center text-lg font-semibold">Wallet startup failed</Text>
+              <Text className="text-center text-[#6b7280]">{startupState.message}</Text>
             </>
           )}
         </View>
@@ -134,38 +136,17 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="register" options={{ title: 'Create Account' }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style={isTabRoute ? 'light' : 'dark'} backgroundColor={isTabRoute ? '#002887' : '#f4f6fa'} />
+      <AppDialogProvider>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="register" options={{ title: 'Create Account' }} />
+          <Stack.Screen name="pin-setup" options={{ headerShown: false }} />
+          <Stack.Screen name="pin-lock" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style={isTabRoute ? 'light' : 'dark'} backgroundColor={isTabRoute ? '#002887' : '#f4f6fa'} />
+      </AppDialogProvider>
     </ThemeProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  overlayScreen: {
-    ...StyleSheet.absoluteFillObject,
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 24,
-    backgroundColor: '#ffffff',
-  },
-  loadingText: {
-    color: '#6b7280',
-    fontSize: 14,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  errorMessage: {
-    color: '#6b7280',
-    textAlign: 'center',
-  },
-});

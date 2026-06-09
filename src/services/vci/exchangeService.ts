@@ -11,6 +11,7 @@ import type {
   IssuerMetadataV1_0_15,
   MetadataDisplay,
   OID4VCICredentialFormat,
+  OpenId4VCIVersion,
   TxCode,
 } from '@sphereon/oid4vci-common'
 
@@ -41,6 +42,7 @@ export type CredentialDisplay = {
 
 export type OfferedCredentialConfiguration = {
   id: string
+  requestId: string
   format: string
   display?: CredentialDisplay
   rawConfiguration: CredentialConfigurationSupportedV1_0_15
@@ -88,12 +90,14 @@ export type AcquireAccessTokenInput = {
 export type AcquireAccessTokenResult = {
   accessToken: string
   cNonce: string
+  credentialIdentifier?: string
 }
 
 export type RequestCredentialInput = {
   resolvedOffer: ResolvedCredentialOffer
   accessToken: string
   proof: string
+  credentialIdentifier?: string
 }
 
 export type ClaimCredentialDependencies = {
@@ -212,7 +216,12 @@ export async function acquireCredentialRecord(
 
   const token = await dependencies.acquireAccessToken({ resolvedOffer, tx_code: options.tx_code })
   const proof = await dependencies.signProof(token.cNonce, resolvedOffer.issuer)
-  const rawVc = await dependencies.requestCredential({ resolvedOffer, accessToken: token.accessToken, proof })
+  const rawVc = await dependencies.requestCredential({
+    resolvedOffer,
+    accessToken: token.accessToken,
+    proof,
+    credentialIdentifier: token.credentialIdentifier,
+  })
   return normalizeCredentialRecord(rawVc, resolvedOffer)
 }
 
@@ -328,19 +337,157 @@ function resolveCredentialConfigurations(
   }
 
   return offeredIds.map((id) => {
-    const rawConfiguration = issuerMetadata.credential_configurations_supported[id]
+    const matchedConfiguration = findCredentialConfiguration(id, issuerMetadata.credential_configurations_supported)
 
-    if (!rawConfiguration) {
+    if (!matchedConfiguration) {
       throw new Error(`CredentialConfigurationNotSupported: ${id}`)
     }
 
     return {
       id,
-      format: rawConfiguration.format,
-      display: toCredentialDisplay(rawConfiguration.display),
-      rawConfiguration,
+      requestId: matchedConfiguration.id,
+      format: matchedConfiguration.rawConfiguration.format,
+      display: toCredentialDisplay(matchedConfiguration.rawConfiguration.display),
+      rawConfiguration: matchedConfiguration.rawConfiguration,
     }
   })
+}
+
+type MatchedCredentialConfiguration = {
+  id: string
+  rawConfiguration: CredentialConfigurationSupportedV1_0_15
+}
+
+function findCredentialConfiguration(
+  id: string,
+  supported: Record<string, CredentialConfigurationSupportedV1_0_15>,
+): MatchedCredentialConfiguration | undefined {
+  const direct = supported[id]
+  if (direct) return { id, rawConfiguration: direct }
+
+  const normalizedId = normalizeCredentialConfigurationId(id)
+  const matchedKey = Object.keys(supported).find((key) => normalizeCredentialConfigurationId(key) === normalizedId)
+  if (matchedKey) return { id: matchedKey, rawConfiguration: supported[matchedKey] }
+
+  const baseId = stripCredentialConfigurationFormatSuffix(normalizedId)
+  const baseMatchedKey = Object.keys(supported).find((key) => normalizeCredentialConfigurationId(key) === baseId)
+  if (baseMatchedKey) return { id: baseMatchedKey, rawConfiguration: supported[baseMatchedKey] }
+
+  const containedBaseMatchedKey = Object.keys(supported).find((key) => {
+    const supportedBaseId = stripCredentialConfigurationFormatSuffix(normalizeCredentialConfigurationId(key))
+    return supportedBaseId.includes(baseId) || baseId.includes(supportedBaseId)
+  })
+  if (containedBaseMatchedKey) return { id: containedBaseMatchedKey, rawConfiguration: supported[containedBaseMatchedKey] }
+
+  const offeredFormat = readCredentialConfigurationFormatSuffix(normalizedId)
+  const semanticMatchedKey = Object.keys(supported).find((key) =>
+    isSemanticCredentialConfigurationMatch(id, offeredFormat, key, supported[key]),
+  )
+  if (semanticMatchedKey) return { id: semanticMatchedKey, rawConfiguration: supported[semanticMatchedKey] }
+
+  const compatibleFormatKeys = Object.keys(supported).filter((key) =>
+    isCompatibleCredentialConfigurationFormat(offeredFormat, supported[key]),
+  )
+  if (isPidCredentialConfigurationId(id) && compatibleFormatKeys.length === 1) {
+    const fallbackKey = compatibleFormatKeys[0]
+    return { id: fallbackKey, rawConfiguration: supported[fallbackKey] }
+  }
+
+  return undefined
+}
+
+function normalizeCredentialConfigurationId(id: string): string {
+  return id.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function stripCredentialConfigurationFormatSuffix(normalizedId: string): string {
+  return normalizedId
+    .replace(/dcsdjwt$/, '')
+    .replace(/vcsdjwt$/, '')
+    .replace(/jwtvcjson$/, '')
+    .replace(/jwtvc$/, '')
+}
+
+function readCredentialConfigurationFormatSuffix(normalizedId: string): string | undefined {
+  if (normalizedId.endsWith('dcsdjwt')) return 'dc+sd-jwt'
+  if (normalizedId.endsWith('vcsdjwt')) return 'vc+sd-jwt'
+  if (normalizedId.endsWith('jwtvcjson')) return 'jwt_vc_json'
+  if (normalizedId.endsWith('jwtvc')) return 'jwt_vc'
+  return undefined
+}
+
+function isSemanticCredentialConfigurationMatch(
+  offeredId: string,
+  offeredFormat: string | undefined,
+  configurationId: string,
+  configuration: CredentialConfigurationSupportedV1_0_15,
+): boolean {
+  if (!isCompatibleCredentialConfigurationFormat(offeredFormat, configuration)) return false
+
+  const offeredBaseId = stripCredentialConfigurationFormatSuffix(normalizeCredentialConfigurationId(offeredId))
+  const searchableValues = [
+    stripCredentialConfigurationFormatSuffix(normalizeCredentialConfigurationId(configurationId)),
+    readString(configuration.vct),
+    ...readTypeStrings(readRecord(configuration)?.types),
+    ...readTypeStrings(readRecord(configuration.credential_definition)?.type),
+    ...readDisplayNames(configuration.display),
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .map(normalizeCredentialConfigurationId)
+
+  return searchableValues.some((value) => value.includes(offeredBaseId) || offeredBaseId.includes(value))
+}
+
+function isCompatibleCredentialConfigurationFormat(
+  offeredFormat: string | undefined,
+  configuration: CredentialConfigurationSupportedV1_0_15,
+): boolean {
+  return !offeredFormat || configuration.format === offeredFormat
+}
+
+function isPidCredentialConfigurationId(id: string): boolean {
+  const normalized = normalizeCredentialConfigurationId(id)
+  const baseId = stripCredentialConfigurationFormatSuffix(normalized)
+  return baseId === 'idcard' || baseId === 'thainationalid' || baseId.includes('idcard')
+}
+
+function readTypeStrings(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string')
+  const single = readString(value)
+  return single ? [single] : []
+}
+
+function readDisplayNames(displays: MetadataDisplay[] | CredentialsSupportedDisplay[] | undefined): string[] {
+  return displays
+    ?.map((display) => display.name)
+    .filter((name): name is string => typeof name === 'string' && name.length > 0) ?? []
+}
+
+function readCredentialIdentifierFromTokenResponse(
+  response: unknown,
+  configuration: OfferedCredentialConfiguration | undefined,
+): string | undefined {
+  const authorizationDetails = readRecord(response)?.authorization_details
+  if (!Array.isArray(authorizationDetails)) return undefined
+
+  const openIdCredentialDetails = authorizationDetails
+    .map(readRecord)
+    .filter((detail): detail is Record<string, unknown> => detail?.type === 'openid_credential')
+
+  const matchedDetail =
+    openIdCredentialDetails.find((detail) =>
+      [configuration?.requestId, configuration?.id]
+        .filter((id): id is string => typeof id === 'string')
+        .some((id) => detail.credential_configuration_id === id),
+    ) ?? openIdCredentialDetails[0]
+
+  const credentialIdentifier = readString(matchedDetail?.credential_identifier)
+  if (credentialIdentifier) return credentialIdentifier
+
+  const credentialIdentifiers = matchedDetail?.credential_identifiers
+  if (!Array.isArray(credentialIdentifiers)) return undefined
+
+  return credentialIdentifiers.find((item): item is string => typeof item === 'string' && item.length > 0)
 }
 
 function toCredentialDisplay(
@@ -412,12 +559,13 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
         return {
           accessToken: response.access_token,
           cNonce: response.c_nonce,
+          credentialIdentifier: readCredentialIdentifierFromTokenResponse(response, resolvedOffer.credentialConfigurations[0]),
         }
       } catch (error) {
         throw new Error(`CredentialTokenExchangeFailed: ${toErrorMessage(error)}`)
       }
     },
-    requestCredential: async ({ resolvedOffer, accessToken, proof }) => {
+    requestCredential: async ({ resolvedOffer, accessToken, proof, credentialIdentifier }) => {
       try {
         const credentialConfiguration = resolvedOffer.credentialConfigurations[0]
 
@@ -425,19 +573,37 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
           throw new Error('CredentialFormatUnsupported: JWT VC or SD-JWT VC response is required')
         }
 
-        const credentialClient = CredentialRequestClientBuilder.fromCredentialOffer({
-          credentialOffer: resolvedOffer.credentialOffer,
+        const credentialClientBuilder = CredentialRequestClientBuilder.fromCredentialIssuer({
+          credentialIssuer: resolvedOffer.issuer,
+          version: resolvedOffer.version as OpenId4VCIVersion,
+          ...(credentialIdentifier
+            ? { credentialIdentifier }
+            : { credentialConfigurationId: credentialConfiguration.requestId }),
         })
           .withCredentialEndpoint(resolvedOffer.issuerMetadata.credential_endpoint)
           .withToken(accessToken)
-          .build()
-        const response = await credentialClient.acquireCredentialsUsingProof({
+        const credentialClient = credentialClientBuilder.build()
+        const credentialRequest = await credentialClient.createCredentialRequest({
           proofInput: { proof_type: 'jwt', jwt: proof },
           format: credentialConfiguration.format as OID4VCICredentialFormat,
+          ...(credentialIdentifier
+            ? { credentialIdentifier }
+            : { credentialConfigurationId: credentialConfiguration.requestId }),
+          version: resolvedOffer.version as OpenId4VCIVersion,
         })
+        const response = await credentialClient.acquireCredentialsUsingRequest(
+          credentialRequest,
+          credentialConfiguration.format as OID4VCICredentialFormat,
+        )
+        assertCredentialEndpointSuccess(response)
         return readCompactCredentialFromResponse(response)
       } catch (error) {
-        if (error instanceof Error && error.message.startsWith('CredentialFormatUnsupported')) {
+        if (
+          error instanceof Error &&
+          (error.message.startsWith('CredentialFormatUnsupported') ||
+            error.message.startsWith('CredentialResponseUnsupported') ||
+            error.message.startsWith('CredentialRequestFailed'))
+        ) {
           throw error
         }
 
@@ -449,28 +615,75 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
   }
 }
 
+function assertCredentialEndpointSuccess(response: unknown): void {
+  const responseRecord = readRecord(response)
+  const errorBody = readRecord(responseRecord?.errorBody)
+  if (!errorBody) return
+
+  const error = readString(errorBody.error)
+  const description = readString(errorBody.error_description)
+  const status = readNumber(readRecord(responseRecord?.origResponse)?.status)
+  const statusMessage = status ? `HTTP ${status}: ` : ''
+
+  if (error) {
+    throw new Error(`CredentialRequestFailed: ${statusMessage}${description ? `${error} - ${description}` : error}`)
+  }
+
+  throw new Error(`CredentialRequestFailed: ${statusMessage}${describeCredentialEndpointError(errorBody)}`)
+}
+
+function describeCredentialEndpointError(errorBody: Record<string, unknown>): string {
+  const compact = safeJsonStringify(errorBody)
+  return compact ? `unknown_error ${compact}` : 'unknown_error'
+}
+
+function safeJsonStringify(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return undefined
+  }
+}
+
 export function readCompactCredentialFromResponse(response: unknown): string {
-  const successBody = readRecord(readRecord(response)?.successBody)
-  const topLevelCredential = readString(successBody?.credential)
+  const body = readCredentialResponseBody(response)
+  const credential = readCompactCredentialValue(body)
 
-  if (topLevelCredential) {
-    return topLevelCredential
-  }
+  if (credential) return credential
 
-  const credentials = successBody?.credentials
-  if (Array.isArray(credentials)) {
-    for (const item of credentials) {
-      const directCredential = readString(item)
-      if (directCredential) return directCredential
+  throw new Error(`CredentialResponseUnsupported: compact credential response is required (${describeCredentialResponseShape(body)})`)
+}
 
-      const nestedCredential = readString(readRecord(item)?.credential)
-      if (nestedCredential) return nestedCredential
+function readCredentialResponseBody(response: unknown): Record<string, unknown> | undefined {
+  const responseRecord = readRecord(response)
+  return readRecord(responseRecord?.successBody) ?? responseRecord
+}
+
+function readCompactCredentialValue(value: unknown): string | undefined {
+  const direct = readString(value)
+  if (direct && isCompactCredentialString(direct)) return direct
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const credential = readCompactCredentialValue(item)
+      if (credential) return credential
     }
+    return undefined
   }
 
-  throw new Error(
-    `CredentialFormatUnsupported: compact credential response is required (${describeCredentialResponseShape(successBody)})`,
+  const record = readRecord(value)
+  if (!record) return undefined
+
+  return (
+    readCompactCredentialValue(record.credential) ??
+    readCompactCredentialValue(record.credentials) ??
+    readCompactCredentialValue(record.credential_response)
   )
+}
+
+function isCompactCredentialString(value: string): boolean {
+  const issuerJwt = value.split('~')[0] ?? value
+  return issuerJwt.split('.').length >= 3
 }
 
 function describeCredentialResponseShape(successBody: Record<string, unknown> | undefined): string {
@@ -640,6 +853,8 @@ function canonicalCredentialType(type: string): string {
   if (normalized.includes('driving') || normalized.includes('licence') || normalized.includes('license')) {
     return 'DLTDrivingLicence'
   }
+
+  if (normalized === 'idcard' || normalized.includes('idcard')) return 'ThaiNationalID'
 
   if (normalized.includes('thai') || normalized.includes('nationalid') || normalized.includes('national_id')) {
     return 'ThaiNationalID'

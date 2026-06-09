@@ -36,8 +36,12 @@ const SCHEMAS: CardSchemaConfig[] = [
     displayFields: [
       { key: 'givenName', label: 'Given Name' },
       { key: 'familyName', label: 'Family Name' },
-      { key: 'birthDate', label: 'Date of Birth' },
-      { key: 'nationalId', label: 'ID Number' },
+      { key: 'birthDate', label: 'Date of Birth', aliases: ['birthdate', 'birth_date', 'dateOfBirth', 'date_of_birth', 'dob'] },
+      { key: 'nationalId', label: 'ID Number', aliases: ['id_number', 'idNumber', 'id_number_masked'] },
+      { key: 'religion', label: 'Religion' },
+      { key: 'address', label: 'Address', aliases: ['registeredAddress', 'registered_address'] },
+      { key: 'issuanceDate', label: 'Issue Date', aliases: ['issued', 'issueDate', 'issue_date'] },
+      { key: 'expiryDate', label: 'Expiry Date', aliases: ['expiry_date', 'expirationDate', 'expiration_date', 'validUntil', 'valid_until'] },
     ],
     summaryFields: [
       { key: 'nationalId', label: 'ID card', aliases: ['national_id', 'idNumber', 'id_number'] },
@@ -74,10 +78,13 @@ const SCHEMAS: CardSchemaConfig[] = [
     displayFields: [
       { key: 'givenName', label: 'Given Name' },
       { key: 'familyName', label: 'Family Name' },
+      { key: 'birthDate', label: 'Date of Birth', aliases: ['birth_date', 'dateOfBirth', 'date_of_birth', 'dob'] },
       { key: 'studentId', label: 'Student ID', aliases: ['student_id', 'studentID', 'student_number', 'studentNumber'] },
       { key: 'degree', label: 'Degree', aliases: ['degreeName', 'degree_name', 'program', 'programName'] },
       { key: 'faculty', label: 'Faculty', aliases: ['facultyName', 'faculty_name', 'school', 'schoolName'] },
       { key: 'gpa', label: 'GPA', aliases: ['GPA', 'gradePointAverage', 'grade_point_average'] },
+      { key: 'graduationYear', label: 'Graduation Year', aliases: ['graduation_year', 'gradYear', 'grad_year', 'graduationDate', 'graduation_date'] },
+      { key: 'expiryDate', label: 'Expiry Date', aliases: ['expiry_date', 'expirationDate', 'expiration_date', 'validUntil', 'valid_until'] },
     ],
     summaryFields: [
       { key: 'studentId', label: 'Student ID', aliases: ['student_id', 'studentID', 'student_number', 'studentNumber'] },

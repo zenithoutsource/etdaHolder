@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   Image,
   Pressable,
@@ -11,9 +11,19 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useAppDialog } from "../../src/components/AppDialog";
+import { WalletHeader } from "../../src/components/WalletHeader";
 import { useStoredCredentials } from "../../src/hooks/useStoredCredentials";
+import {
+  clearNewCredentialBadge,
+  readNewCredentialBadgeIds,
+} from "../../src/services/credentials/credentialBadges";
+import { canRequestCredentialType } from "../../src/services/credentials/credentialGuard";
 import { readCredentialLifecycleStatuses } from "../../src/services/credentials/credentialLifecycle";
-import { readCredentialSummaryDisplay } from "../../src/services/credentials/credentialDisplay";
+import {
+  readCredentialHolderProfile,
+  readCredentialSummaryDisplay,
+} from "../../src/services/credentials/credentialDisplay";
 import type { VerifiableCredentialRecord } from "../../src/services/vci/exchangeService";
 
 type DocumentMenuItem = {
@@ -67,11 +77,14 @@ function CredentialSummaryCard({
   record: VerifiableCredentialRecord;
 }) {
   const display = readCredentialSummaryDisplay(record);
-  const [primaryRow, ...secondaryRows] = display.rows;
+  const profile = readCredentialHolderProfile(record);
+  const idNumber = display.rows.find((row) => row.key === "nationalId")?.value;
+  const holderName =
+    profile.thaiName ?? profile.englishName ?? display.primaryText;
 
   return (
     <View
-      className="h-[181px] justify-between overflow-hidden rounded-[18px] bg-wallet-card p-5"
+      className="h-[202px] justify-center overflow-hidden rounded-[18px] bg-[#003064] px-6"
       style={{
         elevation: 5,
         shadowColor: "#0f2849",
@@ -80,38 +93,27 @@ function CredentialSummaryCard({
         shadowRadius: 10,
       }}
     >
-      <View className="flex-row items-start justify-between gap-3">
-        <View className="min-w-0 flex-1">
-          <Text className="text-sm font-medium text-white/70">
-            {display.title}
-          </Text>
-          <Text className="mt-2 text-xl font-semibold leading-6 text-white">
-            {display.primaryText}
-          </Text>
-          {primaryRow ? (
-            <Text className="mt-1 text-[13px] text-white/70">
-              {primaryRow.label} : {primaryRow.value}
-            </Text>
-          ) : null}
-        </View>
+      <View className="flex-row items-center gap-6">
         <Image
           source={credentialImages[display.imageKey]}
-          style={{ width: 54, height: 54 }}
-          resizeMode="contain"
+          style={{ width: 110, height: 140, borderRadius: 30 }}
+          resizeMode="cover"
         />
+        <View className="min-w-0 flex-1">
+          <Text className="text-[12px] leading-6 text-white" numberOfLines={2}>
+            {holderName}
+          </Text>
+          <Text
+            className="mt-2 text-[12px] leading-5 text-white"
+            numberOfLines={2}
+          >
+            ID Card : {idNumber}
+          </Text>
+        </View>
       </View>
-
-      <View>
-        <Text className="text-[13px] font-medium text-white">
-          {secondaryRows[0]?.value ?? display.documentTitle}
-        </Text>
-        <Text className="mt-1 text-[12px] text-white/65">
-          {secondaryRows
-            .slice(1)
-            .map((row) => `${row.label} ${row.value}`)
+      {/*
             .join(" • ") || display.issuerName}
-        </Text>
-      </View>
+      */}
     </View>
   );
 }
@@ -128,7 +130,7 @@ function EmptyCredentialCard() {
         shadowRadius: 10,
       }}
     >
-      <Text className="text-center text-base font-semibold leading-6 text-[#1a2a42]">
+      <Text className="text-center text-base font-semibold leading-6 text-gray-400">
         ไม่มีบัตรหรือเอกสารดิจิทัลใน Wallet
       </Text>
     </View>
@@ -138,24 +140,25 @@ function EmptyCredentialCard() {
 export default function WalletHomeScreen() {
   const { credentials, error } = useStoredCredentials();
   const router = useRouter();
+  const { showDialog } = useAppDialog();
   const [expandedCredentialId, setExpandedCredentialId] = useState<
     string | null
   >(null);
+  const [newCredentialIds, setNewCredentialIds] = useState<string[]>([]);
   const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
-  const summaryCredential =
-    credentials.find((record) => record.type === "ThaiNationalID") ??
-    credentials.find(
-      (record) => record.type === "BangkokUniversityTranscript",
-    ) ??
-    credentials[0];
+  const summaryCredential = credentials.find(
+    (record) => record.type === "ThaiNationalID",
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      setNewCredentialIds(readNewCredentialBadgeIds());
+    }, []),
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
-      <View className="bg-wallet-navy px-6 pb-5 pt-1.5">
-        <Text className="text-center text-2xl font-semibold tracking-wide text-white">
-          Wallet
-        </Text>
-      </View>
+      <WalletHeader />
 
       <View className="flex-1 bg-wallet-bg">
         <ScrollView
@@ -185,6 +188,9 @@ export default function WalletHomeScreen() {
               const lifecycleStatus = credential
                 ? lifecycleStatuses[credential.id]
                 : undefined;
+              const isNewCredential = credential
+                ? newCredentialIds.includes(credential.id)
+                : false;
               const isExpanded =
                 credential?.id === expandedCredentialId &&
                 Boolean(lifecycleStatus);
@@ -199,12 +205,17 @@ export default function WalletHomeScreen() {
                         ? "bg-[#c00000]"
                         : "bg-[#7a7a7a]",
                   }
-                : undefined;
+                : isNewCredential
+                  ? {
+                      label: "เอกสารใหม่",
+                      className: "bg-[#18a05d]",
+                    }
+                  : undefined;
 
               return (
                 <View
                   key={item.label}
-                  className={`rounded-[14px] ${isExpanded ? "bg-[#e2e2e2] px-[18px] pb-4 pt-4" : "bg-white px-[18px] py-4"}`}
+                  className={`relative mt-1 rounded-[14px] ${isExpanded ? "bg-[#e2e2e2] px-[18px] pb-4 pt-4" : "bg-white px-[18px] py-4"}`}
                   style={{
                     elevation: 2,
                     shadowColor: "#0f2849",
@@ -213,10 +224,48 @@ export default function WalletHomeScreen() {
                     shadowRadius: 12,
                   }}
                 >
+                  {badge ? (
+                    <View
+                      className={`absolute -top-2 right-4 z-10 rounded-full px-3 py-1 ${badge.className}`}
+                    >
+                      <Text className="text-[11px] font-semibold text-white">
+                        {badge.label}
+                      </Text>
+                    </View>
+                  ) : null}
                   <Pressable
-                    className="flex-row items-center gap-3.5"
+                    className="flex-row items-center gap-3.5 pt-3 pb-3 pr-4"
                     onPress={() => {
-                      if (!credential) return;
+                      if (!credential) {
+                        if (
+                          canRequestCredentialType(
+                            item.credentialType,
+                            credentials,
+                          )
+                        ) {
+                          router.push("/(tabs)/scan");
+                          return;
+                        }
+                        showDialog({
+                          title: "ต้องมี ThaID ก่อน",
+                          message: "กรุณาขอ ThaID ก่อนขอเอกสารอื่น",
+                          icon: "warning",
+                          actions: [
+                            { label: "ยกเลิก", variant: "secondary" },
+                            {
+                              label: "ขอ ThaID",
+                              onPress: () => router.push("/(tabs)/scan"),
+                            },
+                          ],
+                        });
+                        return;
+                      }
+                      if (isNewCredential) {
+                        clearNewCredentialBadge(credential.id);
+                        setNewCredentialIds((current) =>
+                          current.filter((id) => id !== credential.id),
+                        );
+                      }
                       if (lifecycleStatus) {
                         setExpandedCredentialId((current) =>
                           current === credential.id ? null : credential.id,
@@ -239,32 +288,19 @@ export default function WalletHomeScreen() {
                     <Text className="min-w-0 flex-1 text-base font-medium text-[#1a2a42]">
                       {item.label}
                     </Text>
-                    {credential ? (
-                      <>
-                        {badge ? (
-                          <View
-                            className={`rounded-full px-3 py-1 ${badge.className}`}
-                          >
-                            <Text className="text-[11px] font-semibold text-white">
-                              {badge.label}
-                            </Text>
-                          </View>
-                        ) : null}
-                        {!isExpanded ? (
-                          <MaterialCommunityIcons
-                            name="chevron-right"
-                            size={24}
-                            color="#6d7a8d"
-                          />
-                        ) : null}
-                      </>
-                    ) : (
+                    {credential && !isExpanded ? (
+                      <MaterialCommunityIcons
+                        name="chevron-right"
+                        size={24}
+                        color="#6d7a8d"
+                      />
+                    ) : !credential ? (
                       <View className="rounded-full bg-wallet-navy px-3.5 py-1.5">
                         <Text className="text-[13px] font-medium text-white">
                           ขอเอกสาร
                         </Text>
                       </View>
-                    )}
+                    ) : null}
                   </Pressable>
 
                   {isExpanded ? (

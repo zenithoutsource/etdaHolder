@@ -19,6 +19,7 @@ function makeResolvedOffer(overrides: Partial<ResolvedCredentialOffer> = {}): Re
     credentialConfigurations: [
       {
         id: 'BangkokUniversityTranscript',
+        requestId: 'BangkokUniversityTranscript',
         format: 'dc+sd-jwt',
         display: { name: 'Academic Transcript' },
         rawConfiguration: ({
@@ -56,6 +57,7 @@ test('readOfferConfirmationPreview uses English fallback copy for unknown offer 
       credentialConfigurations: [
         {
           id: 'UnknownCredential',
+          requestId: 'UnknownCredential',
           format: 'jwt_vc_json',
           rawConfiguration: ({
             format: 'jwt_vc_json',
@@ -76,6 +78,7 @@ test('readOfferConfirmationPreview falls back to claim keys for placeholder disp
       credentialConfigurations: [
         {
           id: 'BootCampCredential_dc+sd-jwt',
+          requestId: 'BootCampCredential_dc+sd-jwt',
           format: 'dc+sd-jwt',
           display: { name: 'BootCampCredential' },
           rawConfiguration: ({

@@ -47,6 +47,26 @@ describe('readCompactCredentialFromResponse', () => {
       }),
     ).toBe('issuer.jwt.sd-jwt~disclosure~')
   })
+
+  test('reads direct issuer credential response body without successBody wrapper', () => {
+    expect(
+      readCompactCredentialFromResponse({
+        credentials: [{ credential: 'issuer.jwt.sd-jwt~disclosure~' }],
+      }),
+    ).toBe('issuer.jwt.sd-jwt~disclosure~')
+  })
+
+  test('reads nested credential_response wrapper', () => {
+    expect(
+      readCompactCredentialFromResponse({
+        successBody: {
+          credential_response: {
+            credentials: [{ credential: 'issuer.jwt.sd-jwt~disclosure~' }],
+          },
+        },
+      }),
+    ).toBe('issuer.jwt.sd-jwt~disclosure~')
+  })
 })
 
 const offerUri =
@@ -55,6 +75,10 @@ const missingConfigurationIdsOfferUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
 const transcriptOfferUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22TranscriptCredential_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
+const idCardSdJwtOfferUri =
+  'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22IdCard_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
+const uppercaseIdCardSdJwtOfferUri =
+  'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22IDCard_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
 
 async function expectErrorPrefix(operation: () => Promise<unknown>, prefix: string): Promise<void> {
   try {
@@ -88,7 +112,8 @@ async function contract(): Promise<ResolvedCredentialOffer> {
       credential_endpoint: 'https://issuer.example.com/credential',
       credential_configurations_supported: {
         ThaiNationalID: {
-          format: 'jwt_vc_json',
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/ThaiNationalID',
           credential_definition: { type: ['VerifiableCredential', 'ThaiNationalID'] },
           display: [{ name: 'Thai National ID', locale: 'en' }],
         },
@@ -109,7 +134,8 @@ async function missingCredentialConfigurationIdsContract(): Promise<void> {
           credential_endpoint: 'https://issuer.example.com/credential',
           credential_configurations_supported: {
             ThaiNationalID: {
-              format: 'jwt_vc_json',
+              format: 'dc+sd-jwt',
+              vct: 'https://issuer.example.com/vct/ThaiNationalID',
               credential_definition: { type: ['VerifiableCredential', 'ThaiNationalID'] },
             },
           },
@@ -447,6 +473,116 @@ async function transcriptSdJwtContract(): Promise<VerifiableCredentialRecord> {
 }
 
 void transcriptSdJwtContract()
+
+test('resolveOffer maps format-suffixed IdCard configuration ids to idcard metadata', async () => {
+  const resolved = await resolveOffer(idCardSdJwtOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        idcard: {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/idcard',
+          claims: [],
+          display: [{ name: 'Thai National ID', locale: 'en' }],
+        },
+      },
+    }),
+  })
+
+  expect(resolved.credentialConfigurations[0]).toEqual(
+    expect.objectContaining({
+      id: 'IdCard_dc+sd-jwt',
+      requestId: 'idcard',
+      format: 'dc+sd-jwt',
+      display: expect.objectContaining({ name: 'Thai National ID' }),
+    }),
+  )
+})
+
+test('resolveOffer maps format-suffixed IdCard offers by metadata vct when configuration keys differ', async () => {
+  const resolved = await resolveOffer(idCardSdJwtOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        ThaiPidCredential: {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/IdCard',
+          claims: [],
+          display: [{ name: 'Thai National ID', locale: 'en' }],
+        },
+      },
+    }),
+  })
+
+  expect(resolved.credentialConfigurations[0]).toEqual(
+    expect.objectContaining({
+      id: 'IdCard_dc+sd-jwt',
+      requestId: 'ThaiPidCredential',
+      format: 'dc+sd-jwt',
+      display: expect.objectContaining({ name: 'Thai National ID' }),
+    }),
+  )
+})
+
+test('resolveOffer maps IDCard offer to IDCardCredential metadata key', async () => {
+  const resolved = await resolveOffer(idCardSdJwtOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        'IDCardCredential_dc+sd-jwt': {
+          vct: 'http://192.100.10.46/credentials/IDCard',
+          format: 'dc+sd-jwt',
+          cryptographic_binding_methods_supported: ['did'],
+          cryptographic_suites_supported: ['EdDSA', 'ES256', 'ES256K', 'RSA'],
+          display: [{ name: 'IDCard', locale: 'en' }],
+          claims: {
+            id_number: {
+              mandatory: true,
+              sd: true,
+              display: [{ name: 'ID Number' }],
+            },
+          } as never,
+        },
+      },
+    }),
+  })
+
+  expect(resolved.credentialConfigurations[0]).toEqual(
+    expect.objectContaining({
+      id: 'IdCard_dc+sd-jwt',
+      requestId: 'IDCardCredential_dc+sd-jwt',
+      format: 'dc+sd-jwt',
+      display: expect.objectContaining({ name: 'IDCard' }),
+    }),
+  )
+})
+
+test('resolveOffer maps uppercase IDCard offers to the only matching SD-JWT metadata entry', async () => {
+  const resolved = await resolveOffer(uppercaseIdCardSdJwtOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        ThaiPidCredential: {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/person',
+          claims: [],
+        },
+      },
+    }),
+  })
+
+  expect(resolved.credentialConfigurations[0]).toEqual(
+    expect.objectContaining({
+      id: 'IDCard_dc+sd-jwt',
+      requestId: 'ThaiPidCredential',
+      format: 'dc+sd-jwt',
+    }),
+  )
+})
 
 async function unsupportedFlowContract(): Promise<void> {
   const resolved = await contract()

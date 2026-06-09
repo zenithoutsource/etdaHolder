@@ -1,9 +1,10 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppDialog } from '../src/components/AppDialog';
 import { useAuthStore } from '../src/store/authStore';
 
 export default function RegisterScreen() {
@@ -15,6 +16,7 @@ export default function RegisterScreen() {
   const register = useAuthStore((s) => s.register);
   const isLoading = useAuthStore((s) => s.isLoading);
   const router = useRouter();
+  const { showDialog } = useAppDialog();
 
   async function handleRegister() {
     if (!name.trim() || !email.trim() || !password) {
@@ -28,34 +30,41 @@ export default function RegisterScreen() {
     setError(null);
     try {
       await register(email.trim(), password, name.trim());
-      Alert.alert('Account created', 'You can now sign in.', [
-        { text: 'Sign In', onPress: () => router.replace('/login') },
-      ]);
+      showDialog({
+        title: 'Account created',
+        message: 'You can now sign in.',
+        icon: 'success',
+        actions: [
+          { label: 'Sign In', onPress: () => router.replace('/login') },
+        ],
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     }
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f4f6fa' }}>
+    <SafeAreaView className="flex-1 bg-[#f4f6fa]">
       <KeyboardAvoidingView
-        style={{ flex: 1, justifyContent: 'center', padding: 24 }}
+        className="flex-1 justify-center p-6"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
 
-        <View style={{ backgroundColor: '#fff', borderRadius: 18, padding: 24, gap: 16, elevation: 3, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 10 }}>
+        <View
+          className="gap-4 rounded-[18px] bg-white p-6"
+          style={{ elevation: 3, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 10 }}>
           <TextInput
-            style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, padding: 14, fontSize: 15, color: '#1a2a42' }}
+            className="rounded-[10px] border border-[#e2e8f0] p-[14px] text-[15px] text-[#1a2a42]"
             placeholder="Full Name (English only)"
             placeholderTextColor="#9ca3af"
             autoCapitalize="words"
             value={name}
             onChangeText={setName}
           />
-          <Text style={{ fontSize: 12, color: '#9ca3af', marginTop: -8 }}>
+          <Text className="-mt-2 text-xs text-[#9ca3af]">
             Please enter your name in English only (e.g. John Smith)
           </Text>
           <TextInput
-            style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, padding: 14, fontSize: 15, color: '#1a2a42' }}
+            className="rounded-[10px] border border-[#e2e8f0] p-[14px] text-[15px] text-[#1a2a42]"
             placeholder="Email"
             placeholderTextColor="#9ca3af"
             keyboardType="email-address"
@@ -64,9 +73,9 @@ export default function RegisterScreen() {
             value={email}
             onChangeText={setEmail}
           />
-          <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10 }}>
+          <View className="flex-row items-center rounded-[10px] border border-[#e2e8f0]">
             <TextInput
-              style={{ flex: 1, padding: 14, fontSize: 15, color: '#1a2a42' }}
+              className="flex-1 p-[14px] text-[15px] text-[#1a2a42]"
               placeholder="Password"
               placeholderTextColor="#9ca3af"
               secureTextEntry={!showPassword}
@@ -76,7 +85,7 @@ export default function RegisterScreen() {
             />
             <Pressable
               onPress={() => setShowPassword((v) => !v)}
-              style={{ paddingHorizontal: 14 }}
+              className="px-[14px]"
               accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
               <MaterialCommunityIcons
                 name={showPassword ? 'eye-off-outline' : 'eye-outline'}
@@ -87,23 +96,25 @@ export default function RegisterScreen() {
           </View>
 
           {error ? (
-            <Text style={{ color: '#dc2626', fontSize: 13, textAlign: 'center' }}>{error}</Text>
+            <Text className="text-center text-[13px] text-[#dc2626]">{error}</Text>
           ) : null}
 
           <Pressable
-            style={{ backgroundColor: '#002887', borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: isLoading ? 0.7 : 1 }}
+            className={`items-center rounded-xl bg-wallet-navy py-[14px] ${isLoading ? 'opacity-70' : ''}`}
             onPress={handleRegister}
             disabled={isLoading}>
             {isLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>Create Account</Text>
+              <Text className="text-[15px] font-semibold text-white">Create Account</Text>
             )}
           </Pressable>
         </View>
 
-        <Pressable style={{ marginTop: 20, alignItems: 'center' }} onPress={() => router.back()}>
-          <Text style={{ color: '#6d7a8d', fontSize: 14 }}>Already have an account? <Text style={{ color: '#002887', fontWeight: '600' }}>Sign In</Text></Text>
+        <Pressable className="mt-5 items-center" onPress={() => router.back()}>
+          <Text className="text-sm text-[#6d7a8d]">
+            Already have an account? <Text className="font-semibold text-wallet-navy">Sign In</Text>
+          </Text>
         </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -3,8 +3,9 @@
   "main": "./index.js",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start --dev-client",
-    "start:dev": "expo start --dev-client",
+    "start": "node scripts/start.js",
+    "start:dev": "node scripts/start.js",
+    "css": "node -e \"require('fs').writeFileSync('./global.css','@tailwind base;\\n@tailwind components;\\n@tailwind utilities;\\n/* '+Date.now()+' */\\n');console.log('CSS refreshed')\"",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "node ./scripts/run-android-device.js",
     "android:dev": "node ./scripts/run-android-device.js",

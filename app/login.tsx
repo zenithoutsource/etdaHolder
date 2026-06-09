@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { hasWalletPin } from '../src/services/auth/walletPin';
+import { readPostLoginRoute } from '../src/services/auth/walletPinNavigation';
 import { useAuthStore } from '../src/store/authStore';
 
 export default function LoginScreen() {
@@ -21,26 +23,28 @@ export default function LoginScreen() {
     setError(null);
     try {
       await login(email.trim(), password);
-      router.replace('/(tabs)');
+      router.replace(readPostLoginRoute({ platform: Platform.OS, hasWalletPin: hasWalletPin() }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     }
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f4f6fa' }}>
+    <SafeAreaView className="flex-1 bg-[#f4f6fa]">
       <KeyboardAvoidingView
-        style={{ flex: 1, justifyContent: 'center', padding: 24 }}
+        className="flex-1 justify-center p-6"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
 
-        <View style={{ marginBottom: 40 }}>
-          <Text style={{ fontSize: 28, fontWeight: '700', color: '#002887', textAlign: 'center' }}>ETDA Wallet</Text>
-          <Text style={{ fontSize: 15, color: '#6d7a8d', textAlign: 'center', marginTop: 8 }}>Sign in to your account</Text>
+        <View className="mb-10">
+          <Text className="text-center text-[28px] font-bold text-wallet-navy">ETDA Wallet</Text>
+          <Text className="mt-2 text-center text-[15px] text-[#6d7a8d]">Sign in to your account</Text>
         </View>
 
-        <View style={{ backgroundColor: '#fff', borderRadius: 18, padding: 24, gap: 16, elevation: 3, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 10 }}>
+        <View
+          className="gap-4 rounded-[18px] bg-white p-6"
+          style={{ elevation: 3, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 10 }}>
           <TextInput
-            style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, padding: 14, fontSize: 15, color: '#1a2a42' }}
+            className="rounded-[10px] border border-[#e2e8f0] p-[14px] text-[15px] text-[#1a2a42]"
             placeholder="Email"
             placeholderTextColor="#9ca3af"
             keyboardType="email-address"
@@ -50,7 +54,7 @@ export default function LoginScreen() {
             onChangeText={setEmail}
           />
           <TextInput
-            style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, padding: 14, fontSize: 15, color: '#1a2a42' }}
+            className="rounded-[10px] border border-[#e2e8f0] p-[14px] text-[15px] text-[#1a2a42]"
             placeholder="Password"
             placeholderTextColor="#9ca3af"
             secureTextEntry
@@ -60,24 +64,24 @@ export default function LoginScreen() {
           />
 
           {error ? (
-            <Text style={{ color: '#dc2626', fontSize: 13, textAlign: 'center' }}>{error}</Text>
+            <Text className="text-center text-[13px] text-[#dc2626]">{error}</Text>
           ) : null}
 
           <Pressable
-            style={{ backgroundColor: '#002887', borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: isLoading ? 0.7 : 1 }}
+            className={`items-center rounded-xl bg-wallet-navy py-[14px] ${isLoading ? 'opacity-70' : ''}`}
             onPress={handleLogin}
             disabled={isLoading}>
             {isLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>Sign In</Text>
+              <Text className="text-[15px] font-semibold text-white">Sign In</Text>
             )}
           </Pressable>
         </View>
 
-        <Pressable style={{ marginTop: 20, alignItems: 'center' }} onPress={() => router.push('/register')}>
-          <Text style={{ color: '#6d7a8d', fontSize: 14 }}>
-            Create an account <Text style={{ color: '#002887', fontWeight: '600' }}>Register</Text>
+        <Pressable className="mt-5 items-center" onPress={() => router.push('/register')}>
+          <Text className="text-sm text-[#6d7a8d]">
+            Create an account <Text className="font-semibold text-wallet-navy">Register</Text>
           </Text>
         </Pressable>
       </KeyboardAvoidingView>

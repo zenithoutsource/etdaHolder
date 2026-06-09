@@ -14,6 +14,7 @@ type AuthState = {
   accountId: string | null
   isAuthenticated: boolean
   isLoading: boolean
+  isPinVerified: boolean
 }
 
 type AuthActions = {
@@ -21,6 +22,7 @@ type AuthActions = {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name: string) => Promise<void>
   logout: () => Promise<void>
+  setPinVerified: (verified: boolean) => void
 }
 
 function applySession(session: SessionData): Pick<AuthState, 'token' | 'walletId' | 'accountId' | 'isAuthenticated'> {
@@ -38,6 +40,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   accountId: null,
   isAuthenticated: false,
   isLoading: false,
+  isPinVerified: false,
 
   loadSession: async () => {
     const session = await loadSession()
@@ -70,6 +73,8 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
 
   logout: async () => {
     await authLogout()
-    set({ token: null, walletId: null, accountId: null, isAuthenticated: false })
+    set({ token: null, walletId: null, accountId: null, isAuthenticated: false, isPinVerified: false })
   },
+
+  setPinVerified: (verified) => set({ isPinVerified: verified }),
 }))
