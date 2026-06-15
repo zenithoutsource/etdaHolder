@@ -1,3 +1,4 @@
+import { getOriginalFetch, setFetchImplementation } from './fetchIndirection'
 import { createPinnedFetch } from './walletApiCertPinning'
 
 type FetchFn = typeof fetch
@@ -12,6 +13,13 @@ let originalFetch: FetchFn | null = null
 type InstallWalletApiFetchOptions = {
   baseUrl?: string
   fetchImpl?: FetchFn
+  devIssuerProxy?: DevIssuerProxyConfig | null
+  devVerifierProxy?: DevIssuerProxyConfig | null
+}
+
+type DevIssuerProxyConfig = {
+  target: string
+  baseUrl: string
 }
 
 export function getConfiguredWalletApiBaseUrl(): string {
@@ -28,6 +36,53 @@ export function resolveWalletApiUrl(input: FetchInput, baseUrl = getConfiguredWa
   if (!input.startsWith(WALLET_API_PREFIX)) return input
 
   return `${normalizeWalletApiBaseUrl(baseUrl)}${input}`
+}
+
+export function getConfiguredDevIssuerProxy(): DevIssuerProxyConfig | null {
+  const target = process.env.EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET
+  const baseUrl = process.env.EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL
+  if (!target || !baseUrl) return null
+
+  return normalizeDevIssuerProxyConfig({
+    target,
+    baseUrl,
+  })
+}
+
+export function getConfiguredDevVerifierProxy(): DevIssuerProxyConfig | null {
+  const target = process.env.EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET
+    ?? process.env.EXPO_PUBLIC_VERIFIER_API_BASE_URL
+  const baseUrl = process.env.EXPO_PUBLIC_DEV_VERIFIER_PROXY_BASE_URL
+  if (!target || !baseUrl) return null
+
+  return normalizeDevIssuerProxyConfig({
+    target,
+    baseUrl,
+  })
+}
+
+function normalizeDevIssuerProxyConfig(config: DevIssuerProxyConfig): DevIssuerProxyConfig {
+  return {
+    target: config.target.endsWith('/') ? config.target.slice(0, -1) : config.target,
+    baseUrl: config.baseUrl.endsWith('/') ? config.baseUrl.slice(0, -1) : config.baseUrl,
+  }
+}
+
+export function resolveDevIssuerProxyUrl(input: FetchInput, proxy = getConfiguredDevIssuerProxy()): FetchInput {
+  if (typeof input !== 'string') return input
+
+  if (!proxy) return input
+  const normalizedProxy = normalizeDevIssuerProxyConfig(proxy)
+  if (!input.startsWith(normalizedProxy.target)) return input
+
+  return `${normalizedProxy.baseUrl}${input.slice(normalizedProxy.target.length)}`
+}
+
+function resolveDevProxyUrls(input: FetchInput, proxies: (DevIssuerProxyConfig | null)[]): FetchInput {
+  return proxies.reduce<FetchInput>(
+    (resolvedInput, proxy) => resolveDevIssuerProxyUrl(resolvedInput, proxy),
+    input,
+  )
 }
 
 async function normalizeWalletApiResponse(response: Response): Promise<Response> {
@@ -58,17 +113,23 @@ export function installWalletApiFetch(options: InstallWalletApiFetchOptions = {}
   if (options.fetchImpl) {
     originalFetch = options.fetchImpl
   } else if (!originalFetch) {
-    originalFetch = globalThis.fetch.bind(globalThis)
+    originalFetch = getOriginalFetch()
   }
 
   const fetchImpl = createPinnedFetch(originalFetch, baseUrl)
+  const devIssuerProxy = options.devIssuerProxy === undefined
+    ? getConfiguredDevIssuerProxy()
+    : options.devIssuerProxy
+  const devVerifierProxy = options.devVerifierProxy === undefined
+    ? getConfiguredDevVerifierProxy()
+    : options.devVerifierProxy
 
-  globalThis.fetch = (async (input: FetchInput, init?: FetchInit) => {
-    const resolvedInput = resolveWalletApiUrl(input, baseUrl)
+  setFetchImplementation((async (input: FetchInput, init?: FetchInit) => {
+    const resolvedInput = resolveDevProxyUrls(resolveWalletApiUrl(input, baseUrl), [devIssuerProxy, devVerifierProxy])
     const response = await fetchImpl(resolvedInput, init)
 
     return typeof input === 'string' && input.startsWith(WALLET_API_PREFIX)
       ? normalizeWalletApiResponse(response)
       : response
-  }) as FetchFn
+  }) as FetchFn)
 }

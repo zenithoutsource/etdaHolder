@@ -67,6 +67,16 @@ yarn test
 - Exception: only use `StyleSheet` / `style` when a specific effect is genuinely impossible with NativeWind (e.g., dynamic `Animated` interpolated values that require a style object at runtime).
 - Migrate any existing `StyleSheet` usage to NativeWind when touching a file.
 
+## Component Design Rules
+
+- Split UI into small, focused components — one concern per file. Avoid large monolithic screen files.
+- Extract repeated UI blocks (cards, list items, panels, buttons) into reusable components under `src/components/`.
+- Keep components prop-driven and config-driven (see `src/config/cardSchemas.ts`) so behavior/layout changes require editing config or props, not component internals.
+- Avoid hardcoding text, colors, sizes inline when a shared constant/config/theme already exists — easier to tweak globally.
+- Keep screen files (`app/**`) thin: composition and data wiring only; push logic/layout into `src/components/**`.
+- `app/(tabs)/scan.tsx` P1 issuance sub-flow uses one component per step (`ThaIdVerificationPanel`, `ThaiIdSuccessConfirmationPanel`, `ThaiIdReceivePanel`) — each is a distinct phase, not a per-document split, so do not merge them. `ThaiIdReceivePanel` extracts its repeated label/value blocks via `CredentialFieldRow`; reuse `CredentialFieldRow` for any new label/value list instead of inlining `<Text>` pairs.
+- `ThaIdVerificationPanel` and `ThaiIdSuccessConfirmationPanel` are schema-driven via `CardSchemaConfig.issuanceVerification` / `issuanceConfirmation` in `src/config/cardSchemas.ts` (provider label, agency labels, image key). A new document type that reuses these steps needs only a schema entry plus the referenced image asset registered in the panel's image map — not a new component file.
+
 ## Skills and Routing Patterns
 
 | File Pattern | Focus Area | Rules |

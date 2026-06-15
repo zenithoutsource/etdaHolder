@@ -62,7 +62,7 @@ Every signature operation must be gated by biometric authentication through the 
 - The gate applies at key usage time, not just wallet startup.
 - User cancellation rejects the sign call.
 - JavaScript must not implement a manual PIN fallback.
-- Future OID4VP and ISO 18013-5 signing must reuse this gate.
+- OID4VP and future ISO 18013-5 signing must reuse this gate.
 
 ## 4. Network and API Boundaries
 
@@ -72,7 +72,8 @@ Every signature operation must be gated by biometric authentication through the 
 - Mobile app calls only allowed Orval-generated SDK endpoints from `docs/API.md`.
 - Mobile app never connects directly to MySQL.
 - Local development backend under `server/` is acceptable only behind the SDK/API boundary.
-- OID4VP online presentation, when implemented, must run device-to-Verifier directly.
+- OID4VP online presentation must run device-to-Verifier directly.
+- OID4VP Verifier requests must be rejected unless both the `client_id` and `direct_post` origin are allowlisted. Production should use registered `did:web` Verifiers; the current `redirect_uri:` Verifier is development-only.
 
 ### Local Backend Hardening
 

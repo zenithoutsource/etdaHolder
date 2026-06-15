@@ -15,14 +15,81 @@ describe('walletPinNavigation', () => {
     expect(readPostLoginRoute({ platform: 'web', hasWalletPin: false })).toBe('/(tabs)')
   })
 
-  test('never routes cold start or resume to PIN screens', () => {
-    expect(readStartupRoute({ isAuthenticated: true })).toBe('/(tabs)')
-    expect(readStartupRoute({ isAuthenticated: false })).toBe('/login')
+  test('routes authenticated native startup without a PIN to setup', () => {
+    expect(readStartupRoute({
+      isAuthenticated: true,
+      currentSegment: '(tabs)',
+      platform: 'android',
+      hasWalletPin: false,
+    })).toBe('/pin-setup')
+    expect(readStartupRoute({
+      isAuthenticated: true,
+      currentSegment: '(tabs)',
+      platform: 'ios',
+      hasWalletPin: false,
+    })).toBe('/pin-setup')
+  })
+
+  test('routes authenticated startup to Wallet Home when PIN setup is not required', () => {
+    expect(readStartupRoute({
+      isAuthenticated: true,
+      currentSegment: '(tabs)',
+      platform: 'android',
+      hasWalletPin: true,
+    })).toBe('/(tabs)')
+    expect(readStartupRoute({
+      isAuthenticated: true,
+      currentSegment: '(tabs)',
+      platform: 'web',
+      hasWalletPin: false,
+    })).toBe('/(tabs)')
+  })
+
+  test('routes unauthenticated cold start to login and never routes resume to PIN screens', () => {
+    expect(readStartupRoute({
+      isAuthenticated: false,
+      platform: 'android',
+      hasWalletPin: false,
+    })).toBe('/login')
     expect(readResumeRoute()).toBeUndefined()
   })
 
+  test('does not redirect unauthenticated public auth routes', () => {
+    expect(readStartupRoute({
+      isAuthenticated: false,
+      currentSegment: 'login',
+      platform: 'android',
+      hasWalletPin: false,
+    })).toBeUndefined()
+    expect(readStartupRoute({
+      isAuthenticated: false,
+      currentSegment: 'register',
+      platform: 'android',
+      hasWalletPin: false,
+    })).toBeUndefined()
+  })
+
+  test('redirects unauthenticated protected routes to login', () => {
+    expect(readStartupRoute({
+      isAuthenticated: false,
+      currentSegment: '(tabs)',
+      platform: 'android',
+      hasWalletPin: false,
+    })).toBe('/login')
+  })
+
   test('does not override login-driven PIN setup routes after authentication changes', () => {
-    expect(readStartupRoute({ isAuthenticated: true, currentSegment: 'login' })).toBeUndefined()
-    expect(readStartupRoute({ isAuthenticated: true, currentSegment: 'pin-setup' })).toBeUndefined()
+    expect(readStartupRoute({
+      isAuthenticated: true,
+      currentSegment: 'login',
+      platform: 'android',
+      hasWalletPin: false,
+    })).toBeUndefined()
+    expect(readStartupRoute({
+      isAuthenticated: true,
+      currentSegment: 'pin-setup',
+      platform: 'android',
+      hasWalletPin: false,
+    })).toBeUndefined()
   })
 })

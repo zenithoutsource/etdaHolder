@@ -42,6 +42,40 @@ yarn dev
 
 The API listens on `0.0.0.0:4000` so a phone on the same LAN can reach it. Keep this local development server off public networks.
 
+## VPN Issuer/Verifier Proxy for Physical Android Testing
+
+If the Issuer or Verifier is reachable from the Windows PC through VPN but the phone is not on the office Wi-Fi/VPN, run the local backend as a development proxy. The mobile app still performs OID4VCI/OID4VP on-device; only HTTP transport to the configured development host is forwarded by the local backend through the PC network.
+
+For full runbooks covering both USB + PC VPN proxy mode and direct office Wi-Fi mode, see `../docs/ANDROID_NETWORK_TESTING.md`.
+
+Server `server/.env`:
+
+```env
+ENABLE_DEV_ISSUER_PROXY=true
+ISSUER_PROXY_TARGET=https://<issuer-host-reachable-from-pc-vpn>
+ENABLE_DEV_VERIFIER_PROXY=true
+VERIFIER_PROXY_TARGET=http://192.100.10.48
+```
+
+Root app `.env` for USB testing with `adb reverse`:
+
+```env
+EXPO_PUBLIC_WALLET_API_BASE_URL=http://127.0.0.1:4000
+EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET=https://<issuer-host-reachable-from-pc-vpn>
+EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL=http://127.0.0.1:4000/dev-issuer-proxy
+EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://192.100.10.48
+EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET=http://192.100.10.48
+EXPO_PUBLIC_DEV_VERIFIER_PROXY_BASE_URL=http://127.0.0.1:4000/dev-verifier-proxy
+```
+
+Then connect the Android phone by USB and run:
+
+```powershell
+adb reverse tcp:4000 tcp:4000
+```
+
+Restart the Expo dev server after changing root `.env`, then scan the original Issuer or Verifier QR. Requests whose URL starts with `EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET` are rewritten to `/dev-issuer-proxy/*`; requests whose URL starts with `EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET` are rewritten to `/dev-verifier-proxy/*`. Do not enable these proxies in production.
+
 ## Mobile App
 
 Set the app base URL in root `.env`:

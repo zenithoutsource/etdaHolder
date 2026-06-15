@@ -1,7 +1,6 @@
 import {
   CredentialOfferClient,
   CredentialRequestClientBuilder,
-  OpenID4VCIClient,
 } from '@sphereon/oid4vci-client'
 import { createHash } from 'react-native-quick-crypto'
 import type {
@@ -22,11 +21,14 @@ import {
 import {
   importCredential as defaultImportCredential,
 } from '../../sdk/walletApi'
+import { resolveDevIssuerProxyUrl } from '../../sdk/installWalletApiFetch'
 import { getCredentialStorage as getDefaultCredentialStorage } from '../storage/storage'
 
 const CREDENTIAL_INDEX_KEY = 'credential:index'
 const CREDENTIAL_KEY_PREFIX = 'credential:'
 const CREDENTIAL_LIFECYCLE_KEY_PREFIX = 'credential:lifecycle:'
+const PRE_AUTHORIZED_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:pre-authorized_code'
+const PRE_AUTHORIZED_CODE_KEY = 'pre-authorized_code'
 
 export type FetchIssuerMetadata = (issuer: string) => Promise<IssuerMetadataV1_0_15>
 
@@ -136,17 +138,19 @@ export type SyncCredentialToBackendOptions = {
 }
 
 export async function resolveOffer(offerUri: string, options: ResolveOfferOptions = {}): Promise<ResolvedCredentialOffer> {
-  const credentialOffer = await parseCredentialOffer(offerUri)
+  const resolvedOfferUri = await resolveCredentialOfferUriForTransport(offerUri)
+  const credentialOffer = await parseCredentialOffer(resolvedOfferUri)
   const issuer = readCredentialIssuer(credentialOffer)
   const issuerMetadata = await (options.fetchIssuerMetadata ?? fetchIssuerMetadata)(issuer)
 
   assertIssuerMetadata(issuer, issuerMetadata)
+  const transportIssuerMetadata = rewriteIssuerMetadataForTransport(issuerMetadata)
 
   return {
-    offerUri,
+    offerUri: resolvedOfferUri,
     issuer,
     credentialOffer,
-    issuerMetadata,
+    issuerMetadata: transportIssuerMetadata,
     issuerDisplay: toCredentialDisplay(issuerMetadata.display),
     credentialConfigurations: resolveCredentialConfigurations(credentialOffer, issuerMetadata),
     preAuthorizedCode: credentialOffer.preAuthorizedCode,
@@ -222,6 +226,7 @@ export async function acquireCredentialRecord(
     proof,
     credentialIdentifier: token.credentialIdentifier,
   })
+  assertDevelopmentEddsaHolderBinding(rawVc, proof)
   return normalizeCredentialRecord(rawVc, resolvedOffer)
 }
 
@@ -299,6 +304,69 @@ async function parseCredentialOffer(offerUri: string): Promise<CredentialOfferRe
     return await CredentialOfferClient.fromURI(offerUri, { resolve: true })
   } catch (error) {
     throw new Error(`CredentialOfferParseFailed: ${toErrorMessage(error)}`)
+  }
+}
+
+async function resolveCredentialOfferUriForTransport(offerUri: string): Promise<string> {
+  const credentialOfferUri = readCredentialOfferUriParameter(offerUri)
+  if (!credentialOfferUri) return offerUri
+
+  const rewrittenOfferUri = resolveDevIssuerProxyUrl(credentialOfferUri)
+  let response: Response
+  try {
+    response = await fetch(rewrittenOfferUri, {
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+  } catch (error) {
+    throw new Error(`CredentialOfferParseFailed: ${toErrorMessage(error)}`)
+  }
+
+  if (!response.ok) {
+    throw new Error(`CredentialOfferParseFailed: HTTP ${response.status}`)
+  }
+
+  let payload: unknown
+  try {
+    payload = await response.json()
+  } catch (error) {
+    throw new Error(`CredentialOfferParseFailed: ${toErrorMessage(error)}`)
+  }
+
+  const credentialOffer = readRecord(payload)?.credential_offer ?? payload
+  if (!readRecord(credentialOffer)) {
+    throw new Error('CredentialOfferParseFailed: credential_offer_uri response must be a JSON object')
+  }
+
+  return buildInlineCredentialOfferUri(offerUri, credentialOffer)
+}
+
+function readCredentialOfferUriParameter(offerUri: string): string | undefined {
+  try {
+    const parsed = new URL(offerUri)
+    const value = parsed.searchParams.get('credential_offer_uri')
+    return value && value.length > 0 ? value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function buildInlineCredentialOfferUri(originalOfferUri: string, credentialOffer: unknown): string {
+  const baseUrl = originalOfferUri.split('?')[0] ?? 'openid-credential-offer://'
+  const params = new URLSearchParams()
+  params.set('credential_offer', JSON.stringify(credentialOffer))
+  return `${baseUrl}?${params.toString()}`
+}
+
+function rewriteIssuerMetadataForTransport(metadata: IssuerMetadataV1_0_15): IssuerMetadataV1_0_15 {
+  return {
+    ...metadata,
+    ...(metadata.token_endpoint ? { token_endpoint: resolveDevIssuerProxyUrl(metadata.token_endpoint) as string } : {}),
+    credential_endpoint: resolveDevIssuerProxyUrl(metadata.credential_endpoint) as string,
+    ...(metadata.deferred_credential_endpoint
+      ? { deferred_credential_endpoint: resolveDevIssuerProxyUrl(metadata.deferred_credential_endpoint) as string }
+      : {}),
   }
 }
 
@@ -532,33 +600,20 @@ function normalizeCredentialRecord(
 }
 
 function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies {
-  let client: OpenID4VCIClient | undefined
-
-  async function getClient(resolvedOffer: ResolvedCredentialOffer): Promise<OpenID4VCIClient> {
-    if (!client) {
-      client = await OpenID4VCIClient.fromURI({
-        uri: resolvedOffer.offerUri,
-        resolveOfferUri: true,
-        retrieveServerMetadata: true,
-      })
-    }
-
-    return client
-  }
-
   return {
     acquireAccessToken: async ({ resolvedOffer, tx_code }) => {
       try {
-        const oid4vciClient = await getClient(resolvedOffer)
-        const response = await oid4vciClient.acquireAccessToken({ pin: tx_code })
+        const response = await requestPreAuthorizedAccessToken(resolvedOffer, tx_code)
 
-        if (!response.access_token || !response.c_nonce) {
+        const accessToken = readString(response.access_token)
+        const cNonce = readString(response.c_nonce)
+        if (!accessToken || !cNonce) {
           throw new Error('access_token and c_nonce are required')
         }
 
         return {
-          accessToken: response.access_token,
-          cNonce: response.c_nonce,
+          accessToken,
+          cNonce,
           credentialIdentifier: readCredentialIdentifierFromTokenResponse(response, resolvedOffer.credentialConfigurations[0]),
         }
       } catch (error) {
@@ -612,6 +667,48 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
     },
     signProof: defaultSignProof,
     getCredentialStorage: getDefaultCredentialStorage,
+  }
+}
+
+async function requestPreAuthorizedAccessToken(
+  resolvedOffer: ResolvedCredentialOffer,
+  txCode?: string,
+): Promise<Record<string, unknown>> {
+  const tokenEndpoint = readString(readRecord(resolvedOffer.issuerMetadata)?.token_endpoint)
+    ?? `${resolvedOffer.issuer.replace(/\/$/, '')}/token`
+  const body = new URLSearchParams()
+  body.set('grant_type', PRE_AUTHORIZED_CODE_GRANT)
+  body.set(PRE_AUTHORIZED_CODE_KEY, resolvedOffer.preAuthorizedCode ?? '')
+  if (txCode) {
+    body.set('tx_code', txCode)
+    body.set('user_pin', txCode)
+  }
+
+  const response = await fetch(resolveDevIssuerProxyUrl(tokenEndpoint), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  })
+  const responseBody = await readJsonResponseBody(response)
+
+  if (!response.ok) {
+    const error = readString(responseBody.error)
+    const description = readString(responseBody.error_description)
+    throw new Error(description ? `${error ?? 'token_error'} - ${description}` : error ?? `HTTP ${response.status}`)
+  }
+
+  return responseBody
+}
+
+async function readJsonResponseBody(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const parsed = (await response.json()) as unknown
+    return readRecord(parsed) ?? {}
+  } catch {
+    return {}
   }
 }
 
@@ -738,6 +835,37 @@ function isCompactSdJwt(rawVc: string): boolean {
   return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
 }
 
+function assertDevelopmentEddsaHolderBinding(rawVc: string, proofJwt: string): void {
+  if (!isCompactSdJwt(rawVc)) return
+
+  const proofHeader = readProofJwtHeader(proofJwt)
+  const expectedJwk = readRecord(proofHeader?.jwk)
+  const expectedKid = readString(proofHeader?.kid)
+  if (!expectedJwk && !expectedKid) return
+
+  const issuerJwt = rawVc.split('~')[0] ?? rawVc
+  const credentialClaims = decodeJwtPayload(issuerJwt)
+  const cnf = readRecord(credentialClaims.cnf)
+  const cnfJwk = readRecord(cnf?.jwk)
+  const cnfKid = readString(cnf?.kid)
+  if (!cnfJwk && !cnfKid) {
+    throw new Error('CredentialHolderBindingMissing: Issuer returned SD-JWT credential without cnf.jwk or cnf.kid holder binding')
+  }
+
+  if (cnfJwk && expectedJwk && isSameJwk(cnfJwk, expectedJwk)) return
+  if (cnfKid && expectedKid && isSameKid(cnfKid, expectedKid)) return
+
+  throw new Error('CredentialHolderBindingMismatch: Issuer returned SD-JWT credential bound to a different holder key')
+}
+
+function readProofJwtHeader(proofJwt: string): Record<string, unknown> | undefined {
+  try {
+    return decodeJwtHeader(proofJwt)
+  } catch {
+    return undefined
+  }
+}
+
 function decodeSdJwtClaims(compactSdJwt: string): Record<string, unknown> {
   const [issuerJwt, ...segments] = compactSdJwt.split('~')
   const issuerClaims = decodeJwtPayload(issuerJwt)
@@ -808,6 +936,41 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> {
   } catch (error) {
     throw new Error(`CredentialJwtInvalid: ${toErrorMessage(error)}`)
   }
+}
+
+function decodeJwtHeader(jwt: string): Record<string, unknown> {
+  const parts = jwt.split('.')
+
+  if (parts.length < 2 || !parts[0]) {
+    throw new Error('CredentialJwtInvalid: JWT header is required')
+  }
+
+  try {
+    const header = base64UrlDecodeToString(parts[0])
+    const parsed = JSON.parse(header) as unknown
+
+    if (!isRecord(parsed)) {
+      throw new Error('header is not an object')
+    }
+
+    return parsed
+  } catch (error) {
+    throw new Error(`CredentialJwtInvalid: ${toErrorMessage(error)}`)
+  }
+}
+
+function isSameJwk(actual: Record<string, unknown>, expected: Record<string, unknown>): boolean {
+  return (
+    actual.kty === expected.kty &&
+    actual.crv === expected.crv &&
+    actual.x === expected.x &&
+    (expected.y ? actual.y === expected.y : !actual.y)
+  )
+}
+
+function isSameKid(actual: string, expected: string): boolean {
+  const expectedDid = expected.split('#')[0]
+  return actual === expected || actual === expectedDid
 }
 
 function base64UrlDecodeToString(value: string): string {

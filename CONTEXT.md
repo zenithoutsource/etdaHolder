@@ -26,6 +26,10 @@ A party that requests and checks Verifiable Credentials from the Holder during a
 
 A signed, tamper-evident digital claim issued by an Issuer to the Holder. Stored in encrypted MMKV storage as a compact JWT VC or compact SD-JWT VC.
 
+## Verifiable Credential Type (`vct`)
+
+The Issuer-defined credential type identifier inside an SD-JWT VC. A Verifier's DCQL `vct_values` must exactly match this signed value; aliases, display names, and Verifier-hosted substitute URLs do not identify the same credential type. The Wallet's local credential type is only an internal classification for storage and display.
+
 ## PID VC
 
 The foundational personal identification credential in the Wallet. In this app it is represented by the `ThaiNationalID` credential type and must exist before the Holder requests other credentials.
@@ -45,6 +49,18 @@ The Holder's decentralized identifier, derived deterministically from the Wallet
 ## Proof of Possession (PoP)
 
 A JWT signed with the Wallet Signing Key and sent to the Issuer during credential request. Uses `jwt` proof type per OID4VCI 1.0. Header contains `kid: "<holderDid>#<multibaseValue>"`, not `jwk`. Payload `iss` is the Holder DID. Biometric authentication fires on every sign operation.
+
+## Verifiable Presentation (VP)
+
+A Holder-approved presentation response sent to a Verifier. Depending on the Verifier request, the response may be a signed JWT VP token or a credential presentation token such as a compact SD-JWT VC.
+
+## Key Binding JWT (KB-JWT)
+
+A JWT signed by the Wallet Signing Key and appended to an SD-JWT VC presentation to prove cryptographic Holder Binding. It binds the presentation to the Verifier request using the request nonce, audience, and hash of the presented SD-JWT.
+
+## Trusted Verifier
+
+A Verifier allowed by local Wallet configuration. The current trust model requires an exact `did:web` `client_id` match and an allowlisted `response_uri` origin before the Wallet will present any credential.
 
 ## Self-Sovereign Architecture
 
@@ -90,7 +106,7 @@ Proximity credential presentation via ISO 18013-5. User taps phone to the Verifi
 
 ## Online Presentation
 
-Remote credential presentation via OID4VP 1.0. The Verifier sends an Authorization Request and the Holder returns a signed Verifiable Presentation. Planned post-v1; protocol mechanics are not yet decided.
+Remote credential presentation via OID4VP 1.0. The current first slice supports cross-device QR Authorization Requests, Presentation Exchange birth-date disclosure, and the development Verifier API's `request_uri` JWT + DCQL IDCard request shape. Responses use `direct_post`.
 
 ## Generated SDK
 

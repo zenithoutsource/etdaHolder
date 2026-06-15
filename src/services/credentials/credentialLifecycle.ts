@@ -71,6 +71,13 @@ export function readCredentialLifecycleStatuses(
   )
 }
 
+export function filterPresentableCredentials(
+  credentials: VerifiableCredentialRecord[],
+): VerifiableCredentialRecord[] {
+  const lifecycleStatuses = readCredentialLifecycleStatuses(credentials)
+  return credentials.filter((record) => !lifecycleStatuses[record.id])
+}
+
 function isLifecycleStatusStaleForCredential(
   status: CredentialLifecycleStatus,
   record: VerifiableCredentialRecord,

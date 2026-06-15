@@ -19,8 +19,8 @@ type Props = {
 const NAME_ROW_KEYS = new Set(['givenName', 'familyName'])
 const PRIMARY_ID_KEYS = ['nationalId', 'licenceNumber', 'studentId', 'idNumber']
 const EMPTY_VALUE = '-'
-const MOCK_ID_CARD_ENGLISH_NAME = 'Miss Thodsawb Ekkasan Digital'
-const MOCK_TRANSCRIPT_ENGLISH_NAME = 'Ms. Thodsawb Ekkasan Digital'
+const MOCK_ID_CARD_ENGLISH_NAME = 'Miss Pitchaya Rungruangkit'
+const MOCK_TRANSCRIPT_ENGLISH_NAME = 'Ms. Thodsopp Eekkasandigital'
 const MOCK_ID_CARD_ADDRESS = '123/45 ถนนราชดำเนิน แขวงพระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200'
 const MOCK_ID_CARD_RELIGION = 'พุทธ'
 

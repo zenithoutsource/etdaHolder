@@ -1,3 +1,5 @@
+import '@/src/sdk/fetchIndirection';
+
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -11,6 +13,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppDialogProvider } from '@/src/components/AppDialog';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
+import { hasWalletPin } from '@/src/services/auth/walletPin';
 import { readStartupRoute } from '@/src/services/auth/walletPinNavigation';
 import { useAuthStore } from '@/src/store/authStore';
 
@@ -110,7 +113,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (startupState.status !== 'ready') return;
-    const route = readStartupRoute({ isAuthenticated, currentSegment });
+    const route = readStartupRoute({
+      isAuthenticated,
+      currentSegment,
+      platform: Platform.OS,
+      hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
+    });
     if (route) router.replace(route);
   }, [startupState.status, isAuthenticated, router, currentSegment]);
 

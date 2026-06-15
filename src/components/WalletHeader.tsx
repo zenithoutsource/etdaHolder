@@ -1,5 +1,6 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import { Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
+
+import { AppButton } from './AppButton'
 
 type WalletHeaderProps = {
   title?: string
@@ -10,12 +11,15 @@ export function WalletHeader({ title = 'Wallet', onBack }: WalletHeaderProps) {
   return (
     <View className="h-[90px] flex-row items-center bg-wallet-navy px-5">
       {onBack ? (
-        <Pressable
-          className="h-9 w-9 items-center justify-center rounded-full border border-white"
+        <AppButton
+          variant="icon-circle"
+          iconName="chevron-left"
+          iconSize={28}
+          iconColor="#ffffff"
           onPress={onBack}
-          accessibilityLabel="Back">
-          <MaterialCommunityIcons name="chevron-left" size={28} color="#ffffff" />
-        </Pressable>
+          accessibilityLabel="Back"
+          className="h-9 w-9 border border-white"
+        />
       ) : (
         <View className="h-9 w-9" />
       )}

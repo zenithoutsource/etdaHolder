@@ -19,9 +19,19 @@ export type WalletHistory = {
   presentations: WalletHistoryEvent[]
 }
 
+export type SuccessfulPresentationHistoryEvent = {
+  id: string
+  credentialId: string
+  verifierName: string
+  documentType: string
+  disclosedClaims: string[]
+  occurredAt: string
+}
+
 export function readWalletHistory(
   credentials: VerifiableCredentialRecord[],
   lifecycleStatuses: Record<string, CredentialLifecycleStatus> = {},
+  successfulPresentations: SuccessfulPresentationHistoryEvent[] = [],
 ): WalletHistory {
   const lifecycleEvents = credentials.reduce<WalletHistoryEvent[]>((events, record) => {
       const schema = getCardSchema(record.type)
@@ -64,6 +74,20 @@ export function readWalletHistory(
       ...lifecycleEvents,
     ]
       .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt)),
-    presentations: [],
+    presentations: successfulPresentations
+      .map((event) => ({
+        id: `presentation:${event.id}`,
+        credentialId: event.credentialId,
+        title: event.documentType,
+        subtitle: event.disclosedClaims.length > 0
+          ? `Shared ${event.disclosedClaims.join(', ')}`
+          : 'Credential presented',
+        issuerName: event.verifierName,
+        documentType: event.documentType,
+        actionLabel: 'Credential presented',
+        occurredAt: event.occurredAt,
+        status: 'completed' as const,
+      }))
+      .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt)),
   }
 }

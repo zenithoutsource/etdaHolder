@@ -1,7 +1,9 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
-import { Platform, Pressable, Text, View } from 'react-native'
+import { Platform, Text, View } from 'react-native'
+
+import { AppButton } from '../src/components/AppButton'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { useAppDialog } from '../src/components/AppDialog'
@@ -82,9 +84,13 @@ export default function PinLockScreen() {
           onBackspace={handleBackspace}
           onFingerprint={isBiometricDisabledForTesting() ? () => router.replace('/(tabs)') : () => {}}
         />
-        <Pressable onPress={handleForgotPin} className="mt-8">
-          <Text className="text-xs text-[#8a9bb0]">Forgot PIN?</Text>
-        </Pressable>
+        <AppButton
+          variant="icon-circle"
+          label="Forgot PIN?"
+          onPress={handleForgotPin}
+          className="mt-8 self-auto rounded-none px-0 py-0"
+          textClassName="text-xs text-[#8a9bb0]"
+        />
       </View>
     </SafeAreaView>
   )

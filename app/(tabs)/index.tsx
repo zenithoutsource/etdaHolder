@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AppButton } from "../../src/components/AppButton";
 import { useAppDialog } from "../../src/components/AppDialog";
 import { WalletHeader } from "../../src/components/WalletHeader";
 import { useStoredCredentials } from "../../src/hooks/useStoredCredentials";
@@ -24,6 +25,10 @@ import {
   readCredentialHolderProfile,
   readCredentialSummaryDisplay,
 } from "../../src/services/credentials/credentialDisplay";
+import {
+  clearSuccessfulPresentationBadge,
+  readSuccessfullyPresentedCredentialIds,
+} from "../../src/services/history/presentationHistory";
 import type { VerifiableCredentialRecord } from "../../src/services/vci/exchangeService";
 
 type DocumentMenuItem = {
@@ -145,6 +150,7 @@ export default function WalletHomeScreen() {
     string | null
   >(null);
   const [newCredentialIds, setNewCredentialIds] = useState<string[]>([]);
+  const [verifiedCredentialIds, setVerifiedCredentialIds] = useState<string[]>([]);
   const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
   const summaryCredential = credentials.find(
     (record) => record.type === "ThaiNationalID",
@@ -153,6 +159,7 @@ export default function WalletHomeScreen() {
   useFocusEffect(
     useCallback(() => {
       setNewCredentialIds(readNewCredentialBadgeIds());
+      setVerifiedCredentialIds(readSuccessfullyPresentedCredentialIds());
     }, []),
   );
 
@@ -191,6 +198,9 @@ export default function WalletHomeScreen() {
               const isNewCredential = credential
                 ? newCredentialIds.includes(credential.id)
                 : false;
+              const isVerifiedCredential = credential
+                ? verifiedCredentialIds.includes(credential.id)
+                : false;
               const isExpanded =
                 credential?.id === expandedCredentialId &&
                 Boolean(lifecycleStatus);
@@ -205,12 +215,17 @@ export default function WalletHomeScreen() {
                         ? "bg-[#c00000]"
                         : "bg-[#7a7a7a]",
                   }
-                : isNewCredential
+                : isVerifiedCredential
+                  ? {
+                      label: "ตรวจสอบสำเร็จ",
+                      className: "bg-[#18a05d]",
+                    }
+                  : isNewCredential
                   ? {
                       label: "เอกสารใหม่",
                       className: "bg-[#18a05d]",
                     }
-                  : undefined;
+                    : undefined;
 
               return (
                 <View
@@ -266,6 +281,12 @@ export default function WalletHomeScreen() {
                           current.filter((id) => id !== credential.id),
                         );
                       }
+                      if (isVerifiedCredential) {
+                        clearSuccessfulPresentationBadge(credential.id);
+                        setVerifiedCredentialIds((current) =>
+                          current.filter((id) => id !== credential.id),
+                        );
+                      }
                       if (lifecycleStatus) {
                         setExpandedCredentialId((current) =>
                           current === credential.id ? null : credential.id,
@@ -315,14 +336,13 @@ export default function WalletHomeScreen() {
                       <Text className="mt-2 text-center text-xs text-[#4b5563]">
                         เอกสารถูกยกเลิกการใช้งาน
                       </Text>
-                      <Pressable
-                        className="mt-3 min-w-[142px] rounded-full bg-wallet-navy px-5 py-2"
+                      <AppButton
+                        variant="solid-block"
+                        label="ขอเอกสาร"
                         onPress={() => router.push("/(tabs)/scan")}
-                      >
-                        <Text className="text-center text-xs font-bold text-white">
-                          ขอเอกสาร
-                        </Text>
-                      </Pressable>
+                        className="mt-3 min-w-[142px] px-5 py-2"
+                        textClassName="text-center text-xs font-bold"
+                      />
                     </View>
                   ) : null}
                 </View>

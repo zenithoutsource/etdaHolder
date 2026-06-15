@@ -47,10 +47,31 @@ describe('walletHistory', () => {
     ])
   })
 
-  test('keeps presentation history empty for v1', () => {
-    const history = readWalletHistory([transcriptRecord])
+  test('includes successful presentation history events', () => {
+    const history = readWalletHistory([transcriptRecord], {}, [
+      {
+        id: 'presentation-1',
+        credentialId: 'transcript-1',
+        verifierName: 'Entertainment Venue',
+        documentType: 'Academic Transcript',
+        disclosedClaims: ['Date of Birth'],
+        occurredAt: '2026-06-09T10:00:00.000Z',
+      },
+    ])
 
-    expect(history.presentations).toEqual([])
+    expect(history.presentations).toEqual([
+      {
+        id: 'presentation:presentation-1',
+        credentialId: 'transcript-1',
+        title: 'Academic Transcript',
+        subtitle: 'Shared Date of Birth',
+        issuerName: 'Entertainment Venue',
+        documentType: 'Academic Transcript',
+        actionLabel: 'Credential presented',
+        occurredAt: '2026-06-09T10:00:00.000Z',
+        status: 'completed',
+      },
+    ])
   })
 
   test('includes local P6 lifecycle events when a credential is revoked or deleted', () => {

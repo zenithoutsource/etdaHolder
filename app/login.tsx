@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppButton } from '../src/components/AppButton';
 import { hasWalletPin } from '../src/services/auth/walletPin';
 import { readPostLoginRoute } from '../src/services/auth/walletPinNavigation';
 import { useAuthStore } from '../src/store/authStore';
@@ -67,16 +68,15 @@ export default function LoginScreen() {
             <Text className="text-center text-[13px] text-[#dc2626]">{error}</Text>
           ) : null}
 
-          <Pressable
-            className={`items-center rounded-xl bg-wallet-navy py-[14px] ${isLoading ? 'opacity-70' : ''}`}
+          <AppButton
+            variant="solid-block"
+            label="Sign In"
             onPress={handleLogin}
-            disabled={isLoading}>
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="text-[15px] font-semibold text-white">Sign In</Text>
-            )}
-          </Pressable>
+            disabled={isLoading}
+            loading={isLoading}
+            className={`rounded-xl py-[14px] ${isLoading ? 'opacity-70' : ''}`}
+            textClassName="text-[15px] font-semibold"
+          />
         </View>
 
         <Pressable className="mt-5 items-center" onPress={() => router.push('/register')}>

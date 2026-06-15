@@ -28,11 +28,8 @@ const { CredentialRequestClientBuilder } = jest.requireMock('@sphereon/oid4vci-c
     fromCredentialIssuer: jest.Mock
   }
 }
-const { OpenID4VCIClient } = jest.requireMock('@sphereon/oid4vci-client') as {
-  OpenID4VCIClient: {
-    fromURI: jest.Mock
-  }
-}
+
+const originalFetch = global.fetch
 
 function unsignedJwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) =>
@@ -44,6 +41,26 @@ function unsignedJwt(payload: Record<string, unknown>): string {
 describe('OID4VCI 1.0 credential request', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    global.fetch = jest.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            access_token: 'access-token',
+            c_nonce: 'nonce',
+            authorization_details: [
+              {
+                type: 'openid_credential',
+                credential_configuration_id: 'idcard',
+                credential_identifiers: ['issuer-credential-id-1'],
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+    ) as typeof fetch
 
     createCredentialRequestMock.mockResolvedValue({
       credential_configuration_id: 'idcard',
@@ -65,20 +82,11 @@ describe('OID4VCI 1.0 credential request', () => {
     })
     mockWithToken.mockReturnValue({ build: mockBuild })
     mockWithCredentialEndpoint.mockReturnValue({ withToken: mockWithToken })
-    acquireAccessTokenMock.mockResolvedValue({
-      access_token: 'access-token',
-      c_nonce: 'nonce',
-      authorization_details: [
-        {
-          type: 'openid_credential',
-          credential_configuration_id: 'idcard',
-          credential_identifiers: ['issuer-credential-id-1'],
-        },
-      ],
-    })
-    OpenID4VCIClient.fromURI.mockResolvedValue({
-      acquireAccessToken: acquireAccessTokenMock,
-    })
+    acquireAccessTokenMock.mockResolvedValue({})
+  })
+
+  afterAll(() => {
+    global.fetch = originalFetch
   })
 
   test('sends credential_configuration_id for a format-suffixed IdCard offer', async () => {
@@ -163,12 +171,12 @@ describe('OID4VCI 1.0 credential request', () => {
       },
     })
 
-    expect(OpenID4VCIClient.fromURI).toHaveBeenCalledWith({
-      uri: resolvedOffer.offerUri,
-      resolveOfferUri: true,
-      retrieveServerMetadata: true,
-    })
-    expect(acquireAccessTokenMock).toHaveBeenCalledWith({ pin: undefined })
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://issuer.example.com/token',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    )
     expect(createCredentialRequestMock).toHaveBeenCalledWith({
       proofInput: { proof_type: 'jwt', jwt: 'proof.jwt' },
       format: 'dc+sd-jwt',

@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 
-import { getCredentialStorage } from '../services/storage/storage'
+import { readStoredCredentials } from '../services/credentials/storedCredentials'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
 type UseStoredCredentialsResult = {
@@ -9,16 +9,6 @@ type UseStoredCredentialsResult = {
   credentials: VerifiableCredentialRecord[]
   error: string | null
   refresh: () => void
-}
-
-function readCredentialsFromStorage(): VerifiableCredentialRecord[] {
-  const storage = getCredentialStorage()
-  const indexRaw = storage.getString('credential:index')
-  const ids: string[] = indexRaw ? (JSON.parse(indexRaw) as string[]) : []
-  return ids
-    .map((id) => storage.getString(`credential:${id}`))
-    .filter((raw): raw is string => raw !== undefined)
-    .map((raw) => JSON.parse(raw) as VerifiableCredentialRecord)
 }
 
 function isStorageNotInitialized(error: unknown): boolean {
@@ -32,7 +22,7 @@ export function useStoredCredentials(): UseStoredCredentialsResult {
 
   const refresh = useCallback(() => {
     try {
-      setCredentials(readCredentialsFromStorage())
+      setCredentials(readStoredCredentials())
       setStatus('ready')
       setError(null)
     } catch (err) {

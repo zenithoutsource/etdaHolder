@@ -1,4 +1,5 @@
 import {
+  filterPresentableCredentials,
   readCredentialLifecycleStatus,
   readCredentialLifecycleStatuses,
   recordCredentialLifecycleAction,
@@ -100,5 +101,38 @@ describe('credentialLifecycle', () => {
       ]),
     ).toEqual({})
     expect(storage.remove).toHaveBeenCalledWith('credential:lifecycle:transcript-1')
+  })
+
+  test('excludes active revoked or deleted credentials from presentation candidates', () => {
+    mockStorage({
+      'credential:lifecycle:transcript-1': JSON.stringify({
+        credentialId: 'transcript-1',
+        action: 'Revoke',
+        status: 'revoked',
+        occurredAt: '2026-06-08T10:00:00.000Z',
+      }),
+      'credential:lifecycle:thai-id-1': JSON.stringify({
+        credentialId: 'thai-id-1',
+        action: 'Delete',
+        status: 'deleted',
+        occurredAt: '2026-06-08T10:00:00.000Z',
+      }),
+    })
+
+    const thaiIdRecord: VerifiableCredentialRecord = {
+      id: 'thai-id-1',
+      type: 'ThaiNationalID',
+      rawVc: 'header.payload.signature',
+      claims: {},
+      issuedAt: '2026-06-08T00:00:00.000Z',
+    }
+    const freshTranscriptRecord: VerifiableCredentialRecord = {
+      ...transcriptRecord,
+      id: 'fresh-transcript',
+    }
+
+    expect(filterPresentableCredentials([transcriptRecord, thaiIdRecord, freshTranscriptRecord])).toEqual([
+      freshTranscriptRecord,
+    ])
   })
 })

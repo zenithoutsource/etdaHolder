@@ -1,13 +1,16 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AppButton } from "../../../src/components/AppButton";
 import { CredentialDocumentDetailCard } from "../../../src/components/CredentialDocumentDetailCard";
 import { PinKeypad } from "../../../src/components/PinKeypad";
+import { PresentationApprovalDeviceCard } from "../../../src/components/PresentationApprovalDeviceCard";
+import { PresentationPopCard } from "../../../src/components/PresentationPopCard";
 import { WalletHeader } from "../../../src/components/WalletHeader";
-import { getHolderDid } from "../../../src/services/crypto/crypto";
+import { getWalletKeyRegisteredAt } from "../../../src/services/crypto/crypto";
 import {
   recordCredentialLifecycleAction,
   type CredentialLifecycleAction,
@@ -16,26 +19,12 @@ import { readCredentialDetailDisplay, readCredentialHolderProfile } from "../../
 import { shouldResetCredentialDetailSession } from "../../../src/services/credentials/credentialDetailSession";
 import { hasWalletPin, setWalletPin, verifyWalletPin } from "../../../src/services/auth/walletPin";
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
+import { readCompactTokenSignature } from "../../../src/services/vp/presentationEvidence";
 
 type DetailPhase =
   | { tag: "detail" }
   | { tag: "security"; action: CredentialLifecycleAction; mode: "setup" | "confirm" | "verify"; initialPin?: string }
   | { tag: "approve"; action: CredentialLifecycleAction }
-
-function formatDateTime(value = new Date()): { date: string; time: string } {
-  return {
-    date: new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(value),
-    time: new Intl.DateTimeFormat("en-US", { timeStyle: "short" }).format(value),
-  };
-}
-
-function readHolderDidForDisplay(): string {
-  try {
-    return getHolderDid();
-  } catch {
-    return "Holder DID unavailable";
-  }
-}
 
 export default function CredentialDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -193,9 +182,9 @@ export default function CredentialDetailScreen() {
   }
 
   if (phase.tag === "approve" && display) {
-    const { date, time } = formatDateTime();
-    const holderDid = readHolderDidForDisplay();
-    const platformLabel = Platform.OS === "ios" ? "iOS device" : Platform.OS === "android" ? "Android device" : "Web preview";
+    const credentialSignature = credential
+      ? readCompactTokenSignature(credential.rawVc) ?? "Signature unavailable"
+      : "Signature unavailable";
 
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
@@ -208,55 +197,29 @@ export default function CredentialDetailScreen() {
               onOpenQr={() => router.push("/(tabs)/qr")}
             />
 
-            <View className="mt-4 rounded-[8px] bg-white p-4">
-              <Text className="text-base font-semibold text-[#1a2a42]">Approve by Wallet</Text>
-              <View className="mt-3 flex-row items-center gap-3">
-                <MaterialCommunityIcons name="cellphone-key" size={24} color="#002887" />
-                <View>
-                  <Text className="text-sm font-semibold text-[#1a2a42]">{platformLabel}</Text>
-                  <Text className="text-xs text-[#8a9bb0]">Credential ID: {credential?.id ?? "unknown"}</Text>
-                </View>
-              </View>
-              <View className="mt-4 flex-row justify-between border-t border-[#eef2f8] pt-3">
-                <View>
-                  <Text className="text-[11px] text-[#8a9bb0]">Date</Text>
-                  <Text className="mt-1 text-xs font-semibold text-[#002887]">{date}</Text>
-                </View>
-                <View>
-                  <Text className="text-[11px] text-[#8a9bb0]">Time</Text>
-                  <Text className="mt-1 text-xs font-semibold text-[#002887]">{time}</Text>
-                </View>
-              </View>
+            <View className="mt-4">
+              <PresentationApprovalDeviceCard registeredAt={getWalletKeyRegisteredAt()} />
             </View>
 
             <View className="mt-4">
-              <Text className="text-sm font-semibold text-[#002887]">PoP Evidence (Proof of Possession)</Text>
-              <View className="mt-2 rounded-[8px] bg-[#10356f] p-3">
-                <Text className="text-xs font-semibold text-white">ECDSA - 256</Text>
-                <Text className="mt-2 text-[10px] leading-4 text-white/70">
-                  Action: {phase.action}
-                  {"\n"}Credential ID: {credential?.id ?? "unknown"}
-                  {"\n"}Holder DID: {holderDid}
-                </Text>
-                <View className="mt-3 self-end rounded bg-[#315487] px-2 py-1">
-                  <Text className="text-[10px] font-semibold text-white">SHA256</Text>
-                </View>
-              </View>
+              <PresentationPopCard signature={credentialSignature} />
             </View>
 
             <View className="mt-5 flex-row gap-3">
-              <Pressable
-                className="flex-1 rounded-full bg-wallet-navy py-3"
+              <AppButton
+                variant="solid-block"
+                label="Approve"
                 onPress={() => approveAction(phase.action)}
-              >
-                <Text className="text-center text-sm font-bold text-white">Approve</Text>
-              </Pressable>
-              <Pressable
-                className="flex-1 rounded-full bg-[#b00000] py-3"
+                className="flex-1 border-0 py-3"
+                textClassName="text-center text-sm font-bold"
+              />
+              <AppButton
+                variant="solid-block"
+                label="Not approve"
                 onPress={() => setPhase({ tag: "detail" })}
-              >
-                <Text className="text-center text-sm font-bold text-white">Not approve</Text>
-              </Pressable>
+                className="flex-1 border-0 bg-[#b00000] py-3"
+                textClassName="text-center text-sm font-bold"
+              />
             </View>
           </ScrollView>
         </View>
@@ -283,29 +246,37 @@ export default function CredentialDetailScreen() {
               />
               {isTranscript ? (
                 <View className="absolute right-3 top-3">
-                  <Pressable
-                    className="h-9 w-9 items-center justify-center rounded-full bg-white"
+                  <AppButton
+                    variant="icon-circle"
+                    iconName="dots-vertical"
+                    iconSize={22}
+                    iconColor="#002887"
+                    className="h-9 w-9 bg-white"
                     onPress={() => setIsActionMenuOpen((value) => !value)}
                     accessibilityLabel="Open transcript actions"
-                  >
-                    <MaterialCommunityIcons name="dots-vertical" size={22} color="#002887" />
-                  </Pressable>
+                  />
                   {isActionMenuOpen ? (
                     <View className="absolute right-0 top-10 w-[184px] overflow-hidden rounded-[8px] bg-white shadow-md">
-                      <Pressable
-                        className="flex-row items-center gap-2 border-b border-[#eef2f8] px-3 py-3"
+                      <AppButton
+                        variant="icon-circle"
+                        iconName="file-cancel-outline"
+                        iconSize={18}
+                        iconColor="#c00000"
+                        label="Revoke"
                         onPress={() => beginAction("Revoke")}
-                      >
-                        <MaterialCommunityIcons name="file-cancel-outline" size={18} color="#c00000" />
-                        <Text className="text-sm font-semibold text-[#c00000]">Revoke</Text>
-                      </Pressable>
-                      <Pressable
-                        className="flex-row items-center gap-2 px-3 py-3 opacity-40"
+                        className="self-stretch justify-start rounded-none border-b border-[#eef2f8] px-3 py-3"
+                        textClassName="text-sm font-semibold text-[#c00000]"
+                      />
+                      <AppButton
+                        variant="icon-circle"
+                        iconName="trash-can-outline"
+                        iconSize={18}
+                        iconColor="#6d7a8d"
+                        label="ลบเอกสารนี้"
                         disabled
-                      >
-                        <MaterialCommunityIcons name="trash-can-outline" size={18} color="#6d7a8d" />
-                        <Text className="text-sm font-semibold text-[#6d7a8d]">ลบเอกสารนี้</Text>
-                      </Pressable>
+                        className="self-stretch justify-start rounded-none px-3 py-3 opacity-40"
+                        textClassName="text-sm font-semibold text-[#6d7a8d]"
+                      />
                     </View>
                   ) : null}
                 </View>

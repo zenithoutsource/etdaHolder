@@ -1,10 +1,17 @@
-import { installWalletApiFetch, normalizeWalletApiBaseUrl, resolveWalletApiUrl } from './installWalletApiFetch'
+import {
+  installWalletApiFetch,
+  normalizeWalletApiBaseUrl,
+  resolveDevIssuerProxyUrl,
+  resolveWalletApiUrl,
+} from './installWalletApiFetch'
 
 describe('wallet API fetch installer', () => {
   const realFetch = globalThis.fetch
+  const originalEnv = process.env
 
   afterEach(() => {
     globalThis.fetch = realFetch
+    process.env = { ...originalEnv }
   })
 
   test('normalizes trailing slash from base URL', () => {
@@ -23,6 +30,37 @@ describe('wallet API fetch installer', () => {
     )
   })
 
+  test('rewrites configured issuer requests through the development issuer proxy', () => {
+    expect(
+      resolveDevIssuerProxyUrl('https://issuer.office.example/.well-known/openid-credential-issuer', {
+        target: 'https://issuer.office.example',
+        baseUrl: 'http://127.0.0.1:4000/dev-issuer-proxy',
+      }),
+    ).toBe('http://127.0.0.1:4000/dev-issuer-proxy/.well-known/openid-credential-issuer')
+  })
+
+  test('normalizes trailing slashes from development issuer proxy config', () => {
+    expect(
+      resolveDevIssuerProxyUrl('https://issuer.office.example/credential', {
+        target: 'https://issuer.office.example/',
+        baseUrl: 'http://127.0.0.1:4000/dev-issuer-proxy/',
+      }),
+    ).toBe(
+      'http://127.0.0.1:4000/dev-issuer-proxy/credential',
+    )
+  })
+
+  test('does not rewrite unrelated issuer requests', () => {
+    expect(
+      resolveDevIssuerProxyUrl('https://public-issuer.example/.well-known/openid-credential-issuer', {
+        target: 'https://issuer.office.example',
+        baseUrl: 'http://127.0.0.1:4000/dev-issuer-proxy',
+      }),
+    ).toBe(
+      'https://public-issuer.example/.well-known/openid-credential-issuer'
+    )
+  })
+
   test('patched fetch prefixes generated SDK paths', async () => {
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => new Response('{}'))
 
@@ -34,6 +72,46 @@ describe('wallet API fetch installer', () => {
     await fetch('/wallet-api/auth/login', { method: 'POST' })
 
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/wallet-api/auth/login', { method: 'POST' })
+  })
+
+  test('patched fetch sends configured issuer calls through the development proxy', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => new Response('{}'))
+
+    installWalletApiFetch({
+      baseUrl: 'http://127.0.0.1:4000',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      devIssuerProxy: {
+        target: 'https://issuer.office.example',
+        baseUrl: 'http://127.0.0.1:4000/dev-issuer-proxy',
+      },
+    })
+
+    await fetch('https://issuer.office.example/credential', { method: 'POST', body: '{}' })
+
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4000/dev-issuer-proxy/credential', {
+      method: 'POST',
+      body: '{}',
+    })
+  })
+
+  test('patched fetch sends configured verifier calls through the development verifier proxy', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => new Response('{}'))
+
+    installWalletApiFetch({
+      baseUrl: 'http://127.0.0.1:4000',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      devVerifierProxy: {
+        target: 'http://192.100.10.48',
+        baseUrl: 'http://127.0.0.1:4000/dev-verifier-proxy',
+      },
+    })
+
+    await fetch('http://192.100.10.48/openid4vc/request/request-1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:4000/dev-verifier-proxy/openid4vc/request/request-1',
+      undefined,
+    )
   })
 
   test('patched fetch normalizes plain text wallet API errors to JSON', async () => {

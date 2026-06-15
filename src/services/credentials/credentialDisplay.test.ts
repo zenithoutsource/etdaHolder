@@ -33,7 +33,7 @@ const thaiIdRecord: VerifiableCredentialRecord = {
   rawVc: 'header.payload.signature',
   claims: {
     thaiFullName: 'นางสาว พิชญา รุ่งเรืองกิจ',
-    englishFullName: 'Ms. Pitchaya Rungruangkit',
+    englishFullName: 'Ms. Thodsopp Eekkasandigital',
     birthDate: '1990-05-15',
   },
   issuedAt: '2026-06-08T00:00:00.000Z',
@@ -70,7 +70,7 @@ describe('credentialDisplay', () => {
   test('reads holder profile values from ThaiNationalID claims', () => {
     expect(readCredentialHolderProfile(thaiIdRecord)).toEqual({
       thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
-      englishName: 'Ms. Pitchaya Rungruangkit',
+      englishName: 'Ms. Thodsopp Eekkasandigital',
       birthDate: '1990-05-15',
     })
   })
@@ -82,13 +82,13 @@ describe('credentialDisplay', () => {
         claims: {
           Given_Name: 'พิชญา',
           Family_Name: 'รุ่งเรืองกิจ',
-          nameEn: 'Ms. Pitchaya Rungruangkit',
+          nameEn: 'Ms. Thodsopp Eekkasandigital',
           Date_Of_Birth: '1990-05-15',
         },
       })
     ).toEqual({
       thaiName: 'พิชญา รุ่งเรืองกิจ',
-      englishName: 'Ms. Pitchaya Rungruangkit',
+      englishName: 'Ms. Thodsopp Eekkasandigital',
       birthDate: '1990-05-15',
     })
   })

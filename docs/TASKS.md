@@ -69,7 +69,7 @@ Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operat
 
 [x] **P1-2.2** After idcard QR resolves, show "ยืนยันตัวตนผ่าน ThaID" interstitial screen (ThaID logo, "ยืนยัน" button) before credential acquisition — represents LoA High identity verification redirect to ThaID app; simulate with a proceed button that continues the OID4VCI flow (`app/(tabs)/scan.tsx` new `thaIdVerify` phase or separate screen)
 [x] **P1-2.3** After ThaID verification returns, show Holder Confirmation matching `P1-2.3-ThaID_success_page.png`: issuer seal/logo (กรมการปกครอง), document name (บัตรประชาชน), receiving unit, green checkmark ribbon, "ยืนยัน" button — replaces generic preview for ThaiNationalID offers
-[ ] **P1-3** After tapping ยืนยัน on P1-2.3, show full credential data preview before final save — reference `P1-3-Receive_page.png` / `P1-2.5-idcard_vc.png`: ID CARD header band, holder photo, ชื่อ-นามสกุล (Thai + English romanised), เลขบัตรประจำตัวประชาชน (masked), วันเดือนปีเกิด, ศาสนา, ที่อยู่ตามทะเบียนบ้าน, "ยืนยัน" button that triggers `saveCredentialRecord()` and navigates to Wallet home
+[x] **P1-3** After tapping ยืนยัน on P1-2.3, show full credential data preview before final save — reference `P1-3-Receive_page.png` / `P1-2.5-idcard_vc.png`: ID CARD header band, holder photo, ชื่อ-นามสกุล (Thai + English romanised), เลขบัตรประจำตัวประชาชน (masked), วันเดือนปีเกิด, ศาสนา, ที่อยู่ตามทะเบียนบ้าน, "ยืนยัน" button that triggers `saveCredentialRecord()` and navigates to Wallet home
 [x] **P1-2.4** History Log screen lists issuance/presentation events; each row: issuer logo, issuer name, document type, date/time, status badge, action label — reference `P1-2.4-history_log_page.png` (10 records: ธนาคาร, โรงพยาบาล, 7-Eleven, Central/Driving License)
 
 ### 3.3 QR Scanner and NFC
@@ -105,24 +105,39 @@ Release-blocking scope: Important UI-correctness, security, and robustness items
 [ ] Advisory: add error logging to swallowed catches with no signal — `authService.ts` (`loadSession` JSON.parse, `readCredentialIds` JSON.parse, `logout` best-effort server call), and bare `catch { res.status(500)... }` in `server/src/routes/{auth,credentials,wallets}.ts` and `auth.ts:132` logout — all discard the original error/stack with zero log trail.
 [ ] Advisory: local-backend auth oracle cleanup still open only for registration email enumeration — registration returns distinct 409 vs 400 (`server/src/routes/auth.ts:82`). Login now runs dummy bcrypt comparison for unknown users, CORS is restricted to configured development origins, and JWT verification pins `algorithms: ['HS256']`.
 
-## Post-v1: OID4VP 1.0 Online Presentation
+## OID4VP 1.0 Online Presentation
 
-Scope-only; not part of the fixed four-phase v1 plan.
+First narrow slice implemented for `docs/User_Journey/id_card/P5.md`: ThaiNationalID age-over-20 Verifier checks through birth-date disclosure.
 
-Open decisions:
+Resolved decisions:
 
-[ ] Choose OID4VP 1.0 library
-[ ] Choose query language: DCQL vs Presentation Exchange
-[ ] Decide `client_id` scheme and Verifier trust model
-[ ] Decide same-device redirect vs cross-device request URI and QR
-[ ] Decide response mode
+[x] Request transport: cross-device QR Authorization Request
+[x] Query language: Presentation Exchange
+[x] Response mode: `direct_post`
+[x] Verifier trust model: local `did:web` allowlist with response-origin allowlist
+[x] First claim scope: ThaiNationalID birth date disclosure so the Verifier computes age over 20
+[x] Entry point: Scan tab
+[x] Auth UI: native biometric sign-time gate
+[x] Result source: HTTP response body from `direct_post`
+[x] History: successful presentations only
+[x] Initial Verifier config: development Verifier API at `http://192.100.10.48`
 
-Implementation after decisions:
+Implemented:
 
-[ ] `src/services/vp/` for Authorization Request handling and Verifiable Presentation construction
-[ ] Sign `vp_token` via `src/services/crypto`
-[ ] Device-to-Verifier direct transport
-[ ] MSW verifier handler group for tests
+[x] `src/services/vp/` for Authorization Request handling and Presentation Exchange matching
+[x] Verifier API `request_uri` JWT + DCQL IDCard compatibility
+[x] Verifier API Transcript DCQL `dc+sd-jwt` compatibility
+[x] Hardware-signed JWT VP token via `src/services/crypto`
+[x] Device-to-Verifier `direct_post` transport
+[x] Scan tab Holder consent/result flow for OID4VP QR
+[x] Local encrypted history for successful presentations
+
+Remaining:
+
+[ ] Replace development `redirect_uri:` Verifier with registered production `did:web` Verifier entries
+[ ] Add broader claim sets only after trust and disclosure semantics are documented
+[ ] Add MSW Verifier handler group or integration harness for direct_post tests
+[ ] Decide whether to add a full ADR before expanding beyond the P5 age-over-20 slice
 
 ## Definition of Done Per Session
 
@@ -213,7 +228,7 @@ Implementation after decisions:
 - Scan QR `Information to receive` preview now uses `assets/images/user_profile.png` for Transcript holder artwork.
 - Newly received credentials are marked in encrypted credential storage and Wallet Home renders the green `เอกสารใหม่` badge from `docs/ui-reference/after_scan_success_show_new_badge.png` until the Holder opens that document row.
 - Wallet Home status badges such as new-document and unavailable lifecycle labels now sit at the top-right of the document button; the request-document pill stays inline as a Scan action button.
-- Wallet PIN flow fixed: first successful native Wallet Account login without an existing Wallet PIN routes to PIN setup, while cold start and resume no longer invoke PIN setup or PIN lock. Wallet PIN remains scoped to protected in-app actions.
+- Wallet PIN flow fixed: first successful native Wallet Account login without an existing Wallet PIN routes to PIN setup. Cold start with an authenticated session now returns to PIN setup if the Holder killed the app before completing PIN setup; resume still does not invoke PIN lock. Wallet PIN remains scoped to protected in-app actions.
 - Wallet Home document buttons now keep `p-1` on the tappable content and move visible spacing to the outer document card with `m-2`, because the card background lives on the wrapper.
 - PIN setup now hides the biometric keypad button while leaving other PIN keypad screens unchanged.
 - Wallet Home request-document rows are temporarily disabled; missing-credential rows no longer navigate to Scan while keeping the existing request pill styling.
@@ -240,3 +255,53 @@ Implementation after decisions:
 - Transcript detail data mapping now exposes `issuedAt`/`expiresAt` from the stored credential display object, adds transcript aliases for birth/graduation/expiry fields, and uses credential `expiresAt` as the transcript expiry fallback when no expiry claim is disclosed.
 - Transcript detail now pulls holder Thai/English name and birth date from stored ThaiNationalID when the transcript credential omits them; name renders Thai on the first line and English on the second line instead of falling back to `Academic Transcript`.
 - ID Card Credential Detail now follows `docs/ui-reference/idcard_document.png` with an ID-card-specific blue card layout, portrait, Thai/English holder name, national ID, birth date, address, religion, issue date, expiry date, and existing My QR action.
+- Development Issuer proxy added for physical Android testing when the PC reaches the Issuer through VPN but the phone cannot join office Wi-Fi/VPN: matching Issuer fetches are rewritten through `/dev-issuer-proxy/*` on the local backend while OID4VCI protocol execution remains on-device. Documented USB `adb reverse` setup in `server/README.md` and `docs/API.md`.
+- Fixed the physical Android VPN proxy scan timeout: remote `credential_offer_uri` resolution and Pre-Authorized Code token exchange now use proxy-aware fetch before Sphereon handles the inline offer / credential request, avoiding Sphereon's internal `cross-fetch` direct calls to VPN-only Issuer URLs.
+- Added `docs/ANDROID_NETWORK_TESTING.md` with physical Android runbooks for USB + PC VPN proxy mode and direct office Wi-Fi mode, including `.env`, `server/.env`, ADB, Expo, and quick-check commands.
+
+### Session 2026-06-11
+
+- Implemented the first OID4VP P5 slice for ThaiNationalID age-over-20 checks: the Scan tab now accepts `openid4vp://` QR Authorization Requests, validates local `did:web` Verifier allowlist entries, supports Presentation Exchange birth-date disclosure, shows native Holder consent, signs a JWT VP token with the hardware Wallet Signing Key, and submits `vp_token` / `presentation_submission` through `direct_post`.
+- Added compatibility for the supplied Verifier API at `http://192.100.10.48`: `POST /generate-vp-qr` returns an `openid4vp://` QR with `request_uri`; `GET /openid4vc/request/{id}` returns a JWT request object using DCQL for `IDCardCredential`; `POST /openid4vc/verify/{id}` accepts `vp_token` and `state`.
+- Successful Verifier responses are now recorded in encrypted local presentation history and displayed in History Log. `src/config/trustedVerifiers.ts` contains the development `redirect_uri:` Verifier entry and must be replaced for production.
+- Attempted to add a Sphereon OID4VP package, but the expected package name was not available from the registry in this environment; the implementation uses a narrow local service boundary under `src/services/vp/` that can be replaced or adapted when the correct library is confirmed.
+- Added a development Verifier proxy for USB + PC VPN testing: matching Verifier calls are rewritten through `/dev-verifier-proxy/*` so the phone can scan Verifier QR codes even when only the PC can reach `http://192.100.10.48`.
+- Hardened Verifier submission after `Present VP is invalid`: DCQL `vp_token` is now encoded as a credential-query-id response object, Verifier error descriptions surface in Scan, JWT VP tokens include `jti`/`nbf`/`exp`, and the Wallet blocks submission when the stored ThaiNationalID format does not match the Verifier's requested DCQL format. Current known mismatch: the Issuer flow in this repo uses `IDCard_dc+sd-jwt`, while the supplied Verifier requests `jwt_vc_json`; the Verifier should request `format: "dc+sd-jwt"` with `meta.vct_values: ["IDCardCredential"]`.
+- Wallet DCQL parsing now supports `meta.vct_values` for SD-JWT VC requests, so it accepts the corrected `dc+sd-jwt` Verifier request against a stored SD-JWT ThaiNationalID.
+- Pivoted the first practical Verifier flow to Transcript while IDCard format is pending: the live Verifier now emits `transcript_credential` with `format: "dc+sd-jwt"` and `meta.vct_values: ["http://192.100.10.48/credentials/TranscriptCredential"]`; the Wallet now matches that to stored `BangkokUniversityTranscript` credentials.
+- Fixed Transcript Verifier submission shape: DCQL `dc+sd-jwt` / `vc+sd-jwt` requests no longer wrap the credential in a signed JWT VP. They now default to SD-JWT+KB when holder binding is required and submit raw compact SD-JWT only when the Verifier explicitly sets `require_cryptographic_holder_binding: false`; Presentation Exchange requests still use the hardware-signed JWT VP token.
+- Tightened DCQL SD-JWT matching: a stored credential must now match both the requested format and the requested `meta.vct_values` before the Wallet submits it. This prevents sending a Transcript issued with a different `vct` (for example Issuer `192.100.10.46`) to a Verifier request that asks for `http://192.100.10.48/credentials/TranscriptCredential`, which the Verifier rejects as `Present VP is invalid`.
+- Added actionable Wallet diagnostics for DCQL SD-JWT metadata mismatches: the Scan error now shows the requested `vct_values` and the stored credential's actual `vct`, so Verifier configuration can be corrected without guessing.
+- Added OID4VP 1.0 SD-JWT+KB presentation support: the Wallet signs a Key Binding JWT with the hardware Wallet Signing Key, includes `nonce`, `aud`, `iat`, and `sd_hash`, appends it to the presented SD-JWT, and rejects credentials that lack `cnf.jwk` holder binding or are bound to a different Wallet Signing Key.
+
+### Session 2026-06-12
+
+- Fixed local Verifier trust configuration for physical-device testing: `.env` now sets `EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://192.100.10.48` and `EXPO_PUBLIC_VERIFIER_NAME=Verifier API`, so the Scan tab builds a non-empty development Verifier allowlist instead of rejecting ID-card Verifier QR codes as untrusted. Restarted Metro on port 8081 after the env change; focused verifier/presentation tests pass.
+- Added temporary development-only SD-JWT KB bypass for the current Verifier API, which omits `require_cryptographic_holder_binding` while test credentials lack `cnf.jwk`: `EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING=true` makes omitted holder-binding requirements behave like `false` in dev only, so the wallet submits raw compact SD-JWT. This is now superseded locally by the software EdDSA test path below; production/release behavior remains SD-JWT+KB by default.
+- Added temporary development-only software Ed25519/EdDSA KB-JWT signing through `@noble/curves` for the ETDA Verifier test path. `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true` makes OID4VP SD-JWT presentation use `alg: EdDSA` while preserving the existing hardware-backed P-256 `ES256` OID4VCI issuance path. This stores software key material in JS-accessible local metadata storage and is explicitly not release-safe.
+- Extended the same development-only software Ed25519 key to OID4VCI PoP JWTs when `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true`: `signProof()` now emits `alg: EdDSA`, an Ed25519 `did:key` `kid`, and an OKP public JWK for issuer interoperability testing. Existing credentials issued before this change must be reissued before the Verifier can validate EdDSA holder binding.
+- Tightened the development-only software EdDSA OID4VP path so it now rejects SD-JWT credentials whose issuer JWT lacks `cnf.jwk` or is bound to a different Ed25519 key before posting to the Verifier. A remaining `Present VP is invalid` after this point means the credential likely needs to be reissued with the current wallet Ed25519 PoP, or the Issuer is not embedding the PoP public key as credential holder binding.
+- Added issuance-time holder-binding validation for SD-JWT credentials when the Wallet sends a PoP JWT with a public JWK/kid: the Wallet now accepts matching `cnf.jwk` or `cnf.kid`, rejects responses that omit both or bind to a different key before the credential is saved, and Scan surfaces the Issuer-side binding problem directly.
+- Made the temporary EdDSA testing mode internally consistent for holder identity: when `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true`, `getHolderDid()` / `getPublicKeyJwk()` return the software Ed25519 holder identity, and OID4VCI PoP JWTs include `sub` equal to the Ed25519 holder DID so Issuers that read holder subject do not fall back to the old P-256 `did:key:zDnae...`.
+- Adjusted SD-JWT+KB signing to preserve an exact matching credential `cnf.kid` in the KB-JWT header. This supports Verifiers that compare `credential.cnf.kid` to `kb_jwt.header.kid` literally, including Issuers that store a bare `did:key:z6Mk...` rather than a `did:key:z6Mk...#z6Mk...` verification method.
+- Added a development presentation diagnostic summary to Verifier rejection errors. On `Present VP is invalid`, Scan now reports non-secret request/token metadata including requested vct, credential vct, credential cnf, KB-JWT kid/aud/nonce, and aud/nonce match checks so the failing Verifier validation can be isolated without exposing the full SD-JWT.
+- Tightened the software EdDSA KB-JWT JOSE header to mirror the credential confirmation method: when the credential is bound by `cnf.kid`, the KB-JWT header now sends `kid` only and omits embedded `jwk`; when bound by `cnf.jwk`, it sends `jwk` only. The presentation diagnostic now reports `kb_header_jwk` presence.
+- Added development-only OID4VP compatibility probes for unresolved Verifier `Present VP is invalid` responses: `EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE` can try `object_array`, `object_string`, or raw DCQL `vp_token` submission, and `EXPO_PUBLIC_VERIFIER_KB_AUD` can compare the Verifier's `client_id` default against `response_uri`. Diagnostics now also report response shape, state presence, SD-JWT disclosure count, recomputed `sd_hash` match, Ed25519 KB-JWT self-verification, and KB-JWT age without exposing token/disclosure contents.
+- Wallet Home now shows a green `ตรวจสอบสำเร็จ` badge on a document after that credential has a successful OID4VP presentation event recorded in encrypted presentation history; tapping the document clears the current badge while preserving history, and a later successful presentation shows it again.
+- Face preparation instructions now use the provided local image assets (`light_bulb`, `poker_face`, `eye`, `face_mask`) instead of vector icons in `FacePreparePanel`.
+- Presentation approval device display now formats known Android model codes such as `SM-S928B` as marketing names (`Galaxy S24 Ultra`) and shows a full OS label instead of only the raw OS version.
+- Credential Detail approval now reuses `PresentationApprovalDeviceCard` and `PresentationPopCard` for the wallet approval and POP evidence sections instead of maintaining duplicate inline UI.
+- Credential Detail POP evidence now passes the extracted compact credential signature into `PresentationPopCard`, matching the presentation approval screen behavior.
+- Presentation approval POP evidence now shows the matched credential compact-token signature instead of the Verifier request nonce; added a focused regression test for JWT, SD-JWT, and nonce-like inputs.
+- Presentation POP copy action now writes the displayed signature to the system clipboard via `expo-clipboard` and clears its copied-state timer on unmount.
+
+### Session 2026-06-15
+
+- Fixed first-login PIN setup bypass after killing and reopening the app: authenticated native startup now checks whether a Wallet PIN exists and routes back to `/pin-setup` when setup was not completed, instead of entering Wallet Home directly.
+- Presentation request debugging now logs the resolved OID4VP Verifier request in development as pretty JSON, including expanded `dcql_query.credentials`, client/response URIs, nonce/state, matched credential, disclosures, and the disclosure fallback reason. The requested-items UI remains the user-facing disclosure summary.
+- OID4VP requested-item labels now use schema-defined presentation labels for ThaiNationalID DCQL claim paths such as `id_number`, `full_name`, `birthdate`, `expiry_date`, `religion`, and `photo`, instead of showing raw Verifier path names when a stored claim matches.
+- Extended OID4VP requested-item presentation labels to BangkokUniversityTranscript and DLTDrivingLicence DCQL claim paths, added Driving Licence DCQL type matching, and changed the P5 age-over-20 approval row to show `อายุ` with a derived age instead of displaying date of birth.
+- Fixed revoked/deleted credential presentation eligibility: active local P6 lifecycle statuses are now filtered out before OID4VP Verifier matching, so scanning a Verifier QR for a revoked document no longer reaches the Holder approval/data-to-send screen or posts a stale credential to the Verifier.
+- Fixed stale Scan-tab credential state after reissue: saving a newly scanned credential now refreshes `useStoredCredentials()` immediately, so a subsequent Verifier scan in the same Scan screen uses the newly issued credential instead of the pre-reissue/revoked snapshot.
+- Tightened the same reissue/debug path at the QR boundary: OID4VP Verifier QR handling now reads the latest credential records directly from encrypted storage at scan time before lifecycle filtering, avoiding a React render-timing race where the camera could match an old credential snapshot immediately after reissue.
+- Fixed Android native crash on the simulated face-scan step after presentation approval: `FaceScanPanel` no longer animates `react-native-svg` circle props that Android can receive as the wrong native type; it now renders the scan rings with plain animated React Native views.

@@ -1,6 +1,6 @@
 # Delivery Roadmap
 
-Two-month plan. Four phases. Each phase is two weeks. Phases run sequentially; each output is the input gate for the next.
+Original plan was a two-month, four-phase sequential plan. Phases 1-4 are now complete or substantially complete; OID4VP 1.0 online presentation (originally "post-v1, scope-only") has a working first slice; ETDA's EdDSA/Ed25519 requirement adds a new Phase 5 that gates final release. Status below reflects `docs/TASKS.md` and `AGENTS.md` as of 2026-06-15.
 
 ## Phase 1 - Cryptography, Native Integration, and Storage
 
@@ -16,7 +16,8 @@ Delivered:
 
 Remaining risk:
 
-- Physical device verification is still required before release.
+- Physical device verification still required before release (carried into Phase 5 release validation).
+- Production signing algorithm must move from P-256/ES256 to Ed25519/EdDSA — see Phase 5.
 
 ## Phase 2 - OID4VCI 1.0 Client-Side Integration
 
@@ -25,69 +26,91 @@ Status: Complete.
 Delivered:
 
 - Orval SDK generation and endpoint filtering.
-- Credential offer resolution through `@sphereon/oid4vci-client`.
-- OID4VCI 1.0 Pre-Authorized Code acquisition.
+- Credential offer resolution via `@sphereon/oid4vci-client` (`CredentialOfferClient`, `CredentialRequestClientBuilder`), with a custom proxy-aware Pre-Authorized Code token exchange for VPN/physical-device testing.
+- OID4VCI 1.0 Pre-Authorized Code acquisition, including `credential_offer_uri` by-reference resolution.
 - JWT VC, SD-JWT VC, `dc+sd-jwt`, and `vc+sd-jwt` compact credential normalization.
 - Encrypted local save before backend sync.
 - Separate `syncCredentialToBackend()` with explicit `walletId` and `sessionToken`.
 
 Deferred:
 
-- Authorization Code flow.
-- Issuer signature validation against finalized trust metadata.
+- Authorization Code flow (Pre-Authorized Code only, per Phase 2.3 decision).
+- Issuer signature validation against finalized trust metadata (Phase 4 backlog item).
+- Deferred Credential Issuance (`transaction_id`) and `c_nonce` retry-on-`invalid_proof` — see `docs/SPEC_COMPLIANCE_OID4VC.md`.
 
 ## Phase 3 - Config-Driven UI Mapping and Workflow Wiring
 
-Status: In progress.
+Status: Substantially complete.
 
 Delivered:
 
-- Wallet home tab translated from `docs/ui-reference/home.html`.
+- Wallet home tab translated from `docs/ui-reference/home.html`, then re-translated to the `ETDA Wallet.html` reference for Wallet Home, Credential Detail, Scan, My QR, and History Log.
 - Bottom tab shell: Wallet, My QR, Scan, History Log.
-- Dynamic `CardSchemaConfig` format in `src/config/cardSchemas.ts`.
-- Initial schemas for ThaID, DLT Driving Licence, and Bangkok University Transcript.
-- Generic `CredentialCard` component.
-- Stored credential hook and credential detail route.
-- QR scanner using `expo-camera`.
-- QR pre-save confirmation screen showing issuer/config-derived claims.
-- Transcript display fallback when no ID card exists.
+- Dynamic `CardSchemaConfig` format in `src/config/cardSchemas.ts`, covering ThaID, DLT Driving Licence, and Bangkok University Transcript.
+- Generic `CredentialCard` / config-driven detail and summary rendering (`readCredentialSummaryDisplay`, `readCredentialDetailDisplay`).
+- Stored credential hook (`useStoredCredentials`) with explicit `storage-not-ready` state.
+- QR scanner using `expo-camera`, with resolve → Holder Confirmation (data preview) → confirm → save flow.
+- P1 PID VC bootstrap flow: `idcard` → `ThaiNationalID` mapping, `hasPidCredential()` guard, ThaID-first gating on Scan and request rows, ThaID verification interstitial, Holder Confirmation, and post-save success screen.
+- History Log lists issuance and OID4VP presentation events with issuer icon, document type, Thai date/time, and status badge.
+- P6 Case 1 Transcript revoke/delete lifecycle: Wallet PIN-gated revoke action, local lifecycle status/history, Wallet Home unavailable-document panel.
 
 Remaining:
 
-- Fix remaining corrupted UI labels in scanner confirmation screen.
-- Add NFC NDEF issuance reader after device testing is available.
-- Improve workflow error states and localization.
-- Add broader component and scanner tests if test tooling supports it.
+- NFC NDEF issuance reader, deferred until a test device is available.
+- Localization and error-state polish beyond the documented user journeys.
 
 ## Phase 4 - Security Hardening and Release
 
-Status: Not started.
+Status: Substantially complete; release validation blocked on physical devices.
+
+Delivered:
+
+- Screen capture prevention was implemented via focus-scoped `useScreenCaptureGuard()`, then temporarily removed from all screens for tester builds (re-enable before release).
+- Certificate pinning: backend-only, opt-in via `EXPO_PUBLIC_WALLET_API_PINNED_CERTS`, with a startup hard-block for non-development builds shipping plain HTTP or empty pins (ADR 0005).
+- Jailbreak/root detection via `jail-monkey`, hard block at startup with no bypass (ADR 0004).
+- ISO 18013-5 mdoc native module selection criteria (ADR 0006); final module choice still blocked on physical iOS/Android validation.
+- Production bundle/log scan for credential data leaks (`yarn scan:bundle-leaks`).
+- Local development backend hardening: rate-limited auth routes, required non-default `JWT_SECRET` outside tests, restricted CORS, HS256-pinned JWT verification, dummy bcrypt comparison for unknown logins.
+
+Remaining:
+
+- Re-enable screen capture prevention before release.
+- Issuer signature validation once the trusted issuer registry / trust-list source is decided.
+- Final ISO 18013-5 mdoc native module selection ADR after physical-device validation.
+- EAS production builds for iOS and Android, then a physical-device golden-path walkthrough. Manual blocker: user-held EAS credentials, physical iOS device, physical Android device, and a real or test Issuer QR issuance source.
+- Both items above are sequenced **after** Phase 5 (EdDSA migration), since current credentials/holder-binding must be reissued under the new signing key before a meaningful golden-path walkthrough.
+
+## Phase 5 - ETDA EdDSA/Ed25519 Migration (new)
+
+Status: Not started; this is the current Immediate Next Task.
+
+Why: ETDA requires `alg: EdDSA` (Ed25519) for both the OID4VCI PoP JWT and the OID4VP SD-JWT+KB presentation token. Production signing today is still P-256/ES256 via `@animo-id/expo-secure-environment`. A development-only software Ed25519 signer (`@noble/curves`, gated by `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING`) exists for Issuer/Verifier interoperability testing only — its private key is software/JS-accessible and forbidden in release builds.
 
 Planned:
 
-- Screen capture prevention.
-- Certificate pinning decision and implementation if required by threat model.
-- Jailbreak/root detection.
-- Issuer signature validation once trust metadata is finalized.
-- ISO 18013-5 mdoc native module selection ADR and integration.
-- Release build validation for iOS TestFlight and Android internal track.
-- Production log audit for PII and credential payload leakage.
-- Physical-device manual scenarios for credential acquisition, biometric cancellation, persistence, and backend sync failure.
+- Add an ADR for ETDA EdDSA/Ed25519 requirements and the migration plan from P-256/ES256.
+- Add a native, hardware-backed Ed25519 signer (replaces `@noble/curves` for production).
+- Migrate `signProof()` (OID4VCI PoP) and `signSdJwtKbPresentationToken()` (OID4VP KB-JWT) to the native Ed25519 signer; update Holder DID / JWK derivation accordingly.
+- Reissue existing test credentials under the new PoP holder binding before re-running OID4VP Verifier checks.
+- Remove the software EdDSA testing path once the native signer is available.
 
-## Post-v1 - OID4VP 1.0 Online Presentation
+## OID4VP 1.0 Online Presentation
 
-Status: Scope-only, not scheduled.
+Status: First slice implemented (no longer "scope-only, not scheduled").
 
-Open decisions:
+Resolved:
 
-- OID4VP 1.0 library.
-- Query language: DCQL vs Presentation Exchange.
-- `client_id` scheme and Verifier trust model.
-- Same-device redirect vs cross-device request URI and QR.
-- Response mode.
+- Query language: DCQL (Presentation Exchange retained only for the P5 birth-date slice).
+- Response mode: `direct_post`, cross-device QR Authorization Request.
+- Verifier trust model: local allowlist matching `client_id` + `response_uri` origin; current entry uses development `redirect_uri:` scheme.
+- First claim scopes: ThaiNationalID birth-date disclosure (Presentation Exchange) and Transcript `dc+sd-jwt` DCQL disclosure.
+- `vp_token` signing reuses the hardware Wallet Signing Key (`src/services/crypto`); SD-JWT+KB holder binding enforced.
+- Biometric sign-time gate applies; presentation runs device-to-Verifier directly with no company backend proxy.
+- Successful presentations recorded in encrypted local history and shown in History Log / Wallet Home badges.
 
-Fixed constraints:
+Remaining (see `docs/SPEC_COMPLIANCE_OID4VC.md` for spec-level detail):
 
-- `vp_token` signing reuses the hardware Wallet Signing Key through `src/services/crypto`.
-- Biometric sign-time gate applies.
-- Presentation runs device-to-Verifier directly with no company backend proxy.
+- Replace the development `redirect_uri:` Verifier entry with registered production `did:web` Verifier(s), including signed Request Object (JAR) signature verification and `client_id_scheme`-aware trust handling.
+- Migrate SD-JWT+KB signing to native EdDSA (Phase 5).
+- `presentation_definition_uri` and DCQL `credential_sets` support, if a Verifier requires them.
+- Broader claim sets only after trust and disclosure semantics are documented.

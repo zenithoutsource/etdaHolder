@@ -5,6 +5,7 @@ import type { ErrorRequestHandler, RequestHandler } from 'express'
 import { readConfig } from './config'
 import { authRouter } from './routes/auth'
 import { credentialsRouter } from './routes/credentials'
+import { devIssuerProxyRouter, devVerifierProxyRouter } from './routes/devIssuerProxy'
 import { walletsRouter } from './routes/wallets'
 
 type HttpParserError = Error & {
@@ -90,6 +91,14 @@ export function createTestApp(): express.Express {
   const app = express()
 
   app.use(createCorsMiddleware())
+
+  if (process.env.ENABLE_DEV_ISSUER_PROXY === 'true') {
+    app.use('/dev-issuer-proxy', devIssuerProxyRouter)
+  }
+  if (process.env.ENABLE_DEV_VERIFIER_PROXY === 'true') {
+    app.use('/dev-verifier-proxy', devVerifierProxyRouter)
+  }
+
   app.use(express.json({ limit: '1mb' }))
 
   app.use('/wallet-api/auth', createAuthRateLimiter())

@@ -25,12 +25,12 @@ const record: VerifiableCredentialRecord = {
 describe('ThaiIdSuccessConfirmationPanel', () => {
   test('renders P1-2.3 Thai ID confirmation and confirms save', () => {
     const onConfirm = jest.fn()
-    const thaidSource = ReactNativeImage.resolveAssetSource(require('../../assets/images/thaid.png'))
+    const dopaSource = ReactNativeImage.resolveAssetSource(require('../../assets/images/dopa.png'))
 
     render(<ThaiIdSuccessConfirmationPanel record={record} onConfirm={onConfirm} />)
 
     expect(ReactNativeImage.resolveAssetSource(screen.getByTestId('thai-id-confirmation-image').props.source)).toEqual(
-      thaidSource,
+      dopaSource,
     )
     expect(screen.getByText('กรมการปกครอง')).toBeTruthy()
     expect(screen.getByText(/บัตรประชาชน/)).toBeTruthy()

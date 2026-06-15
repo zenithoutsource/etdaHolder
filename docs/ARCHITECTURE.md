@@ -59,9 +59,23 @@ Only HTTP 201 is a sync success. TanStack Query invalidation belongs in caller/U
 | NFC NDEF | Reads issuance offer URI from an NFC tag | Deferred until test device |
 | In-app SDK | Backend returns an offer URL | Supported boundary; UI wiring is incremental |
 | NFC Presentation | ISO 18013-5 mdoc proximity presentation | Decided by ADR 0003; native module TBD |
-| Online Presentation | OID4VP 1.0 remote/cross-device presentation | Post-v1 scope only |
+| Online Presentation | OID4VP 1.0 remote/cross-device presentation | First QR/direct_post slice implemented for ThaiNationalID age-over-20 |
 
 Presentation is separate from acquisition. OID4VP online presentation does not supersede ADR 0003 because it uses a different transport.
+
+### On-Device OID4VP
+
+The first OID4VP slice is intentionally narrow and Verifier-driven:
+
+1. Scan a cross-device `openid4vp://...` Authorization Request QR.
+2. Validate `client_id` against the local Verifier allowlist and require the `response_uri` origin to be allowlisted.
+3. Accept Presentation Exchange requests only when the requested disclosure is the ThaiNationalID birth date, or the development Verifier API's DCQL IDCard request.
+4. Show native Holder consent before signing.
+5. Sign a JWT VP token with the hardware Wallet Signing Key under the same biometric sign-time gate.
+6. Send `vp_token`, `presentation_submission`, and optional `state` to the Verifier using `direct_post`.
+7. Record successful presentations locally after the Verifier returns a successful HTTP response.
+
+The current development allowlist includes `http://192.100.10.48/openid4vc/verify` for the supplied Verifier API. Production deployments must replace this with registered `did:web` Verifiers.
 
 ## 4. Security Boundary
 
@@ -113,6 +127,7 @@ No issuer-specific card components should be added. Extend schemas instead.
 | `src/services/crypto/` | Hardware key policy, Holder DID, PoP signing |
 | `src/services/storage/` | Encrypted MMKV and Keychain integration |
 | `src/services/vci/` | OID4VCI offer resolution, acquisition, credential normalization, backend sync |
+| `src/services/vp/` | OID4VP Authorization Request parsing, Presentation Exchange matching, direct_post submission |
 | `src/services/auth/` | Wallet Account login/register/logout and session persistence |
 | `src/config/` | Dynamic credential card schema registry |
 | `src/components/` | Reusable UI components |
@@ -149,4 +164,4 @@ No issuer-specific card components should be added. Extend schemas instead.
 | 0005 | Backend-only certificate pinning |
 | 0006 | ISO 18013-5 mdoc native module selection criteria |
 
-OID4VP 1.0 online presentation remains post-v1 and has no ADR until its mechanics are decided.
+OID4VP 1.0 online presentation has an implemented first slice but still needs a full ADR before broader claim sets, Verifier onboarding, or registry-backed trust rules are expanded.

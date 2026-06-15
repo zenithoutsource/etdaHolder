@@ -148,7 +148,7 @@ describe('CredentialDocumentDetailCard', () => {
             { key: 'expiryDate', label: 'Expiry Date', value: '28 พฤศจิกายน 2573' },
           ],
         }}
-        holderProfile={{ thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ', englishName: 'Ms. Pitchaya Rungruangkit' }}
+        holderProfile={{ thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ', englishName: 'Ms. Thodsopp Eekkasandigital' }}
         onOpenQr={() => undefined}
       />
     )
@@ -162,7 +162,7 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByText('2025')).toBeTruthy()
     expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Pitchaya Rungruangkit')
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
   })
 
   test('uses credential expiry metadata when transcript expiry claim is absent', () => {
@@ -202,7 +202,7 @@ describe('CredentialDocumentDetailCard', () => {
         }}
         holderProfile={{
           thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
-          englishName: 'Ms. Pitchaya Rungruangkit',
+          englishName: 'Ms. Thodsopp Eekkasandigital',
           birthDate: '1990-05-15',
         }}
         onOpenQr={() => undefined}
@@ -210,7 +210,7 @@ describe('CredentialDocumentDetailCard', () => {
     )
 
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Pitchaya Rungruangkit')
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
     expect(screen.getByText('15 พฤษภาคม 2533')).toBeTruthy()
   })
 
@@ -227,13 +227,13 @@ describe('CredentialDocumentDetailCard', () => {
           extraRows: [],
         }}
         holderProfile={{
-          englishName: 'Ms. Pitchaya Rungruangkit',
+          englishName: 'Ms. Thodsopp Eekkasandigital',
         }}
         onOpenQr={() => undefined}
       />
     )
 
-    expect(screen.getByTestId('document-detail-name')).toHaveTextContent('Ms. Pitchaya Rungruangkit')
+    expect(screen.getByTestId('document-detail-name')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('-')
   })
 
@@ -257,7 +257,7 @@ describe('CredentialDocumentDetailCard', () => {
     )
 
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Pitchaya Rungruangkit')
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
   })
 
   test('sizes the blue card header as a full-width unclipped band', () => {

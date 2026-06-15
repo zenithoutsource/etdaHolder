@@ -79,6 +79,16 @@ const idCardSdJwtOfferUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22IdCard_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
 const uppercaseIdCardSdJwtOfferUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22IDCard_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
+const remoteOfferUri =
+  'openid-credential-offer://?credential_offer_uri=http%3A%2F%2F192.100.10.46%2Fopenid4vc%2Frequest%2Fabc'
+
+const realFetch = globalThis.fetch
+const originalEnv = process.env
+
+afterEach(() => {
+  globalThis.fetch = realFetch
+  process.env = { ...originalEnv }
+})
 
 async function expectErrorPrefix(operation: () => Promise<unknown>, prefix: string): Promise<void> {
   try {
@@ -99,6 +109,13 @@ function unsignedJwt(payload: Record<string, unknown>): string {
     btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 
   return `${encode({ alg: 'none' })}.${encode(payload)}.signature`
+}
+
+function proofJwtWithJwk(jwk: Record<string, unknown>, kid = 'did:key:z6Mkwallet#z6Mkwallet'): string {
+  const encode = (value: unknown) =>
+    btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+
+  return `${encode({ alg: 'EdDSA', typ: 'openid4vci-proof+jwt', kid, jwk })}.${encode({ nonce: 'nonce' })}.signature`
 }
 
 function disclosure(key: string, value: unknown): string {
@@ -170,6 +187,113 @@ async function txCodeContract(): Promise<void> {
 }
 
 void txCodeContract()
+
+test('resolveOffer fetches credential_offer_uri through the development issuer proxy', async () => {
+  jest.resetModules()
+  process.env = {
+    ...process.env,
+    EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET: 'http://192.100.10.46',
+    EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL: 'http://127.0.0.1:4000/dev-issuer-proxy',
+  }
+  const { resolveOffer: resolveOfferWithProxy } = require('./exchangeService') as typeof import('./exchangeService')
+  const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+    async () =>
+      new Response(
+        JSON.stringify({
+          credential_issuer: 'http://192.100.10.46',
+          credential_configuration_ids: ['IDCard_dc+sd-jwt'],
+          grants: {
+            'urn:ietf:params:oauth:grant-type:pre-authorized_code': {
+              'pre-authorized_code': 'mock-preauth-code',
+            },
+          },
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      ),
+  )
+  globalThis.fetch = fetchMock as unknown as typeof fetch
+
+  const resolved = await resolveOfferWithProxy(remoteOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'http://192.100.10.46',
+      token_endpoint: 'http://192.100.10.46/token',
+      credential_endpoint: 'http://192.100.10.46/credential',
+      credential_configurations_supported: {
+        IDCardCredential_dc_sd_jwt: {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/idcard',
+          credential_definition: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+        },
+      },
+    }),
+  })
+
+  expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4000/dev-issuer-proxy/openid4vc/request/abc', {
+    headers: { Accept: 'application/json' },
+  })
+  expect(resolved.offerUri).toContain('credential_offer=')
+  expect(resolved.issuerMetadata.token_endpoint).toBe('http://127.0.0.1:4000/dev-issuer-proxy/token')
+  expect(resolved.issuerMetadata.credential_endpoint).toBe('http://127.0.0.1:4000/dev-issuer-proxy/credential')
+})
+
+test('default pre-authorized token exchange uses the development issuer proxy', async () => {
+  jest.resetModules()
+  process.env = {
+    ...process.env,
+    EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET: 'http://192.100.10.46',
+    EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL: 'http://127.0.0.1:4000/dev-issuer-proxy',
+  }
+  const { acquireCredentialRecord: acquireCredentialRecordWithProxy } = require('./exchangeService') as typeof import('./exchangeService')
+  const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+    async () =>
+      new Response(
+        JSON.stringify({
+          access_token: 'access-token',
+          c_nonce: 'nonce',
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      ),
+  )
+  globalThis.fetch = fetchMock as unknown as typeof fetch
+
+  await acquireCredentialRecordWithProxy(
+    {
+      offerUri,
+      issuer: 'http://192.100.10.46',
+      credentialOffer: {} as ResolvedCredentialOffer['credentialOffer'],
+      issuerMetadata: {
+        credential_issuer: 'http://192.100.10.46',
+        token_endpoint: 'http://192.100.10.46/token',
+        credential_endpoint: 'http://192.100.10.46/credential',
+        credential_configurations_supported: {},
+      },
+      credentialConfigurations: [
+        {
+          id: 'ThaiNationalID',
+          requestId: 'ThaiNationalID',
+          format: 'dc+sd-jwt',
+          rawConfiguration: { format: 'dc+sd-jwt', vct: 'idcard' } as ResolvedCredentialOffer['credentialConfigurations'][number]['rawConfiguration'],
+        },
+      ],
+      preAuthorizedCode: 'mock-preauth-code',
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+      version: 10015,
+    },
+    {
+      dependencies: {
+        signProof: async () => 'proof.jwt',
+        requestCredential: async () => unsignedJwt({ vc: { type: ['VerifiableCredential', 'ThaiNationalID'] } }),
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    },
+  )
+
+  expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4000/dev-issuer-proxy/token', expect.objectContaining({
+    method: 'POST',
+  }))
+  const requestInit = fetchMock.mock.calls[0][1]
+  expect(String(requestInit?.body)).toContain('pre-authorized_code=mock-preauth-code')
+})
 
 async function acquisitionOrchestrationContract(): Promise<void> {
   const resolved = await contract()
@@ -314,6 +438,69 @@ async function acquireCredentialRecordDoesNotStoreContract(): Promise<Verifiable
 }
 
 void acquireCredentialRecordDoesNotStoreContract()
+
+test('development EdDSA issuance rejects returned SD-JWT credentials without matching holder binding', async () => {
+  process.env.EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING = 'true'
+  const holderJwk = { kty: 'OKP', crv: 'Ed25519', x: 'wallet-ed25519-key' }
+  const holderKid = 'did:key:z6Mkwallet#z6Mkwallet'
+  const resolved = await resolveOffer(transcriptOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        'TranscriptCredential_dc+sd-jwt': {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/TranscriptCredential',
+          claims: [],
+        },
+      },
+    }),
+  })
+
+  await expect(
+    acquireCredentialRecord(resolved, {
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+        signProof: async () => proofJwtWithJwk(holderJwk, holderKid),
+        requestCredential: async () => `${unsignedJwt({
+          jti: 'transcript-1',
+          vct: 'https://issuer.example.com/vct/TranscriptCredential',
+          cnf: { kid: holderKid.split('#')[0] },
+        })}~`,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    }),
+  ).resolves.toMatchObject({ id: 'transcript-1' })
+
+  await expect(
+    acquireCredentialRecord(resolved, {
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+        signProof: async () => proofJwtWithJwk(holderJwk, holderKid),
+        requestCredential: async () => `${unsignedJwt({
+          jti: 'transcript-1',
+          vct: 'https://issuer.example.com/vct/TranscriptCredential',
+        })}~`,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    }),
+  ).rejects.toThrow('CredentialHolderBindingMissing')
+
+  await expect(
+    acquireCredentialRecord(resolved, {
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+        signProof: async () => proofJwtWithJwk(holderJwk, holderKid),
+        requestCredential: async () => `${unsignedJwt({
+          jti: 'transcript-1',
+          vct: 'https://issuer.example.com/vct/TranscriptCredential',
+          cnf: { kid: 'did:key:zDnaeold-p256-holder' },
+        })}~`,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    }),
+  ).rejects.toThrow('CredentialHolderBindingMismatch')
+})
 
 test('saveCredentialRecord clears a stale local lifecycle status for a reissued credential', () => {
   const writes = new Map<string, string>([
