@@ -23,10 +23,6 @@ object EtdaWalletEddsa {
   private const val TAG = "EtdaWalletEddsa"
   private const val HARDWARE_KEYSTORE_CURVE_25519_VERSION = 200
 
-  private val ED25519_SPKI_PREFIX = byteArrayOf(
-    0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-  )
-
   fun supportsSecureEnvironment(context: AppContext): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
     if (!hasHardwareBackedCurve25519Keystore(context)) return false
@@ -168,13 +164,21 @@ object EtdaWalletEddsa {
     val encoded = publicKey.encoded
     if (encoded.size == 32) return encoded
 
-    if (encoded.size == ED25519_SPKI_PREFIX.size + 32) {
-      val prefix = encoded.copyOfRange(0, ED25519_SPKI_PREFIX.size)
-      if (prefix.contentEquals(ED25519_SPKI_PREFIX)) {
-        return encoded.copyOfRange(ED25519_SPKI_PREFIX.size, encoded.size)
+    // In any valid SPKI the 32-byte Ed25519 point lives inside the last BIT STRING.
+    // The BIT STRING header for a 32-byte payload is always [03 21 00].
+    // Searching from the end handles both the standard 44-byte SPKI and alternative
+    // encodings (e.g. 46 bytes when a NULL AlgorithmParameters element is present).
+    if (encoded.size >= 35) {
+      val bsOffset = encoded.size - 35
+      if (encoded[bsOffset] == 0x03.toByte() &&
+        encoded[bsOffset + 1] == 0x21.toByte() &&
+        encoded[bsOffset + 2] == 0x00.toByte()
+      ) {
+        return encoded.copyOfRange(bsOffset + 3, encoded.size)
       }
     }
 
-    throw CodedException("Ed25519PublicKeyEncodingUnsupported: expected raw 32-byte or RFC 8410 SPKI public key")
+    Log.e(TAG, "Unexpected Ed25519 SPKI (${encoded.size} bytes): ${encoded.joinToString("") { "%02x".format(it) }}")
+    throw CodedException("Ed25519PublicKeyEncodingUnsupported: got ${encoded.size}-byte key, expected raw 32-byte or RFC 8410 SPKI")
   }
 }
