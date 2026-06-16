@@ -5,6 +5,7 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
+import android.util.Log
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
@@ -15,11 +16,11 @@ import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.Signature
-import java.security.spec.NamedParameterSpec
 
 object EtdaWalletEddsa {
   private const val ANDROID_KEYSTORE = "AndroidKeyStore"
   private const val ED25519 = "Ed25519"
+  private const val TAG = "EtdaWalletEddsa"
   private const val HARDWARE_KEYSTORE_CURVE_25519_VERSION = 200
 
   private val ED25519_SPKI_PREFIX = byteArrayOf(
@@ -48,7 +49,6 @@ object EtdaWalletEddsa {
         keyId,
         KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
       )
-        .setAlgorithmParameterSpec(NamedParameterSpec(ED25519))
         .apply {
           if (biometricsBacked) {
             setUserAuthenticationRequired(true)
@@ -66,6 +66,7 @@ object EtdaWalletEddsa {
       assertHardwareBackedKey(keyId)
     } catch (error: Exception) {
       deleteKey(keyId)
+      Log.e(TAG, "Ed25519 key generation failed", error)
       throw CodedException("Ed25519KeyGenerationFailed: ${error.message}", error)
     }
   }
@@ -147,7 +148,7 @@ object EtdaWalletEddsa {
   private fun assertHardwareBackedKey(keyId: String) {
     val privateKey = getKeypair(keyId).first
     val keyInfo = KeyFactory
-      .getInstance(privateKey.algorithm, ANDROID_KEYSTORE)
+      .getInstance(ED25519, ANDROID_KEYSTORE)
       .getKeySpec(privateKey, KeyInfo::class.java)
 
     val hardwareBacked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
