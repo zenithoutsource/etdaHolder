@@ -20,7 +20,6 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "@animo-id/expo-secure-environment": "^0.1.5",
     "@expo/vector-icons": "^15.0.3",
     "@noble/curves": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.4.0",

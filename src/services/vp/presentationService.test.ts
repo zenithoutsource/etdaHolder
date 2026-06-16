@@ -116,7 +116,6 @@ function verifierRequestUri(id = 'request-123'): string {
 
 describe('presentationService', () => {
   const originalSdJwtKbFlag = process.env.EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING
-  const originalSoftwareEddsaFlag = process.env.EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING
   let infoSpy: jest.SpyInstance
 
   beforeEach(() => {
@@ -126,7 +125,6 @@ describe('presentationService', () => {
   afterEach(() => {
     jest.useRealTimers()
     process.env.EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING = originalSdJwtKbFlag
-    process.env.EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING = originalSoftwareEddsaFlag
     infoSpy.mockRestore()
   })
 
@@ -679,45 +677,6 @@ describe('presentationService', () => {
 
     expect(readPresentationTokenMode(request, true)).toBe('raw-credential')
     expect(readPresentationTokenMode(request, false)).toBe('sd-jwt-kb')
-  })
-
-  test('uses software Ed25519 KB tokens for DCQL SD-JWT requests only when the development EdDSA flag is enabled', async () => {
-    process.env.EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING = 'true'
-    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
-      fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
-        async () =>
-          new Response(
-            unsignedRequestJwt({
-              response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
-              response_mode: 'direct_post',
-              state: 'request-123',
-              nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
-              dcql_query: {
-                credentials: [
-                  {
-                    id: 'transcript_credential',
-                    format: 'dc+sd-jwt',
-                    meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
-                  },
-                ],
-              },
-            }),
-            { status: 200 },
-          ),
-      ) as unknown as typeof fetch,
-      trustedVerifiers: [
-        {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
-          name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
-        },
-      ],
-    })
-
-    expect(readPresentationTokenMode(request, { softwareEddsaEnabledForTesting: true })).toBe('software-ed25519-kb')
-    expect(readPresentationTokenMode(request, { softwareEddsaEnabledForTesting: false })).toBe('sd-jwt-kb')
   })
 
   test('uses signed JWT VP tokens for Presentation Exchange requests', async () => {

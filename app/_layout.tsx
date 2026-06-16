@@ -38,7 +38,7 @@ function toUserMessage(message: string): string {
     return 'กรุณาตั้งค่าการล็อกหน้าจอหรือ Biometric ก่อนใช้งาน Wallet'
   if (message.includes('StorageInitializationFailed'))
     return 'ไม่สามารถเปิดพื้นที่จัดเก็บข้อมูลได้ กรุณาลองใหม่อีกครั้ง'
-  if (message.includes('WalletKeyNotInitialized') || message.includes('generateKeypair'))
+  if (message.includes('WalletKeyNotInitialized') || message.includes('generateKeypair') || message.includes('NativeEd25519SignerRequired'))
     return 'ไม่สามารถสร้าง Wallet Key ได้ กรุณาลองใหม่อีกครั้ง'
   if (message.includes('DeviceIntegrityCompromised'))
     return 'ไม่สามารถใช้งาน Wallet บนอุปกรณ์ที่ผ่านการ Root หรือ Jailbreak ได้'
@@ -70,23 +70,24 @@ export default function RootLayout() {
         const [
           { generateWalletKeyIfNeeded },
           { initStorage },
-          { assertHardwareSecureEnvironmentSupported },
+          { assertNativeEd25519SignerSupported },
           { assertDeviceIntegrity },
           { assertConfiguredWalletApiRuntimePolicy },
+          nativeEddsaSigner,
         ] = await Promise.all([
           import('@/src/services/crypto/crypto'),
           import('@/src/services/storage/storage'),
           import('@/src/services/crypto/secureEnvironmentPolicy'),
           import('@/src/services/security/deviceIntegrityPolicy'),
           import('@/src/sdk/walletApiRuntimePolicy'),
+          import('@/src/services/crypto/nativeEddsaSigner'),
         ]);
 
         const { default: JailMonkey } = await import('jail-monkey');
         assertDeviceIntegrity({ isJailBroken: JailMonkey.isJailBroken() });
         assertConfiguredWalletApiRuntimePolicy();
 
-        const secureEnvironment = await import('@animo-id/expo-secure-environment');
-        assertHardwareSecureEnvironmentSupported(secureEnvironment);
+        assertNativeEd25519SignerSupported(nativeEddsaSigner);
 
         await initStorage();
         await generateWalletKeyIfNeeded();

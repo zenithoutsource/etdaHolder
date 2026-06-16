@@ -1,6 +1,7 @@
 import {
   acquireCredentialRecord,
   claimCredential,
+  InvalidProofError,
   readCompactCredentialFromResponse,
   resolveOffer,
   saveCredentialRecord,
@@ -439,8 +440,7 @@ async function acquireCredentialRecordDoesNotStoreContract(): Promise<Verifiable
 
 void acquireCredentialRecordDoesNotStoreContract()
 
-test('development EdDSA issuance rejects returned SD-JWT credentials without matching holder binding', async () => {
-  process.env.EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING = 'true'
+test('EdDSA issuance rejects returned SD-JWT credentials without matching holder binding', async () => {
   const holderJwk = { kty: 'OKP', crv: 'Ed25519', x: 'wallet-ed25519-key' }
   const holderKid = 'did:key:z6Mkwallet#z6Mkwallet'
   const resolved = await resolveOffer(transcriptOfferUri, {
@@ -908,3 +908,89 @@ async function backendSyncFailureContract(): Promise<void> {
 }
 
 void backendSyncFailureContract()
+
+test('pre-authorized token exchange discovers token_endpoint via authorization_servers metadata', async () => {
+  const resolved = await resolveOffer(offerUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      authorization_servers: ['https://as.example.com'],
+      credential_configurations_supported: {
+        ThaiNationalID: {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/ThaiNationalID',
+          credential_definition: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+        },
+      },
+    }),
+  })
+
+  const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async (input) => {
+    const url = String(input)
+
+    if (url === 'https://as.example.com/.well-known/oauth-authorization-server') {
+      return new Response(JSON.stringify({ token_endpoint: 'https://as.example.com/token' }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (url === 'https://as.example.com/token') {
+      return new Response(JSON.stringify({ access_token: 'access-token', c_nonce: 'nonce' }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    throw new Error(`unexpected fetch ${url}`)
+  })
+  globalThis.fetch = fetchMock as unknown as typeof fetch
+
+  await acquireCredentialRecord(resolved, {
+    tx_code: '123456',
+    dependencies: {
+      signProof: async () => 'proof.jwt',
+      requestCredential: async () => unsignedJwt({ vc: { type: ['VerifiableCredential', 'ThaiNationalID'] } }),
+      getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+    },
+  })
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    'https://as.example.com/.well-known/oauth-authorization-server',
+    expect.objectContaining({ headers: { Accept: 'application/json' } }),
+  )
+  expect(fetchMock).toHaveBeenCalledWith('https://as.example.com/token', expect.objectContaining({ method: 'POST' }))
+})
+
+test('acquireCredentialRecord retries once with a refreshed c_nonce on invalid_proof', async () => {
+  const resolved = await contract()
+
+  let requestCredentialCalls = 0
+  const signedNonces: string[] = []
+
+  await acquireCredentialRecord(resolved, {
+    tx_code: '123456',
+    dependencies: {
+      acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+      signProof: async (cNonce) => {
+        signedNonces.push(cNonce)
+        return `proof-${cNonce}.jwt`
+      },
+      requestCredential: async ({ proof }) => {
+        requestCredentialCalls += 1
+
+        if (requestCredentialCalls === 1) {
+          throw new InvalidProofError('CredentialRequestFailed: invalid_proof', 'fresh-nonce')
+        }
+
+        if (proof !== 'proof-fresh-nonce.jwt') {
+          throw new Error('expected retry proof signed with the refreshed c_nonce')
+        }
+
+        return unsignedJwt({ vc: { type: ['VerifiableCredential', 'ThaiNationalID'] } })
+      },
+      getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+    },
+  })
+
+  expect(requestCredentialCalls).toBe(2)
+  expect(signedNonces).toEqual(['nonce', 'fresh-nonce'])
+})

@@ -9,10 +9,6 @@ export function isSdJwtKbDisabledForTesting(isDevelopment = __DEV__): boolean {
   return isDevelopment && process.env.EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING === 'true'
 }
 
-export function isSoftwareEddsaEnabledForTesting(isDevelopment = __DEV__): boolean {
-  return isDevelopment && process.env.EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING === 'true'
-}
-
 export function readVerifierDcqlVpTokenShape(isDevelopment = __DEV__): VerifierDcqlVpTokenShape {
   if (!isDevelopment) return 'object_array'
 

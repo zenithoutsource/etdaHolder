@@ -32,7 +32,6 @@ import { readCredentialHolderProfile } from '../../src/services/credentials/cred
 import {
   signPresentationVpToken,
   signSdJwtKbPresentationToken,
-  signSoftwareEddsaSdJwtKbPresentationToken,
 } from '../../src/services/crypto/crypto'
 import { recordSuccessfulPresentation } from '../../src/services/history/presentationHistory'
 import { readCredentialPreviewDisplay } from '../../src/services/vci/qrIssuanceFlow'
@@ -247,12 +246,6 @@ export default function ScanScreen() {
       const presentationAudience = readPresentationTokenAudience(request)
       const vpToken = presentationTokenMode === 'raw-credential'
         ? request.matchedCredential.rawVc
-        : presentationTokenMode === 'software-ed25519-kb'
-          ? await signSoftwareEddsaSdJwtKbPresentationToken({
-            audience: presentationAudience,
-            nonce: request.nonce,
-            sdJwt: request.matchedCredential.rawVc,
-          })
         : presentationTokenMode === 'sd-jwt-kb'
           ? await signSdJwtKbPresentationToken({
             audience: presentationAudience,

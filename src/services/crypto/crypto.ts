@@ -1,57 +1,31 @@
+import { createHash, randomBytes } from 'react-native-quick-crypto'
+
+import { isBiometricDisabledForTesting } from '@/src/config/runtimeFlags'
+
+import { getMetaStorage } from '../storage/storage'
 import {
   deleteKey,
   generateKeypair,
   getPublicBytesForKeyId,
   sign,
-} from '@animo-id/expo-secure-environment'
-import { ed25519 } from '@noble/curves/ed25519.js'
-import { createHash, randomBytes } from 'react-native-quick-crypto'
-
-import { isBiometricDisabledForTesting, isSoftwareEddsaEnabledForTesting } from '@/src/config/runtimeFlags'
-
-import { getMetaStorage } from '../storage/storage'
+} from './nativeEddsaSigner'
 
 const KEY_ID = 'etda_wallet_signing_key'
-const COMPRESSED_KEY_STORAGE = 'wallet.compressed_pub_key'
-const SOFTWARE_ED25519_SECRET_KEY_STORAGE = 'wallet.software_ed25519_secret_key'
+const ED25519_PUBLIC_KEY_STORAGE = 'wallet.ed25519_pub_key'
 const KEY_REGISTERED_AT_STORAGE = 'wallet.key_registered_at'
 
-const metaStorage = getMetaStorage()
+const LEGACY_COMPRESSED_KEY_STORAGE = 'wallet.compressed_pub_key'
+const LEGACY_SOFTWARE_ED25519_SECRET_KEY_STORAGE = 'wallet.software_ed25519_secret_key'
 
-// P-256 curve constants
-const P256_P = BigInt('0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF')
-const P256_B = BigInt('0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B')
-
-// did:key multicodec prefix for P-256 compressed key (0x1200 varint-encoded)
-const P256_MULTICODEC_PREFIX = new Uint8Array([0x80, 0x24])
 const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01])
-
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
-function modPow(base: bigint, exp: bigint, mod: bigint): bigint {
-  let result = 1n
-  base = base % mod
-  while (exp > 0n) {
-    if (exp % 2n === 1n) result = (result * base) % mod
-    exp = exp >> 1n
-    base = (base * base) % mod
-  }
-  return result
-}
+const metaStorage = getMetaStorage()
 
 function bytesToBigInt(bytes: Uint8Array): bigint {
   let n = 0n
   for (const b of bytes) n = (n << 8n) | BigInt(b)
   return n
-}
-
-function bigIntToBytes(n: bigint, length: number): Uint8Array {
-  const out = new Uint8Array(length)
-  for (let i = length - 1; i >= 0; i--) {
-    out[i] = Number(n & 0xffn)
-    n >>= 8n
-  }
-  return out
 }
 
 function base64UrlEncode(input: Uint8Array | string): string {
@@ -90,62 +64,77 @@ function base58btcEncode(bytes: Uint8Array): string {
   return '1'.repeat(leadingOnes) + result
 }
 
-// Decompress a 33-byte P-256 compressed key into a JWK with x and y coordinates.
-// Both iOS (.ecdsaSignatureMessageX962SHA256) and Android (SHA256withECDSA) return
-// the public key as a compressed EC point, so we recover y using P-256 curve math.
-function compressedKeyToJwk(compressedKey: Uint8Array): JsonWebKey {
-  const prefix = compressedKey[0] // 0x02 = even y, 0x03 = odd y
-  const xBytes = compressedKey.slice(1, 33)
-  const x = bytesToBigInt(xBytes)
-
-  // y² ≡ x³ − 3x + b (mod p)
-  const x3 = modPow(x, 3n, P256_P)
-  const threeX = (3n * x) % P256_P
-  const ySquared = ((x3 - threeX + P256_B) % P256_P + P256_P) % P256_P
-
-  // p ≡ 3 (mod 4), so y = ySquared^((p+1)/4) mod p
-  let y = modPow(ySquared, (P256_P + 1n) / 4n, P256_P)
-  if ((y % 2n === 0n) !== (prefix === 0x02)) y = P256_P - y
-
-  return {
-    kty: 'EC',
-    crv: 'P-256',
-    x: base64UrlEncode(xBytes),
-    y: base64UrlEncode(bigIntToBytes(y, 32)),
-  }
-}
-
-function compressedKeyToDidKey(compressedKey: Uint8Array): string {
-  const multicodecBytes = new Uint8Array(P256_MULTICODEC_PREFIX.length + compressedKey.length)
-  multicodecBytes.set(P256_MULTICODEC_PREFIX)
-  multicodecBytes.set(compressedKey, P256_MULTICODEC_PREFIX.length)
-  const identifier = 'z' + base58btcEncode(multicodecBytes)
-  return `did:key:${identifier}`
-}
-
 function ed25519PublicKeyToDidKey(publicKey: Uint8Array): string {
+  assertEd25519PublicKeyLength(publicKey)
   const multicodecBytes = new Uint8Array(ED25519_MULTICODEC_PREFIX.length + publicKey.length)
   multicodecBytes.set(ED25519_MULTICODEC_PREFIX)
   multicodecBytes.set(publicKey, ED25519_MULTICODEC_PREFIX.length)
-  const identifier = 'z' + base58btcEncode(multicodecBytes)
-  return `did:key:${identifier}`
+  return `did:key:z${base58btcEncode(multicodecBytes)}`
+}
+
+function publicKeyToEd25519Jwk(publicKey: Uint8Array): JsonWebKey {
+  assertEd25519PublicKeyLength(publicKey)
+  return {
+    kty: 'OKP',
+    crv: 'Ed25519',
+    x: base64UrlEncode(publicKey),
+  }
+}
+
+function assertEd25519PublicKeyLength(publicKey: Uint8Array): void {
+  if (publicKey.length !== 32) {
+    throw new Error(`InvalidPublicKeyLength: expected 32 Ed25519 bytes, got ${publicKey.length}`)
+  }
+}
+
+async function readExistingNativeEd25519PublicKey(): Promise<Uint8Array | undefined> {
+  try {
+    const publicKey = await getPublicBytesForKeyId(KEY_ID)
+    assertEd25519PublicKeyLength(publicKey)
+    return publicKey
+  } catch {
+    return undefined
+  }
+}
+
+async function replaceLegacyWalletKeyIfNeeded(): Promise<void> {
+  const hasLegacyKeyMaterial =
+    metaStorage.getString(LEGACY_COMPRESSED_KEY_STORAGE) ||
+    metaStorage.getString(LEGACY_SOFTWARE_ED25519_SECRET_KEY_STORAGE)
+
+  if (!hasLegacyKeyMaterial) return
+
+  await deleteKey(KEY_ID).catch(() => undefined)
+  metaStorage.remove(LEGACY_COMPRESSED_KEY_STORAGE)
+  metaStorage.remove(LEGACY_SOFTWARE_ED25519_SECRET_KEY_STORAGE)
 }
 
 /**
- * Called once at app startup (_layout.tsx). Idempotent — no-ops if key exists.
- * Biometric is NOT required here; it fires only on signProof().
+ * Called once at app startup (_layout.tsx). Idempotent: no-ops if the native
+ * Ed25519 Wallet Signing Key and cached public key are already available.
+ * Biometric is NOT required here; it fires only on sign operations.
  */
 export async function generateWalletKeyIfNeeded(): Promise<void> {
-  if (metaStorage.getString(COMPRESSED_KEY_STORAGE)) return
+  if (metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE)) return
 
+  await replaceLegacyWalletKeyIfNeeded()
+
+  const existingPublicKey = await readExistingNativeEd25519PublicKey()
+  if (existingPublicKey) {
+    metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(existingPublicKey))
+    return
+  }
+
+  await deleteKey(KEY_ID).catch(() => undefined)
   await generateKeypair(KEY_ID, !isBiometricDisabledForTesting())
-  const compressedKey = await getPublicBytesForKeyId(KEY_ID)
-  metaStorage.set(COMPRESSED_KEY_STORAGE, uint8ArrayToBase64(compressedKey))
+  const publicKey = await getPublicBytesForKeyId(KEY_ID)
+  assertEd25519PublicKeyLength(publicKey)
+  metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(publicKey))
   metaStorage.set(KEY_REGISTERED_AT_STORAGE, new Date().toISOString())
 }
 
 export function hasWalletKey(): boolean {
-  return !!metaStorage.getString(COMPRESSED_KEY_STORAGE)
+  return !!metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE)
 }
 
 /** Returns when the Wallet Signing Key was registered (ISO 8601), or undefined if not yet generated. */
@@ -153,26 +142,22 @@ export function getWalletKeyRegisteredAt(): string | undefined {
   return metaStorage.getString(KEY_REGISTERED_AT_STORAGE)
 }
 
-/** Returns the Holder DID derived from the Wallet Signing Key. Sync, no biometric. */
+/** Returns the Holder DID derived from the native Ed25519 Wallet Signing Key. Sync, no biometric. */
 export function getHolderDid(): string {
-  if (isSoftwareEddsaEnabledForTesting()) {
-    return getSoftwareEd25519HolderDid()
-  }
-
-  const stored = metaStorage.getString(COMPRESSED_KEY_STORAGE)
-  if (!stored) throw new Error('WalletKeyNotInitialized')
-  return compressedKeyToDidKey(base64ToUint8Array(stored))
+  return ed25519PublicKeyToDidKey(readStoredEd25519PublicKey())
 }
 
 /** Returns the public key JWK. Sync, no biometric. */
 export function getPublicKeyJwk(): JsonWebKey {
-  if (isSoftwareEddsaEnabledForTesting()) {
-    return publicKeyToEd25519Jwk(ed25519.getPublicKey(getOrCreateSoftwareEd25519SecretKey()))
-  }
+  return publicKeyToEd25519Jwk(readStoredEd25519PublicKey())
+}
 
-  const stored = metaStorage.getString(COMPRESSED_KEY_STORAGE)
+function readStoredEd25519PublicKey(): Uint8Array {
+  const stored = metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE)
   if (!stored) throw new Error('WalletKeyNotInitialized')
-  return compressedKeyToJwk(base64ToUint8Array(stored))
+  const publicKey = base64ToUint8Array(stored)
+  assertEd25519PublicKeyLength(publicKey)
+  return publicKey
 }
 
 /**
@@ -184,15 +169,10 @@ export function getPublicKeyJwk(): JsonWebKey {
  * @param audience Issuer URL (aud claim)
  */
 export async function signProof(nonce: string, audience: string): Promise<string> {
-  if (isSoftwareEddsaEnabledForTesting()) {
-    return signSoftwareEddsaProof(nonce, audience)
-  }
-
   const did = getHolderDid()
-  // did:key fragment references the same identifier as the DID
   const kid = `${did}#${did.slice('did:key:'.length)}`
 
-  const header = { alg: 'ES256', typ: 'openid4vci-proof+jwt', kid }
+  const header = { alg: 'EdDSA', typ: 'openid4vci-proof+jwt', kid }
   const payload = {
     iss: did,
     sub: did,
@@ -201,47 +181,7 @@ export async function signProof(nonce: string, audience: string): Promise<string
     nonce,
   }
 
-  const headerB64 = base64UrlEncode(JSON.stringify(header))
-  const payloadB64 = base64UrlEncode(JSON.stringify(payload))
-  const signingInput = `${headerB64}.${payloadB64}`
-
-  // Hardware applies SHA-256 internally; pass raw UTF-8 bytes.
-  // sign() returns raw R‖S — DER→raw conversion done inside the module.
-  const signatureBytes = await sign(
-    KEY_ID,
-    new TextEncoder().encode(signingInput),
-    !isBiometricDisabledForTesting(),
-  )
-
-  if (signatureBytes.length !== 64) {
-    throw new Error(`InvalidSignatureLength: expected 64 bytes, got ${signatureBytes.length}`)
-  }
-
-  return `${signingInput}.${base64UrlEncode(signatureBytes)}`
-}
-
-function signSoftwareEddsaProof(nonce: string, audience: string): string {
-  const secretKey = getOrCreateSoftwareEd25519SecretKey()
-  const publicKey = ed25519.getPublicKey(secretKey)
-  const publicJwk = publicKeyToEd25519Jwk(publicKey)
-  const did = ed25519PublicKeyToDidKey(publicKey)
-  const kid = `${did}#${did.slice('did:key:'.length)}`
-
-  const header = { alg: 'EdDSA', typ: 'openid4vci-proof+jwt', kid, jwk: publicJwk }
-  const payload = {
-    iss: did,
-    sub: did,
-    aud: audience,
-    iat: Math.floor(Date.now() / 1000),
-    nonce,
-  }
-
-  const headerB64 = base64UrlEncode(JSON.stringify(header))
-  const payloadB64 = base64UrlEncode(JSON.stringify(payload))
-  const signingInput = `${headerB64}.${payloadB64}`
-  const signatureBytes = ed25519.sign(new TextEncoder().encode(signingInput), secretKey)
-
-  return `${signingInput}.${base64UrlEncode(signatureBytes)}`
+  return signJwtLikeObject(header, payload, 'proof')
 }
 
 export type PresentationVpTokenInput = {
@@ -265,7 +205,7 @@ export async function signPresentationVpToken(input: PresentationVpTokenInput): 
   const kid = `${did}#${did.slice('did:key:'.length)}`
   const now = Math.floor(Date.now() / 1000)
 
-  const header = { alg: 'ES256', typ: 'JWT', kid }
+  const header = { alg: 'EdDSA', typ: 'JWT', kid }
   const payload = {
     iss: did,
     sub: did,
@@ -283,20 +223,7 @@ export async function signPresentationVpToken(input: PresentationVpTokenInput): 
     },
   }
 
-  const headerB64 = base64UrlEncode(JSON.stringify(header))
-  const payloadB64 = base64UrlEncode(JSON.stringify(payload))
-  const signingInput = `${headerB64}.${payloadB64}`
-  const signatureBytes = await sign(
-    KEY_ID,
-    new TextEncoder().encode(signingInput),
-    !isBiometricDisabledForTesting(),
-  )
-
-  if (signatureBytes.length !== 64) {
-    throw new Error(`InvalidSignatureLength: expected 64 bytes, got ${signatureBytes.length}`)
-  }
-
-  return `${signingInput}.${base64UrlEncode(signatureBytes)}`
+  return signJwtLikeObject(header, payload, 'vp')
 }
 
 /**
@@ -312,7 +239,7 @@ export async function signSdJwtKbPresentationToken(input: SdJwtKbPresentationTok
   const sdJwtWithoutKb = normalizeSdJwtWithoutKb(input.sdJwt)
   const sdHash = base64UrlEncode(createHash('sha256').update(new TextEncoder().encode(sdJwtWithoutKb)).digest())
 
-  const header = { alg: 'ES256', typ: 'kb+jwt', kid: cnfKid ?? kid }
+  const header = { alg: 'EdDSA', typ: 'kb+jwt', kid: cnfKid ?? kid }
   const payload = {
     nonce: input.nonce,
     aud: input.audience,
@@ -320,6 +247,15 @@ export async function signSdJwtKbPresentationToken(input: SdJwtKbPresentationTok
     sd_hash: sdHash,
   }
 
+  const kbJwt = await signJwtLikeObject(header, payload, 'kb')
+  return `${sdJwtWithoutKb}${kbJwt}`
+}
+
+async function signJwtLikeObject(
+  header: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  tokenKind: string,
+): Promise<string> {
   const headerB64 = base64UrlEncode(JSON.stringify(header))
   const payloadB64 = base64UrlEncode(JSON.stringify(payload))
   const signingInput = `${headerB64}.${payloadB64}`
@@ -330,73 +266,10 @@ export async function signSdJwtKbPresentationToken(input: SdJwtKbPresentationTok
   )
 
   if (signatureBytes.length !== 64) {
-    throw new Error(`InvalidSignatureLength: expected 64 bytes, got ${signatureBytes.length}`)
+    throw new Error(`InvalidSignatureLength: expected 64 Ed25519 bytes for ${tokenKind}, got ${signatureBytes.length}`)
   }
 
-  return `${sdJwtWithoutKb}${signingInput}.${base64UrlEncode(signatureBytes)}`
-}
-
-/**
- * Development-only Ed25519/EdDSA signer for Verifier compatibility testing.
- * The private key is a software key stored in local metadata storage, so this
- * must never be used for production wallet evidence.
- */
-export async function signSoftwareEddsaSdJwtKbPresentationToken(
-  input: SdJwtKbPresentationTokenInput,
-  isDevelopment = __DEV__,
-): Promise<string> {
-  if (!isSoftwareEddsaEnabledForTesting(isDevelopment)) {
-    throw new Error('SoftwareEddsaTestingOnly: software EdDSA signing is disabled outside development testing')
-  }
-
-  const secretKey = getOrCreateSoftwareEd25519SecretKey()
-  const publicKey = ed25519.getPublicKey(secretKey)
-  const publicJwk = publicKeyToEd25519Jwk(publicKey)
-  const did = ed25519PublicKeyToDidKey(publicKey)
-  const kid = `${did}#${did.slice('did:key:'.length)}`
-  const cnfKid = assertSdJwtHolderBinding(input.sdJwt, { jwk: publicJwk, kid })
-
-  const now = Math.floor(Date.now() / 1000)
-  const sdJwtWithoutKb = normalizeSdJwtWithoutKb(input.sdJwt)
-  const sdHash = base64UrlEncode(createHash('sha256').update(new TextEncoder().encode(sdJwtWithoutKb)).digest())
-
-  const header = cnfKid
-    ? { alg: 'EdDSA', typ: 'kb+jwt', kid: cnfKid }
-    : { alg: 'EdDSA', typ: 'kb+jwt', jwk: publicJwk }
-  const payload = {
-    nonce: input.nonce,
-    aud: input.audience,
-    iat: now,
-    sd_hash: sdHash,
-  }
-
-  const headerB64 = base64UrlEncode(JSON.stringify(header))
-  const payloadB64 = base64UrlEncode(JSON.stringify(payload))
-  const signingInput = `${headerB64}.${payloadB64}`
-  const signatureBytes = ed25519.sign(new TextEncoder().encode(signingInput), secretKey)
-
-  return `${sdJwtWithoutKb}${signingInput}.${base64UrlEncode(signatureBytes)}`
-}
-
-function getOrCreateSoftwareEd25519SecretKey(): Uint8Array {
-  const stored = metaStorage.getString(SOFTWARE_ED25519_SECRET_KEY_STORAGE)
-  if (stored) return base64ToUint8Array(stored)
-
-  const secretKey = randomBytes(32)
-  metaStorage.set(SOFTWARE_ED25519_SECRET_KEY_STORAGE, uint8ArrayToBase64(secretKey))
-  return secretKey
-}
-
-function getSoftwareEd25519HolderDid(): string {
-  return ed25519PublicKeyToDidKey(ed25519.getPublicKey(getOrCreateSoftwareEd25519SecretKey()))
-}
-
-function publicKeyToEd25519Jwk(publicKey: Uint8Array): JsonWebKey {
-  return {
-    kty: 'OKP',
-    crv: 'Ed25519',
-    x: base64UrlEncode(publicKey),
-  }
+  return `${signingInput}.${base64UrlEncode(signatureBytes)}`
 }
 
 function normalizeSdJwtWithoutKb(sdJwt: string): string {
@@ -479,8 +352,10 @@ function createUuid(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-/** Deletes the hardware key and clears cached public key. Users must re-enrol. */
+/** Deletes the native Ed25519 key and clears cached public key. Users must re-enrol. */
 export async function resetWalletKey(): Promise<void> {
   await deleteKey(KEY_ID)
-  metaStorage.remove(COMPRESSED_KEY_STORAGE)
+  metaStorage.remove(ED25519_PUBLIC_KEY_STORAGE)
+  metaStorage.remove(LEGACY_COMPRESSED_KEY_STORAGE)
+  metaStorage.remove(LEGACY_SOFTWARE_ED25519_SECRET_KEY_STORAGE)
 }

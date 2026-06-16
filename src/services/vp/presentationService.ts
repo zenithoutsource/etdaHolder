@@ -2,7 +2,6 @@ import { readCredentialHolderProfile } from '../credentials/credentialDisplay'
 import { getCardSchema } from '../../config/cardSchemas'
 import {
   isSdJwtKbDisabledForTesting,
-  isSoftwareEddsaEnabledForTesting,
   readVerifierDcqlVpTokenShape,
   readVerifierKbAudienceMode,
 } from '../../config/runtimeFlags'
@@ -97,13 +96,12 @@ export type VerifierResponse = {
   message?: string
 }
 
-export type PresentationTokenMode = 'signed-vp-jwt' | 'raw-credential' | 'sd-jwt-kb' | 'software-ed25519-kb'
+export type PresentationTokenMode = 'signed-vp-jwt' | 'raw-credential' | 'sd-jwt-kb'
 
 type PresentationTokenModeOptions =
   | boolean
   | {
     sdJwtKbDisabledForTesting?: boolean
-    softwareEddsaEnabledForTesting?: boolean
   }
 
 const SUPPORTED_RESPONSE_MODE = 'direct_post'
@@ -234,17 +232,11 @@ export function readPresentationTokenMode(
   const sdJwtKbDisabledForTesting = typeof options === 'boolean'
     ? options
     : options.sdJwtKbDisabledForTesting ?? isSdJwtKbDisabledForTesting()
-  const softwareEddsaEnabledForTesting = typeof options === 'boolean'
-    ? false
-    : options.softwareEddsaEnabledForTesting ?? isSoftwareEddsaEnabledForTesting()
-
   if (
     request.dcqlQuery?.credentials.every((credential) =>
       credential.format === 'dc+sd-jwt' || credential.format === 'vc+sd-jwt',
     )
   ) {
-    if (softwareEddsaEnabledForTesting) return 'software-ed25519-kb'
-
     return request.dcqlQuery.credentials.every((credential) =>
       credential.require_cryptographic_holder_binding === false ||
       (sdJwtKbDisabledForTesting && credential.require_cryptographic_holder_binding !== true),

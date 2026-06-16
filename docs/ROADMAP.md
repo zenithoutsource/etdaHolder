@@ -82,17 +82,15 @@ Remaining:
 
 ## Phase 5 - ETDA EdDSA/Ed25519 Migration (new)
 
-Status: Not started; this is the current Immediate Next Task.
+Status: Android implementation wired; target-device validation pending.
 
-Why: ETDA requires `alg: EdDSA` (Ed25519) for both the OID4VCI PoP JWT and the OID4VP SD-JWT+KB presentation token. Production signing today is still P-256/ES256 via `@animo-id/expo-secure-environment`. A development-only software Ed25519 signer (`@noble/curves`, gated by `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING`) exists for Issuer/Verifier interoperability testing only — its private key is software/JS-accessible and forbidden in release builds.
+Why: ETDA requires `alg: EdDSA` (Ed25519) for both the OID4VCI PoP JWT and the OID4VP SD-JWT+KB presentation token. Android app code now signs those tokens through the local native Ed25519 module `EtdaWalletEddsa`; physical target-device validation is still required to prove AndroidKeyStore Ed25519 key generation reports TEE or StrongBox backing. iOS remains deferred because Secure Enclave does not support Ed25519.
 
-Planned:
+Remaining:
 
-- Add an ADR for ETDA EdDSA/Ed25519 requirements and the migration plan from P-256/ES256.
-- Add a native, hardware-backed Ed25519 signer (replaces `@noble/curves` for production).
-- Migrate `signProof()` (OID4VCI PoP) and `signSdJwtKbPresentationToken()` (OID4VP KB-JWT) to the native Ed25519 signer; update Holder DID / JWK derivation accordingly.
+- Run Android prebuild/build and physical target-device validation for `EtdaWalletEddsa`.
 - Reissue existing test credentials under the new PoP holder binding before re-running OID4VP Verifier checks.
-- Remove the software EdDSA testing path once the native signer is available.
+- Resolve iOS Ed25519 in a separate ADR before any iOS release target.
 
 ## OID4VP 1.0 Online Presentation
 
@@ -111,6 +109,6 @@ Resolved:
 Remaining (see `docs/SPEC_COMPLIANCE_OID4VC.md` for spec-level detail):
 
 - Replace the development `redirect_uri:` Verifier entry with registered production `did:web` Verifier(s), including signed Request Object (JAR) signature verification and `client_id_scheme`-aware trust handling.
-- Migrate SD-JWT+KB signing to native EdDSA (Phase 5).
+- Validate native EdDSA SD-JWT+KB signing on target Android hardware (Phase 5).
 - `presentation_definition_uri` and DCQL `credential_sets` support, if a Verifier requires them.
 - Broader claim sets only after trust and disclosure semantics are documented.

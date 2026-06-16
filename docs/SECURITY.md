@@ -6,17 +6,17 @@ This document defines mandatory security constraints for the ETDA Wallet. Any co
 
 ### Signing Key
 
-The wallet uses exactly one hardware-bound EC P-256 keypair for Proof of Possession signatures.
+The Android wallet uses exactly one hardware-bound Ed25519 keypair for Proof of Possession and presentation signatures.
 
-- Native module: `@animo-id/expo-secure-environment`
+- Native module: local Expo module `EtdaWalletEddsa` (`modules/etda-wallet-eddsa`)
 - Key alias: `etda_wallet_signing_key`
-- Backing store: iOS Secure Enclave or Android Keystore
+- Backing store: AndroidKeyStore, requiring TEE or StrongBox hardware backing
 - Private key: non-extractable, never present in JavaScript memory
 - Generation: once on first launch
 - Rotation: explicit user-initiated re-enrollment only
 - Fallback: no production software fallback
 
-Production startup must fail if the native hardware secure environment is unavailable.
+Production startup must fail if the native Ed25519 signer is unavailable. iOS Ed25519 remains deferred because Secure Enclave does not support Ed25519.
 
 ### Non-Signing Crypto
 
@@ -27,17 +27,17 @@ Production startup must fail if the native hardware secure environment is unavai
 - HMAC
 - base64url and encoding support
 
-It must not be used for EC key generation or ECDSA signing.
+It must not be used for key generation or signing.
 
 ### Public Key and Holder DID
 
-The public key is exported as public bytes only. The Holder DID is:
+The public key is exported as raw 32-byte Ed25519 public bytes only. The Holder DID is:
 
 ```text
-did:key:z<base58btc(varint(0x1200) + compressed_P256_public_key)>
+did:key:z<base58btc(varint(0xed01) + raw_ed25519_public_key)>
 ```
 
-PoP JWT headers use `kid`, not embedded `jwk`.
+The public JWK shape is `{ "kty": "OKP", "crv": "Ed25519", "x": "<base64url(raw_public_key)>" }`. PoP and presentation JWT headers use `kid` and `alg: EdDSA`.
 
 ## 2. Local Storage Standard
 

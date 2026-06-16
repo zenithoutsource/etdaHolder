@@ -252,7 +252,7 @@ const SCHEMAS: CardSchemaConfig[] = [
       {
         key: "faculty",
         label: "Faculty",
-        presentationLabel: "Faculty",
+        presentationLabel: "คณะ / สาขาวิชา",
         aliases: ["facultyName", "faculty_name", "school", "schoolName"],
       },
       {
@@ -276,7 +276,7 @@ const SCHEMAS: CardSchemaConfig[] = [
       {
         key: "institutionName",
         label: "Institution Name",
-        presentationLabel: "University",
+        presentationLabel: "ชื่อสถาบัน",
         aliases: [
           "institution_name",
           "university",

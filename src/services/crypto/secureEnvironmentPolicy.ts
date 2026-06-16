@@ -1,11 +1,11 @@
-type SecureEnvironmentSupport = {
-  isLocalSecureEnvironmentSupported: () => boolean
+type NativeEd25519SignerSupport = {
+  isNativeEd25519SignerAvailable: () => boolean
 }
 
-export function assertHardwareSecureEnvironmentSupported(
-  secureEnvironment: SecureEnvironmentSupport,
+export function assertNativeEd25519SignerSupported(
+  signer: NativeEd25519SignerSupport,
 ): void {
-  if (!secureEnvironment.isLocalSecureEnvironmentSupported()) {
-    throw new Error('HardwareSecureEnvironmentRequired: native secure environment is unavailable')
+  if (!signer.isNativeEd25519SignerAvailable()) {
+    throw new Error('NativeEd25519SignerRequired: Android hardware-backed Ed25519 signer is unavailable')
   }
 }

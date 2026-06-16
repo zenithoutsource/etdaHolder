@@ -219,13 +219,26 @@ export async function acquireCredentialRecord(
   }
 
   const token = await dependencies.acquireAccessToken({ resolvedOffer, tx_code: options.tx_code })
-  const proof = await dependencies.signProof(token.cNonce, resolvedOffer.issuer)
-  const rawVc = await dependencies.requestCredential({
-    resolvedOffer,
-    accessToken: token.accessToken,
-    proof,
-    credentialIdentifier: token.credentialIdentifier,
-  })
+  let proof = await dependencies.signProof(token.cNonce, resolvedOffer.issuer)
+  let rawVc: string
+  try {
+    rawVc = await dependencies.requestCredential({
+      resolvedOffer,
+      accessToken: token.accessToken,
+      proof,
+      credentialIdentifier: token.credentialIdentifier,
+    })
+  } catch (error) {
+    if (!(error instanceof InvalidProofError)) throw error
+
+    proof = await dependencies.signProof(error.cNonce, resolvedOffer.issuer)
+    rawVc = await dependencies.requestCredential({
+      resolvedOffer,
+      accessToken: token.accessToken,
+      proof,
+      credentialIdentifier: token.credentialIdentifier,
+    })
+  }
   assertDevelopmentEddsaHolderBinding(rawVc, proof)
   return normalizeCredentialRecord(rawVc, resolvedOffer)
 }
@@ -675,6 +688,7 @@ async function requestPreAuthorizedAccessToken(
   txCode?: string,
 ): Promise<Record<string, unknown>> {
   const tokenEndpoint = readString(readRecord(resolvedOffer.issuerMetadata)?.token_endpoint)
+    ?? await discoverAuthorizationServerTokenEndpoint(resolvedOffer.issuerMetadata)
     ?? `${resolvedOffer.issuer.replace(/\/$/, '')}/token`
   const body = new URLSearchParams()
   body.set('grant_type', PRE_AUTHORIZED_CODE_GRANT)
@@ -703,12 +717,50 @@ async function requestPreAuthorizedAccessToken(
   return responseBody
 }
 
+const AUTHORIZATION_SERVER_METADATA_PATHS = ['.well-known/oauth-authorization-server', '.well-known/openid-configuration']
+
+async function discoverAuthorizationServerTokenEndpoint(
+  issuerMetadata: IssuerMetadataV1_0_15,
+): Promise<string | undefined> {
+  const authorizationServers = readRecord(issuerMetadata)?.authorization_servers
+  if (!Array.isArray(authorizationServers)) return undefined
+
+  for (const server of authorizationServers) {
+    const baseUrl = readString(server)
+    if (!baseUrl) continue
+
+    for (const wellKnownPath of AUTHORIZATION_SERVER_METADATA_PATHS) {
+      const metadataUrl = `${baseUrl.replace(/\/$/, '')}/${wellKnownPath}`
+
+      try {
+        const response = await fetch(resolveDevIssuerProxyUrl(metadataUrl), { headers: { Accept: 'application/json' } })
+        if (!response.ok) continue
+
+        const metadata = await readJsonResponseBody(response)
+        const tokenEndpoint = readString(metadata.token_endpoint)
+        if (tokenEndpoint) return resolveDevIssuerProxyUrl(tokenEndpoint) as string
+      } catch {
+        continue
+      }
+    }
+  }
+
+  return undefined
+}
+
 async function readJsonResponseBody(response: Response): Promise<Record<string, unknown>> {
   try {
     const parsed = (await response.json()) as unknown
     return readRecord(parsed) ?? {}
   } catch {
     return {}
+  }
+}
+
+export class InvalidProofError extends Error {
+  constructor(message: string, public readonly cNonce: string) {
+    super(message)
+    this.name = 'InvalidProofError'
   }
 }
 
@@ -721,12 +773,18 @@ function assertCredentialEndpointSuccess(response: unknown): void {
   const description = readString(errorBody.error_description)
   const status = readNumber(readRecord(responseRecord?.origResponse)?.status)
   const statusMessage = status ? `HTTP ${status}: ` : ''
+  const message = `CredentialRequestFailed: ${statusMessage}${
+    error ? (description ? `${error} - ${description}` : error) : describeCredentialEndpointError(errorBody)
+  }`
 
-  if (error) {
-    throw new Error(`CredentialRequestFailed: ${statusMessage}${description ? `${error} - ${description}` : error}`)
+  if (error === 'invalid_proof') {
+    const freshCNonce = readString(errorBody.c_nonce)
+    if (freshCNonce) {
+      throw new InvalidProofError(message, freshCNonce)
+    }
   }
 
-  throw new Error(`CredentialRequestFailed: ${statusMessage}${describeCredentialEndpointError(errorBody)}`)
+  throw new Error(message)
 }
 
 function describeCredentialEndpointError(errorBody: Record<string, unknown>): string {

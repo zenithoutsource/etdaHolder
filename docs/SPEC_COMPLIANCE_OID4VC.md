@@ -6,23 +6,20 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 
 ## OID4VCI 1.0 — Issuance
 
-### [BLOCKING] Production signing is not EdDSA
-- `src/services/crypto/crypto.ts` `signProof()` still emits `alg: ES256` (P-256 hardware key) for the production PoP JWT path.
-- ETDA requires `alg: EdDSA` (Ed25519) for OID4VCI PoP. The only EdDSA path is `signSoftwareEddsaProof()`, gated by `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING` and explicitly not release-safe (software key, JS-accessible).
-- Already tracked: AGENTS.md "ETDA EdDSA direction", `docs/TASKS.md` Implementation Status Tracker ("ETDA EdDSA OID4VCI PoP migration", "Production native Ed25519 signer"). No new action here beyond what's already the Immediate Next Task.
+### [BLOCKING] Native EdDSA target-device validation pending
+- `src/services/crypto/crypto.ts` now emits `alg: EdDSA` for OID4VCI PoP JWTs and signs through `src/services/crypto/nativeEddsaSigner.ts` / the local Android Expo module `modules/etda-wallet-eddsa`.
+- The former software EdDSA signing flag/path has been removed from app code.
+- Remaining blocker: the actual Phase 4 Android target devices must still prove AndroidKeyStore Ed25519 key generation works and reports TEE or StrongBox backing. iOS Ed25519 remains deferred under ADR 0007.
 
-### [GAP] Token endpoint fallback when issuer metadata omits `token_endpoint`
-- `requestPreAuthorizedAccessToken()` (`exchangeService.ts:673-704`) falls back to `${resolvedOffer.issuer.replace(/\/$/, '')}/token` when `issuerMetadata.token_endpoint` is missing.
-- OID4VCI 1.0 §11 requires the token endpoint to come from the Authorization Server's OAuth metadata (`authorization_servers` in issuer metadata → `.well-known/oauth-authorization-server` / `.well-known/openid-configuration`), not a guessed path. The current fallback only works because the dev Issuer happens to expose `/token` at the issuer root.
-- Fix: when `authorization_servers` is present in issuer metadata, fetch AS metadata and read `token_endpoint` from there; keep the `/token` guess only as a last-resort fallback for issuers that omit both.
+### [OK] Token endpoint discovery via `authorization_servers`
+- `requestPreAuthorizedAccessToken()` (`exchangeService.ts`) now calls `discoverAuthorizationServerTokenEndpoint()` when `issuerMetadata.token_endpoint` is missing: it fetches `.well-known/oauth-authorization-server` then `.well-known/openid-configuration` for each entry in `authorization_servers` (routed through `resolveDevIssuerProxyUrl`) and reads `token_endpoint` from there, per OID4VCI 1.0 §11. The guessed `${issuer}/token` remains only the last-resort fallback for issuers that omit both. Additive change — the dev Issuer's existing `/token` fallback is unchanged and covered by existing tests; the new discovery path has its own test in `exchangeService.test.ts`.
 
 ### [GAP] `tx_code` sent under two parameter names
 - `requestPreAuthorizedAccessToken()` sets both `tx_code` (OID4VCI 1.0 final) and `user_pin` (pre-final draft naming) in the token request body (`exchangeService.ts:682-685`).
 - OID4VCI 1.0 final only defines `tx_code`. Sending `user_pin` alongside is harmless against spec-compliant ASes (unknown params ignored) but is not itself spec-conformant and should be removed once the target Issuer is confirmed to accept `tx_code` alone. Low priority — keep until the real ETDA Issuer's AS behavior is confirmed, then drop `user_pin`.
 
-### [GAP] No `c_nonce` refresh on `invalid_proof`
-- `acquireCredentialRecord()` (`exchangeService.ts:202-231`) signs the proof once with the `c_nonce` from the token response and sends a single Credential Request. If the Credential Endpoint rejects with `invalid_proof` and returns a fresh `c_nonce` (OID4VCI 1.0 §8.3.3), the Wallet does not retry.
-- Currently surfaces as a hard failure (`CredentialRequestFailed: invalid_proof - ...`) instead of automatically re-signing with the new nonce and retrying once. Worth adding before relying on Issuers that rotate `c_nonce` aggressively.
+### [OK] `c_nonce` refresh retry on `invalid_proof`
+- `acquireCredentialRecord()` (`exchangeService.ts`) signs the proof once with the `c_nonce` from the token response and sends the Credential Request. If the Credential Endpoint rejects with `invalid_proof` and a fresh `c_nonce` (OID4VCI 1.0 §8.3.3), `assertCredentialEndpointSuccess()` now throws the new exported `InvalidProofError` (carrying the fresh `c_nonce`), and `acquireCredentialRecord()` re-signs the proof with it and retries the Credential Request exactly once before giving up. Covered by a new test in `exchangeService.test.ts`.
 
 ### [GAP] Deferred Credential Issuance not implemented
 - `readCompactCredentialFromResponse()` only accepts an immediate compact credential in the Credential Response. A response containing `transaction_id` (deferred issuance, OID4VCI 1.0 §8.4) is not recognized and falls into `CredentialResponseUnsupported`.
@@ -67,8 +64,8 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 
 ## Suggested order if picking this up next
 
-1. Token endpoint discovery via `authorization_servers` (OID4VCI) — small, removes a guessed URL.
-2. `c_nonce` refresh retry on `invalid_proof` (OID4VCI) — small, improves resilience against real Issuers.
+1. ~~Token endpoint discovery via `authorization_servers` (OID4VCI)~~ — done (2026-06-15).
+2. ~~`c_nonce` refresh retry on `invalid_proof` (OID4VCI)~~ — done (2026-06-15).
 3. Signed Request Object verification + `client_id_scheme` handling (OID4VP) — do together with the `did:web` Verifier migration already on the OID4VP backlog, since both touch `findTrustedVerifier`/`readAuthorizationRequest`.
 4. `presentation_definition_uri` and DCQL `credential_sets` — implement opportunistically when a Verifier actually requires them.
 5. Deferred Credential Issuance — implement only if an Issuer starts returning `transaction_id`.

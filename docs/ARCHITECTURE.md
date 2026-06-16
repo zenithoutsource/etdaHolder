@@ -30,7 +30,7 @@ All OID4VCI issuance mechanics run on-device:
 2. Fetch Issuer metadata.
 3. Execute Pre-Authorized Code token exchange.
 4. Build a PoP JWT with `kid` header and Holder DID `iss`.
-5. Sign with the hardware Wallet Signing Key under alias `etda_wallet_signing_key`.
+5. Sign with the native Ed25519 Wallet Signing Key under alias `etda_wallet_signing_key`.
 6. Submit credential request to the Issuer credential endpoint.
 7. Normalize compact JWT VC or compact SD-JWT VC into `VerifiableCredentialRecord`.
 8. Save locally in encrypted MMKV.
@@ -81,18 +81,19 @@ The current development allowlist includes `http://192.100.10.48/openid4vc/verif
 
 ### Wallet Signing Key
 
-- Generated inside iOS Secure Enclave or Android Keystore through `@animo-id/expo-secure-environment`.
+- Generated inside AndroidKeyStore through the local Expo module `EtdaWalletEddsa`.
 - Key alias: `etda_wallet_signing_key`.
 - Private key is non-extractable and never available to JavaScript.
 - Biometric authentication gates every sign operation.
-- Production startup fails when a hardware secure environment is unavailable.
+- Production startup fails when the native Ed25519 signer is unavailable.
+- iOS Ed25519 is deferred because Secure Enclave does not support Ed25519.
 
 ### Holder DID
 
-`did:key` is derived from compressed P-256 public key bytes:
+`did:key` is derived from raw Ed25519 public key bytes:
 
 ```text
-did:key:z<base58btc(varint(0x1200) + compressed_P256_public_key)>
+did:key:z<base58btc(varint(0xed01) + raw_ed25519_public_key)>
 ```
 
 ### Local Storage
@@ -142,7 +143,7 @@ No issuer-specific card components should be added. Extend schemas instead.
 | Package | Role |
 |---|---|
 | `@sphereon/oid4vci-client` | OID4VCI credential acquisition |
-| `@animo-id/expo-secure-environment` | Hardware-backed key generation and signing |
+| `modules/etda-wallet-eddsa` | Android hardware-backed Ed25519 key generation and signing |
 | `react-native-quick-crypto` | Non-signing hashing, random bytes, encoding support |
 | `react-native-mmkv` | Encrypted local key-value storage |
 | `react-native-keychain` | Native keychain storage for MMKV key and session |
@@ -163,5 +164,6 @@ No issuer-specific card components should be added. Extend schemas instead.
 | 0004 | Root/jailbreak detection response |
 | 0005 | Backend-only certificate pinning |
 | 0006 | ISO 18013-5 mdoc native module selection criteria |
+| 0007 | Android-first EdDSA Ed25519 production signing |
 
 OID4VP 1.0 online presentation has an implemented first slice but still needs a full ADR before broader claim sets, Verifier onboarding, or registry-backed trust rules are expanded.
