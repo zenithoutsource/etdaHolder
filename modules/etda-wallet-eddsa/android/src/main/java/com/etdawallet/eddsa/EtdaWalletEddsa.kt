@@ -21,18 +21,42 @@ object EtdaWalletEddsa {
   private const val ANDROID_KEYSTORE = "AndroidKeyStore"
   private const val ED25519 = "Ed25519"
   private const val TAG = "EtdaWalletEddsa"
+  // PackageManager.FEATURE_HARDWARE_KEYSTORE version 200 = KeyMint 2.0 (Curve25519 support)
   private const val HARDWARE_KEYSTORE_CURVE_25519_VERSION = 200
+  private const val PROBE_KEY_ALIAS = "etda_eddsa_probe"
+
+  @Volatile private var cachedSupportResult: Boolean? = null
 
   fun supportsSecureEnvironment(context: AppContext): Boolean {
+    cachedSupportResult?.let { return it }
+    val result = probeEd25519KeygenSupport(context)
+    cachedSupportResult = result
+    return result
+  }
+
+  private fun probeEd25519KeygenSupport(context: AppContext): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
     if (!hasHardwareBackedCurve25519Keystore(context)) return false
 
     return try {
-      Signature.getInstance(ED25519)
-      createKeyPairGenerator()
-      true
-    } catch (_: Exception) {
+      val spec = KeyGenParameterSpec.Builder(
+        PROBE_KEY_ALIAS,
+        KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+      ).build()
+      KeyPairGenerator.getInstance(ED25519, ANDROID_KEYSTORE).apply {
+        initialize(spec)
+        generateKeyPair()
+      }
+      val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+      val entry = ks.getEntry(PROBE_KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
+      val supported = entry?.privateKey?.algorithm == ED25519
+      if (!supported) Log.w(TAG, "Ed25519 probe: device generated ${entry?.privateKey?.algorithm} instead of Ed25519")
+      supported
+    } catch (e: Exception) {
+      Log.w(TAG, "Ed25519 probe failed: ${e.message}")
       false
+    } finally {
+      try { deleteKey(PROBE_KEY_ALIAS) } catch (_: Exception) {}
     }
   }
 
