@@ -59,6 +59,14 @@ object EtdaWalletEddsa {
         generateKeyPair()
       }
 
+      val (generatedPrivKey, generatedPubKey) = getKeypair(keyId)
+      if (generatedPrivKey.algorithm == "EC") {
+        throw IllegalStateException(
+          "AndroidKeyStore generated EC (P-256) instead of Ed25519 — device does not support hardware Ed25519 key generation"
+        )
+      }
+      rawEd25519PublicKey(generatedPubKey)
+
       assertHardwareBackedKey(keyId)
     } catch (error: Exception) {
       deleteKey(keyId)
