@@ -105,11 +105,11 @@ async function expectErrorPrefix(operation: () => Promise<unknown>, prefix: stri
   throw new Error(`Expected ${prefix}`)
 }
 
-function unsignedJwt(payload: Record<string, unknown>): string {
+function unsignedJwt(payload: Record<string, unknown>, alg = 'EdDSA'): string {
   const encode = (value: unknown) =>
     btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 
-  return `${encode({ alg: 'none' })}.${encode(payload)}.signature`
+  return `${encode({ alg })}.${encode(payload)}.signature`
 }
 
 function proofJwtWithJwk(jwk: Record<string, unknown>, kid = 'did:key:z6Mkwallet#z6Mkwallet'): string {
@@ -500,6 +500,37 @@ test('EdDSA issuance rejects returned SD-JWT credentials without matching holder
       },
     }),
   ).rejects.toThrow('CredentialHolderBindingMismatch')
+})
+
+test('EdDSA issuance rejects returned credentials signed with non-EdDSA alg', async () => {
+  const resolved = await resolveOffer(transcriptOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        'TranscriptCredential_dc+sd-jwt': {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/TranscriptCredential',
+          claims: [],
+        },
+      },
+    }),
+  })
+
+  await expect(
+    acquireCredentialRecord(resolved, {
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+        signProof: async () => proofJwtWithJwk({ kty: 'OKP', crv: 'Ed25519', x: 'wallet-ed25519-key' }),
+        requestCredential: async () => `${unsignedJwt({
+          jti: 'transcript-1',
+          vct: 'https://issuer.example.com/vct/TranscriptCredential',
+          cnf: { kid: 'did:key:z6Mkwallet' },
+        }, 'ES256')}~`,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    }),
+  ).rejects.toThrow('CredentialSignatureAlgUnsupported')
 })
 
 test('saveCredentialRecord clears a stale local lifecycle status for a reissued credential', () => {

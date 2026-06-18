@@ -24,7 +24,7 @@ Primary references:
 - OID4VCI protocol work must run on-device through `@sphereon/oid4vci-client`; do not call backend `/exchange/*` endpoints.
 - Credentials are normalized into `VerifiableCredentialRecord` before encrypted MMKV storage.
 - Dynamic credential UI must use `src/config/cardSchemas.ts` and generic components, not issuer-specific card screens.
-- Hardware signing uses `@animo-id/expo-secure-environment`; no software signing fallback is allowed in production.
+- Production signing uses a Keychain-protected Ed25519 seed with `@noble/curves` EdDSA signing because target AndroidKeyStore hardware generated EC keys for Ed25519 requests. This satisfies protocol-level EdDSA but is not hardware non-extractable.
 
 ## Expo SDK 54
 
@@ -41,6 +41,8 @@ Read exact versioned docs at `https://docs.expo.dev/versions/v54.0.0/` before ch
 - Do not disclose keys, credentials, private API configuration, tokens, or cryptographic seeds in logs or output.
 - Do not introduce unvalidated dependencies that degrade crypto or JSI performance on Hermes.
 - Do not log credential claims, VC JWT payloads, or PII.
+- Every caught or surfaced error must emit a raw diagnostic log before being mapped to a generic UI message. Use scoped tags such as `[wallet-startup]`, service names, or native module tags; log the original `Error` object/message/code when available. Preserve the no-secrets/no-PII rule above by redacting tokens, credential claims, VC payloads, and key material.
+- Operational debug logging must cover major Wallet lifecycle steps in development: startup, QR classification, OID4VCI offer/token/proof/credential/save, OID4VP request/match/token/submit/result, storage, SDK calls, and errors. Use the central redacting wallet logger for app logs; never print raw VC/VP/JWT/token/claim/PII/key material.
 
 ## Running Tests and Development Commands
 
@@ -82,7 +84,7 @@ yarn test
 | File Pattern | Focus Area | Rules |
 |---|---|---|
 | `src/services/vci/**` | OID4VCI and credential handling | Follow OID4VCI 1.0; keep token values inside service boundaries |
-| `src/services/crypto/**` | Crypto and signing | Preserve non-extractable key boundary and biometric sign-time gate |
+| `src/services/crypto/**` | Crypto and signing | Preserve EdDSA holder identity, Keychain seed protection, and biometric sign-time gate |
 | `src/services/storage/**` | Secure storage | Use encrypted MMKV and Keychain only |
 | `src/sdk/**` | Company backend SDK | Generated code only, plus the approved fetch adapter |
 | `src/config/**`, `src/components/**`, `app/**` | UI and routing | Use config-driven card rendering and NativeWind patterns |

@@ -13,7 +13,8 @@ class EtdaWalletEddsaBiometrics(
   private val signedCb: (sig: ByteArray) -> Unit,
   private val errorCb: (code: Number, message: String) -> Unit,
   private val toBeSigned: ByteArray,
-  private val activity: FragmentActivity = appContext.currentActivity as FragmentActivity,
+  private val activity: FragmentActivity = appContext.currentActivity as? FragmentActivity
+    ?: throw expo.modules.kotlin.exception.CodedException("FragmentActivityRequired: current activity is not a FragmentActivity"),
   private val promptInfo: PromptInfo = PromptInfo
     .Builder()
     .setTitle("Biometrics")

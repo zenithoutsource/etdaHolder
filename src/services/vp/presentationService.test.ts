@@ -510,18 +510,20 @@ describe('presentationService', () => {
     expect(request.matchedCredential.id).toBe('transcript-1')
     expect(request.disclosures).toEqual([{ key: 'credential', label: 'Credential', value: 'Academic Transcript' }])
     expect(infoSpy).toHaveBeenCalledWith(
-      '[OID4VP] Resolved Verifier request',
-      expect.stringContaining('"disclosureSource": "credential-fallback: dcql claims omitted"'),
+      '[wallet:oid4vp] resolved-request-debug',
+      expect.objectContaining({
+        selectionSource: 'credential-fallback: dcql claims omitted',
+        dcql_query: expect.objectContaining({
+          credentials: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'transcript_credential',
+              format: 'dc+sd-jwt',
+              meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+            }),
+          ]),
+        }),
+      }),
     )
-    const loggedPayload = infoSpy.mock.calls.find(([label]) => label === '[OID4VP] Resolved Verifier request')?.[1]
-    expect(typeof loggedPayload).toBe('string')
-    expect(loggedPayload).toContain('"dcql_query": {')
-    expect(loggedPayload).toContain('"credentials": [')
-    expect(loggedPayload).toContain('"id": "transcript_credential"')
-    expect(loggedPayload).toContain('"format": "dc+sd-jwt"')
-    expect(loggedPayload).toContain('"http://192.100.10.48/credentials/TranscriptCredential"')
-    expect(loggedPayload).not.toContain('[Object]')
-    expect(loggedPayload).not.toContain('[Array]')
   })
 
   test('rejects DCQL SD-JWT requests when stored credential vct does not match requested vct_values', async () => {

@@ -5,6 +5,8 @@ import { createMMKV } from 'react-native-mmkv'
 import { randomBytes } from 'react-native-quick-crypto'
 
 import { isBiometricDisabledForTesting } from '@/src/config/runtimeFlags'
+import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
+import { toErrorMessage } from '@/src/utils/jwtUtils'
 
 const KEYCHAIN_SERVICE = 'etda.wallet.credential_storage_key'
 const KEYCHAIN_USERNAME = 'wallet-credentials'
@@ -74,11 +76,8 @@ function getKeychainGetOptions(): Keychain.GetOptions {
   }
 }
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 async function getOrCreateEncryptionKey(): Promise<string> {
+  logWalletStep('storage', 'keychain-read-start')
   const credentials = await Keychain.getGenericPassword(getKeychainGetOptions())
 
   if (credentials) {
@@ -87,9 +86,11 @@ async function getOrCreateEncryptionKey(): Promise<string> {
         `InvalidStoredStorageKeyLength: expected ${MMKV_AES_256_KEY_BYTES}, got ${credentials.password.length}`
       )
     }
+    logWalletStep('storage', 'keychain-existing-key')
     return credentials.password
   }
 
+  logWalletStep('storage', 'keychain-generate-key')
   const encryptionKey = generateEncryptionKey()
   const result = await Keychain.setGenericPassword(
     KEYCHAIN_USERNAME,
@@ -98,6 +99,7 @@ async function getOrCreateEncryptionKey(): Promise<string> {
   )
 
   if (!result) throw new Error('KeychainWriteFailed')
+  logWalletStep('storage', 'keychain-write-complete')
   return encryptionKey
 }
 
@@ -106,17 +108,23 @@ async function getOrCreateEncryptionKey(): Promise<string> {
  * Biometric/device auth may fire when the MMKV key is retrieved from Keychain.
  */
 export async function initStorage(): Promise<void> {
-  if (credentialStorage !== null) return
+  if (credentialStorage !== null) {
+    logWalletStep('storage', 'init-cache-hit')
+    return
+  }
 
   try {
+    logWalletStep('storage', 'init-start')
     const encryptionKey = await getOrCreateEncryptionKey()
     credentialStorage = createMMKV({
       id: CREDENTIAL_STORAGE_ID,
       encryptionKey,
       encryptionType: 'AES-256',
     })
+    logWalletStep('storage', 'init-complete', { storageId: CREDENTIAL_STORAGE_ID })
   } catch (error) {
     credentialStorage = null
+    logWalletError('storage', 'init-failed', error)
     throw new Error(`StorageInitializationFailed: ${toErrorMessage(error)}`)
   }
 }
@@ -133,6 +141,8 @@ export function getCredentialStorage(): MMKV {
 
 /** Wipes keychain entry and forgets the encrypted credential storage instance. */
 export async function resetStorage(): Promise<void> {
+  logWalletStep('storage', 'reset-start')
   await Keychain.resetGenericPassword({ service: KEYCHAIN_SERVICE })
   credentialStorage = null
+  logWalletStep('storage', 'reset-complete')
 }

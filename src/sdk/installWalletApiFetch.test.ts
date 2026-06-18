@@ -1,6 +1,7 @@
 import {
   installWalletApiFetch,
   normalizeWalletApiBaseUrl,
+  resolveNativeDevLoopbackBaseUrl,
   resolveDevIssuerProxyUrl,
   resolveWalletApiUrl,
 } from './installWalletApiFetch'
@@ -16,6 +17,24 @@ describe('wallet API fetch installer', () => {
 
   test('normalizes trailing slash from base URL', () => {
     expect(normalizeWalletApiBaseUrl('http://localhost:3001/')).toBe('http://localhost:3001')
+  })
+
+  test('rewrites development loopback backend URLs to the Metro host', () => {
+    expect(
+      resolveNativeDevLoopbackBaseUrl('http://127.0.0.1:4000', '172.18.2.125:8081', true),
+    ).toBe('http://172.18.2.125:4000')
+  })
+
+  test('keeps explicit non-loopback backend URLs unchanged', () => {
+    expect(
+      resolveNativeDevLoopbackBaseUrl('http://172.18.2.125:4000', '172.18.2.125:8081', true),
+    ).toBe('http://172.18.2.125:4000')
+  })
+
+  test('keeps loopback backend URLs outside development', () => {
+    expect(
+      resolveNativeDevLoopbackBaseUrl('http://127.0.0.1:4000', '172.18.2.125:8081', false),
+    ).toBe('http://127.0.0.1:4000')
   })
 
   test('resolves generated wallet API paths against configured backend', () => {

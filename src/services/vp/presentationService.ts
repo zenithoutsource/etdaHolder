@@ -5,6 +5,8 @@ import {
   readVerifierDcqlVpTokenShape,
   readVerifierKbAudienceMode,
 } from '../../config/runtimeFlags'
+import { logWalletError, logWalletStep } from '../debug/walletLogger'
+import { base64UrlDecodeToString, decodeJwtPayload, isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 type JsonRecord = Record<string, unknown>
@@ -128,6 +130,18 @@ export async function resolvePresentationRequest(
   credentials: VerifiableCredentialRecord[],
   options: ResolvePresentationRequestOptions,
 ): Promise<ResolvedPresentationRequest> {
+  logWalletStep('oid4vp', 'resolve-request-start', {
+    requestUriBytes: rawRequestUri.length,
+    credentialCandidates: credentials.map((credential) => ({
+      id: credential.id,
+      type: credential.type,
+      credentialKind: isCompactSdJwt(credential.rawVc)
+        ? 'sd-jwt'
+        : isCompactJwtVc(credential.rawVc)
+          ? 'jwt-vc'
+          : 'unknown',
+    })),
+  })
   const authorizationRequest = await readAuthorizationRequest(rawRequestUri, options.fetchImpl ?? fetch)
   const clientId = readRequiredString(authorizationRequest, 'client_id', 'PresentationRequestInvalid')
   const responseUri = readRequiredString(authorizationRequest, 'response_uri', 'PresentationRequestInvalid')
@@ -199,6 +213,15 @@ export async function resolvePresentationRequest(
     dcqlQuery,
     dcqlClaimDisclosures,
   }))
+  logWalletStep('oid4vp', 'resolve-request-complete', {
+    clientId,
+    responseUri,
+    verifierName: verifier.name,
+    matchedCredentialId: matchedCredential.id,
+    matchedCredentialType: matchedCredential.type,
+    selectedItemsCount: disclosures.length,
+    requestKind: dcqlQuery ? 'dcql' : 'presentation_definition',
+  })
 
   return resolvedRequest
 }
@@ -263,6 +286,14 @@ export async function submitPresentationResponse(
   }
   if (request.state) body.set('state', request.state)
 
+  logWalletStep('oid4vp', 'submit-response-start', {
+    responseUri: request.responseUri,
+    verifierName: request.verifier.name,
+    presentationBytes: options.vpToken.length,
+    vpTokenShape: request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw',
+    presentationSubmissionPresent: Boolean(options.presentationSubmission),
+    statePresent: Boolean(request.state),
+  })
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
     method: 'POST',
     headers: {
@@ -273,7 +304,20 @@ export async function submitPresentationResponse(
   })
 
   const parsedBody = await readJsonResponse(response)
+  logWalletStep('oid4vp', 'submit-response-received', {
+    responseUri: request.responseUri,
+    verifierName: request.verifier.name,
+    status: response.status,
+    ok: response.ok,
+    responseKeys: isRecord(parsedBody) ? Object.keys(parsedBody) : [],
+  })
   if (!response.ok) {
+    logWalletError('oid4vp', 'submit-response-failed', new Error(`PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`), {
+      responseUri: request.responseUri,
+      verifierName: request.verifier.name,
+      status: response.status,
+      parsedBody,
+    })
     throw new Error(`PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`)
   }
 
@@ -529,7 +573,7 @@ function logResolvedPresentationRequest(
   if (!__DEV__) return
 
   const payload = {
-    disclosureSource,
+    selectionSource: disclosureSource,
     request_uri: request.requestUri,
     client_id: request.clientId,
     response_uri: request.responseUri,
@@ -551,7 +595,7 @@ function logResolvedPresentationRequest(
     authorization_request: authorizationRequest,
   }
 
-  console.info('[OID4VP] Resolved Verifier request', JSON.stringify(payload, null, 2))
+  logWalletStep('oid4vp', 'resolved-request-debug', payload)
 }
 
 function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: DcqlQuery): PresentationDisclosure[] | undefined {
@@ -730,31 +774,6 @@ function parseUrl(raw: string): URL {
   }
 }
 
-function decodeJwtPayload(jwt: string): JsonRecord | undefined {
-  const parts = jwt.split('.')
-  if (parts.length < 2 || !parts[1]) return undefined
-
-  try {
-    const parsed = JSON.parse(base64UrlDecodeToString(parts[1])) as unknown
-    return isRecord(parsed) ? parsed : undefined
-  } catch {
-    return undefined
-  }
-}
-
-function base64UrlDecodeToString(value: string): string {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
-  const binary = atob(padded)
-  const bytes = new Uint8Array(binary.length)
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-
-  return new TextDecoder().decode(bytes)
-}
-
 function readUrlOrigin(raw: string): string | undefined {
   try {
     return new URL(raw).origin
@@ -778,14 +797,6 @@ function readRequiredString(record: JsonRecord, key: string, errorCode: string):
   return value
 }
 
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined
-}
-
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function normalizeClaimKey(key: string): string {
   return key.replace(/[\s_\-.]/g, '').toLowerCase()
 }
@@ -794,6 +805,3 @@ function normalizeCredentialType(type: string): string {
   return type.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}

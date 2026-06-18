@@ -1,9 +1,4 @@
-import {
-  generateKeypair,
-  getPublicBytesForKeyId,
-  sign,
-  deleteKey,
-} from './nativeEddsaSigner'
+import * as Keychain from 'react-native-keychain'
 
 import {
   generateWalletKeyIfNeeded,
@@ -18,21 +13,14 @@ import {
 } from './crypto'
 import { getMetaStorage } from '../storage/storage'
 
-jest.mock('./nativeEddsaSigner', () => ({
-  generateKeypair: jest.fn().mockResolvedValue(undefined),
-  getPublicBytesForKeyId: jest.fn().mockResolvedValue(new Uint8Array(32)),
-  sign: jest.fn().mockResolvedValue(new Uint8Array(64)),
-  deleteKey: jest.fn().mockResolvedValue(undefined),
-  isNativeEd25519SignerAvailable: jest.fn().mockReturnValue(true),
-}))
-
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01])
+const ED25519_SEED_BASE64 = 'nWGxne/9XmC6hEr0kuwsxERJxWl7MmkZcDusAxyn92A='
 const ED25519_PUBLIC_KEY = new Uint8Array([
-  0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7,
-  0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64, 0x07, 0x3a,
-  0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25,
-  0xaf, 0x02, 0x1a, 0x68, 0xf7, 0x07, 0x51, 0x1a,
+  0x6a, 0x95, 0x33, 0xb7, 0xce, 0xe4, 0x0e, 0xa8,
+  0x93, 0xf4, 0x6a, 0x47, 0xb4, 0x55, 0x7c, 0xa0,
+  0x24, 0xb3, 0x74, 0x07, 0xb9, 0x08, 0x5a, 0xa7,
+  0xbb, 0xe5, 0xc4, 0xf7, 0xf0, 0xc0, 0x5b, 0xf9,
 ])
 const ED25519_DID_KEY_VECTOR = ed25519DidKeyFromPublicKey(ED25519_PUBLIC_KEY)
 
@@ -82,18 +70,28 @@ function base64UrlEncode(input: unknown): string {
   return btoa(JSON.stringify(input)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
+function base64EncodeBytes(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
 function unsignedJwt(payload: Record<string, unknown>): string {
   return `${base64UrlEncode({ alg: 'none', typ: 'vc+sd-jwt' })}.${base64UrlEncode(payload)}.`
 }
 
-describe('native Ed25519 wallet crypto service', () => {
+describe('Keychain Ed25519 wallet crypto service', () => {
   const originalBiometricFlag = process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING
 
   beforeEach(() => {
     getMetaStorage().clearAll()
     jest.clearAllMocks()
-    jest.mocked(getPublicBytesForKeyId).mockResolvedValue(ED25519_PUBLIC_KEY)
-    jest.mocked(sign).mockResolvedValue(new Uint8Array(64).fill(7))
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValue({
+      username: 'wallet-ed25519-seed',
+      password: ED25519_SEED_BASE64,
+      service: 'etda.wallet.ed25519_seed',
+      storage: Keychain.STORAGE_TYPE.AES_GCM,
+    })
     delete process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING
   })
 
@@ -101,19 +99,21 @@ describe('native Ed25519 wallet crypto service', () => {
     process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING = originalBiometricFlag
   })
 
-  test('derives Holder DID and public JWK from native Ed25519 public key bytes', async () => {
+  test('derives Holder DID and public JWK from Keychain-protected Ed25519 seed', async () => {
     await generateWalletKeyIfNeeded()
 
-    expect(generateKeypair).not.toHaveBeenCalled()
+    expect(Keychain.getGenericPassword).toHaveBeenCalledWith(expect.objectContaining({
+      service: 'etda.wallet.ed25519_seed',
+    }))
     expect(getHolderDid()).toBe(ED25519_DID_KEY_VECTOR)
     expect(getPublicKeyJwk()).toEqual({
       kty: 'OKP',
       crv: 'Ed25519',
-      x: '11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo',
+      x: 'apUzt87kDqiT9GpHtFV8oCSzdAe5CFqnu-XE9_DAW_k',
     })
   })
 
-  test('signs OID4VCI PoP JWT with native EdDSA and Ed25519 holder DID', async () => {
+  test('signs OID4VCI PoP JWT with Keychain EdDSA and Ed25519 holder DID', async () => {
     await generateWalletKeyIfNeeded()
     const jwt = await signProof('nonce-123', 'https://issuer.example.com')
     const [encodedHeader, encodedPayload] = jwt.split('.')
@@ -129,14 +129,17 @@ describe('native Ed25519 wallet crypto service', () => {
       aud: 'https://issuer.example.com',
       nonce: 'nonce-123',
     })
-    expect(sign).toHaveBeenCalledWith(
-      'etda_wallet_signing_key',
-      expect.any(Uint8Array),
-      true,
-    )
+    expect(base64UrlDecodeBytes(jwt.split('.')[2])).toHaveLength(64)
+    expect(Keychain.getGenericPassword).toHaveBeenLastCalledWith(expect.objectContaining({
+      service: 'etda.wallet.ed25519_seed',
+      authenticationPrompt: {
+        title: 'Sign with Wallet Key',
+        cancel: 'Cancel',
+      },
+    }))
   })
 
-  test('signs OID4VP JWT VP token with native EdDSA', async () => {
+  test('signs OID4VP JWT VP token with Keychain EdDSA', async () => {
     await generateWalletKeyIfNeeded()
     const jwt = await signPresentationVpToken({
       audience: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
@@ -164,7 +167,7 @@ describe('native Ed25519 wallet crypto service', () => {
     })
   })
 
-  test('signs SD-JWT+KB presentation token with native EdDSA and Ed25519 holder binding', async () => {
+  test('signs SD-JWT+KB presentation token with Keychain EdDSA and Ed25519 holder binding', async () => {
     await generateWalletKeyIfNeeded()
     const holderJwk = getPublicKeyJwk()
     const sdJwt = `${unsignedJwt({
@@ -196,7 +199,7 @@ describe('native Ed25519 wallet crypto service', () => {
     expect(typeof payload.sd_hash).toBe('string')
   })
 
-  test('rejects native Ed25519 SD-JWT+KB signing when the credential is not holder-bound to the wallet key', async () => {
+  test('rejects Keychain Ed25519 SD-JWT+KB signing when the credential is not holder-bound to the wallet key', async () => {
     await generateWalletKeyIfNeeded()
     const sdJwt = `${unsignedJwt({
       iss: 'https://issuer.example.com',
@@ -212,28 +215,22 @@ describe('native Ed25519 wallet crypto service', () => {
     ).rejects.toThrow('PresentationCredentialHolderBindingMissing')
   })
 
-  test('disables native biometric prompts for tester builds when the dev-only flag is enabled', async () => {
+  test('omits Keychain signing prompts for tester builds when the dev-only flag is enabled', async () => {
     process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING = 'true'
-    jest.mocked(getPublicBytesForKeyId)
-      .mockRejectedValueOnce(new Error('missing native key'))
-      .mockResolvedValue(ED25519_PUBLIC_KEY)
 
     await generateWalletKeyIfNeeded()
     await signProof('nonce-123', 'https://issuer.example.com')
 
-    expect(generateKeypair).toHaveBeenCalledWith('etda_wallet_signing_key', false)
-    expect(sign).toHaveBeenCalledWith(
-      'etda_wallet_signing_key',
-      expect.any(Uint8Array),
-      false,
-    )
+    expect(Keychain.getGenericPassword).toHaveBeenLastCalledWith(expect.not.objectContaining({
+      authenticationPrompt: expect.anything(),
+    }))
   })
 
-  test('resetWalletKey deletes the native Ed25519 key and cached public key', async () => {
+  test('resetWalletKey deletes the Keychain Ed25519 seed and cached public key', async () => {
     await generateWalletKeyIfNeeded()
     await resetWalletKey()
 
-    expect(deleteKey).toHaveBeenCalledWith('etda_wallet_signing_key')
+    expect(Keychain.resetGenericPassword).toHaveBeenCalledWith({ service: 'etda.wallet.ed25519_seed' })
     expect(() => getHolderDid()).toThrow('WalletKeyNotInitialized')
   })
 
@@ -243,24 +240,40 @@ describe('native Ed25519 wallet crypto service', () => {
 
     await generateWalletKeyIfNeeded()
 
-    expect(getPublicBytesForKeyId).not.toHaveBeenCalled()
-    expect(generateKeypair).not.toHaveBeenCalled()
+    expect(Keychain.getGenericPassword).not.toHaveBeenCalled()
     expect(getHolderDid()).toBe(ED25519_DID_KEY_VECTOR)
+  })
+
+  test('replaces stale cached Ed25519 public key when no Keychain source marker exists', async () => {
+    const storage = getMetaStorage()
+    storage.set('wallet.ed25519_pub_key', base64EncodeBytes(new Uint8Array(32).fill(1)))
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValueOnce(false)
+    jest.mocked(Keychain.setGenericPassword).mockResolvedValueOnce({
+      service: 'etda.wallet.ed25519_seed',
+      storage: Keychain.STORAGE_TYPE.AES_GCM,
+    })
+
+    await generateWalletKeyIfNeeded()
+
+    expect(Keychain.resetGenericPassword).toHaveBeenCalledWith({ service: 'etda.wallet.ed25519_seed' })
+    expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
+      'wallet-ed25519-seed',
+      expect.any(String),
+      expect.objectContaining({ service: 'etda.wallet.ed25519_seed' }),
+    )
+    expect(getHolderDid()).not.toBe(ed25519DidKeyFromPublicKey(new Uint8Array(32).fill(1)))
   })
 
   test('generateWalletKeyIfNeeded clears legacy P-256 and software EdDSA key material before generating', async () => {
     const storage = getMetaStorage()
     storage.set('wallet.compressed_pub_key', 'legacy-p256-key')
     storage.set('wallet.software_ed25519_secret_key', 'legacy-secret-key')
-    jest.mocked(getPublicBytesForKeyId)
-      .mockRejectedValueOnce(new Error('no key in keystore'))
-      .mockResolvedValue(ED25519_PUBLIC_KEY)
 
     await generateWalletKeyIfNeeded()
 
     expect(storage.getString('wallet.compressed_pub_key')).toBeUndefined()
     expect(storage.getString('wallet.software_ed25519_secret_key')).toBeUndefined()
-    expect(generateKeypair).toHaveBeenCalledWith('etda_wallet_signing_key', true)
+    expect(Keychain.resetGenericPassword).toHaveBeenCalledWith({ service: 'etda.wallet.ed25519_seed' })
   })
 
   test('hasWalletKey returns false before key generation and true after', async () => {
@@ -269,15 +282,13 @@ describe('native Ed25519 wallet crypto service', () => {
     expect(hasWalletKey()).toBe(true)
   })
 
-  test('getWalletKeyRegisteredAt is undefined when key is synced from existing native entry', async () => {
+  test('getWalletKeyRegisteredAt is undefined when key is synced from existing Keychain entry', async () => {
     await generateWalletKeyIfNeeded()
     expect(getWalletKeyRegisteredAt()).toBeUndefined()
   })
 
   test('getWalletKeyRegisteredAt returns an ISO 8601 timestamp when a fresh key is generated', async () => {
-    jest.mocked(getPublicBytesForKeyId)
-      .mockRejectedValueOnce(new Error('no key'))
-      .mockResolvedValue(ED25519_PUBLIC_KEY)
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValueOnce(false)
 
     await generateWalletKeyIfNeeded()
 
@@ -318,12 +329,16 @@ describe('native Ed25519 wallet crypto service', () => {
     expect(kbJwt.split('.').length).toBe(3)
   })
 
-  test('throws when the native signer returns a signature that is not 64 bytes', async () => {
-    await generateWalletKeyIfNeeded()
-    jest.mocked(sign).mockResolvedValueOnce(new Uint8Array(32))
+  test('throws when the stored Keychain seed is not 32 bytes', async () => {
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValueOnce({
+      username: 'wallet-ed25519-seed',
+      password: 'AAAA',
+      service: 'etda.wallet.ed25519_seed',
+      storage: Keychain.STORAGE_TYPE.AES_GCM,
+    })
 
     await expect(
-      signProof('nonce', 'https://issuer.example.com'),
-    ).rejects.toThrow('InvalidSignatureLength')
+      generateWalletKeyIfNeeded(),
+    ).rejects.toThrow('InvalidStoredEd25519SeedLength')
   })
 })

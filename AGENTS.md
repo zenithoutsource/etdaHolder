@@ -8,13 +8,13 @@ This is a production-ready playbook defining strict architectural rules, securit
 
 ## HANDOFF STATE (2026-06-15)
 
-**Immediate Next Task:** Replace the development-only software Ed25519 signer (`@noble/curves`, gated by `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING`) with a native hardware-backed Ed25519 signer, then migrate OID4VCI PoP and OID4VP SD-JWT+KB presentation to that native EdDSA path (see "ETDA EdDSA direction" below). This is the largest open item and gates Phase 4 release validation. Once resolved, remaining Phase 4 release validation is unchanged: Android `npx expo prebuild --clean` already succeeds in a headless Windows session; iOS prebuild is platform-gated by Expo CLI to macOS/Linux and cannot run on Windows. Remaining validation is EAS production builds for iOS and Android, then a golden-path walkthrough (enroll → claim credential via QR → confirm issuance → complete biometric-gated issuance → view saved credential detail) on physical hardware. Requires user-held EAS credentials, physical iOS and Android devices, and a real or test Issuer QR issuance source not available in a headless session — this is the user's manual step.
+**Immediate Next Task:** Validate the new production Keychain-protected Ed25519 signer end to end on physical Android: reissue credentials with the new Ed25519 Holder DID, then retry OID4VP Verifier QR. Android `npx expo prebuild --clean` already succeeds in a headless Windows session; iOS prebuild is platform-gated by Expo CLI to macOS/Linux and cannot run on Windows. Remaining validation is EAS production builds for iOS and Android, then a golden-path walkthrough (enroll → claim credential via QR → confirm issuance → complete biometric-gated issuance → view saved credential detail) on physical hardware. Requires user-held EAS credentials, physical iOS and Android devices, and a real or test Issuer QR issuance source not available in a headless session — this is the user's manual step.
 
 **Session 2026-06-15 verification:** root `yarn tsc --noEmit` pass, root `yarn lint` pass (2 pre-existing `no-require-imports` warnings in `src/services/vci/exchangeService.test.ts`, no errors), root `yarn test` 37 suites / 174 tests pass, server `yarn tsc` pass, server `yarn test` 5 suites / 16 tests pass. No regressions found in the current uncommitted working tree. See `docs/TASKS.md` Session 2026-06-15 notes for the PIN-setup-bypass fix, revoked-credential presentation filtering, stale Scan-tab credential refresh fix, and the Android `FaceScanPanel` crash fix landed this session.
 
 **Phase 4 progress (2026-06-07):** Screen capture prevention, jailbreak/root detection (hard block, ADR 0004), backend-only certificate pinning (ADR 0005), and the production bundle/log leak scan script (`yarn scan:bundle-leaks`) are complete — see `docs/TASKS.md` Session 2026-06-07 notes. ADR 0006 records ISO 18013-5 mdoc native module selection criteria; final module selection remains parked on physical iOS/Android validation. Issuer signature validation remains parked on finalized trust metadata.
 
-**ETDA EdDSA direction (2026-06-12):** ETDA requires EdDSA/Ed25519 for both OID4VCI issuance PoP and OID4VP presentation KB-JWT. Current production crypto is still P-256/ES256 through `@animo-id/expo-secure-environment`; this is not fully ETDA-aligned yet. Temporary development-only OID4VCI PoP and OID4VP KB-JWT software Ed25519 paths using `@noble/curves` exist behind `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true` for Issuer/Verifier testing only. This Noble path is not production-safe because the private key is software-generated and JS-accessible. Existing credentials issued before the EdDSA PoP path must be reissued before Verifier holder-binding validation can pass. Next production work must add a native Ed25519 signer, update ADRs, and then migrate OID4VCI PoP plus OID4VP KB-JWT to native EdDSA.
+**ETDA EdDSA direction (2026-06-16):** ETDA requires EdDSA/Ed25519 for both OID4VCI issuance PoP and OID4VP presentation KB-JWT. The target Galaxy S24 Ultra proved AndroidKeyStore Ed25519 generation is unavailable in practice because AndroidKeyStore returned EC keys for Ed25519 requests. Production now uses a Keychain-protected software Ed25519 seed with biometric/device authentication on signing, producing protocol-valid `alg: EdDSA` signatures. This is a security tradeoff versus hardware non-extractability and is recorded in ADR 0008. Existing credentials issued before this Holder DID must be reissued before Verifier holder-binding validation can pass.
 
 **Files to read before starting:**
 - `CLAUDE.md` - architecture rules and commands
@@ -47,7 +47,7 @@ This is a production-ready playbook defining strict architectural rules, securit
 **Next concrete steps:**
 1. Add an ADR for ETDA EdDSA/Ed25519 requirements and the migration from P-256/ES256.
 2. Reissue test credentials through the dev-only EdDSA OID4VCI PoP path, then retry OID4VP Verifier QR.
-3. Replace all software EdDSA with a native Ed25519 signer before release.
+3. Reissue credentials using the Keychain Ed25519 Holder DID before OID4VP validation.
 4. Run Phase 4 release validation only after production EdDSA signing decisions are resolved: EAS production builds and physical-device golden-path walkthrough.
 5. Add NFC NDEF issuance only when a test device is available; do not wire unverified NFC behavior.
 6. Keep QR offer flow routed through `resolveOffer()` and the pre-save confirmation screen.
@@ -128,19 +128,20 @@ The app claims credentials directly from Issuers. The company backend authentica
 
 ## Security Guidelines
 
-- Zero raw key exposure remains the production rule. Current release-safe keys are generated inside `@animo-id/expo-secure-environment`; JS accesses only alias `etda_wallet_signing_key`. The `@noble/curves` Ed25519 signer is development-only and must never be enabled in release builds.
-- Current production Holder DID: `did:key` derived from compressed P-256 public key using multicodec prefix `[0x80, 0x24]`. ETDA target requires Ed25519/EdDSA; final Holder DID/JWK rules must be recorded in a new ADR before production migration.
-- Current PoP JWT: uses `kid` header, not `jwk`; payload `iss` is the Holder DID. ETDA target requires OID4VCI PoP JWT to move to EdDSA/Ed25519.
+- Production Holder DID is `did:key` derived from the Keychain-protected Ed25519 public key using multicodec prefix `[0xed, 0x01]`. The Ed25519 seed is software-generated and retrieved through `react-native-keychain`; this is not hardware non-extractable.
+- Current PoP JWT: uses `kid` header, not `jwk`; payload `iss`/`sub` is the Ed25519 Holder DID and `alg` is `EdDSA`.
 - No AsyncStorage: credentials are stored in encrypted MMKV; encryption key is held in `react-native-keychain`.
 - Biometric sign-time gate: biometric authentication fires on every `signProof()` call.
 - NFC Presentation: ISO 18013-5 proximity channel; native mdoc module not yet selected.
-- Online Presentation: OID4VP 1.0 first slice is implemented. ETDA Verifier testing currently uses development-only software EdDSA for SD-JWT KB-JWT; production must use native Ed25519 signing.
+- Online Presentation: OID4VP 1.0 first slice is implemented. Production uses Keychain-protected Ed25519 EdDSA for SD-JWT KB-JWT.
 
 ## Coding Style
 
 - Strict immutability: copy state objects instead of mutating Zustand slices.
 - Generic adapter pattern: convert backend or issuer payloads into `VerifiableCredentialRecord` before storage.
 - Error handling: wrap async SDK calls and crypto operations; do not block Hermes threads.
+- Error logging: every caught or surfaced error must emit a raw diagnostic log before being mapped to a generic UI message. Use scoped tags such as `[wallet-startup]`, service names, or native module tags; log the original `Error` object/message/code when available. Redact tokens, credential claims, VC payloads, private keys, cryptographic seeds, and PII.
+- Operational debug logging must cover major Wallet lifecycle steps in development: startup, QR classification, OID4VCI offer/token/proof/credential/save, OID4VP request/match/token/submit/result, storage, SDK calls, and errors. Use the central redacting wallet logger for app logs; never print raw VC/VP/JWT/token/claim/PII/key material.
 
 ## Implementation Status Tracker
 
@@ -156,13 +157,12 @@ The app claims credentials directly from Issuers. The company backend authentica
 [ ] Phase 3.3: NFC NDEF issuance reader, deferred until test device
 [ ] Phase 4: Security hardening and release build
 [x] OID4VP 1.0 first Verifier QR slice
-[ ] ETDA EdDSA OID4VCI PoP migration
-[ ] Production native Ed25519 signer for OID4VCI/OID4VP
+[x] ETDA EdDSA OID4VCI PoP migration
+[x] Production Keychain Ed25519 signer for OID4VCI/OID4VP
 
 ## Key Package Decisions
 
-- Production signing today: `@animo-id/expo-secure-environment@0.1.5` for P-256/ES256 only; not sufficient for ETDA EdDSA production.
-- Temporary development EdDSA signing: `@noble/curves` Ed25519 for OID4VP testing only; private key is software/JS-accessible and forbidden for release builds.
+- Production signing: `@noble/curves` Ed25519 with the 32-byte seed stored in `react-native-keychain` and retrieved under biometric/device authentication for signing.
 - Storage: `react-native-mmkv` v4 via `createMMKV()`, requiring `react-native-nitro-modules`
 - Crypto, non-signing: `react-native-quick-crypto`
 - State: `zustand`, with TanStack Query for SDK-generated API hooks

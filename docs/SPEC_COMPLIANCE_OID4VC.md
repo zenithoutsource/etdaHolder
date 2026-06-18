@@ -1,4 +1,4 @@
-# OID4VCI 1.0 / OID4VP 1.0 Spec Compliance Review (2026-06-15)
+# OID4VCI 1.0 / OID4VP 1.0 Spec Compliance Review (2026-06-16)
 
 Snapshot of the current uncommitted working tree against OpenID for Verifiable Credential Issuance 1.0 (final) and OpenID for Verifiable Presentations 1.0 (final/draft 23+). Scope: `src/services/vci/exchangeService.ts`, `src/services/vp/presentationService.ts`, `src/services/crypto/crypto.ts`, `src/config/trustedVerifiers.ts`.
 
@@ -6,10 +6,10 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 
 ## OID4VCI 1.0 — Issuance
 
-### [BLOCKING] Native EdDSA target-device validation pending
-- `src/services/crypto/crypto.ts` now emits `alg: EdDSA` for OID4VCI PoP JWTs and signs through `src/services/crypto/nativeEddsaSigner.ts` / the local Android Expo module `modules/etda-wallet-eddsa`.
-- The former software EdDSA signing flag/path has been removed from app code.
-- Remaining blocker: the actual Phase 4 Android target devices must still prove AndroidKeyStore Ed25519 key generation works and reports TEE or StrongBox backing. iOS Ed25519 remains deferred under ADR 0007.
+### [OK] EdDSA PoP signing
+- `src/services/crypto/crypto.ts` now emits `alg: EdDSA` for OID4VCI PoP JWTs and signs with an Ed25519 seed stored in `react-native-keychain`.
+- ADR 0008 supersedes the native AndroidKeyStore plan after target-device diagnostics showed AndroidKeyStore generated EC keys for Ed25519 requests.
+- Protocol shape is now Ed25519-compatible (`did:key` Ed25519 Holder DID, OKP/Ed25519 public JWK, EdDSA signatures). The remaining risk is security posture, not OID4VC wire compatibility: the key is Keychain-protected software material rather than hardware-backed non-extractable material.
 
 ### [OK] Token endpoint discovery via `authorization_servers`
 - `requestPreAuthorizedAccessToken()` (`exchangeService.ts`) now calls `discoverAuthorizationServerTokenEndpoint()` when `issuerMetadata.token_endpoint` is missing: it fetches `.well-known/oauth-authorization-server` then `.well-known/openid-configuration` for each entry in `authorization_servers` (routed through `resolveDevIssuerProxyUrl`) and reads `token_endpoint` from there, per OID4VCI 1.0 §11. The guessed `${issuer}/token` remains only the last-resort fallback for issuers that omit both. Additive change — the dev Issuer's existing `/token` fallback is unchanged and covered by existing tests; the new discovery path has its own test in `exchangeService.test.ts`.
@@ -57,7 +57,7 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 - `formatVpTokenForResponse()` defaults to the spec-correct object-keyed-by-credential-query-id, array-valued shape for DCQL responses (`readVerifierDcqlVpTokenShape()` returns `'object_array'` outside `__DEV__` regardless of env). The alternate shapes (`object_string`, `raw`) are explicitly development-only compatibility probes — fine as is, but **must not be left enabled via env in any release build** (already enforced by the `isDevelopment` gate in `runtimeFlags.ts`).
 
 ### [OK] SD-JWT+KB presentation
-- `signSdJwtKbPresentationToken()` builds `alg: ES256, typ: kb+jwt` with `nonce`, `aud`, `iat`, `sd_hash`, appended to the SD-JWT per SD-JWT VC / HAIP, and rejects credentials without `cnf.jwk`/`cnf.kid` holder binding (`assertSdJwtHolderBinding`). Same EdDSA migration applies here as for PoP (tracked, see Issuance section).
+- `signSdJwtKbPresentationToken()` builds `alg: EdDSA, typ: kb+jwt` with `nonce`, `aud`, `iat`, `sd_hash`, appended to the SD-JWT per SD-JWT VC / HAIP, and rejects credentials without `cnf.jwk`/`cnf.kid` holder binding (`assertSdJwtHolderBinding`).
 
 ### [OK] Presentation Exchange birth-date slice
 - Scoped to a single supported claim path set (`BIRTH_DATE_PATHS`); anything else throws `PresentationRequestUnsupported`. Matches the documented P5 age-over-20 scope — intentional narrowing, not a gap.
@@ -70,4 +70,4 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 4. `presentation_definition_uri` and DCQL `credential_sets` — implement opportunistically when a Verifier actually requires them.
 5. Deferred Credential Issuance — implement only if an Issuer starts returning `transaction_id`.
 
-None of the above block the current Immediate Next Task (native Ed25519/EdDSA signer migration), which remains the highest-priority gap overall.
+None of the above block the EdDSA protocol migration. The practical next step is reissuing test credentials under the new Ed25519 Holder DID, then re-running the OID4VCI/OID4VP golden path.

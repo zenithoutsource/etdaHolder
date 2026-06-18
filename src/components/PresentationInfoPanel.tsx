@@ -10,10 +10,10 @@ import { PresentationRequestedItemsCard } from './PresentationRequestedItemsCard
 
 type Props = {
   request: ResolvedPresentationRequest
-  onAccept: () => void
+  onConfirm: () => void
 }
 
-export function PresentationApprovalPanel({ request, onAccept }: Props) {
+export function PresentationInfoPanel({ request, onConfirm }: Props) {
   const credentialSignature = readCompactTokenSignature(request.matchedCredential.rawVc) ?? 'Signature unavailable'
 
   return (
@@ -22,7 +22,7 @@ export function PresentationApprovalPanel({ request, onAccept }: Props) {
         <PresentationCredentialSummaryCard record={request.matchedCredential} />
         <PresentationApprovalDeviceCard registeredAt={getWalletKeyRegisteredAt()} />
         <PresentationPopCard signature={credentialSignature} />
-        <PresentationRequestedItemsCard disclosures={request.disclosures} onAccept={onAccept} />
+        <PresentationRequestedItemsCard disclosures={request.disclosures} onAccept={onConfirm} />
       </ScrollView>
     </View>
   )

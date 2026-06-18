@@ -1,6 +1,6 @@
 # Delivery Roadmap
 
-Original plan was a two-month, four-phase sequential plan. Phases 1-4 are now complete or substantially complete; OID4VP 1.0 online presentation (originally "post-v1, scope-only") has a working first slice; ETDA's EdDSA/Ed25519 requirement adds a new Phase 5 that gates final release. Status below reflects `docs/TASKS.md` and `AGENTS.md` as of 2026-06-15.
+Original plan was a two-month, four-phase sequential plan. Phases 1-4 are now complete or substantially complete; OID4VP 1.0 online presentation (originally "post-v1, scope-only") has a working first slice; ETDA's EdDSA/Ed25519 requirement added Phase 5. Status below reflects `docs/TASKS.md` and `AGENTS.md` as of 2026-06-16.
 
 ## Phase 1 - Cryptography, Native Integration, and Storage
 
@@ -17,7 +17,7 @@ Delivered:
 Remaining risk:
 
 - Physical device verification still required before release (carried into Phase 5 release validation).
-- Production signing algorithm must move from P-256/ES256 to Ed25519/EdDSA — see Phase 5.
+- Production signing moved from P-256/ES256 to Ed25519/EdDSA in Phase 5; the accepted production path is Keychain-protected software Ed25519 (ADR 0008), not hardware-backed non-extractable signing.
 
 ## Phase 2 - OID4VCI 1.0 Client-Side Integration
 
@@ -78,19 +78,19 @@ Remaining:
 - Issuer signature validation once the trusted issuer registry / trust-list source is decided.
 - Final ISO 18013-5 mdoc native module selection ADR after physical-device validation.
 - EAS production builds for iOS and Android, then a physical-device golden-path walkthrough. Manual blocker: user-held EAS credentials, physical iOS device, physical Android device, and a real or test Issuer QR issuance source.
-- Both items above are sequenced **after** Phase 5 (EdDSA migration), since current credentials/holder-binding must be reissued under the new signing key before a meaningful golden-path walkthrough.
+- Both items above require credentials/holder-binding to be reissued under the new Ed25519 signing key before a meaningful golden-path walkthrough.
 
 ## Phase 5 - ETDA EdDSA/Ed25519 Migration (new)
 
-Status: Android implementation wired; target-device validation pending.
+Status: Implemented with accepted security tradeoff.
 
-Why: ETDA requires `alg: EdDSA` (Ed25519) for both the OID4VCI PoP JWT and the OID4VP SD-JWT+KB presentation token. Android app code now signs those tokens through the local native Ed25519 module `EtdaWalletEddsa`; physical target-device validation is still required to prove AndroidKeyStore Ed25519 key generation reports TEE or StrongBox backing. iOS remains deferred because Secure Enclave does not support Ed25519.
+Why: ETDA requires `alg: EdDSA` (Ed25519) for both the OID4VCI PoP JWT and the OID4VP SD-JWT+KB presentation token. Target-device diagnostics on a Galaxy S24 Ultra showed AndroidKeyStore Ed25519 requests generated EC keys, so ADR 0008 supersedes the native AndroidKeyStore-only plan. The wallet now stores a 32-byte Ed25519 seed in `react-native-keychain`, derives the Ed25519 `did:key` Holder DID, and signs OID4VCI/OID4VP tokens with `@noble/curves` Ed25519.
 
 Remaining:
 
-- Run Android prebuild/build and physical target-device validation for `EtdaWalletEddsa`.
-- Reissue existing test credentials under the new PoP holder binding before re-running OID4VP Verifier checks.
-- Resolve iOS Ed25519 in a separate ADR before any iOS release target.
+- Reissue existing test credentials under the new Ed25519 PoP holder binding before re-running OID4VP Verifier checks.
+- Run EAS production builds and the physical-device golden-path walkthrough after reissue.
+- Revisit a true hardware-backed Ed25519 design only if a future platform/API can provide non-extractable Ed25519 signing.
 
 ## OID4VP 1.0 Online Presentation
 
@@ -102,13 +102,13 @@ Resolved:
 - Response mode: `direct_post`, cross-device QR Authorization Request.
 - Verifier trust model: local allowlist matching `client_id` + `response_uri` origin; current entry uses development `redirect_uri:` scheme.
 - First claim scopes: ThaiNationalID birth-date disclosure (Presentation Exchange) and Transcript `dc+sd-jwt` DCQL disclosure.
-- `vp_token` signing reuses the hardware Wallet Signing Key (`src/services/crypto`); SD-JWT+KB holder binding enforced.
+- `vp_token` signing reuses the Wallet Signing Key (`src/services/crypto`); SD-JWT+KB holder binding enforced.
 - Biometric sign-time gate applies; presentation runs device-to-Verifier directly with no company backend proxy.
 - Successful presentations recorded in encrypted local history and shown in History Log / Wallet Home badges.
 
 Remaining (see `docs/SPEC_COMPLIANCE_OID4VC.md` for spec-level detail):
 
 - Replace the development `redirect_uri:` Verifier entry with registered production `did:web` Verifier(s), including signed Request Object (JAR) signature verification and `client_id_scheme`-aware trust handling.
-- Validate native EdDSA SD-JWT+KB signing on target Android hardware (Phase 5).
+- Reissue credentials under the Keychain Ed25519 Holder DID before production walkthrough.
 - `presentation_definition_uri` and DCQL `credential_sets` support, if a Verifier requires them.
 - Broader claim sets only after trust and disclosure semantics are documented.

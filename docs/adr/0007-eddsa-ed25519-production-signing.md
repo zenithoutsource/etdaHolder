@@ -1,6 +1,6 @@
 # ADR 0007 - Android-First EdDSA Ed25519 Production Signing
 
-Status: Accepted
+Status: Superseded by ADR 0008
 
 Date: 2026-06-15
 
@@ -43,3 +43,7 @@ OID4VCI PoP JWTs, OID4VP JWT VP tokens, and OID4VP SD-JWT KB-JWTs now emit `alg:
 - Existing credentials bound to the old P-256 Holder DID must be reissued. SD-JWT holder-binding validation will reject credentials whose `cnf.jwk` or `cnf.kid` targets the old key.
 - Production builds must fail startup when the native Ed25519 signer is unavailable. There is no production software fallback.
 - `react-native-quick-crypto` remains allowed for hashing and randomness only, not signing.
+
+## Supersession Note
+
+On 2026-06-16, target-device diagnostics on the Galaxy S24 Ultra showed AndroidKeyStore generated `EC` keys when requested to generate `Ed25519` keys. ADR 0008 supersedes this native hardware-backed plan with Keychain-protected software Ed25519 signing for production protocol compatibility.

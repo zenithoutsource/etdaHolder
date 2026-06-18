@@ -18,11 +18,22 @@ import {
   signProof as defaultSignProof,
   getHolderDid,
 } from '../crypto/crypto'
+import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import {
   importCredential as defaultImportCredential,
 } from '../../sdk/walletApi'
 import { resolveDevIssuerProxyUrl } from '../../sdk/installWalletApiFetch'
 import { getCredentialStorage as getDefaultCredentialStorage } from '../storage/storage'
+import {
+  base64UrlDecodeToString,
+  decodeJwtPayloadStrict as decodeJwtPayload,
+  isSameJwk,
+  isSameKid,
+  isRecord,
+  readRecord,
+  readString,
+  toErrorMessage,
+} from '@/src/utils/jwtUtils'
 
 const CREDENTIAL_INDEX_KEY = 'credential:index'
 const CREDENTIAL_KEY_PREFIX = 'credential:'
@@ -138,30 +149,45 @@ export type SyncCredentialToBackendOptions = {
 }
 
 export async function resolveOffer(offerUri: string, options: ResolveOfferOptions = {}): Promise<ResolvedCredentialOffer> {
-  const resolvedOfferUri = await resolveCredentialOfferUriForTransport(offerUri)
-  const credentialOffer = await parseCredentialOffer(resolvedOfferUri)
-  const issuer = readCredentialIssuer(credentialOffer)
-  const issuerMetadata = await (options.fetchIssuerMetadata ?? fetchIssuerMetadata)(issuer)
+  logWalletStep('oid4vci', 'resolve-offer-start', describeUriForLog(offerUri))
+  try {
+    const resolvedOfferUri = await resolveCredentialOfferUriForTransport(offerUri)
+    const credentialOffer = await parseCredentialOffer(resolvedOfferUri)
+    const issuer = readCredentialIssuer(credentialOffer)
+    const issuerMetadata = await (options.fetchIssuerMetadata ?? fetchIssuerMetadata)(issuer)
 
-  assertIssuerMetadata(issuer, issuerMetadata)
-  const transportIssuerMetadata = rewriteIssuerMetadataForTransport(issuerMetadata)
+    assertIssuerMetadata(issuer, issuerMetadata)
+    const transportIssuerMetadata = rewriteIssuerMetadataForTransport(issuerMetadata)
 
-  return {
-    offerUri: resolvedOfferUri,
-    issuer,
-    credentialOffer,
-    issuerMetadata: transportIssuerMetadata,
-    issuerDisplay: toCredentialDisplay(issuerMetadata.display),
-    credentialConfigurations: resolveCredentialConfigurations(credentialOffer, issuerMetadata),
-    preAuthorizedCode: credentialOffer.preAuthorizedCode,
-    txCode: credentialOffer.txCode,
-    supportedFlows: credentialOffer.supportedFlows.map(String),
-    version: credentialOffer.version,
+    const resolved = {
+      offerUri: resolvedOfferUri,
+      issuer,
+      credentialOffer,
+      issuerMetadata: transportIssuerMetadata,
+      issuerDisplay: toCredentialDisplay(issuerMetadata.display),
+      credentialConfigurations: resolveCredentialConfigurations(credentialOffer, issuerMetadata),
+      preAuthorizedCode: credentialOffer.preAuthorizedCode,
+      txCode: credentialOffer.txCode,
+      supportedFlows: credentialOffer.supportedFlows.map(String),
+      version: credentialOffer.version,
+    }
+    logWalletStep('oid4vci', 'resolve-offer-complete', {
+      issuer,
+      configurationIds: resolved.credentialConfigurations.map((configuration) => configuration.id),
+      formats: resolved.credentialConfigurations.map((configuration) => configuration.format),
+      supportedFlows: resolved.supportedFlows,
+      txCodeRequired: Boolean(resolved.txCode),
+    })
+    return resolved
+  } catch (error) {
+    logWalletError('oid4vci', 'resolve-offer-failed', error, describeUriForLog(offerUri))
+    throw error
   }
 }
 
 export async function fetchIssuerMetadata(issuer: string): Promise<IssuerMetadataV1_0_15> {
   const metadataUrl = getIssuerMetadataUrl(issuer)
+  logWalletStep('oid4vci', 'issuer-metadata-fetch-start', { issuer, metadataUrl })
 
   let response: Response
   try {
@@ -171,9 +197,11 @@ export async function fetchIssuerMetadata(issuer: string): Promise<IssuerMetadat
       },
     })
   } catch (error) {
+    logWalletError('oid4vci', 'issuer-metadata-fetch-error', error, { issuer, metadataUrl })
     throw new Error(`IssuerMetadataFetchFailed: ${toErrorMessage(error)}`)
   }
 
+  logWalletStep('oid4vci', 'issuer-metadata-fetch-response', { issuer, metadataUrl, status: response.status, ok: response.ok })
   if (!response.ok) {
     throw new Error(`IssuerMetadataFetchFailed: HTTP ${response.status}`)
   }
@@ -181,6 +209,7 @@ export async function fetchIssuerMetadata(issuer: string): Promise<IssuerMetadat
   try {
     return (await response.json()) as IssuerMetadataV1_0_15
   } catch (error) {
+    logWalletError('oid4vci', 'issuer-metadata-parse-error', error, { issuer, metadataUrl, status: response.status })
     throw new Error(`IssuerMetadataParseFailed: ${toErrorMessage(error)}`)
   }
 }
@@ -194,7 +223,9 @@ export async function claimCredential(
     ...options.dependencies,
   }
   const record = await acquireCredentialRecord(resolvedOffer, { ...options, dependencies })
+  logWalletStep('oid4vci', 'credential-save-start', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
   saveCredentialRecord(record, { getCredentialStorage: dependencies.getCredentialStorage })
+  logWalletStep('oid4vci', 'credential-save-complete', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
 
   return record
 }
@@ -218,10 +249,28 @@ export async function acquireCredentialRecord(
     ...options.dependencies,
   }
 
+  logWalletStep('oid4vci', 'claim-start', {
+    issuer: resolvedOffer.issuer,
+    configurationIds: resolvedOffer.credentialConfigurations.map((configuration) => configuration.id),
+    formats: resolvedOffer.credentialConfigurations.map((configuration) => configuration.format),
+    txCodeProvided: Boolean(options.tx_code),
+  })
   const token = await dependencies.acquireAccessToken({ resolvedOffer, tx_code: options.tx_code })
+  logWalletStep('oid4vci', 'access-token-acquired', {
+    issuer: resolvedOffer.issuer,
+    cNoncePresent: Boolean(token.cNonce),
+    credentialIdentifierPresent: Boolean(token.credentialIdentifier),
+  })
   let proof = await dependencies.signProof(token.cNonce, resolvedOffer.issuer)
+  logWalletStep('oid4vci', 'proof-signed', { issuer: resolvedOffer.issuer, popBytes: proof.length })
   let rawVc: string
   try {
+    logWalletStep('oid4vci', 'credential-request-start', {
+      issuer: resolvedOffer.issuer,
+      credentialEndpoint: resolvedOffer.issuerMetadata.credential_endpoint,
+      credentialIdentifierPresent: Boolean(token.credentialIdentifier),
+      popBytes: proof.length,
+    })
     rawVc = await dependencies.requestCredential({
       resolvedOffer,
       accessToken: token.accessToken,
@@ -229,9 +278,17 @@ export async function acquireCredentialRecord(
       credentialIdentifier: token.credentialIdentifier,
     })
   } catch (error) {
-    if (!(error instanceof InvalidProofError)) throw error
+    if (!(error instanceof InvalidProofError)) {
+      logWalletError('oid4vci', 'credential-request-failed', error, {
+        issuer: resolvedOffer.issuer,
+        credentialEndpoint: resolvedOffer.issuerMetadata.credential_endpoint,
+      })
+      throw error
+    }
 
+    logWalletError('oid4vci', 'credential-request-invalid-proof', error, { issuer: resolvedOffer.issuer, retry: true })
     proof = await dependencies.signProof(error.cNonce, resolvedOffer.issuer)
+    logWalletStep('oid4vci', 'proof-resigned', { issuer: resolvedOffer.issuer, popBytes: proof.length })
     rawVc = await dependencies.requestCredential({
       resolvedOffer,
       accessToken: token.accessToken,
@@ -239,8 +296,13 @@ export async function acquireCredentialRecord(
       credentialIdentifier: token.credentialIdentifier,
     })
   }
+  logWalletStep('oid4vci', 'credential-response-received', { issuer: resolvedOffer.issuer, credentialBytes: rawVc.length })
+  assertCredentialIssuerSignatureAlg(rawVc)
   assertDevelopmentEddsaHolderBinding(rawVc, proof)
-  return normalizeCredentialRecord(rawVc, resolvedOffer)
+  logWalletStep('oid4vci', 'holder-binding-validated', { issuer: resolvedOffer.issuer })
+  const record = normalizeCredentialRecord(rawVc, resolvedOffer)
+  logWalletStep('oid4vci', 'credential-normalized', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
+  return record
 }
 
 export function saveCredentialRecord(
@@ -733,7 +795,7 @@ async function discoverAuthorizationServerTokenEndpoint(
       const metadataUrl = `${baseUrl.replace(/\/$/, '')}/${wellKnownPath}`
 
       try {
-        const response = await fetch(resolveDevIssuerProxyUrl(metadataUrl), { headers: { Accept: 'application/json' } })
+        const response = await fetch(resolveDevIssuerProxyUrl(metadataUrl), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) })
         if (!response.ok) continue
 
         const metadata = await readJsonResponseBody(response)
@@ -893,6 +955,15 @@ function isCompactSdJwt(rawVc: string): boolean {
   return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
 }
 
+function assertCredentialIssuerSignatureAlg(rawVc: string): void {
+  const issuerJwt = isCompactSdJwt(rawVc) ? rawVc.split('~')[0] : rawVc
+  const header = decodeJwtHeader(issuerJwt)
+  const alg = readString(header.alg)
+  if (alg !== 'EdDSA') {
+    throw new Error(`CredentialSignatureAlgUnsupported: issuer credential alg must be EdDSA, got ${alg ?? 'missing'}`)
+  }
+}
+
 function assertDevelopmentEddsaHolderBinding(rawVc: string, proofJwt: string): void {
   if (!isCompactSdJwt(rawVc)) return
 
@@ -975,27 +1046,6 @@ function flattenCredentialSubject(claims: Record<string, unknown>): Record<strin
   }
 }
 
-function decodeJwtPayload(jwt: string): Record<string, unknown> {
-  const parts = jwt.split('.')
-
-  if (parts.length < 2 || !parts[1]) {
-    throw new Error('CredentialJwtInvalid: JWT payload is required')
-  }
-
-  try {
-    const payload = base64UrlDecodeToString(parts[1])
-    const parsed = JSON.parse(payload) as unknown
-
-    if (!isRecord(parsed)) {
-      throw new Error('payload is not an object')
-    }
-
-    return parsed
-  } catch (error) {
-    throw new Error(`CredentialJwtInvalid: ${toErrorMessage(error)}`)
-  }
-}
-
 function decodeJwtHeader(jwt: string): Record<string, unknown> {
   const parts = jwt.split('.')
 
@@ -1015,33 +1065,6 @@ function decodeJwtHeader(jwt: string): Record<string, unknown> {
   } catch (error) {
     throw new Error(`CredentialJwtInvalid: ${toErrorMessage(error)}`)
   }
-}
-
-function isSameJwk(actual: Record<string, unknown>, expected: Record<string, unknown>): boolean {
-  return (
-    actual.kty === expected.kty &&
-    actual.crv === expected.crv &&
-    actual.x === expected.x &&
-    (expected.y ? actual.y === expected.y : !actual.y)
-  )
-}
-
-function isSameKid(actual: string, expected: string): boolean {
-  const expectedDid = expected.split('#')[0]
-  return actual === expected || actual === expectedDid
-}
-
-function base64UrlDecodeToString(value: string): string {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
-  const binary = atob(padded)
-  const bytes = new Uint8Array(binary.length)
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-
-  return new TextDecoder().decode(bytes)
 }
 
 function readCredentialType(
@@ -1153,22 +1176,24 @@ function isReplaceableCredentialId(
   }
 }
 
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined
-}
-
 function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+function describeUriForLog(uri: string): Record<string, unknown> {
+  try {
+    const parsed = new URL(uri)
+    return {
+      scheme: parsed.protocol.replace(':', ''),
+      host: parsed.host || undefined,
+      path: parsed.pathname || undefined,
+      queryKeys: Array.from(parsed.searchParams.keys()),
+      uriBytes: uri.length,
+    }
+  } catch {
+    return {
+      scheme: uri.split(':')[0] || 'unknown',
+      uriBytes: uri.length,
+    }
+  }
 }

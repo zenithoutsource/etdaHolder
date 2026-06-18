@@ -6,28 +6,28 @@ This document defines mandatory security constraints for the ETDA Wallet. Any co
 
 ### Signing Key
 
-The Android wallet uses exactly one hardware-bound Ed25519 keypair for Proof of Possession and presentation signatures.
+The wallet uses exactly one Keychain-protected Ed25519 seed for Proof of Possession and presentation signatures.
 
-- Native module: local Expo module `EtdaWalletEddsa` (`modules/etda-wallet-eddsa`)
-- Key alias: `etda_wallet_signing_key`
-- Backing store: AndroidKeyStore, requiring TEE or StrongBox hardware backing
-- Private key: non-extractable, never present in JavaScript memory
+- Keychain service: `etda.wallet.ed25519_seed`
+- Public key cache: `wallet.ed25519_pub_key`
+- Backing store: `react-native-keychain` with biometric/device-passcode access control and hardware-backed storage when the platform provides it
+- Private key material: a software-generated 32-byte Ed25519 seed, retrieved only for signing
 - Generation: once on first launch
 - Rotation: explicit user-initiated re-enrollment only
-- Fallback: no production software fallback
+- Native AndroidKeyStore Ed25519 module: diagnostic/experimental only
 
-Production startup must fail if the native Ed25519 signer is unavailable. iOS Ed25519 remains deferred because Secure Enclave does not support Ed25519.
+This satisfies protocol-level `alg: EdDSA` / Ed25519 compatibility. It does not provide hardware-backed non-extractability because the target Android device generated EC keys for AndroidKeyStore Ed25519 requests.
 
 ### Non-Signing Crypto
 
-`react-native-quick-crypto` is allowed for non-signing operations only:
+`react-native-quick-crypto` is allowed for:
 
 - random bytes
 - hashing
 - HMAC
 - base64url and encoding support
 
-It must not be used for key generation or signing.
+It must not be used for Ed25519 signing. Ed25519 signing is performed by `@noble/curves` using the Keychain-protected seed.
 
 ### Public Key and Holder DID
 
@@ -57,7 +57,7 @@ The public JWK shape is `{ "kty": "OKP", "crv": "Ed25519", "x": "<base64url(raw_
 
 ## 3. Biometric Authentication Gate
 
-Every signature operation must be gated by biometric authentication through the native signing module.
+Every signature operation must be gated by Keychain biometric/device authentication before the Ed25519 seed is returned for signing.
 
 - The gate applies at key usage time, not just wallet startup.
 - User cancellation rejects the sign call.

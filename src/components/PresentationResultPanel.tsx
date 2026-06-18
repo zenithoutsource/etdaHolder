@@ -23,7 +23,7 @@ export function PresentationResultPanel({ verifierName, items, onDone }: Props) 
         className="h-[98px] w-[98px] items-center justify-center rounded-full bg-green-500">
         <MaterialCommunityIcons name="check" size={72} color="#ffffff" />
       </View>
-      <Text className="mt-7 text-center text-[18px] font-extrabold leading-6 text-black">ส่งข้อมูลสำเร็จ</Text>
+      <Text className="mt-7 text-center text-[18px] font-extrabold leading-6 text-black">ตรวจสอบสำเร็จ</Text>
       <Text className="mt-4 mb-4 text-center text-[14px] leading-5 text-[#364152]">
         ข้อมูลของคุณถูกส่งให้
         {'\n'} {verifierName}เรียบร้อยแล้ว

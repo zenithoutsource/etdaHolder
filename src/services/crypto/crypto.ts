@@ -1,18 +1,23 @@
+import { getPublicKey, hashes, sign } from '@noble/ed25519'
+import { sha512 } from '@noble/hashes/sha2.js'
+
+hashes.sha512 = sha512
 import { createHash, randomBytes } from 'react-native-quick-crypto'
+import * as Keychain from 'react-native-keychain'
 
 import { isBiometricDisabledForTesting } from '@/src/config/runtimeFlags'
+import { base64UrlDecodeToString, isSameJwk, isSameKid, readRecord, toErrorMessage } from '@/src/utils/jwtUtils'
 
+import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getMetaStorage } from '../storage/storage'
-import {
-  deleteKey,
-  generateKeypair,
-  getPublicBytesForKeyId,
-  sign,
-} from './nativeEddsaSigner'
 
 const KEY_ID = 'etda_wallet_signing_key'
+const KEYCHAIN_SERVICE = 'etda.wallet.ed25519_seed'
+const KEYCHAIN_USERNAME = 'wallet-ed25519-seed'
 const ED25519_PUBLIC_KEY_STORAGE = 'wallet.ed25519_pub_key'
 const KEY_REGISTERED_AT_STORAGE = 'wallet.key_registered_at'
+const KEY_SOURCE_STORAGE = 'wallet.key_source'
+const KEY_SOURCE_KEYCHAIN_ED25519 = 'keychain-ed25519'
 
 const LEGACY_COMPRESSED_KEY_STORAGE = 'wallet.compressed_pub_key'
 const LEGACY_SOFTWARE_ED25519_SECRET_KEY_STORAGE = 'wallet.software_ed25519_secret_key'
@@ -87,13 +92,9 @@ function assertEd25519PublicKeyLength(publicKey: Uint8Array): void {
   }
 }
 
-async function readExistingNativeEd25519PublicKey(): Promise<Uint8Array | undefined> {
-  try {
-    const publicKey = await getPublicBytesForKeyId(KEY_ID)
-    assertEd25519PublicKeyLength(publicKey)
-    return publicKey
-  } catch {
-    return undefined
+function assertEd25519SeedLength(seed: Uint8Array, errorCode: string): void {
+  if (seed.length !== 32) {
+    throw new Error(`${errorCode}: expected 32 Ed25519 seed bytes, got ${seed.length}`)
   }
 }
 
@@ -104,33 +105,118 @@ async function replaceLegacyWalletKeyIfNeeded(): Promise<void> {
 
   if (!hasLegacyKeyMaterial) return
 
-  await deleteKey(KEY_ID).catch(() => undefined)
+  await Keychain.resetGenericPassword({ service: KEYCHAIN_SERVICE }).catch(() => undefined)
   metaStorage.remove(LEGACY_COMPRESSED_KEY_STORAGE)
   metaStorage.remove(LEGACY_SOFTWARE_ED25519_SECRET_KEY_STORAGE)
+  metaStorage.remove(KEY_SOURCE_STORAGE)
+}
+
+function getKeychainSetOptions(): Keychain.SetOptions {
+  if (isBiometricDisabledForTesting()) {
+    return {
+      service: KEYCHAIN_SERVICE,
+      accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    }
+  }
+
+  return {
+    service: KEYCHAIN_SERVICE,
+    accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
+    accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    securityLevel: Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
+    storage: Keychain.STORAGE_TYPE.AES_GCM,
+  }
+}
+
+function getKeychainGetOptions(promptTitle?: string): Keychain.GetOptions {
+  if (isBiometricDisabledForTesting()) {
+    return { service: KEYCHAIN_SERVICE }
+  }
+
+  return {
+    service: KEYCHAIN_SERVICE,
+    accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
+    authenticationPrompt: {
+      title: promptTitle ?? 'Unlock Wallet Key',
+      cancel: 'Cancel',
+    },
+  }
+}
+
+async function readStoredEd25519Seed(promptTitle?: string): Promise<Uint8Array | undefined> {
+  const credentials = await Keychain.getGenericPassword(getKeychainGetOptions(promptTitle))
+  if (!credentials) return undefined
+
+  const seed = base64ToUint8Array(credentials.password)
+  assertEd25519SeedLength(seed, 'InvalidStoredEd25519SeedLength')
+  return seed
+}
+
+async function writeEd25519Seed(seed: Uint8Array): Promise<void> {
+  assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+  const result = await Keychain.setGenericPassword(
+    KEYCHAIN_USERNAME,
+    uint8ArrayToBase64(seed),
+    getKeychainSetOptions(),
+  )
+  if (!result) throw new Error('Ed25519SeedKeychainWriteFailed')
+}
+
+function readPublicKeyFromSeed(seed: Uint8Array): Uint8Array {
+  const publicKey = getPublicKey(seed)
+  assertEd25519PublicKeyLength(publicKey)
+  return publicKey
 }
 
 /**
  * Called once at app startup (_layout.tsx). Idempotent: no-ops if the native
- * Ed25519 Wallet Signing Key and cached public key are already available.
- * Biometric is NOT required here; it fires only on sign operations.
+ * Ed25519 public key is cached. The private seed is stored in Keychain and
+ * retrieved through biometric/device authentication on signing operations.
  */
 export async function generateWalletKeyIfNeeded(): Promise<void> {
-  if (metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE)) return
-
-  await replaceLegacyWalletKeyIfNeeded()
-
-  const existingPublicKey = await readExistingNativeEd25519PublicKey()
-  if (existingPublicKey) {
-    metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(existingPublicKey))
+  if (
+    metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE) &&
+    metaStorage.getString(KEY_SOURCE_STORAGE) === KEY_SOURCE_KEYCHAIN_ED25519
+  ) {
+    logWalletStep('crypto', 'wallet-key-cache-hit', { keyId: KEY_ID, alg: 'EdDSA', crv: 'Ed25519' })
     return
   }
 
-  await deleteKey(KEY_ID).catch(() => undefined)
-  await generateKeypair(KEY_ID, !isBiometricDisabledForTesting())
-  const publicKey = await getPublicBytesForKeyId(KEY_ID)
-  assertEd25519PublicKeyLength(publicKey)
-  metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(publicKey))
-  metaStorage.set(KEY_REGISTERED_AT_STORAGE, new Date().toISOString())
+  logWalletStep('crypto', 'wallet-key-init-start', { keyId: KEY_ID, alg: 'EdDSA', crv: 'Ed25519' })
+
+  try {
+    await replaceLegacyWalletKeyIfNeeded()
+    if (
+      metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE) &&
+      metaStorage.getString(KEY_SOURCE_STORAGE) !== KEY_SOURCE_KEYCHAIN_ED25519
+    ) {
+      await Keychain.resetGenericPassword({ service: KEYCHAIN_SERVICE }).catch(() => undefined)
+      metaStorage.remove(ED25519_PUBLIC_KEY_STORAGE)
+      metaStorage.remove(KEY_REGISTERED_AT_STORAGE)
+    }
+
+    const existingSeed = await readStoredEd25519Seed()
+    if (existingSeed) {
+      const existingPublicKey = readPublicKeyFromSeed(existingSeed)
+      metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(existingPublicKey))
+      metaStorage.set(KEY_SOURCE_STORAGE, KEY_SOURCE_KEYCHAIN_ED25519)
+      logWalletStep('crypto', 'wallet-key-keychain-existing', { keyId: KEY_ID, publicKeyBytes: existingPublicKey.length })
+      return
+    }
+
+    const seed = randomBytes(32)
+    assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+    await writeEd25519Seed(seed)
+    const publicKey = readPublicKeyFromSeed(seed)
+    assertEd25519PublicKeyLength(publicKey)
+    metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(publicKey))
+    metaStorage.set(KEY_SOURCE_STORAGE, KEY_SOURCE_KEYCHAIN_ED25519)
+    metaStorage.set(KEY_REGISTERED_AT_STORAGE, new Date().toISOString())
+    logWalletStep('crypto', 'wallet-key-generated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
+  } catch (error) {
+    logWalletError('crypto', 'wallet-key-init-failed', error, { keyId: KEY_ID, alg: 'EdDSA', crv: 'Ed25519' })
+    throw error
+  }
 }
 
 export function hasWalletKey(): boolean {
@@ -142,7 +228,7 @@ export function getWalletKeyRegisteredAt(): string | undefined {
   return metaStorage.getString(KEY_REGISTERED_AT_STORAGE)
 }
 
-/** Returns the Holder DID derived from the native Ed25519 Wallet Signing Key. Sync, no biometric. */
+/** Returns the Holder DID derived from the cached Ed25519 public key. Sync, no biometric. */
 export function getHolderDid(): string {
   return ed25519PublicKeyToDidKey(readStoredEd25519PublicKey())
 }
@@ -181,6 +267,7 @@ export async function signProof(nonce: string, audience: string): Promise<string
     nonce,
   }
 
+  logWalletStep('crypto', 'sign-proof-start', { alg: header.alg, typ: header.typ, kid, audience, noncePresent: Boolean(nonce) })
   return signJwtLikeObject(header, payload, 'proof')
 }
 
@@ -223,6 +310,14 @@ export async function signPresentationVpToken(input: PresentationVpTokenInput): 
     },
   }
 
+  logWalletStep('crypto', 'sign-vp-token-start', {
+    alg: header.alg,
+    typ: header.typ,
+    kid,
+    audience: input.audience,
+    noncePresent: Boolean(input.nonce),
+    credentialBytes: input.verifiableCredential.length,
+  })
   return signJwtLikeObject(header, payload, 'vp')
 }
 
@@ -247,7 +342,16 @@ export async function signSdJwtKbPresentationToken(input: SdJwtKbPresentationTok
     sd_hash: sdHash,
   }
 
+  logWalletStep('crypto', 'sign-sd-jwt-kb-start', {
+    alg: header.alg,
+    typ: header.typ,
+    kid: header.kid,
+    audience: input.audience,
+    noncePresent: Boolean(input.nonce),
+    sdJwtBytes: input.sdJwt.length,
+  })
   const kbJwt = await signJwtLikeObject(header, payload, 'kb')
+  logWalletStep('crypto', 'sign-sd-jwt-kb-complete', { kbBytes: kbJwt.length, presentationBytes: sdJwtWithoutKb.length + kbJwt.length })
   return `${sdJwtWithoutKb}${kbJwt}`
 }
 
@@ -259,16 +363,21 @@ async function signJwtLikeObject(
   const headerB64 = base64UrlEncode(JSON.stringify(header))
   const payloadB64 = base64UrlEncode(JSON.stringify(payload))
   const signingInput = `${headerB64}.${payloadB64}`
-  const signatureBytes = await sign(
-    KEY_ID,
-    new TextEncoder().encode(signingInput),
-    !isBiometricDisabledForTesting(),
-  )
+  let signatureBytes: Uint8Array
+  try {
+    const seed = await readStoredEd25519Seed('Sign with Wallet Key')
+    if (!seed) throw new Error('WalletKeyNotInitialized')
+    signatureBytes = sign(new TextEncoder().encode(signingInput), seed)
+  } catch (error) {
+    logWalletError('crypto', 'keychain-ed25519-sign-failed', error, { keyId: KEY_ID, tokenKind, signingInputBytes: signingInput.length })
+    throw error
+  }
 
   if (signatureBytes.length !== 64) {
     throw new Error(`InvalidSignatureLength: expected 64 Ed25519 bytes for ${tokenKind}, got ${signatureBytes.length}`)
   }
 
+  logWalletStep('crypto', 'keychain-ed25519-sign-complete', { keyId: KEY_ID, tokenKind, signatureBytes: signatureBytes.length })
   return `${signingInput}.${base64UrlEncode(signatureBytes)}`
 }
 
@@ -286,23 +395,9 @@ function assertSdJwtHolderBinding(sdJwt: string, holder: { jwk: JsonWebKey; kid:
   }
 
   if (cnfKid && isSameKid(cnfKid, holder.kid)) return cnfKid
-  if (cnfJwk && isSameJwk(cnfJwk, holder.jwk)) return undefined
+  if (cnfJwk && isSameJwk(cnfJwk, holder.jwk as Record<string, unknown>)) return undefined
 
   throw new Error('PresentationCredentialHolderBindingMismatch: SD-JWT credential is not bound to this Wallet Signing Key')
-}
-
-function isSameJwk(actual: Record<string, unknown>, expected: JsonWebKey): boolean {
-  return (
-    actual.kty === expected.kty &&
-    actual.crv === expected.crv &&
-    actual.x === expected.x &&
-    (expected.y ? actual.y === expected.y : !actual.y)
-  )
-}
-
-function isSameKid(actual: string, expected: string): boolean {
-  const expectedDid = expected.split('#')[0]
-  return actual === expected || actual === expectedDid
 }
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> {
@@ -323,27 +418,6 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> {
   }
 }
 
-function base64UrlDecodeToString(value: string): string {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
-  const binary = atob(padded)
-  const bytes = new Uint8Array(binary.length)
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-
-  return new TextDecoder().decode(bytes)
-}
-
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
-}
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 function createUuid(): string {
   const bytes = randomBytes(16)
   bytes[6] = (bytes[6] & 0x0f) | 0x40
@@ -352,10 +426,11 @@ function createUuid(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-/** Deletes the native Ed25519 key and clears cached public key. Users must re-enrol. */
+/** Deletes the Keychain Ed25519 seed and clears cached public key. Users must re-enrol. */
 export async function resetWalletKey(): Promise<void> {
-  await deleteKey(KEY_ID)
+  await Keychain.resetGenericPassword({ service: KEYCHAIN_SERVICE })
   metaStorage.remove(ED25519_PUBLIC_KEY_STORAGE)
+  metaStorage.remove(KEY_SOURCE_STORAGE)
   metaStorage.remove(LEGACY_COMPRESSED_KEY_STORAGE)
   metaStorage.remove(LEGACY_SOFTWARE_ED25519_SECRET_KEY_STORAGE)
 }
