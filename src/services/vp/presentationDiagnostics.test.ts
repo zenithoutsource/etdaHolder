@@ -1,4 +1,7 @@
-import { ed25519 } from '@noble/curves/ed25519.js'
+import { getPublicKey, hashes, sign } from '@noble/ed25519'
+import { sha512 } from '@noble/hashes/sha2.js'
+
+hashes.sha512 = sha512
 import { createHash } from 'react-native-quick-crypto'
 
 import { describePresentationAttempt } from './presentationDiagnostics'
@@ -112,7 +115,7 @@ test('describes SD-JWT KB presentation metadata without full token contents', ()
 test('describes local SD-JWT KB validity checks without exposing token contents', () => {
   const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(11_000)
   const secretKey = new Uint8Array(32).fill(7)
-  const did = ed25519DidKey(ed25519.getPublicKey(secretKey))
+  const did = ed25519DidKey(getPublicKey(secretKey))
   const issuerJwt = jwt(
     { alg: 'EdDSA', typ: 'dc+sd-jwt', kid: 'did:key:z6MkIssuer' },
     {
@@ -131,7 +134,7 @@ test('describes local SD-JWT KB validity checks without exposing token contents'
     sd_hash: sdHash,
   }
   const signingInput = `${encode(kbHeader)}.${encode(kbPayload)}`
-  const kbJwt = `${signingInput}.${base64UrlEncodeBytes(ed25519.sign(new TextEncoder().encode(signingInput), secretKey))}`
+  const kbJwt = `${signingInput}.${base64UrlEncodeBytes(sign(new TextEncoder().encode(signingInput), secretKey))}`
 
   try {
     const summary = describePresentationAttempt({

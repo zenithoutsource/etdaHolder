@@ -1,5 +1,8 @@
+import { NativeModules } from 'react-native'
+
 import { getOriginalFetch, setFetchImplementation } from './fetchIndirection'
 import { createPinnedFetch } from './walletApiCertPinning'
+import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
 
 type FetchFn = typeof fetch
 type FetchInput = Parameters<FetchFn>[0]
@@ -29,6 +32,28 @@ export function getConfiguredWalletApiBaseUrl(): string {
 export function normalizeWalletApiBaseUrl(baseUrl = getConfiguredWalletApiBaseUrl()): string {
   const trimmed = baseUrl.trim()
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
+}
+
+export function resolveNativeDevLoopbackBaseUrl(
+  baseUrl: string,
+  devServerHost = readDevServerHost(),
+  isDevelopment = __DEV__,
+): string {
+  const normalizedBaseUrl = normalizeWalletApiBaseUrl(baseUrl)
+  if (!isDevelopment || !devServerHost) return normalizedBaseUrl
+
+  try {
+    const parsedBaseUrl = new URL(normalizedBaseUrl)
+    if (!isLoopbackHost(parsedBaseUrl.hostname)) return normalizedBaseUrl
+
+    const parsedDevServerUrl = new URL(devServerHost.includes('://') ? devServerHost : `http://${devServerHost}`)
+    if (isLoopbackHost(parsedDevServerUrl.hostname)) return normalizedBaseUrl
+
+    parsedBaseUrl.hostname = parsedDevServerUrl.hostname
+    return parsedBaseUrl.toString().replace(/\/$/, '')
+  } catch {
+    return normalizedBaseUrl
+  }
 }
 
 export function resolveWalletApiUrl(input: FetchInput, baseUrl = getConfiguredWalletApiBaseUrl()): FetchInput {
@@ -85,6 +110,48 @@ function resolveDevProxyUrls(input: FetchInput, proxies: (DevIssuerProxyConfig |
   )
 }
 
+function describeUrlForLog(raw: string): Record<string, unknown> {
+  try {
+    const parsed = new URL(raw)
+    return {
+      scheme: parsed.protocol.replace(':', ''),
+      host: parsed.host || undefined,
+      path: parsed.pathname || undefined,
+      queryKeys: Array.from(parsed.searchParams.keys()),
+      urlBytes: raw.length,
+    }
+  } catch {
+    return { path: raw.startsWith('/') ? raw : undefined, urlBytes: raw.length }
+  }
+}
+
+function describeFetchInputForLog(input: FetchInput): Record<string, unknown> {
+  if (typeof input === 'string') return describeUrlForLog(input)
+  if (typeof URL !== 'undefined' && input instanceof URL) return describeUrlForLog(input.toString())
+  if (typeof Request !== 'undefined' && input instanceof Request) {
+    return {
+      ...describeUrlForLog(input.url),
+      method: input.method,
+    }
+  }
+  return { inputType: typeof input }
+}
+
+function readDevServerHost(): string | undefined {
+  const sourceCode = NativeModules.SourceCode as { scriptURL?: string } | undefined
+  if (!sourceCode?.scriptURL) return undefined
+
+  try {
+    return new URL(sourceCode.scriptURL).host
+  } catch {
+    return undefined
+  }
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1'
+}
+
 async function normalizeWalletApiResponse(response: Response): Promise<Response> {
   const contentType = response.headers.get('Content-Type') ?? ''
   if (contentType.toLowerCase().includes('application/json')) {
@@ -108,7 +175,8 @@ async function normalizeWalletApiResponse(response: Response): Promise<Response>
 }
 
 export function installWalletApiFetch(options: InstallWalletApiFetchOptions = {}): void {
-  const baseUrl = normalizeWalletApiBaseUrl(options.baseUrl)
+  const configuredBaseUrl = options.baseUrl ?? getConfiguredWalletApiBaseUrl()
+  const baseUrl = resolveNativeDevLoopbackBaseUrl(configuredBaseUrl)
 
   if (options.fetchImpl) {
     originalFetch = options.fetchImpl
@@ -126,10 +194,33 @@ export function installWalletApiFetch(options: InstallWalletApiFetchOptions = {}
 
   setFetchImplementation((async (input: FetchInput, init?: FetchInit) => {
     const resolvedInput = resolveDevProxyUrls(resolveWalletApiUrl(input, baseUrl), [devIssuerProxy, devVerifierProxy])
-    const response = await fetchImpl(resolvedInput, init)
+    const requestMethod = init?.method ?? (typeof Request !== 'undefined' && input instanceof Request ? input.method : 'GET')
+    logWalletStep('sdk', 'fetch-start', {
+      method: requestMethod,
+      input: describeFetchInputForLog(input),
+      resolvedInput: describeFetchInputForLog(resolvedInput),
+    })
+    try {
+      const response = await fetchImpl(resolvedInput, init)
+      logWalletStep('sdk', 'fetch-complete', {
+        method: requestMethod,
+        input: describeFetchInputForLog(input),
+        resolvedInput: describeFetchInputForLog(resolvedInput),
+        status: response.status,
+        ok: response.ok,
+        contentType: response.headers.get('Content-Type') ?? undefined,
+      })
 
-    return typeof input === 'string' && input.startsWith(WALLET_API_PREFIX)
-      ? normalizeWalletApiResponse(response)
-      : response
+      return typeof input === 'string' && input.startsWith(WALLET_API_PREFIX)
+        ? normalizeWalletApiResponse(response)
+        : response
+    } catch (error) {
+      logWalletError('sdk', 'fetch-failed', error, {
+        method: requestMethod,
+        input: describeFetchInputForLog(input),
+        resolvedInput: describeFetchInputForLog(resolvedInput),
+      })
+      throw error
+    }
   }) as FetchFn)
 }

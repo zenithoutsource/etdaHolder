@@ -6,14 +6,14 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
 import { FacePreparePanel } from '../../src/components/FacePreparePanel'
-import { FaceScanPanel } from '../../src/components/FaceScanPanel'
-import { PresentationApprovalPanel } from '../../src/components/PresentationApprovalPanel'
+import { PresentationConsentPanel } from '../../src/components/PresentationConsentPanel'
+import { PresentationInfoPanel } from '../../src/components/PresentationInfoPanel'
 import { PresentationResultPanel, type PresentationResultItem } from '../../src/components/PresentationResultPanel'
 import { ScanSuccessPanel } from '../../src/components/ScanSuccessPanel'
 import { ThaIdVerificationPanel } from '../../src/components/ThaIdVerificationPanel'
 import { ThaiIdReceivePanel } from '../../src/components/ThaiIdReceivePanel'
 import { ThaiIdSuccessConfirmationPanel } from '../../src/components/ThaiIdSuccessConfirmationPanel'
-import { VerifierTrustPanel } from '../../src/components/VerifierTrustPanel'
+import { TranscriptPreviewPanel } from '../../src/components/TranscriptPreviewPanel'
 import { WalletHeader } from '../../src/components/WalletHeader'
 import { TRUSTED_VERIFIERS } from '../../src/config/trustedVerifiers'
 import { getCardSchema } from '../../src/config/cardSchemas'
@@ -22,23 +22,25 @@ import { hasPidCredential, isPidCredentialOffer } from '../../src/services/crede
 import { filterPresentableCredentials } from '../../src/services/credentials/credentialLifecycle'
 import { saveScannedCredential } from '../../src/services/credentials/scannedCredentialSave'
 import { readStoredCredentials } from '../../src/services/credentials/storedCredentials'
+import { logWalletError, logWalletStep } from '../../src/services/debug/walletLogger'
+import { recordSuccessfulPresentation } from '../../src/services/history/presentationHistory'
+import {
+  describeCredentialForLog,
+  describeOfferForLog,
+  describePresentationForLog,
+  describeUriForLog,
+} from '../../src/services/scan/scanLogDescriptors'
+import { toFriendlyError } from '../../src/services/scan/scanFriendlyErrors'
 import {
   acquireCredentialRecord,
   resolveOffer,
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from '../../src/services/vci/exchangeService'
-import { readCredentialHolderProfile } from '../../src/services/credentials/credentialDisplay'
-import {
-  signPresentationVpToken,
-  signSdJwtKbPresentationToken,
-  signSoftwareEddsaSdJwtKbPresentationToken,
-} from '../../src/services/crypto/crypto'
-import { recordSuccessfulPresentation } from '../../src/services/history/presentationHistory'
 import { readCredentialPreviewDisplay } from '../../src/services/vci/qrIssuanceFlow'
+import { confirmPresentationBiometric, createApprovedPresentationResponse } from '../../src/services/vp/presentationApproval'
 import { describePresentationAttempt } from '../../src/services/vp/presentationDiagnostics'
 import {
-  buildPresentationSubmission,
   isOid4VpAuthorizationRequest,
   readPresentationTokenAudience,
   readPresentationTokenMode,
@@ -58,10 +60,9 @@ type ScanPhase =
   | { tag: 'receive'; record: VerifiableCredentialRecord }
   | { tag: 'saving' }
   | { tag: 'success'; record: VerifiableCredentialRecord }
+  | { tag: 'presentationFacePrepare'; request: ResolvedPresentationRequest; nextStep: 'consent' | 'result'; verifierName?: string; response?: VerifierResponse }
   | { tag: 'presentationConsent'; request: ResolvedPresentationRequest }
-  | { tag: 'presentationFacePrepare'; request: ResolvedPresentationRequest }
-  | { tag: 'presentationFaceScan'; request: ResolvedPresentationRequest }
-  | { tag: 'presentationTrust'; request: ResolvedPresentationRequest; verifierName: string; response: VerifierResponse }
+  | { tag: 'presentationInfo'; request: ResolvedPresentationRequest; verifierName: string; response: VerifierResponse }
   | { tag: 'presentationSuccess'; request: ResolvedPresentationRequest; verifierName: string; response: VerifierResponse }
   | { tag: 'error'; message: string }
 
@@ -77,36 +78,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
     promise,
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
   ])
-}
-
-function toFriendlyError(raw: string): string {
-  if (raw.includes('ScanTimeout')) return 'Request timed out. Check your connection and try again.'
-  if (raw.includes('IssuerMetadataFetchFailed')) return 'Could not reach the issuer. Check your connection and try again.'
-  if (raw.includes('CredentialOfferParseFailed') || raw.includes('CredentialOfferInvalid') || raw.includes('CredentialOfferIssuerMissing')) return 'Invalid credential offer. Try scanning again.'
-  if (raw.includes('CredentialTokenExchangeFailed')) return 'Authentication with the issuer failed. The transaction code may be incorrect.'
-  if (raw.includes('CredentialHolderBindingMissing')) return 'The issuer returned an SD-JWT credential without wallet holder binding. This credential cannot pass the Verifier. Ask the Issuer to bind the credential to the Wallet Ed25519 PoP key in cnf.jwk or cnf.kid.'
-  if (raw.includes('CredentialHolderBindingMismatch')) return 'The issuer returned an SD-JWT credential bound to a different holder key. Reissue it with this wallet key.'
-  if (raw.includes('CredentialResponseUnsupported')) return 'The issuer response did not include a compact credential.'
-  if (raw.includes('CredentialRequestFailed')) return raw
-  if (raw.includes('CredentialFormatUnsupported')) return 'This credential format is not supported by this wallet.'
-  if (raw.includes('CredentialStorageFailed')) return 'Could not save the credential to storage. Please try again.'
-  if (raw.includes('IssuerMetadataMismatch') || raw.includes('IssuerMetadataInvalid')) return 'The issuer configuration is invalid. Contact the issuer.'
-  if (raw.includes('VerifierUntrusted')) return 'This Verifier is not trusted by this wallet.'
-  if (raw.includes('PresentationCredentialMetadataMismatch')) {
-    const detail = raw.replace(/^PresentationCredentialMetadataMismatch:\s*/, '')
-    return `The stored credential does not match this Verifier request. ${detail}. Reissue the credential with the requested vct, or update the Verifier vct_values.`
-  }
-  if (raw.includes('PresentationCredentialHolderBindingMissing')) return 'This credential is not holder-bound, but the Verifier requires SD-JWT key binding. Reissue the credential with wallet holder binding or ask the Verifier to set require_cryptographic_holder_binding to false.'
-  if (raw.includes('PresentationCredentialHolderBindingMismatch')) return 'This credential is holder-bound to a different Wallet Signing Key. Reissue it on this device before presenting.'
-  if (raw.includes('PresentationCredentialFormatUnsupported')) return 'The stored credential format does not match this Verifier request. Reissue the credential in the requested format or update the Verifier request.'
-  if (raw.includes('PresentationRequestUnsupported')) return 'This presentation request is not supported by this wallet.'
-  if (raw.includes('PresentationCredentialMissing')) return 'No active credential is available for this Verifier request.'
-  if (raw.includes('PresentationSubmissionFailed')) {
-    const detail = raw.replace(/^PresentationSubmissionFailed:\s*/, '')
-    return detail ? `The Verifier rejected the presentation response. ${detail}` : 'The Verifier rejected the presentation response.'
-  }
-  if (raw.includes('PresentationRequestInvalid')) return 'Invalid presentation request. Try scanning again.'
-  return raw
 }
 
 const RESOLVE_TIMEOUT_MS = 20_000
@@ -140,6 +111,7 @@ export default function ScanScreen() {
     setPhase({ tag: 'scanning' })
     setTxCode('')
     processingRef.current = false
+    logWalletStep('scan', 'scanner-reset', { generation: generationRef.current })
   }, [])
 
   useFocusEffect(
@@ -151,35 +123,56 @@ export default function ScanScreen() {
   async function acquireForPreview(offer: ResolvedCredentialOffer, code?: string) {
     const gen = generationRef.current
     setPhase({ tag: 'acquiring' })
+    logWalletStep('scan', 'credential-acquire-start', {
+      ...describeOfferForLog(offer),
+      txCodeProvided: Boolean(code),
+    })
     try {
       const record = await withTimeout(
         acquireCredentialRecord(offer, { tx_code: code }),
         ACQUIRE_TIMEOUT_MS,
         'ScanTimeout: acquiring credential timed out',
       )
+      logWalletStep('scan', 'credential-acquire-complete', describeCredentialForLog(record))
       if (generationRef.current === gen) setPhase({ tag: 'preview', record })
     } catch (err) {
+      logWalletError('scan', 'credential-acquire-failed', err, describeOfferForLog(offer))
       const raw = err instanceof Error ? err.message : String(err)
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
     }
   }
 
   async function handleBarcode(uri: string) {
-    if (processingRef.current) return
+    logWalletStep('scan', 'barcode-received', {
+      ...describeUriForLog(uri),
+      alreadyProcessing: processingRef.current,
+    })
+    if (processingRef.current) {
+      logWalletStep('scan', 'barcode-ignored-processing', describeUriForLog(uri))
+      return
+    }
     processingRef.current = true
 
     if (isOid4VpAuthorizationRequest(uri)) {
       const gen = generationRef.current
       setPhase({ tag: 'resolving' })
+      logWalletStep('scan', 'presentation-qr-detected', describeUriForLog(uri))
       try {
         const latestCredentials = readStoredCredentials()
+        const presentableCredentials = filterPresentableCredentials(latestCredentials)
+        logWalletStep('scan', 'presentation-credentials-loaded', {
+          storedCount: latestCredentials.length,
+          presentableCount: presentableCredentials.length,
+        })
         const request = await withTimeout(
-          resolvePresentationRequest(uri, filterPresentableCredentials(latestCredentials), { trustedVerifiers: TRUSTED_VERIFIERS }),
+          resolvePresentationRequest(uri, presentableCredentials, { trustedVerifiers: TRUSTED_VERIFIERS }),
           RESOLVE_TIMEOUT_MS,
           'ScanTimeout: resolving presentation request timed out',
         )
-        if (generationRef.current === gen) setPhase({ tag: 'presentationConsent', request })
+        logWalletStep('scan', 'presentation-resolved', describePresentationForLog(request))
+        if (generationRef.current === gen) setPhase({ tag: 'presentationFacePrepare', request, nextStep: 'consent' })
       } catch (err) {
+        logWalletError('scan', 'presentation-resolve-failed', err, describeUriForLog(uri))
         const raw = err instanceof Error ? err.message : String(err)
         if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
       }
@@ -187,40 +180,57 @@ export default function ScanScreen() {
     }
 
     if (!uri.startsWith('openid-credential-offer://')) {
+      logWalletError('scan', 'unsupported-qr', new Error('Unsupported QR code'), describeUriForLog(uri))
       setPhase({ tag: 'error', message: 'Not a credential offer QR code. Please scan a valid issuance QR code.' })
       return
     }
 
     const gen = generationRef.current
     setPhase({ tag: 'resolving' })
+    logWalletStep('scan', 'offer-qr-detected', describeUriForLog(uri))
     try {
       const offer = await withTimeout(resolveOffer(uri), RESOLVE_TIMEOUT_MS, 'ScanTimeout: resolving offer timed out')
       setTxCode('')
       const isPidOffer = isPidCredentialOffer(offer)
-      if (!hasPidCredential(credentials) && !isPidOffer) {
+      const holderHasPid = hasPidCredential(credentials)
+      logWalletStep('scan', 'offer-resolved', {
+        ...describeOfferForLog(offer),
+        isPidOffer,
+        holderHasPid,
+      })
+      if (!holderHasPid && !isPidOffer) {
+        logWalletError('scan', 'offer-requires-pid', new Error('PID credential required before this offer'), describeOfferForLog(offer))
         if (generationRef.current === gen) setPhase({ tag: 'error', message: 'กรุณาขอ ThaID ก่อน' })
         return
       }
       if (isPidOffer) {
+        logWalletStep('scan', 'offer-pid-flow', describeOfferForLog(offer))
         if (generationRef.current === gen) setPhase({ tag: 'thaIdVerify', offer })
         return
       }
       if (offer.txCode) {
+        logWalletStep('scan', 'offer-tx-code-required', describeOfferForLog(offer))
         if (generationRef.current === gen) setPhase({ tag: 'txCode', offer })
         return
       }
       await acquireForPreview(offer)
     } catch (err) {
+      logWalletError('scan', 'offer-resolve-failed', err, describeUriForLog(uri))
       const raw = err instanceof Error ? err.message : String(err)
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
     }
   }
 
   function handleTxCodeSubmit(offer: ResolvedCredentialOffer) {
+    logWalletStep('scan', 'tx-code-submit', {
+      ...describeOfferForLog(offer),
+      txCodeProvided: txCode.trim().length > 0,
+    })
     void acquireForPreview(offer, txCode.trim() || undefined)
   }
 
   function handleThaIdVerified(offer: ResolvedCredentialOffer) {
+    logWalletStep('scan', 'pid-verification-confirmed', describeOfferForLog(offer))
     if (offer.txCode) {
       setPhase({ tag: 'txCode', offer })
       return
@@ -230,10 +240,13 @@ export default function ScanScreen() {
 
   function handleSave(record: VerifiableCredentialRecord) {
     setPhase({ tag: 'saving' })
+    logWalletStep('scan', 'credential-save-start', describeCredentialForLog(record))
     try {
       saveScannedCredential(record, { refreshCredentials })
+      logWalletStep('scan', 'credential-save-complete', describeCredentialForLog(record))
       setPhase({ tag: 'success', record })
     } catch (err) {
+      logWalletError('scan', 'credential-save-failed', err, describeCredentialForLog(record))
       setPhase({ tag: 'error', message: err instanceof Error ? err.message : String(err) })
     }
   }
@@ -242,34 +255,32 @@ export default function ScanScreen() {
     const gen = generationRef.current
     let presentationDebug: string | undefined
     try {
-      const presentationSubmission = request.presentationDefinition ? buildPresentationSubmission(request) : undefined
+      logWalletStep('scan', 'presentation-approve-start', describePresentationForLog(request))
       const presentationTokenMode = readPresentationTokenMode(request)
       const presentationAudience = readPresentationTokenAudience(request)
-      const vpToken = presentationTokenMode === 'raw-credential'
-        ? request.matchedCredential.rawVc
-        : presentationTokenMode === 'software-ed25519-kb'
-          ? await signSoftwareEddsaSdJwtKbPresentationToken({
-            audience: presentationAudience,
-            nonce: request.nonce,
-            sdJwt: request.matchedCredential.rawVc,
-          })
-        : presentationTokenMode === 'sd-jwt-kb'
-          ? await signSdJwtKbPresentationToken({
-            audience: presentationAudience,
-            nonce: request.nonce,
-            sdJwt: request.matchedCredential.rawVc,
-          })
-          : await signPresentationVpToken({
-          audience: presentationAudience,
-          nonce: request.nonce,
-          verifiableCredential: request.matchedCredential.rawVc,
-        })
+      logWalletStep('scan', 'presentation-token-mode', {
+        ...describePresentationForLog(request),
+        presentationTokenMode,
+        audience: presentationAudience,
+        presentationSubmissionPresent: Boolean(request.presentationDefinition),
+      })
+      const { vpToken, presentationSubmission } = await createApprovedPresentationResponse(request)
+      logWalletStep('scan', 'presentation-token-created', {
+        ...describePresentationForLog(request),
+        presentationTokenMode,
+        presentationBytes: vpToken.length,
+      })
       presentationDebug = describePresentationAttempt({ request, vpToken })
       const response = await withTimeout(
         submitPresentationResponse(request, { vpToken, presentationSubmission }),
         PRESENT_TIMEOUT_MS,
         'ScanTimeout: presenting credential timed out',
       )
+      logWalletStep('scan', 'presentation-submit-complete', {
+        ...describePresentationForLog(request),
+        responseStatus: response.status,
+        messagePresent: Boolean(response.message),
+      })
 
       recordSuccessfulPresentation({
         credentialId: request.matchedCredential.id,
@@ -277,14 +288,40 @@ export default function ScanScreen() {
         documentType: getCardSchema(request.matchedCredential.type).title,
         disclosedClaims: request.disclosures.map((disclosure) => disclosure.label),
       })
+      logWalletStep('scan', 'presentation-history-recorded', describePresentationForLog(request))
 
       if (generationRef.current === gen) {
-        setPhase({ tag: 'presentationTrust', request, verifierName: request.verifier.name, response })
+        setPhase({ tag: 'presentationInfo', request, verifierName: request.verifier.name, response })
       }
     } catch (err) {
+      logWalletError('scan', 'presentation-approve-failed', err, describePresentationForLog(request))
       const raw = err instanceof Error ? err.message : String(err)
       const diagnosticRaw = presentationDebug ? `${raw}\n\n${presentationDebug}` : raw
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(diagnosticRaw) })
+    }
+  }
+
+  async function confirmPresentationFacePrepare(preparePhase: Extract<ScanPhase, { tag: 'presentationFacePrepare' }>) {
+    const gen = generationRef.current
+    try {
+      logWalletStep('scan', 'presentation-biometric-start', describePresentationForLog(preparePhase.request))
+      await confirmPresentationBiometric()
+      logWalletStep('scan', 'presentation-biometric-complete', describePresentationForLog(preparePhase.request))
+      if (generationRef.current !== gen) return
+      if (preparePhase.nextStep === 'consent') {
+        setPhase({ tag: 'presentationConsent', request: preparePhase.request })
+      } else {
+        setPhase({
+          tag: 'presentationSuccess',
+          request: preparePhase.request,
+          verifierName: preparePhase.verifierName!,
+          response: preparePhase.response!,
+        })
+      }
+    } catch (err) {
+      logWalletError('scan', 'presentation-biometric-failed', err, describePresentationForLog(preparePhase.request))
+      const raw = err instanceof Error ? err.message : String(err)
+      if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
     }
   }
 
@@ -318,81 +355,14 @@ export default function ScanScreen() {
     }
 
     if (phase.record.type === 'BangkokUniversityTranscript') {
-      const preview = readCredentialPreviewDisplay(phase.record)
-      const profile = readCredentialHolderProfile(phase.record)
-      const getRow = (key: string) => preview.rows.find((r) => r.key === key)?.value
-      const thaiFullName = profile.thaiName ?? ''
-      const englishFullName = profile.englishName ?? ''
-      const dob = profile.birthDate ?? getRow('birthDate')
-      const studentId = getRow('studentId')
-      const gpa = getRow('gpa')
-      const faculty = getRow('faculty')
-      const graduationYear = getRow('graduationYear')
-      const degree = getRow('degree')
-      const expiryDate = phase.record.expiresAt
-        ? new Date(phase.record.expiresAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
-        : getRow('expiryDate')
-
-      type GridCell = { label: string; value?: string; red?: boolean }
-      const gridRows: [GridCell, GridCell][] = [
-        [
-          { label: 'เลขประจำตัวนิสิต', value: studentId },
-          { label: 'Cumulative GPA', value: gpa },
-        ],
-        [
-          { label: 'คณะ', value: faculty },
-          { label: 'Graduation Year :', value: graduationYear },
-        ],
-        [
-          { label: 'สาขาวิชา', value: degree },
-          { label: 'วันหมดอายุ / Expiry Date', value: expiryDate, red: true },
-        ],
-      ]
-
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
           <WalletHeader onBack={resetScanner} />
-          <View className="flex-1 bg-[#eef1f4] px-4 pt-6">
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
-              <View
-                className="overflow-hidden rounded-2xl bg-white"
-                style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12 }}>
-                <View className="bg-[#cc0066] px-5 py-3">
-                  <Text className="text-[15px] font-extrabold text-white">TRANSCRIPT</Text>
-                </View>
-                <View className="flex-row px-5 pb-4 pt-5">
-                  <Image source={credentialImages.transcript} style={{ width: 90, height: 110, borderRadius: 8 }} resizeMode="contain" />
-                  <View className="ml-4 flex-1 justify-center">
-                    <Text className="text-[11px] text-[#9aa1ad]">ชื่อ - นามสกุล / Name</Text>
-                    <Text className="text-[14px] font-bold leading-5 text-[#071f5f]">{thaiFullName || '-'}</Text>
-                    <Text className="text-[12px] leading-4 text-[#9aa1ad]">{englishFullName}</Text>
-                    {dob ? (
-                      <>
-                        <Text className="mt-3 text-[11px] text-[#9aa1ad]">วันเกิด / Date of Birth</Text>
-                        <Text className="text-[14px] font-bold text-[#071f5f]">{dob}</Text>
-                      </>
-                    ) : null}
-                  </View>
-                </View>
-                <View className="mx-5 border-t border-[#e5e7eb]" />
-                <View className="px-5 pb-5 pt-3">
-                  {gridRows.map((pair, i) => (
-                    <View key={i} className="mt-3 flex-row">
-                      {pair.map((cell, j) => (
-                        <View key={j} className="flex-1">
-                          <Text className="text-[11px] text-[#9aa1ad]">{cell.label}</Text>
-                          <Text className={`text-[13px] font-bold ${cell.red === true ? 'text-[#c00000]' : 'text-[#123b8c]'}`}>
-                            {cell.value ?? '-'}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ))}
-                </View>
-              </View>
-              <AppButton variant="solid-block" label="ยอมรับ" onPress={() => handleSave(phase.record)} className="mt-5 h-11 !bg-[#18a05d]" />
-            </ScrollView>
-          </View>
+          <TranscriptPreviewPanel
+            record={phase.record}
+            profileImage={credentialImages.transcript}
+            onAccept={() => handleSave(phase.record)}
+          />
         </SafeAreaView>
       )
     }
@@ -441,49 +411,46 @@ export default function ScanScreen() {
     )
   }
 
-  if (phase.tag === 'presentationConsent') {
-    const request = phase.request
-
-    return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
-        <WalletHeader onBack={resetScanner} />
-        <PresentationApprovalPanel request={request} onAccept={() => setPhase({ tag: 'presentationFacePrepare', request })} />
-      </SafeAreaView>
-    )
-  }
-
   if (phase.tag === 'presentationFacePrepare') {
-    const request = phase.request
-
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
         <WalletHeader onBack={resetScanner} />
-        <FacePreparePanel onScan={() => setPhase({ tag: 'presentationFaceScan', request })} />
+        <FacePreparePanel
+          onScan={() => {
+            logWalletStep('scan', 'presentation-face-prepare-done', describePresentationForLog(phase.request))
+            void confirmPresentationFacePrepare(phase)
+          }}
+        />
       </SafeAreaView>
     )
   }
 
-  if (phase.tag === 'presentationFaceScan') {
-    const request = phase.request
-
+  if (phase.tag === 'presentationConsent') {
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
         <WalletHeader onBack={resetScanner} />
-        <FaceScanPanel onComplete={() => { void approvePresentation(request) }} />
+        <PresentationConsentPanel
+          request={phase.request}
+          onAccept={() => {
+            logWalletStep('scan', 'presentation-user-accepted', describePresentationForLog(phase.request))
+            void approvePresentation(phase.request)
+          }}
+          onReject={resetScanner}
+        />
       </SafeAreaView>
     )
   }
 
-  if (phase.tag === 'presentationTrust') {
-    const schema = getCardSchema(phase.request.matchedCredential.type)
-
+  if (phase.tag === 'presentationInfo') {
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
-        <WalletHeader title="Verifier" onBack={resetScanner} />
-        <VerifierTrustPanel
-          documentLabel={schema.title}
-          issuerLabel={phase.verifierName}
-          onConfirm={() => setPhase({ tag: 'presentationSuccess', request: phase.request, verifierName: phase.verifierName, response: phase.response })}
+        <WalletHeader title="Wallet" onBack={resetScanner} />
+        <PresentationInfoPanel
+          request={phase.request}
+          onConfirm={() => {
+            logWalletStep('scan', 'presentation-info-confirmed', describePresentationForLog(phase.request))
+            setPhase({ tag: 'presentationFacePrepare', request: phase.request, nextStep: 'result', verifierName: phase.verifierName, response: phase.response })
+          }}
         />
       </SafeAreaView>
     )

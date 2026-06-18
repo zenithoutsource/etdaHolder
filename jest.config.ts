@@ -6,7 +6,6 @@ const config: Config = {
   testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.test.tsx'],
   moduleNameMapper: {
     '^react-native-mmkv$': '<rootDir>/src/__mocks__/react-native-mmkv.ts',
-    '^@animo-id/expo-secure-environment$': '<rootDir>/src/__mocks__/@animo-id/expo-secure-environment.ts',
     '^react-native-quick-crypto$': '<rootDir>/src/__mocks__/react-native-quick-crypto.ts',
     '^react-native-keychain$': '<rootDir>/src/__mocks__/react-native-keychain.ts',
   },

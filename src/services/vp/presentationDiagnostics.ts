@@ -1,7 +1,11 @@
-import { ed25519 } from '@noble/curves/ed25519.js'
+import { hashes, verify } from '@noble/ed25519'
+import { sha512 } from '@noble/hashes/sha2.js'
+
+if (!hashes.sha512) hashes.sha512 = sha512
 import { createHash } from 'react-native-quick-crypto'
 
 import { readVerifierDcqlVpTokenShape } from '../../config/runtimeFlags'
+import { readRecord, readString } from '../../utils/jwtUtils'
 import type { ResolvedPresentationRequest } from './presentationService'
 
 type JsonRecord = Record<string, unknown>
@@ -145,7 +149,7 @@ function verifyKbJwt(kbJwt: string | undefined, kbHeader: JsonRecord | undefined
   if (!publicKey) return undefined
 
   try {
-    return ed25519.verify(
+    return verify(
       base64UrlDecodeToBytes(parts[2]),
       new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
       publicKey,
@@ -204,14 +208,6 @@ function base58btcDecode(value: string): Uint8Array {
   }
 
   return new Uint8Array(bytes)
-}
-
-function readRecord(value: unknown): JsonRecord | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as JsonRecord : undefined
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 function readNumber(value: unknown): number | undefined {

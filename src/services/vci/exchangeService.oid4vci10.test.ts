@@ -31,11 +31,11 @@ const { CredentialRequestClientBuilder } = jest.requireMock('@sphereon/oid4vci-c
 
 const originalFetch = global.fetch
 
-function unsignedJwt(payload: Record<string, unknown>): string {
+function unsignedJwt(payload: Record<string, unknown>, alg = 'EdDSA'): string {
   const encode = (value: unknown) =>
     btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 
-  return `${encode({ alg: 'none' })}.${encode(payload)}.signature`
+  return `${encode({ alg })}.${encode(payload)}.signature`
 }
 
 describe('OID4VCI 1.0 credential request', () => {

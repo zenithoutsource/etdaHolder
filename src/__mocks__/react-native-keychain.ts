@@ -28,19 +28,27 @@ const STORAGE_TYPE = {
   AES_GCM: 'AesGcm',
 }
 
+type KeychainOptions = {
+  service?: string
+}
+
 let _store: Record<string, { username: string; password: string }> = {}
 
-const setGenericPassword = jest.fn(async (username: string, password: string): Promise<boolean> => {
-  _store['default'] = { username, password }
+function readService(options?: KeychainOptions): string {
+  return options?.service ?? 'default'
+}
+
+const setGenericPassword = jest.fn(async (username: string, password: string, options?: KeychainOptions): Promise<boolean> => {
+  _store[readService(options)] = { username, password }
   return true
 })
 
-const getGenericPassword = jest.fn(async (): Promise<{ username: string; password: string } | false> => {
-  return _store['default'] ?? false
+const getGenericPassword = jest.fn(async (options?: KeychainOptions): Promise<{ username: string; password: string } | false> => {
+  return _store[readService(options)] ?? false
 })
 
-const resetGenericPassword = jest.fn(async (): Promise<boolean> => {
-  delete _store['default']
+const resetGenericPassword = jest.fn(async (options?: KeychainOptions): Promise<boolean> => {
+  delete _store[readService(options)]
   return true
 })
 

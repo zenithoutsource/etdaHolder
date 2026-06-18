@@ -30,7 +30,7 @@ All OID4VCI issuance mechanics run on-device:
 2. Fetch Issuer metadata.
 3. Execute Pre-Authorized Code token exchange.
 4. Build a PoP JWT with `kid` header and Holder DID `iss`.
-5. Sign with the hardware Wallet Signing Key under alias `etda_wallet_signing_key`.
+5. Sign with the Keychain-protected Ed25519 Wallet Signing Key.
 6. Submit credential request to the Issuer credential endpoint.
 7. Normalize compact JWT VC or compact SD-JWT VC into `VerifiableCredentialRecord`.
 8. Save locally in encrypted MMKV.
@@ -71,7 +71,7 @@ The first OID4VP slice is intentionally narrow and Verifier-driven:
 2. Validate `client_id` against the local Verifier allowlist and require the `response_uri` origin to be allowlisted.
 3. Accept Presentation Exchange requests only when the requested disclosure is the ThaiNationalID birth date, or the development Verifier API's DCQL IDCard request.
 4. Show native Holder consent before signing.
-5. Sign a JWT VP token with the hardware Wallet Signing Key under the same biometric sign-time gate.
+5. Sign a JWT VP token with the Keychain-protected Ed25519 Wallet Signing Key under the same biometric sign-time gate.
 6. Send `vp_token`, `presentation_submission`, and optional `state` to the Verifier using `direct_post`.
 7. Record successful presentations locally after the Verifier returns a successful HTTP response.
 
@@ -81,18 +81,18 @@ The current development allowlist includes `http://192.100.10.48/openid4vc/verif
 
 ### Wallet Signing Key
 
-- Generated inside iOS Secure Enclave or Android Keystore through `@animo-id/expo-secure-environment`.
-- Key alias: `etda_wallet_signing_key`.
-- Private key is non-extractable and never available to JavaScript.
-- Biometric authentication gates every sign operation.
-- Production startup fails when a hardware secure environment is unavailable.
+- Generated as a 32-byte Ed25519 seed and stored under Keychain service `etda.wallet.ed25519_seed`.
+- Public key is cached in metadata storage as `wallet.ed25519_pub_key`.
+- Biometric/device authentication gates every Keychain seed retrieval for signing.
+- Signatures use `@noble/curves` Ed25519 and emit `alg: EdDSA`.
+- The Android native Ed25519 module remains diagnostic/experimental because target hardware returned EC keys for AndroidKeyStore Ed25519 requests.
 
 ### Holder DID
 
-`did:key` is derived from compressed P-256 public key bytes:
+`did:key` is derived from raw Ed25519 public key bytes:
 
 ```text
-did:key:z<base58btc(varint(0x1200) + compressed_P256_public_key)>
+did:key:z<base58btc(varint(0xed01) + raw_ed25519_public_key)>
 ```
 
 ### Local Storage
@@ -124,7 +124,7 @@ No issuer-specific card components should be added. Extend schemas instead.
 | Path | Responsibility |
 |---|---|
 | `app/` | Expo Router app shell, auth screens, tabs, scanner, credential detail |
-| `src/services/crypto/` | Hardware key policy, Holder DID, PoP signing |
+| `src/services/crypto/` | Keychain Ed25519 seed policy, Holder DID, PoP signing |
 | `src/services/storage/` | Encrypted MMKV and Keychain integration |
 | `src/services/vci/` | OID4VCI offer resolution, acquisition, credential normalization, backend sync |
 | `src/services/vp/` | OID4VP Authorization Request parsing, Presentation Exchange matching, direct_post submission |
@@ -142,10 +142,10 @@ No issuer-specific card components should be added. Extend schemas instead.
 | Package | Role |
 |---|---|
 | `@sphereon/oid4vci-client` | OID4VCI credential acquisition |
-| `@animo-id/expo-secure-environment` | Hardware-backed key generation and signing |
+| `@noble/curves` | Ed25519 EdDSA signing |
 | `react-native-quick-crypto` | Non-signing hashing, random bytes, encoding support |
 | `react-native-mmkv` | Encrypted local key-value storage |
-| `react-native-keychain` | Native keychain storage for MMKV key and session |
+| `react-native-keychain` | Native keychain storage for Ed25519 seed, MMKV key, and session |
 | `expo-camera` | QR scanner |
 | `nativewind` | Tailwind-style React Native styling |
 | `expo-router` | File-based navigation |
@@ -163,5 +163,7 @@ No issuer-specific card components should be added. Extend schemas instead.
 | 0004 | Root/jailbreak detection response |
 | 0005 | Backend-only certificate pinning |
 | 0006 | ISO 18013-5 mdoc native module selection criteria |
+| 0007 | Android-first EdDSA Ed25519 production signing |
+| 0008 | Keychain-protected Ed25519 production signing |
 
 OID4VP 1.0 online presentation has an implemented first slice but still needs a full ADR before broader claim sets, Verifier onboarding, or registry-backed trust rules are expanded.

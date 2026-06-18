@@ -15,6 +15,7 @@ import { AppDialogProvider } from '@/src/components/AppDialog';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
 import { hasWalletPin } from '@/src/services/auth/walletPin';
 import { readStartupRoute } from '@/src/services/auth/walletPinNavigation';
+import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger';
 import { useAuthStore } from '@/src/store/authStore';
 
 export const unstable_settings = {
@@ -34,11 +35,13 @@ function toErrorMessage(error: unknown): string {
 }
 
 function toUserMessage(message: string): string {
+  if (__DEV__) return message;
+
   if (message.includes('Secure lock screen') || message.includes('No fingerprints enrolled') || message.includes('BIOMETRY_NOT_ENROLLED'))
     return 'กรุณาตั้งค่าการล็อกหน้าจอหรือ Biometric ก่อนใช้งาน Wallet'
   if (message.includes('StorageInitializationFailed'))
     return 'ไม่สามารถเปิดพื้นที่จัดเก็บข้อมูลได้ กรุณาลองใหม่อีกครั้ง'
-  if (message.includes('WalletKeyNotInitialized') || message.includes('generateKeypair'))
+  if (message.includes('WalletKeyNotInitialized') || message.includes('generateKeypair') || message.includes('NativeEd25519SignerRequired'))
     return 'ไม่สามารถสร้าง Wallet Key ได้ กรุณาลองใหม่อีกครั้ง'
   if (message.includes('DeviceIntegrityCompromised'))
     return 'ไม่สามารถใช้งาน Wallet บนอุปกรณ์ที่ผ่านการ Root หรือ Jailbreak ได้'
@@ -62,7 +65,9 @@ export default function RootLayout() {
 
     async function prepareWallet(): Promise<void> {
       try {
+        logWalletStep('startup', 'prepare-wallet-start', { platform: Platform.OS });
         if (Platform.OS === 'web') {
+          logWalletStep('startup', 'platform-web-ready');
           if (isMounted) setStartupState({ status: 'ready' });
           return;
         }
@@ -70,29 +75,35 @@ export default function RootLayout() {
         const [
           { generateWalletKeyIfNeeded },
           { initStorage },
-          { assertHardwareSecureEnvironmentSupported },
           { assertDeviceIntegrity },
           { assertConfiguredWalletApiRuntimePolicy },
+          { runNativeEd25519Diagnostics },
         ] = await Promise.all([
           import('@/src/services/crypto/crypto'),
           import('@/src/services/storage/storage'),
-          import('@/src/services/crypto/secureEnvironmentPolicy'),
           import('@/src/services/security/deviceIntegrityPolicy'),
           import('@/src/sdk/walletApiRuntimePolicy'),
+          import('@/src/services/crypto/nativeEddsaDiagnostics'),
         ]);
+        logWalletStep('startup', 'native-modules-imported');
+        runNativeEd25519Diagnostics();
 
         const { default: JailMonkey } = await import('jail-monkey');
         assertDeviceIntegrity({ isJailBroken: JailMonkey.isJailBroken() });
+        logWalletStep('startup', 'device-integrity-ok');
         assertConfiguredWalletApiRuntimePolicy();
-
-        const secureEnvironment = await import('@animo-id/expo-secure-environment');
-        assertHardwareSecureEnvironmentSupported(secureEnvironment);
+        logWalletStep('startup', 'runtime-policy-ok');
 
         await initStorage();
+        logWalletStep('startup', 'storage-init-complete');
         await generateWalletKeyIfNeeded();
+        logWalletStep('startup', 'wallet-key-ready');
         await loadSession();
+        logWalletStep('startup', 'session-loaded');
         if (isMounted) setStartupState({ status: 'ready' });
+        logWalletStep('startup', 'prepare-wallet-ready');
       } catch (error) {
+        logWalletError('startup', 'prepare-wallet-failed', error);
         if (isMounted) {
           setStartupState({
             status: 'error',
