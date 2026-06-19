@@ -34,7 +34,7 @@ Status: Complete (core flow). Spec compliance gaps tracked below.
 [x] HTTP 201-only backend sync success
 [x] Token endpoint discovery via `authorization_servers` metadata (OID4VCI §11)
 [x] `c_nonce` refresh retry on `invalid_proof` (OID4VCI §8.3.3)
-[ ] Drop `user_pin` dual-send in token request after ETDA Issuer confirms `tx_code`-only acceptance (`exchangeService.ts:760`). Currently sends both `tx_code` + `user_pin`; OID4VCI 1.0 final only defines `tx_code`.
+[x] Drop `user_pin` dual-send in token request after ETDA Issuer confirms `tx_code`-only acceptance (`exchangeService.ts:760`). OID4VCI 1.0 final token requests now send `tx_code` only.
 [ ] Deferred Credential Issuance (`transaction_id`, OID4VCI §8.4) — implement only if an Issuer starts returning `transaction_id` instead of an immediate credential
 
 ## Phase 3: Config-Driven UI
@@ -341,3 +341,4 @@ Remaining:
 
 - Deleted unused development reference files `issuerApi.json` (IssuerAPI OpenAPI spec) and `oidvci.json` (OID4VCI issuer metadata dump). `walletApi.json` retained as Orval SDK generation input (`orval.config.ts`).
 - Updated `docs/TASKS.md`: cross-referenced spec compliance gaps from `docs/SPEC_COMPLIANCE_OID4VC.md` into Phase 2 and OID4VP tracked items (`user_pin` dual-send, deferred issuance, JAR signature verification, `client_id_scheme`, `presentation_definition_uri`, DCQL `credential_sets`). Verified all existing `[ ]` items still open against current codebase.
+- Completed the Phase 2 OID4VCI `user_pin` cleanup: Pre-Authorized Code token requests now send only `tx_code` when a transaction code is supplied. Added a focused regression assertion in `exchangeService.test.ts` that `user_pin` is absent from the token request body.

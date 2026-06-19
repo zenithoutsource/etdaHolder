@@ -757,7 +757,6 @@ async function requestPreAuthorizedAccessToken(
   body.set(PRE_AUTHORIZED_CODE_KEY, resolvedOffer.preAuthorizedCode ?? '')
   if (txCode) {
     body.set('tx_code', txCode)
-    body.set('user_pin', txCode)
   }
 
   const response = await fetch(resolveDevIssuerProxyUrl(tokenEndpoint), {
