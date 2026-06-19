@@ -1,152 +1,114 @@
 # Delivery Roadmap
 
-2-month plan. 4 phases. Each phase is 2 weeks. Phases run sequentially — each phase's output is an input gate for the next.
+Original plan was a two-month, four-phase sequential plan. Phases 1-4 are now complete or substantially complete; OID4VP 1.0 online presentation (originally "post-v1, scope-only") has a working first slice; ETDA's EdDSA/Ed25519 requirement added Phase 5. Status below reflects `docs/TASKS.md` and `AGENTS.md` as of 2026-06-16.
 
----
+## Phase 1 - Cryptography, Native Integration, and Storage
 
-## Phase 1 — Cryptography, Native Integration, and Storage (Weeks 1-2)
+Status: Complete.
 
-Goal: Establish the hardware security foundation and encrypted storage layer before any protocol work begins. All subsequent phases depend on this being correct and audited.
+Delivered:
 
-### Week 1
+- Hardware-backed EC P-256 Wallet Signing Key through `@animo-id/expo-secure-environment`.
+- Holder DID derivation from compressed P-256 public key.
+- Biometric-gated PoP JWT signing.
+- Encrypted MMKV credential storage.
+- Startup wiring in `app/_layout.tsx`.
 
-- Install and prebuild `@animo-id/expo-secure-environment`:
-  - Run `npx expo install @animo-id/expo-secure-environment`.
-  - Run `npx expo prebuild --clean` to regenerate iOS and Android native projects.
-  - Verify Secure Enclave availability on iOS simulator (software fallback noted) and on physical device (must be hardware-backed).
-- Implement `src/services/crypto/signingKey.ts`:
-  - Generate EC P-256 keypair under alias `etda_wallet_signing_key` if not already present.
-  - Expose `sign(payload: Uint8Array): Promise<Uint8Array>` — biometric auth gate is enforced inside the native module per call.
-  - Expose `getPublicKeyJwk(): Promise<JsonWebKey>` — converts raw public key bytes from the native module to JWK format.
-  - No software fallback path. Throw loudly on devices without hardware attestation.
-- Write unit tests for `signingKey.ts` with mocked native module responses.
+Remaining risk:
 
-### Week 2
+- Physical device verification still required before release (carried into Phase 5 release validation).
+- Production signing moved from P-256/ES256 to Ed25519/EdDSA in Phase 5; the accepted production path is Keychain-protected software Ed25519 (ADR 0008), not hardware-backed non-extractable signing.
 
-- Install `react-native-mmkv` and configure encrypted storage:
-  - Encryption key must be fetched from the native hardware keychain (Keychain Services on iOS, Android Keystore via `react-native-keychain`), not hardcoded.
-  - Create `src/services/storage/storage.ts` exporting the single MMKV instance initialized with the dynamically loaded encryption key.
-- Implement Zustand persisted slices using the MMKV storage adapter:
-  - `credentialsSlice`: stores array of `{ id, vc, addedAt }` records.
-  - `sessionSlice`: stores wallet session token (bearer token for company SDK calls).
-- Write integration tests verifying MMKV persistence survives app restart simulation.
-- Confirm `AsyncStorage` is not imported anywhere in `src/` — add lint rule or grep check to CI.
+## Phase 2 - OID4VCI 1.0 Client-Side Integration
 
-### Phase 1 Exit Gate
+Status: Complete.
 
-- `yarn tsc` passes with zero errors.
-- All crypto and storage unit/integration tests pass.
-- `AsyncStorage` import does not appear in `src/`.
-- Physical device test: keypair generated in hardware, biometric prompt fires on sign.
+Delivered:
 
----
+- Orval SDK generation and endpoint filtering.
+- Credential offer resolution via `@sphereon/oid4vci-client` (`CredentialOfferClient`, `CredentialRequestClientBuilder`), with a custom proxy-aware Pre-Authorized Code token exchange for VPN/physical-device testing.
+- OID4VCI 1.0 Pre-Authorized Code acquisition, including `credential_offer_uri` by-reference resolution.
+- JWT VC, SD-JWT VC, `dc+sd-jwt`, and `vc+sd-jwt` compact credential normalization.
+- Encrypted local save before backend sync.
+- Separate `syncCredentialToBackend()` with explicit `walletId` and `sessionToken`.
 
-## Phase 2 — OID4VCI 1.0 Client-Side Integration (Weeks 3-4)
+Deferred:
 
-Goal: Implement the full on-device OID4VCI 1.0 credential acquisition flow from offer resolution through credential storage.
+- Authorization Code flow (Pre-Authorized Code only, per Phase 2.3 decision).
+- Issuer signature validation against finalized trust metadata (Phase 4 backlog item).
+- Deferred Credential Issuance (`transaction_id`) and `c_nonce` retry-on-`invalid_proof` — see `docs/SPEC_COMPLIANCE_OID4VC.md`.
 
-### Week 3
+## Phase 3 - Config-Driven UI Mapping and Workflow Wiring
 
-- Install `@sphereon/oid4vci-client` via `npx expo install` (check Hermes/Expo compatibility — polyfills may be required).
-- Implement `src/services/vci/offerResolver.ts`:
-  - Parse `openid-credential-offer://...` URIs from QR scan and NFC tag read input.
-  - Fetch Issuer metadata from `/.well-known/openid-credential-issuer`.
-  - Return a typed offer object.
-- Implement `src/services/vci/tokenExchange.ts`:
-  - Support pre-authorized code flow (primary path for ETDA issuance).
-  - Support authorization code flow (secondary path — may be deferred to Phase 4 if scope requires).
-  - Return an access token record.
-- Mock all Issuer HTTP calls with MSW in tests.
+Status: Substantially complete.
 
-### Week 4
+Delivered:
 
-- Implement `src/services/vci/credentialRequest.ts`:
-  - Build the PoP JWT (`proof` field) using `signingKey.sign()` from Phase 1.
-  - Construct and submit the credential request to the Issuer's credential endpoint.
-  - Validate the returned VC JWT structure before accepting.
-- Implement the company SDK import call after successful VC acquisition:
-  - Call `POST /wallet-api/wallet/{walletId}/credentials/import` via the Orval-generated client.
-  - On success: persist VC to `credentialsSlice` via MMKV-backed Zustand.
-  - On failure: surface error to caller — no silent credential loss.
-- Write end-to-end integration tests for the full acquisition flow with MSW intercepting both Issuer and company API endpoints.
+- Wallet home tab translated from `docs/ui-reference/home.html`, then re-translated to the `ETDA Wallet.html` reference for Wallet Home, Credential Detail, Scan, My QR, and History Log.
+- Bottom tab shell: Wallet, My QR, Scan, History Log.
+- Dynamic `CardSchemaConfig` format in `src/config/cardSchemas.ts`, covering ThaID, DLT Driving Licence, and Bangkok University Transcript.
+- Generic `CredentialCard` / config-driven detail and summary rendering (`readCredentialSummaryDisplay`, `readCredentialDetailDisplay`).
+- Stored credential hook (`useStoredCredentials`) with explicit `storage-not-ready` state.
+- QR scanner using `expo-camera`, with resolve → Holder Confirmation (data preview) → confirm → save flow.
+- P1 PID VC bootstrap flow: `idcard` → `ThaiNationalID` mapping, `hasPidCredential()` guard, ThaID-first gating on Scan and request rows, ThaID verification interstitial, Holder Confirmation, and post-save success screen.
+- History Log lists issuance and OID4VP presentation events with issuer icon, document type, Thai date/time, and status badge.
+- P6 Case 1 Transcript revoke/delete lifecycle: Wallet PIN-gated revoke action, local lifecycle status/history, Wallet Home unavailable-document panel.
 
-### Phase 2 Exit Gate
+Remaining:
 
-- Full pre-authorized code flow completes against MSW-mocked Issuer.
-- VC JWT lands in MMKV-backed Zustand store after successful import.
-- MSW test suite for `src/services/vci/**` achieves 80% line coverage.
+- NFC NDEF issuance reader, deferred until a test device is available.
+- Localization and error-state polish beyond the documented user journeys.
 
----
+## Phase 4 - Security Hardening and Release
 
-## Phase 3 — Config-Driven UI Mapping and Design Translation (Weeks 5-6)
+Status: Substantially complete; release validation blocked on physical devices.
 
-Goal: Render credential types using display metadata from Issuer configuration. No hardcoded credential layouts.
+Delivered:
 
-### Week 5
+- Screen capture prevention was implemented via focus-scoped `useScreenCaptureGuard()`, then temporarily removed from all screens for tester builds (re-enable before release).
+- Certificate pinning: backend-only, opt-in via `EXPO_PUBLIC_WALLET_API_PINNED_CERTS`, with a startup hard-block for non-development builds shipping plain HTTP or empty pins (ADR 0005).
+- Jailbreak/root detection via `jail-monkey`, hard block at startup with no bypass (ADR 0004).
+- ISO 18013-5 mdoc native module selection criteria (ADR 0006); final module choice still blocked on physical iOS/Android validation.
+- Production bundle/log scan for credential data leaks (`yarn scan:bundle-leaks`).
+- Local development backend hardening: rate-limited auth routes, required non-default `JWT_SECRET` outside tests, restricted CORS, HS256-pinned JWT verification, dummy bcrypt comparison for unknown logins.
 
-- Parse `display` arrays from Issuer metadata and credential offer objects.
-- Build `src/services/vci/displayMapper.ts`:
-  - Map `display` locale entries to the device locale, with fallback to `en`.
-  - Extract background color, logo URI, text color, and credential name per credential type.
-- Create `src/components/CredentialCard.tsx`:
-  - Renders a single credential using display metadata.
-  - NativeWind utility classes. No hardcoded colors or logos.
-  - Handles missing display metadata gracefully (fallback to type name and neutral palette).
+Remaining:
 
-### Week 6
+- Re-enable screen capture prevention before release.
+- Issuer signature validation once the trusted issuer registry / trust-list source is decided.
+- Final ISO 18013-5 mdoc native module selection ADR after physical-device validation.
+- EAS production builds for iOS and Android, then a physical-device golden-path walkthrough. Manual blocker: user-held EAS credentials, physical iOS device, physical Android device, and a real or test Issuer QR issuance source.
+- Both items above require credentials/holder-binding to be reissued under the new Ed25519 signing key before a meaningful golden-path walkthrough.
 
-- Implement credential list screen (`src/screens/credentials/index.tsx`):
-  - Reads from `credentialsSlice`.
-  - Renders `CredentialCard` per credential.
-  - Pull-to-refresh fetches updated credentials from company backend (GET endpoint, allowed per Protocol Boundary Matrix).
-- Implement credential detail screen (`src/screens/credentials/[id].tsx`):
-  - Shows full claim set with labels derived from credential subject properties.
-  - Share / present button (wire to ISO 18013-5 presentation flow in a future phase).
-- Implement QR scanner screen (`src/screens/scan.tsx`):
-  - Parses `openid-credential-offer://...` from QR code.
-  - Triggers the VCI acquisition flow from Phase 2.
-  - Shows progress states: resolving offer, exchanging token, requesting credential, importing.
-- Snapshot and interaction tests for all new screens.
+## Phase 5 - ETDA EdDSA/Ed25519 Migration (new)
 
-### Phase 3 Exit Gate
+Status: Implemented with accepted security tradeoff.
 
-- Credential card renders correctly for at least 2 credential types with distinct display metadata.
-- QR scan-to-store flow works end-to-end in a Development Build on device or simulator.
-- Screen component tests achieve 80% line coverage.
+Why: ETDA requires `alg: EdDSA` (Ed25519) for both the OID4VCI PoP JWT and the OID4VP SD-JWT+KB presentation token. Target-device diagnostics on a Galaxy S24 Ultra showed AndroidKeyStore Ed25519 requests generated EC keys, so ADR 0008 supersedes the native AndroidKeyStore-only plan. The wallet now stores a 32-byte Ed25519 seed in `react-native-keychain`, derives the Ed25519 `did:key` Holder DID, and signs OID4VCI/OID4VP tokens with `@noble/curves` Ed25519.
 
----
+Remaining:
 
-## Phase 4 — Security Hardening, Auditing, and Release Compilation (Weeks 7-8)
+- Reissue existing test credentials under the new Ed25519 PoP holder binding before re-running OID4VP Verifier checks.
+- Run EAS production builds and the physical-device golden-path walkthrough after reissue.
+- Revisit a true hardware-backed Ed25519 design only if a future platform/API can provide non-extractable Ed25519 signing.
 
-Goal: Harden the release build, audit all security boundaries, and compile final delivery artifacts.
+## OID4VP 1.0 Online Presentation
 
-### Week 7
+Status: First slice implemented (no longer "scope-only, not scheduled").
 
-- Security audit checklist:
-  - Confirm no private key bytes or VC claim data appear in Metro bundle output or Hermes bytecode debug dumps.
-  - Confirm `AsyncStorage` is absent from the production dependency graph.
-  - Confirm all sign calls require biometric authentication with no bypass path.
-  - Confirm MSW is not included in the production bundle (test-only import boundary).
-  - Review all `console.log` calls — strip credential data from any remaining log output.
-- Perform authorization code flow implementation and test (if deferred from Phase 2).
-- Add error boundary screens for each major flow (offer resolution failure, token exchange failure, biometric cancel).
+Resolved:
 
-### Week 8
+- Query language: DCQL (Presentation Exchange retained only for the P5 birth-date slice).
+- Response mode: `direct_post`, cross-device QR Authorization Request.
+- Verifier trust model: local allowlist matching `client_id` + `response_uri` origin; current entry uses development `redirect_uri:` scheme.
+- First claim scopes: ThaiNationalID birth-date disclosure (Presentation Exchange) and Transcript `dc+sd-jwt` DCQL disclosure.
+- `vp_token` signing reuses the Wallet Signing Key (`src/services/crypto`); SD-JWT+KB holder binding enforced.
+- Biometric sign-time gate applies; presentation runs device-to-Verifier directly with no company backend proxy.
+- Successful presentations recorded in encrypted local history and shown in History Log / Wallet Home badges.
 
-- Set Jest coverage enforcement to 80% line coverage minimum — CI fails below threshold.
-- Run `yarn tsc` with `strict: true` — resolve all remaining type errors.
-- Compile Expo EAS production builds for iOS and Android.
-- Execute manual test scenarios on physical devices:
-  - Pre-authorized code flow credential acquisition (ThaID, Driving Licence, Transcript).
-  - Biometric prompt fires and cancellation is handled gracefully.
-  - Credential survives app kill and restart (MMKV persistence).
-  - Company backend import failure surfaces an error screen.
-- Produce release notes and tag `v1.0.0-rc.1`.
+Remaining (see `docs/SPEC_COMPLIANCE_OID4VC.md` for spec-level detail):
 
-### Phase 4 Exit Gate
-
-- EAS production builds succeed for both platforms.
-- CI enforces 80% line coverage — no exceptions.
-- All physical device manual scenarios pass.
-- No credential data in log output on production build.
-- `v1.0.0-rc.1` tag pushed.
+- Replace the development `redirect_uri:` Verifier entry with registered production `did:web` Verifier(s), including signed Request Object (JAR) signature verification and `client_id_scheme`-aware trust handling.
+- Reissue credentials under the Keychain Ed25519 Holder DID before production walkthrough.
+- `presentation_definition_uri` and DCQL `credential_sets` support, if a Verifier requires them.
+- Broader claim sets only after trust and disclosure semantics are documented.

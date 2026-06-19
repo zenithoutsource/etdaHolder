@@ -1,0 +1,19 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.etdawallet.eddsa'
+version = '1.0.0'
+
+android {
+  namespace "com.etdawallet.eddsa"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  implementation "androidx.biometric:biometric:1.2.0-alpha05"
+}

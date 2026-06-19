@@ -1,0 +1,56 @@
+import { getCardSchema, getAllCardSchemas } from './cardSchemas'
+
+describe('getCardSchema', () => {
+  test('returns ThaiNationalID schema', () => {
+    const schema = getCardSchema('ThaiNationalID')
+    expect(schema.type).toBe('ThaiNationalID')
+    expect(schema.title).toBe('Thai National ID')
+    expect(schema.primaryColor).toBe('#002887')
+    expect(schema.displayFields.length).toBeGreaterThan(0)
+  })
+
+  test('returns DLTDrivingLicence schema', () => {
+    const schema = getCardSchema('DLTDrivingLicence')
+    expect(schema.type).toBe('DLTDrivingLicence')
+    expect(schema.title).toBe('Driving Licence')
+    expect(schema.displayFields.some((f) => f.key === 'licenceNumber')).toBe(true)
+  })
+
+  test('returns BangkokUniversityTranscript schema', () => {
+    const schema = getCardSchema('BangkokUniversityTranscript')
+    expect(schema.type).toBe('BangkokUniversityTranscript')
+    expect(schema.title).toBe('Academic Transcript')
+    expect(schema.displayFields.some((f) => f.key === 'gpa')).toBe(true)
+  })
+
+  test('returns fallback for unknown type', () => {
+    const schema = getCardSchema('UnknownCredentialType')
+    expect(schema.title).toBe('Credential')
+    expect(schema.issuerName).toBe('Unknown Issuer')
+    expect(schema.displayFields).toHaveLength(0)
+  })
+
+  test('returns fallback for empty string', () => {
+    const schema = getCardSchema('')
+    expect(schema.title).toBe('Credential')
+  })
+
+  test('each schema has non-empty displayFields with key and label', () => {
+    for (const schema of getAllCardSchemas()) {
+      expect(schema.displayFields.length).toBeGreaterThan(0)
+      for (const field of schema.displayFields) {
+        expect(field.key).toBeTruthy()
+        expect(field.label).toBeTruthy()
+      }
+    }
+  })
+
+  test('getAllCardSchemas returns all 3 initial cards', () => {
+    const schemas = getAllCardSchemas()
+    expect(schemas).toHaveLength(3)
+    const types = schemas.map((s) => s.type)
+    expect(types).toContain('ThaiNationalID')
+    expect(types).toContain('DLTDrivingLicence')
+    expect(types).toContain('BangkokUniversityTranscript')
+  })
+})

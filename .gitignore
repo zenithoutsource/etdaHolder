@@ -31,7 +31,15 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+server/.env
+
+# session scratch
+.codex-expo*.log
+server/.codex-server.log
+.claude/reviews/
+.superpowers/brainstorm/
 
 # typescript
 *.tsbuildinfo
@@ -41,3 +49,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# local Expo module build artifacts
+modules/**/android/build/
+modules/**/.cxx/

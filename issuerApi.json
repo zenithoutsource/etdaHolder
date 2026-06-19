@@ -1,0 +1,761 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "IssuerAPI",
+    "version": "1.0"
+  },
+  "paths": {
+    "/token": {
+      "post": {
+        "tags": [
+          "Authorization & Token"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant_type": {
+                    "type": "string"
+                  },
+                  "pre-authorized_code": {
+                    "type": "string"
+                  },
+                  "tx_code": {
+                    "type": "string"
+                  }
+                }
+              },
+              "encoding": {
+                "grant_type": {
+                  "style": "form"
+                },
+                "pre-authorized_code": {
+                  "style": "form"
+                },
+                "tx_code": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/credential": {
+      "post": {
+        "tags": [
+          "Credenital Issuance"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssuanceRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssuanceRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssuanceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/CredentialConfig/types": {
+      "get": {
+        "tags": [
+          "Credential Config"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/CredentialConfig/claims": {
+      "put": {
+        "tags": [
+          "Credential Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertClaimsRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertClaimsRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertClaimsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/CredentialConfig/claims/add-field": {
+      "post": {
+        "tags": [
+          "Credential Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddFieldRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddFieldRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddFieldRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/CredentialConfig/claims/remove-field": {
+      "delete": {
+        "tags": [
+          "Credential Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveFieldRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveFieldRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveFieldRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/credential-offer": {
+      "post": {
+        "tags": [
+          "Credential Offer"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateQrRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateQrRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateQrRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/openid4vc/credentialOffer": {
+      "get": {
+        "tags": [
+          "Credential Offer"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/did/create": {
+      "post": {
+        "tags": [
+          "DID"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/.well-known/openid-credential-issuer": {
+      "get": {
+        "tags": [
+          "Metadata"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/credentials/TranscriptCredential": {
+      "get": {
+        "tags": [
+          "Selective Disclosure"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VctTypeMetadata"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/vct/credentials/TranscriptCredential": {
+      "get": {
+        "tags": [
+          "Selective Disclosure"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VctTypeMetadata"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/credentials/BootCampCredential": {
+      "get": {
+        "tags": [
+          "Selective Disclosure"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/.well-known/vct/credentials/BootCampCredential": {
+      "get": {
+        "tags": [
+          "Selective Disclosure"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/credentials/IDCard": {
+      "get": {
+        "tags": [
+          "Selective Disclosure"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VctTypeMetadata"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/vct/credentials/IDCard": {
+      "get": {
+        "tags": [
+          "Selective Disclosure"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VctTypeMetadata"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/credentials/Iso18013DriversLicenseCredential": {
+      "get": {
+        "tags": [
+          "Selective Disclosure"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VctTypeMetadata"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/vct/credentials/Iso18013DriversLicenseCredential": {
+      "get": {
+        "tags": [
+          "Selective Disclosure"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VctTypeMetadata"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/resolveDID": {
+      "get": {
+        "tags": [
+          "Utilities"
+        ],
+        "parameters": [
+          {
+            "name": "didKey",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/generate-jwt-ed25519": {
+      "post": {
+        "tags": [
+          "Utilities"
+        ],
+        "parameters": [
+          {
+            "name": "nonce",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddFieldRequest": {
+        "type": "object",
+        "properties": {
+          "field_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "label_en": {
+            "type": "string",
+            "nullable": true
+          },
+          "label_th": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ClaimConfigInput": {
+        "type": "object",
+        "properties": {
+          "mandatory": {
+            "type": "boolean"
+          },
+          "display": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClaimDisplayInput"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ClaimDisplayInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "locale": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ClaimDisplayMetadata": {
+        "required": [
+          "label",
+          "lang"
+        ],
+        "type": "object",
+        "properties": {
+          "lang": {
+            "type": "string",
+            "nullable": true
+          },
+          "label": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ClaimMetadata": {
+        "required": [
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "display": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClaimDisplayMetadata"
+            },
+            "nullable": true
+          },
+          "mandatory": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "sd": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DisplayMetadata": {
+        "required": [
+          "lang",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "lang": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "rendering": {
+            "$ref": "#/components/schemas/RenderingMetadata"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DocumentType": {
+        "enum": [
+          "Transcript",
+          "IdCard",
+          "DriverLicense",
+          "BootCamp"
+        ],
+        "type": "string"
+      },
+      "GenerateQrRequest": {
+        "type": "object",
+        "properties": {
+          "document_type": {
+            "$ref": "#/components/schemas/DocumentType"
+          }
+        },
+        "additionalProperties": false
+      },
+      "IssuanceRequest": {
+        "type": "object",
+        "properties": {
+          "credential_configuration_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "proof": {
+            "$ref": "#/components/schemas/Proof"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LogoMetadata": {
+        "required": [
+          "uri"
+        ],
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string",
+            "nullable": true
+          },
+          "alt_text": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Proof": {
+        "type": "object",
+        "properties": {
+          "proof_type": {
+            "type": "string",
+            "nullable": true
+          },
+          "jwt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RemoveFieldRequest": {
+        "type": "object",
+        "properties": {
+          "credential_type": {
+            "type": "string",
+            "nullable": true
+          },
+          "field_name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RenderingMetadata": {
+        "type": "object",
+        "properties": {
+          "simple": {
+            "$ref": "#/components/schemas/SimpleRendering"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SimpleRendering": {
+        "type": "object",
+        "properties": {
+          "logo": {
+            "$ref": "#/components/schemas/LogoMetadata"
+          },
+          "background_color": {
+            "type": "string",
+            "nullable": true
+          },
+          "text_color": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpsertClaimsRequest": {
+        "type": "object",
+        "properties": {
+          "claims": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ClaimConfigInput"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "VctTypeMetadata": {
+        "required": [
+          "vct"
+        ],
+        "type": "object",
+        "properties": {
+          "vct": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "extends": {
+            "type": "string",
+            "nullable": true
+          },
+          "display": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisplayMetadata"
+            },
+            "nullable": true
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClaimMetadata"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "description": "ใส่ access token แบบนี้: Bearer {token}",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "Bearer": []
+    }
+  ]
+}

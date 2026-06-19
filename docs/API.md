@@ -2,107 +2,112 @@
 
 ## Orval Toolchain
 
-The company backend API client is generated from `walletApi.json` (OpenAPI 3.1, walt.id wallet API v0.20.1) using [Orval](https://orval.dev/). The generated client lives in `src/sdk/`. Do not hand-edit files in `src/sdk/` — they are overwritten on every regeneration.
+The company Wallet Backend client is generated from `walletApi.json` with Orval. The generated client lives in `src/sdk/walletApi.ts`. Do not hand-edit generated SDK files.
 
-### Configuration
-
-Orval is configured in `orval.config.ts` at the project root:
-
-```typescript
-import { defineConfig } from 'orval';
-
-export default defineConfig({
-  walletApi: {
-    input: './walletApi.json',
-    output: {
-      target: './src/sdk/walletApi.ts',
-      client: 'fetch',
-      mode: 'single',
-      override: {
-        operationId: {
-          // Only generate the allowed operations listed in the Protocol Boundary Matrix.
-          // All other operations are excluded at generation time.
-          include: [
-            'generateKey',
-            'createDidKey',
-            'importCredential',
-          ],
-        },
-      },
-    },
-  },
-});
-```
-
-Regenerate the client after any change to `walletApi.json`:
+Regenerate after changing `walletApi.json` or `orval.config.ts`:
 
 ```bash
-npx orval --config orval.config.ts
+yarn sdk:generate
 ```
 
-The generated file is committed to version control so that CI and team members do not need to run Orval on every checkout. Re-run Orval when `walletApi.json` changes.
+The generated file is committed so CI and team members do not need Orval at checkout time.
 
----
+## Generated Endpoints
+
+`orval.config.ts` filters the upstream spec to the mobile wallet boundary:
+
+| Method | Path | Operation |
+|---|---|---|
+| `POST` | `/wallet-api/auth/register` | `registerUser` |
+| `POST` | `/wallet-api/auth/login` | `loginUser` |
+| `POST` | `/wallet-api/auth/logout` | `logoutUser` |
+| `GET` | `/wallet-api/wallet/accounts/wallets` | `getWallets` |
+| `POST` | `/wallet-api/wallet/{wallet}/keys/generate` | `generateKey` |
+| `POST` | `/wallet-api/wallet/{wallet}/dids/create/key` | `createDidKey` |
+| `POST` | `/wallet-api/wallet/{wallet}/credentials/import` | `importCredential` |
 
 ## Protocol Boundary Matrix
 
-This matrix defines which wallet API endpoints the application is permitted to call from `src/`. It is the authoritative source for what the Orval-generated client exposes and what is forbidden.
-
-### Allowed SDK Endpoints
-
-These endpoints are included in the generated client and may be called from application code.
+### Allowed SDK Calls
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/wallet-api/wallet/{walletId}/keys/generate` | Generate a server-side key record linked to the wallet (not the hardware signing key — used for wallet identity registration). |
-| `POST` | `/wallet-api/wallet/{walletId}/dids/create/key` | Create a `did:key` DID document from the registered key, used as the wallet's DID in credential requests. |
-| `POST` | `/wallet-api/wallet/{walletId}/credentials/import` | Import a finalized VC JWT into the company backend after successful on-device OID4VCI acquisition. |
+| `POST` | `/wallet-api/auth/register` | Create a Wallet Account for a Holder |
+| `POST` | `/wallet-api/auth/login` | Authenticate and return a bearer session token |
+| `POST` | `/wallet-api/auth/logout` | Best-effort session revocation |
+| `GET` | `/wallet-api/wallet/accounts/wallets` | List wallets owned by the authenticated Wallet Account |
+| `POST` | `/wallet-api/wallet/{walletId}/keys/generate` | Generate a server-side key record, not the hardware signing key |
+| `POST` | `/wallet-api/wallet/{walletId}/dids/create/key` | Create a backend DID document record |
+| `POST` | `/wallet-api/wallet/{walletId}/credentials/import` | Import a finalized credential after successful on-device acquisition |
 
-These are the only endpoints that the Orval configuration generates TypeScript bindings for. No other endpoint in `walletApi.json` produces a callable function in `src/sdk/`.
+### Forbidden Mobile Calls
 
-### Forbidden SDK Endpoints (Bypassed On-Device)
-
-These endpoints exist in `walletApi.json` and in the walt.id wallet backend. They are explicitly excluded from the Orval-generated client. Application code must not call them. They are bypassed because their logic runs entirely on-device using native client execution loops.
-
-| Method | Path | Reason for Bypass |
+| Method | Path | Reason |
 |---|---|---|
-| `GET` | `/wallet-api/wallet/{walletId}/exchange/resolveCredentialOffer` | Credential offer resolution runs on-device via `@sphereon/oid4vci-client`. Routing this through the backend would expose raw credential offer URIs to the server and add unnecessary latency and a remote failure point. |
-| `POST` | `/wallet-api/wallet/{walletId}/exchange/useOfferRequest` | The full OID4VCI token exchange, PoP JWT construction, and credential request loop runs on-device via `@sphereon/oid4vci-client` and `@animo-id/expo-secure-environment`. Using the backend endpoint would require the server to construct the PoP JWT, which contradicts the hardware non-extractable key architecture (ADR 0001). |
+| `GET` | `/wallet-api/wallet/{walletId}/exchange/resolveCredentialOffer` | Offer resolution runs on-device via `@sphereon/oid4vci-client` |
+| `POST` | `/wallet-api/wallet/{walletId}/exchange/useOfferRequest` | Token exchange, PoP signing, and credential request run on-device |
 
-Any PR that imports or calls these forbidden endpoints from `src/` must be rejected during code review.
+Any PR that imports or calls forbidden exchange endpoints from app code must be rejected.
 
----
+## SDK Base URL Adapter
 
-## SDK Client Usage
+The generated SDK uses relative `/wallet-api/*` URLs. `src/sdk/installWalletApiFetch.ts` patches global `fetch` so generated SDK calls are prefixed with `EXPO_PUBLIC_WALLET_API_BASE_URL`. Absolute Issuer URLs are left unchanged.
 
-The generated client uses the `fetch` API, which is available globally on both iOS and Android via the Hermes runtime. No additional HTTP client library (axios, got) is required.
+Required root `.env` key:
 
-Example usage from application code:
+```env
+EXPO_PUBLIC_WALLET_API_BASE_URL=http://<windows-lan-ip>:4000
+```
+
+Use the Windows LAN IP for physical device testing. Do not commit `.env`.
+
+For Android network setup runbooks, including USB + PC VPN proxy mode and direct office Wi-Fi mode, see `docs/ANDROID_NETWORK_TESTING.md`.
+
+### Development Issuer Proxy
+
+For physical Android testing where the Windows PC can reach an Issuer through VPN but the phone cannot, the same fetch adapter can rewrite one configured Issuer origin through the local backend:
+
+```env
+EXPO_PUBLIC_WALLET_API_BASE_URL=http://127.0.0.1:4000
+EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET=https://<issuer-host-reachable-from-pc-vpn>
+EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL=http://127.0.0.1:4000/dev-issuer-proxy
+```
+
+The local backend must also set `ENABLE_DEV_ISSUER_PROXY=true` and `ISSUER_PROXY_TARGET` to the same Issuer origin. With `adb reverse tcp:4000 tcp:4000`, the phone reaches `127.0.0.1:4000`, and the backend forwards matching Issuer metadata/token/credential HTTP requests through the PC VPN. This is development-only transport plumbing; the Wallet still resolves offers, signs proof JWTs, and requests credentials on-device.
+
+### Development Verifier Proxy
+
+For physical Android testing where the Windows PC can reach the Verifier through VPN but the phone cannot, the fetch adapter can also rewrite the configured Verifier origin through the local backend:
+
+```env
+EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://192.100.10.48
+EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET=http://192.100.10.48
+EXPO_PUBLIC_DEV_VERIFIER_PROXY_BASE_URL=http://127.0.0.1:4000/dev-verifier-proxy
+```
+
+The local backend must also set `ENABLE_DEV_VERIFIER_PROXY=true` and `VERIFIER_PROXY_TARGET` to the same Verifier origin. With `adb reverse tcp:4000 tcp:4000`, the phone reaches `127.0.0.1:4000`, and the backend forwards matching OID4VP `request_uri` and `direct_post` calls through the PC network.
+
+## Auth and Sync Usage
+
+`src/services/auth/authService.ts` owns Wallet Account login/register/logout and stores session data in Keychain.
+
+Credential backend sync remains separate from OID4VCI acquisition:
 
 ```typescript
-import { importCredential } from '../sdk/walletApi';
-
-async function saveCredential(walletId: string, vcJwt: string, sessionToken: string) {
-  const result = await importCredential(walletId, { vc: vcJwt }, {
-    headers: {
-      Authorization: `Bearer ${sessionToken}`,
-    },
-  });
-  return result;
-}
+await syncCredentialToBackend(record, {
+  walletId,
+  sessionToken,
+})
 ```
 
-The `sessionToken` is managed by the `sessionSlice` in the Zustand store. It is obtained during wallet authentication and persisted in MMKV-encrypted storage.
+The sync payload is:
 
----
-
-## Environment Configuration
-
-The API base URL and other deployment-specific values are injected at build time via Expo's environment variable system. Required keys are listed in `.env.example`:
-
-```
-EXPO_PUBLIC_WALLET_API_BASE_URL=https://wallet.example.com
-EXPO_PUBLIC_WALLET_ID=<wallet-uuid>
+```json
+{ "jwt": "<record.rawVc>", "associated_did": "<holderDid>" }
 ```
 
-Do not commit `.env` files containing real values. The `.env.example` file documents the required keys with placeholder values only.
+Only HTTP 201 is accepted as success.
+
+## Local Development Backend
+
+`server/` implements the allowed Wallet Backend boundary for local development against XAMPP MySQL database `etda_wallet`. The mobile app still talks through the generated SDK and never queries MySQL directly.

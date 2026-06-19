@@ -1,0 +1,2657 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wallet</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --navy: #002887;
+        --box: #002854;
+        --bg: #f0f3f8;
+        --card-bg: #ffffff;
+        --text-main: #001552;
+        --text-sub: #001552;
+        --text-header: #00247d;
+        --box-icon: #a9c7ff;
+        --text-label: #757778;
+        --text-Gray: #696969;
+        --border: #e3e3e3;
+        --dark-border: #a9aab1;
+        --light-border: #d5d5d5;
+        --red: #d0021b;
+        --green: #1a8a3a;
+        --light-green: #d9f2d5;
+        --black: #000000;
+        --shadow: 0 2px 12px rgba(15, 40, 73, 0.08);
+        --shadow-card: 0 4px 20px rgba(15, 40, 73, 0.13);
+      }
+
+      body {
+        font-family: "Sarabun", sans-serif;
+        background: var(--bg);
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        padding: 20px 0;
+      }
+
+      .phone {
+        width: 390px;
+        min-height: 844px;
+        background: var(--bg);
+        border-radius: 40px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(15, 40, 73, 0.25);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+
+      /* STATUS BAR */
+      .status-bar {
+        background: var(--navy);
+        padding: 12px 24px 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: white;
+        font-size: 13px;
+        font-weight: 500;
+        flex-shrink: 0;
+      }
+      .status-bar .time {
+        font-weight: 600;
+      }
+      .status-icons {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .status-icons img {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+      }
+
+      /* PAGES */
+      .page {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+      }
+      .page.active {
+        display: flex;
+      }
+      .page.slide-in {
+        animation: slideIn 0.5s ease forwards;
+      }
+      .page.slide-out {
+        animation: slideOut 0.5s ease forwards;
+      }
+      @keyframes slideIn {
+        from {
+          transform: translateX(100%);
+          opacity: 0.6;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(100%);
+          opacity: 0.6;
+        }
+      }
+
+      /* TOP BAR */
+      .topbar {
+        background: var(--navy);
+        padding: 6px 24px 18px;
+        text-align: center;
+        flex-shrink: 0;
+      }
+      .topbar h1 {
+        color: white;
+        font-size: 24px;
+        font-weight: 600;
+      }
+
+      .topbar-back {
+        background: var(--navy);
+        padding: 6px 24px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        flex-shrink: 0;
+      }
+      .topbar-back h1 {
+        color: white;
+        font-size: 22px;
+        font-weight: 600;
+      }
+      .back-btn {
+        position: absolute;
+        left: 20px;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 22px;
+        cursor: pointer;
+        line-height: 1;
+        user-select: none;
+      }
+      .back-btn:hover {
+        border-color: white;
+      }
+      .back-btn img {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+      }
+
+      /* CONTENT */
+      .content {
+        flex: 1;
+        padding: 20px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow-y: auto;
+        padding-bottom: 90px;
+      }
+
+      /* PROFILE CARD */
+      .profile-card {
+        background: var(--box);
+        border-radius: 18px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        box-shadow: var(--shadow-card);
+      }
+      .profile-photo img {
+        width: 110px;
+        height: 130px;
+        object-fit: cover;
+        display: block;
+        border-radius: 6px;
+      }
+      .profile-info .name {
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 1.4;
+        margin-bottom: 6px;
+      }
+      .profile-info .id {
+        color: white;
+        font-size: 13px;
+      }
+
+      /* MENU LIST */
+      .menu-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 30px;
+      }
+      .menu-item {
+        background: var(--card-bg);
+        border-radius: 14px;
+        padding: 30px 10px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        box-shadow: var(--shadow);
+        cursor: pointer;
+        text-decoration: none;
+        border: none;
+        width: 100%;
+        text-align: left;
+      }
+      .menu-item:active {
+        transform: scale(0.98);
+      }
+      .menu-icon {
+        width: 50px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .menu-icon img {
+        width: 30px;
+        height: 30px;
+        object-fit: contain;
+      }
+      .menu-label {
+        flex: 1;
+        font-size: 16px;
+        color: var(--text-main);
+      }
+      .menu-arrow {
+        color: var(--text-sub);
+        font-size: 24px;
+      }
+      .menu-badge {
+        background: var(--navy);
+        color: white;
+        font-size: 12px;
+        font-weight: 500;
+        padding: 5px 14px;
+        border-radius: 20px;
+        white-space: nowrap;
+      }
+
+      /* ID CARD PAGE */
+      .id-card {
+        background: var(--card-bg);
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow: var(--shadow-card);
+      }
+      .id-card-header {
+        background: linear-gradient(
+          90deg,
+          #001552 5%,
+          #8baae1 69%,
+          #d2def3 100%
+        );
+        padding: 16px 20px;
+      }
+      .id-card-header h2 {
+        color: white;
+        font-size: 20px;
+        font-weight: 600;
+      }
+      .id-card-body {
+        padding: 20px;
+      }
+      .id-top-row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+        align-items: flex-start;
+      }
+      .id-photo {
+        flex-shrink: 0;
+        width: 122px;
+        height: 140px;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .info-label {
+        font-size: 12px;
+        color: var(--text-label);
+        margin-bottom: 11px;
+      }
+      .info-value {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-main);
+        margin-bottom: 7px;
+        line-height: 1.35;
+      }
+      .info-value-en {
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--text-main);
+        margin-bottom: 12px;
+      }
+      .info-value-id {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+      .id-divider {
+        height: 1px;
+        background: var(--border);
+        margin: 0 0 16px;
+      }
+      .id-bottom-grid {
+        display: flex;
+        gap: 0;
+      }
+      .id-col {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .id-col-left {
+        flex: 1;
+        padding-right: 24px;
+        border-right: 1px solid #d9d9d9;
+      }
+      .id-col-right {
+        flex: 1;
+        padding-left: 24px;
+      }
+      .id-field {
+        margin-bottom: 22px;
+      }
+      .id-field .field-label {
+        font-size: 12px;
+        color: var(--text-label);
+        margin-bottom: 9px;
+      }
+      .id-field .field-value {
+        font-size: 13px;
+        color: var(--text-main);
+        font-weight: 600;
+        line-height: 1.6;
+      }
+      .id-field .field-label.red {
+        color: var(--red);
+      }
+      .id-field .field-value.red {
+        color: var(--red);
+        font-weight: 600;
+      }
+      .qr-btn-row {
+        display: flex;
+        justify-content: flex-end;
+        padding-right: 25px;
+        margin-top: 13px;
+      }
+      .qr-btn {
+        width: 50px;
+        height: 50px;
+        background: #fff;
+        border: none;
+        border-radius: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+      }
+      .qr-btn img {
+        width: 18px;
+        height: 18px;
+      }
+      .qr-btn span {
+        font-size: 10px;
+        color: var(--text-main);
+        line-height: 1;
+      }
+
+      /* MY QR PAGE */
+      .myqr-content {
+        align-items: center;
+        justify-content: flex-start;
+        gap: 24px;
+        padding-top: 32px;
+      }
+      .myqr-title {
+        width: 100%;
+        text-align: center;
+      }
+      .myqr-title-text {
+        color: var(--text-header);
+        font-size: 24px;
+        font-weight: 700;
+        line-height: 1.5;
+      }
+      .myqr-box {
+        width: 92%;
+        background: var(--box);
+        border-radius: 24px;
+        padding: 18px;
+        box-shadow: var(--shadow-card);
+        cursor: pointer;
+      }
+      .myqr-inner {
+        background: white;
+        border-radius: 14px;
+        padding: 18px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .myqr-image {
+        width: 100%;
+        max-width: 240px;
+        display: block;
+      }
+      .myqr-desc {
+        text-align: center;
+        color: var(--text-header);
+        font-size: 18px;
+        font-weight: 500;
+        line-height: 1.5;
+      }
+
+      /* SCAN PAGE */
+      .scan-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding-top: 40px;
+        gap: 0;
+        position: relative;
+        overflow: hidden;
+      }
+      .scan-label {
+        color: var(--text-header);
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 32px;
+        letter-spacing: 0.3px;
+      }
+      .scan-frame-wrap {
+        position: relative;
+        width: 240px;
+        height: 240px;
+        cursor: pointer;
+      }
+      .scan-frame-wrap::before,
+      .scan-frame-wrap::after,
+      .corner-bl,
+      .corner-br {
+        content: "";
+        position: absolute;
+        width: 36px;
+        height: 36px;
+        border-color: white;
+        border-style: solid;
+      }
+      .scan-frame-wrap::before {
+        top: 0;
+        left: 0;
+        border-width: 4px 0 0 4px;
+        border-radius: 6px 0 0 0;
+      }
+      .scan-frame-wrap::after {
+        top: 0;
+        right: 0;
+        border-width: 4px 4px 0 0;
+        border-radius: 0 6px 0 0;
+      }
+      .corner-bl {
+        bottom: 0;
+        left: 0;
+        border-width: 0 0 4px 4px;
+        border-radius: 0 0 0 6px;
+      }
+      .corner-br {
+        bottom: 0;
+        right: 0;
+        border-width: 0 4px 4px 0;
+        border-radius: 0 0 6px 0;
+      }
+      .scan-line {
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, #4fc3f7, transparent);
+        top: 10px;
+        animation: scanMove 2s linear infinite;
+        box-shadow: 0 0 8px #4fc3f7;
+      }
+      @keyframes scanMove {
+        0% {
+          top: 10px;
+        }
+        100% {
+          top: 230px;
+        }
+      }
+      .scan-inner {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .scan-sublabel {
+        color: var(--text-header);
+        font-size: 14px;
+        margin-top: 24px;
+        font-weight: 400;
+      }
+      .scan-back-btn {
+        margin-top: 40px;
+        background: var(--box);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        padding: 14px 60px;
+        font-family: "Sarabun", sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: var(--shadow-card);
+      }
+
+      /* VERIFIER PAGE */
+      .verifier-banner {
+        width: 100%;
+        height: 220px;
+        border-radius: 29px;
+        overflow: hidden;
+        position: relative;
+        flex-shrink: 0;
+      }
+      .verifier-banner-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .verifier-banner::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: rgba(6, 48, 95, 0.5);
+        z-index: 1;
+      }
+      .verifier-banner-text {
+        position: absolute;
+        bottom: 18px;
+        left: 18px;
+        right: 18px;
+        color: white;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.4;
+        z-index: 2;
+      }
+      .verifier-section-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-header);
+        margin-top: 20px;
+        margin-bottom: 10px;
+      }
+      .verifier-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .verifier-item {
+        background: var(--card-bg);
+        border-radius: 10px;
+        padding: 18px 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-height: 98px;
+      }
+      .verifier-item.unlocked {
+        background: var(--card-bg);
+        border-left: 6px solid var(--green);
+      }
+      .verifier-item.locked {
+        background: var(--border);
+        border-left: 6px solid var(--dark-border);
+      }
+      .vi-text {
+        flex: 1;
+      }
+      .verifier-item.unlocked .vi-name {
+        color: #000000;
+      }
+      .vi-name {
+        font-size: 17px;
+        font-weight: 600;
+        color: var(--text-Gray);
+        line-height: 1.3;
+        margin-bottom: 12px;
+      }
+      .vi-status {
+        font-size: 14px;
+        font-weight: 500;
+        margin-top: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .vi-status.hidden {
+        font-size: 12px;
+        color: var(--text-Gray);
+        gap: 7px;
+      }
+      .vi-icon.gray {
+        width: 40px;
+        height: 40px;
+        background: var(--light-border);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .vi-info-btn {
+        background: transparent !important;
+        border: none;
+        box-shadow: none;
+        width: auto;
+        height: auto;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .verifier-confirm-btn {
+        background: var(--text-main);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        height: 56px;
+        width: 82%;
+        margin: 24px auto 0;
+        display: block;
+        font-size: 17px;
+        font-weight: 600;
+        box-shadow: none;
+        cursor: pointer;
+      }
+
+      /* CONSENT PAGE */
+      .consent-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 30px 24px 120px;
+        overflow-y: auto;
+      }
+      .consent-icon-box {
+        width: 90px;
+        height: 90px;
+        background: var(--box-icon);
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .consent-main-icon {
+        width: 50px;
+        height: 50px;
+        object-fit: contain;
+      }
+      .consent-title {
+        text-align: center;
+        color: var(--text-main);
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.5;
+      }
+      .consent-request-section {
+        width: 100%;
+        margin-bottom: 80px;
+      }
+      .consent-label {
+        font-size: 14px;
+        color: var(--text-sub);
+        margin-bottom: 10px;
+      }
+      .consent-request-card {
+        background: white;
+        border-radius: 14px;
+        padding: 16px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: var(--shadow);
+      }
+      .consent-request-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+      .consent-request-subtitle {
+        font-size: 10px;
+        color: var(--text-sub);
+        margin-top: 8px;
+      }
+      .consent-check-icon {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
+      }
+      .consent-spacer {
+        flex: 1;
+        min-height: 40px;
+      }
+      .consent-auth-section {
+        width: 100%;
+      }
+      .consent-auth-title {
+        color: var(--navy);
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+      .consent-auth-method {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .consent-faceid-icon {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+      }
+      .consent-auth-method span {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+      .consent-button-group {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: auto;
+        padding-bottom: 20px;
+      }
+      .consent-btn-primary {
+        background: var(--text-main);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        height: 56px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: "Sarabun", sans-serif;
+      }
+      .consent-btn-secondary {
+        background: white;
+        color: var(--text-main);
+        border: 2px solid var(--text-main);
+        border-radius: 50px;
+        height: 56px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: "Sarabun", sans-serif;
+      }
+
+      /* FACE ID PAGE */
+      .close-btn {
+        position: absolute;
+        top: -8px;
+        right: 20px;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+      }
+      .close-btn img {
+        width: 18px;
+        height: 15px;
+        object-fit: contain;
+        display: block;
+      }
+      .faceid-title {
+        margin-top: 60px;
+        text-align: center;
+        color: var(--text-main);
+        font-size: 20px;
+        font-weight: 600;
+        width: 100%;
+      }
+      .faceid-text {
+        margin-top: 35px;
+        text-align: center;
+        color: var(--text-main);
+        font-size: 15px;
+        font-weight: 400;
+        line-height: 1.5;
+      }
+      .face-scan-ring {
+        position: relative;
+        width: 300px;
+        height: 300px;
+        border-radius: 60%;
+        background: conic-gradient(
+          #16a34a 0deg 90deg,
+          #97d7af 90deg 180deg,
+          #16a34a 180deg 270deg,
+          #97d7af 270deg 360deg
+        );
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 60px auto 0;
+      }
+      .face-scan-ring::before {
+        content: "";
+        position: absolute;
+        width: 284px;
+        height: 284px;
+        border-radius: 50%;
+        background: var(--light-border);
+        z-index: 1;
+      }
+      .faceid-photo {
+        position: relative;
+        z-index: 5;
+        width: 270px;
+        height: 278px;
+      }
+
+      /* SUCCESS PAGE */
+      .success-content {
+        padding: 35px 24px;
+      }
+      .success-title {
+        text-align: center;
+        color: var(--navy);
+        font-size: 32px;
+        font-weight: 600;
+        margin-top: 30px;
+      }
+      .success-date {
+        text-align: center;
+        margin-top: 35px;
+        font-size: 14px;
+        color: var(--text-main);
+        line-height: 1.6;
+      }
+      .success-card {
+        margin-top: 35px;
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        border-left: 8px solid var(--navy);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      }
+      .success-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+      .success-item:last-child {
+        margin-bottom: 0;
+      }
+      .success-item img {
+        width: 30px;
+        height: 30px;
+        object-fit: contain;
+      }
+      .success-label {
+        font-size: 13px;
+        color: var(--text-main);
+        margin-bottom: 4px;
+      }
+      .success-value {
+        font-size: 13px;
+        color: var(--text-main);
+      }
+      .consent-accept-btn {
+        background: var(--text-main);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        height: 56px;
+        width: 82%;
+        margin: 52px auto 0;
+        display: block;
+        font-size: 17px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: "Sarabun", sans-serif;
+      }
+
+      /* HISTORY LOG */
+      .history-content {
+        padding: 22px 16px 100px;
+        overflow-y: auto;
+      }
+      .history-summary {
+        margin-bottom: 20px;
+      }
+      .summary-label {
+        font-size: 16px;
+        color: var(--box);
+      }
+      .summary-count {
+        margin-top: 10px;
+      }
+      .count-number {
+        color: var(--text-header);
+        font-size: 24px;
+        font-weight: 600;
+      }
+      .count-text {
+        font-size: 15px;
+        color: var(--text-header);
+        margin-left: 6px;
+      }
+      .history-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 20px;
+        border-left: 8px solid var(--navy);
+      }
+      .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .history-left {
+        display: flex;
+        gap: 12px;
+        flex: 1;
+      }
+      .history-logo {
+        width: 45px;
+        height: 45px;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+      .history-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--box);
+        margin-bottom: 4px;
+      }
+      .history-date,
+      .history-time {
+        font-size: 12px;
+        color: var(--text-Gray);
+        line-height: 1.4;
+      }
+      .status {
+        width: 95px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .status img {
+        width: 12px;
+        height: 12px;
+      }
+      .status.success {
+        background: #d9f2d5;
+        color: #16a34a;
+      }
+      .history-info-box {
+        margin-top: 16px;
+        background: #f1f1f1;
+        border-radius: 8px;
+        padding: 14px;
+      }
+      .revoke-btn {
+        width: 80%;
+        height: 40px;
+        margin: 16px auto 0;
+        border: 1px solid var(--red);
+        border-radius: 12px;
+        background: white;
+        color: var(--red);
+        font-size: 12px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        font-family: "Sarabun", sans-serif;
+      }
+      .revoke-btn img {
+        width: 14px;
+        height: 14px;
+      }
+      .status.accept {
+        background: var(--green);
+        color: var(--bg);
+        font-size: 12px;
+      }
+      .status.reject {
+        background: var(--red);
+        color: var(--bg);
+        font-size: 12px;
+      }
+      /* ══ PAGE: VERIFIED RESULT ══ */
+      .verified-content {
+        flex: 1;
+        padding: 20px 16px 100px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      /* ID Card compact */
+      .vr-idcard {
+        background: white;
+        border-radius: 13px;
+        overflow: hidden;
+        box-shadow: 0 2px 12px rgba(15, 40, 73, 0.1);
+      }
+      .vr-idcard-header {
+        background: linear-gradient(
+          90deg,
+          #001552 5%,
+          #8baae1 69%,
+          #d2def3 100%
+        );
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .vr-idcard-header h3 {
+        color: white;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .vr-check-icon {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+      }
+      .vr-idcard-body {
+        padding: 20px;
+        display: flex;
+        gap: 20px;
+        margin-top: 11px;
+        align-items: flex-start;
+      }
+      .vr-photo {
+        width: 130px;
+        height: 130px;
+        object-fit: contain;
+        border-radius: 6px;
+        margin-top: 18px;
+        flex-shrink: 0;
+      }
+      .vr-info-block {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .vr-info-label {
+        font-size: 11px;
+        color: var(--text-label);
+        margin-bottom: 3px;
+      }
+      .vr-info-value {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-main);
+        line-height: 1.35;
+      }
+      .vr-info-divider {
+        height: 1px;
+        background: var(--border);
+        margin: 5px 0;
+      }
+      .vr-dates-row {
+        display: flex;
+        gap: 8px;
+        padding: 0 16px 14px;
+        border-top: 1px solid var(--border);
+      }
+      .vr-date-col {
+        flex: 1;
+        padding-top: 15px;
+      }
+      .vr-date-col:first-child {
+        flex: 1;
+        border-right: 1px solid var(--border);
+        min-height: 15px;
+        text-align: center;
+      }
+      .vr-date-col:last-child {
+        flex: 1;
+        text-align: center;
+      }
+      .vr-date-label {
+        font-size: 10px;
+        color: var(--text-label);
+        margin-bottom: 4px;
+      }
+      .vr-date-value {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--navy);
+      }
+      .vr-date-label.red {
+        font-size: 10px;
+        color: var(--red);
+      }
+      .vr-date-value.red {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--red);
+      }
+
+      /* Approve by Wallet */
+      .vr-approve-card {
+        background: white;
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 2px 12px rgba(15, 40, 73, 0.08);
+      }
+      .vr-approve-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-main);
+        margin-bottom: 12px;
+      }
+      .vr-device-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .vr-device-icon {
+        width: 32px;
+        height: 38px;
+        object-fit: contain;
+      }
+      .vr-device-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+      .vr-device-os {
+        font-size: 12px;
+        color: var(--text-label);
+      }
+      .vr-approve-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: var(--text-Gray);
+        flex-wrap: wrap;
+      }
+      .vr-approve-row span.highlight {
+        color: var(--navy);
+        font-weight: 600;
+      }
+      .vr-approve-row span.status-linked {
+        color: var(--navy);
+        font-weight: 600;
+      }
+
+      /* POP Signature */
+      .vr-pop-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .vr-pop-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--navy);
+      }
+      .vr-pop-box {
+        background: #1a2340;
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .vr-pop-toprow {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .vr-pop-algo {
+        font-size: 11px;
+        color: #8baae1;
+        font-weight: 500;
+      }
+      .vr-pop-hash {
+        font-size: 11px;
+        color: #8baae1;
+        font-weight: 500;
+      }
+      .vr-pop-hex {
+        font-size: 10px;
+        color: #a0b4d0;
+        line-height: 1.7;
+        word-break: break-all;
+        font-family: monospace;
+        margin-bottom: 10px;
+      }
+      .vr-pop-copy-btn {
+        display: block;
+        margin-left: auto;
+        background: #2e3f60;
+        border: none;
+        border-radius: 8px;
+        padding: 7px 16px;
+        color: #8baae1;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      /* Request list */
+      .vr-request-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .vr-request-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--navy);
+      }
+      .vr-request-item {
+        background: white;
+        border-radius: 12px;
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        box-shadow: 0 2px 8px rgba(15, 40, 73, 0.07);
+        border-left: 5px solid var(--navy);
+      }
+      .vr-request-check {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+      .vr-request-text {
+        flex: 1;
+      }
+      .vr-request-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+      .vr-request-sub {
+        font-size: 13px;
+        color: var(--text-Gray);
+      }
+      .vr-request-info {
+        width: 22px;
+        height: 22px;
+        object-fit: contain;
+        opacity: 0.5;
+      }
+
+      /* Accept button */
+      .vr-accept-btn {
+        background: var(--text-main);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        height: 54px;
+        width: 100%;
+        font-family: "Sarabun", sans-serif;
+        font-size: 17px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 8px;
+      }
+      .vr-accept-btn:active {
+        opacity: 0.88;
+        transform: scale(0.98);
+      }
+
+      /* FACE-PREPAE-CONTENT */
+      .face-prepare-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 20px 100px;
+        overflow-y: auto;
+        gap: 0;
+        background: var(--bg);
+      }
+      .face-prepare-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--text-main);
+        margin-bottom: 20px;
+      }
+      .face-prepare-image {
+        width: 160px;
+        height: 160px;
+        object-fit: contain;
+        margin-bottom: 20px;
+      }
+      .face-prepare-subtitle {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text-main);
+        margin-bottom: 8px;
+      }
+      .face-prepare-desc {
+        font-size: 14px;
+        color: var(--text-Gray);
+        text-align: center;
+        line-height: 1.6;
+        margin-bottom: 24px;
+      }
+      .face-guide {
+        width: 100%;
+        border-top: 1px solid var(--border);
+        padding-top: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        margin-bottom: 32px;
+      }
+      .face-guide-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+      }
+      .face-guide-item > img {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+      .icon-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 2.5px solid;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .icon-circle img {
+        width: 30px;
+        height: 30 px;
+        object-fit: contain;
+      }
+      .green-circle {
+        border-color: var(--green);
+      }
+      .red-circle {
+        border-color: var(--red);
+      }
+      .face-guide-text {
+        font-size: 14px;
+        color: var(--text-main);
+        line-height: 1.6;
+        padding-top: 8px;
+      }
+      .green-text {
+        color: var(--green);
+        font-weight: 600;
+      }
+      .bold-text {
+        font-weight: 700;
+      }
+      .face-scan-btn {
+        width: 85%;
+        height: 54px;
+        background: var(--box);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        font-family: "Sarabun", sans-serif;
+        font-size: 17px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: auto;
+      }
+
+      /* VERIFIER SUCCESS PAGE */
+      .vsuccess-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 24px 100px;
+        gap: 24px;
+        background: var(--bg);
+      }
+      .vsuccess-check-circle {
+        width: 140px;
+        height: 140px;
+        background: var(--green);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 8px;
+      }
+      .vsuccess-check-circle img {
+        width: 100px;
+        height: 100px;
+        object-fit: contain;
+        filter: brightness(0) invert(1);
+      }
+      .vsuccess-title {
+        font-size: 26px;
+        font-weight: 700;
+        color: var(--green);
+      }
+      .vsuccess-desc {
+        font-size: 17px;
+        color: var(--text-main);
+        text-align: center;
+        line-height: 1.7;
+      }
+      .vsuccess-btn {
+        width: 85%;
+        height: 56px;
+        background: var(--box);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        font-family: "Sarabun", sans-serif;
+        font-size: 17px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 40px;
+      }
+      /* NAVBAR */
+      .bottom-nav {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 76px;
+        background: white;
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        padding: 0 8px 8px;
+        box-shadow: 0 -4px 20px rgba(15, 40, 73, 0.07);
+      }
+      .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 12px;
+        cursor: pointer;
+        flex: 1;
+      }
+      .nav-item img {
+        width: 24px;
+        height: 24px;
+        object-fit: contain;
+        opacity: 0.45;
+      }
+      .nav-item.active img {
+        opacity: 1;
+      }
+      .nav-item span {
+        font-size: 11px;
+        color: var(--text-sub);
+        font-weight: 400;
+      }
+      .nav-item.active span {
+        color: var(--navy);
+        font-weight: 600;
+      }
+      .nav-indicator {
+        width: 28px;
+        height: 3px;
+        background: var(--navy);
+        border-radius: 2px;
+        margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="phone">
+      <!-- STATUS BAR -->
+      <div class="status-bar">
+        <span class="time">9:51 PM</span>
+        <div class="status-icons">
+          <img src="รูป/cellular.png" alt="" />
+          <img src="รูป/wifi.png" alt="" />
+          <img src="รูป/battery.png" alt="" />
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: WALLET HOME ══════════ -->
+      <div class="page active" id="page-home">
+        <div class="topbar"><h1>Wallet</h1></div>
+        <div class="content">
+          <div class="profile-card">
+            <div class="profile-photo">
+              <img src="รูป/image 32.png" alt="profile" />
+            </div>
+            <div class="profile-info">
+              <div class="name">นางสาว พิชญา รุ่งเรืองกิต</div>
+              <div class="id">ID card : 1-1009-000XX-XX-XX</div>
+            </div>
+          </div>
+          <div class="menu-list">
+            <button class="menu-item" onclick="goTo('page-idcard')">
+              <div class="menu-icon">
+                <img src="รูป/card-2.png" alt="ID Card" />
+              </div>
+              <span class="menu-label">ID Card</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="รูป/car.png" alt="Driving License" />
+              </div>
+              <span class="menu-label">Driving License</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="รูป/document.png" alt="Transcript" />
+              </div>
+              <span class="menu-label">Transcript</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="รูป/doctor-bag.png" alt="Medical certificate" />
+              </div>
+              <span class="menu-label">Medical certificate</span>
+              <span class="menu-badge">ขอเอกสาร</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: ID CARD ══════════ -->
+      <div class="page" id="page-idcard">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="รูป/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="content">
+          <div class="id-card">
+            <div class="id-card-header"><h2>ID Card</h2></div>
+            <div class="id-card-body">
+              <div class="id-top-row">
+                <div class="id-photo">
+                  <img
+                    src="รูป/คน ID Card.png"
+                    alt="profile photo"
+                    style="width: 100%; height: 100%; object-fit: cover"
+                  />
+                </div>
+                <div class="id-main-info">
+                  <div class="info-label">ชื่อ - นามสกุล</div>
+                  <div class="info-value">นางสาว พิชญา รุ่งเรืองกิต</div>
+                  <div class="info-value-en">Miss Pitchaya Rungruangkit</div>
+                  <div class="info-label">เลขบัตรประจำตัวประชาชน</div>
+                  <div class="info-value-id">1-1009-000XX-XX-XX</div>
+                </div>
+              </div>
+              <div class="id-divider"></div>
+              <div class="id-bottom-grid">
+                <div class="id-col id-col-left">
+                  <div class="id-field">
+                    <div class="field-label">วันเดือนปีเกิด</div>
+                    <div class="field-value">15 พฤษภาคม 2546</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label">ที่อยู่ตามทะเบียนบ้าน</div>
+                    <div class="field-value">
+                      123/45 ถนนราชดำเนิน แขวง พระบรมมหาราชวัง เขตพระนคร
+                      กรุงเทพมหานคร 10200
+                    </div>
+                  </div>
+                </div>
+                <div class="id-col id-col-right">
+                  <div class="id-field">
+                    <div class="field-label">ศาสนา</div>
+                    <div class="field-value">พุทธ</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label">วันอนุญาต / Issue Date</div>
+                    <div class="field-value">8 กันยายน 2561</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label red">วันหมดอายุ / Expiry Date</div>
+                    <div class="field-value red">27 สิงหาคม 2570</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="qr-btn-row">
+            <div class="qr-btn" onclick="goTo('page-myqr')">
+              <img src="รูป/qr-code-3.png" alt="QR" />
+              <span>My QR</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: MY QR ══════════ -->
+      <div class="page" id="page-myqr">
+        <div class="topbar"><h1>Wallet</h1></div>
+        <div class="content myqr-content">
+          <div class="myqr-title">
+            <div class="myqr-title-text">My ID Card</div>
+            <div class="myqr-title-text">QR Code</div>
+          </div>
+          <div
+            class="myqr-box"
+            onclick="goTo('page-verifier')"
+            id="qr-scan-wrap"
+          >
+            <div class="myqr-inner">
+              <img src="รูป/qr-code.png" alt="QR Code" class="myqr-image" />
+            </div>
+          </div>
+          <div class="myqr-desc">
+            สแกน QR Code ของฉัน<br />เพื่อตรวจดูเอกสาร
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: SCAN ══════════ -->
+      <div class="page" id="page-scan">
+        <div class="topbar"><h1>Wallet</h1></div>
+        <div class="scan-area">
+          <div class="scan-label">Scan QR code</div>
+          <div class="scan-frame-wrap" onclick="startQrScan()">
+            <div class="corner-bl"></div>
+            <div class="corner-br"></div>
+            <div class="scan-inner"></div>
+            <div class="scan-line"></div>
+          </div>
+          <div class="scan-sublabel">กำลังสแกน QR Code...</div>
+          <button
+            class="scan-back-btn"
+            onclick="navTo('page-home', 'nav-wallet')"
+          >
+            ย้อนกลับ
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: VERIFIER ══════════ -->
+      <div class="page" id="page-verifier">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="navTo('page-scan', 'nav-scan')">
+            <img src="รูป/arrow.png" alt="Back" />
+          </div>
+          <h1>Verifier</h1>
+        </div>
+        <div class="content">
+          <div class="verifier-banner">
+            <img
+              src="รูป/Rectangle 17.png"
+              alt="banner"
+              class="verifier-banner-img"
+            />
+            <div class="verifier-banner-text">ตรวจสอบข้อมูลเข้าสถานบันเทิง</div>
+          </div>
+          <div class="verifier-section-title">รายการข้อมูลที่ร้องขอ</div>
+          <div class="verifier-list">
+            <div class="verifier-item unlocked">
+              <div class="vi-icon green">
+                <img
+                  src="รูป/check-2.png"
+                  alt="check"
+                  style="
+                    width: 32px;
+                    height: 32px;
+                    object-fit: contain;
+                    opacity: 0.55;
+                  "
+                />
+              </div>
+              <div class="vi-text">
+                <div class="vi-name">อายุ</div>
+                <div class="vi-status hidden">
+                  <img
+                    src="รูป/eye.png"
+                    alt="hidden"
+                    style="width: 14px; height: 14px; object-fit: contain"
+                  />
+                  ไม่เปิดเผยข้อมูล
+                </div>
+              </div>
+              <button class="vi-info-btn">
+                <img
+                  src="รูป/warning-sign.png"
+                  alt="info"
+                  style="width: 30px; height: 30px; object-fit: contain"
+                />
+              </button>
+            </div>
+            <div class="verifier-item locked">
+              <div class="vi-icon gray">
+                <img
+                  src="รูป/padlock.png"
+                  alt="lock"
+                  style="
+                    width: 22px;
+                    height: 22px;
+                    object-fit: contain;
+                    opacity: 0.55;
+                  "
+                />
+              </div>
+              <div class="vi-text">
+                <div class="vi-name">ชื่อ - นามสกุล</div>
+                <div class="vi-status hidden">
+                  <img
+                    src="รูป/closed-eyes.png"
+                    alt="hidden"
+                    style="width: 14px; height: 14px; object-fit: contain"
+                  />
+                  ไม่เปิดเผยข้อมูล
+                </div>
+              </div>
+              <button class="vi-info-btn">
+                <img
+                  src="รูป/question.png"
+                  alt="info"
+                  style="width: 30px; height: 30px; object-fit: contain"
+                />
+              </button>
+            </div>
+          </div>
+          <div class="verifier-item locked" style="margin-top: 12px">
+            <div class="vi-icon gray">
+              <img
+                src="รูป/padlock.png"
+                alt="lock"
+                style="
+                  width: 22px;
+                  height: 22px;
+                  object-fit: contain;
+                  opacity: 0.55;
+                "
+              />
+            </div>
+            <div class="vi-text">
+              <div class="vi-name">ประจำตัว 13 หลัก</div>
+              <div class="vi-status hidden">
+                <img
+                  src="รูป/closed-eyes.png"
+                  alt="hidden"
+                  style="width: 14px; height: 14px; object-fit: contain"
+                />
+                ไม่เปิดเผยข้อมูล
+              </div>
+            </div>
+            <button class="vi-info-btn">
+              <img
+                src="รูป/question.png"
+                alt="info"
+                style="width: 30px; height: 30px; object-fit: contain"
+              />
+            </button>
+          </div>
+          <div class="verifier-item locked" style="margin-top: 12px">
+            <div class="vi-icon gray">
+              <img
+                src="รูป/padlock.png"
+                alt="lock"
+                style="
+                  width: 22px;
+                  height: 22px;
+                  object-fit: contain;
+                  opacity: 0.55;
+                "
+              />
+            </div>
+            <div class="vi-text">
+              <div class="vi-name">หมู่เลือด</div>
+              <div class="vi-status hidden">
+                <img
+                  src="รูป/closed-eyes.png"
+                  alt="hidden"
+                  style="width: 14px; height: 14px; object-fit: contain"
+                />
+                ไม่เปิดเผยข้อมูล
+              </div>
+            </div>
+            <button class="vi-info-btn">
+              <img
+                src="รูป/question.png"
+                alt="info"
+                style="width: 30px; height: 30px; object-fit: contain"
+              />
+            </button>
+          </div>
+          <div class="verifier-item locked" style="margin-top: 12px">
+            <div class="vi-icon gray">
+              <img
+                src="รูป/padlock.png"
+                alt="lock"
+                style="
+                  width: 22px;
+                  height: 22px;
+                  object-fit: contain;
+                  opacity: 0.55;
+                "
+              />
+            </div>
+            <div class="vi-text">
+              <div class="vi-name">เชื้อชาติ</div>
+              <div class="vi-status hidden">
+                <img
+                  src="รูป/closed-eyes.png"
+                  alt="hidden"
+                  style="width: 14px; height: 14px; object-fit: contain"
+                />
+                ไม่เปิดเผยข้อมูล
+              </div>
+            </div>
+            <button class="vi-info-btn">
+              <img
+                src="รูป/question.png"
+                alt="info"
+                style="width: 30px; height: 30px; object-fit: contain"
+              />
+            </button>
+          </div>
+          <div class="verifier-item locked" style="margin-top: 12px">
+            <div class="vi-icon gray">
+              <img
+                src="รูป/padlock.png"
+                alt="lock"
+                style="
+                  width: 22px;
+                  height: 22px;
+                  object-fit: contain;
+                  opacity: 0.55;
+                "
+              />
+            </div>
+            <div class="vi-text">
+              <div class="vi-name">ศาสนา</div>
+              <div class="vi-status hidden">
+                <img
+                  src="รูป/closed-eyes.png"
+                  alt="hidden"
+                  style="width: 14px; height: 14px; object-fit: contain"
+                />
+                ไม่เปิดเผยข้อมูล
+              </div>
+            </div>
+            <button class="vi-info-btn">
+              <img
+                src="รูป/question.png"
+                alt="info"
+                style="width: 30px; height: 30px; object-fit: contain"
+              />
+            </button>
+          </div>
+          <button class="verifier-confirm-btn" onclick="goTo('page-consent')">
+            ยืนยันและส่งข้อมูล
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: CONSENT ══════════ -->
+      <div class="page" id="page-consent">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="รูป/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="consent-content">
+          <div class="consent-icon-box">
+            <img
+              src="รูป/wine.png"
+              alt="Entertainment"
+              class="consent-main-icon"
+            />
+          </div>
+          <div class="consent-title">ข้อมูลที่สถานบันเทิงต้องการ</div>
+          <div class="consent-request-section">
+            <div class="consent-label">ข้อมูลที่ร้องขอ</div>
+            <div class="consent-request-card">
+              <div class="consent-request-info">
+                <div class="consent-request-title">อายุเกิน 20 ปี</div>
+                <div class="consent-request-subtitle">Age Verification</div>
+              </div>
+              <img
+                src="รูป/check-2.png"
+                alt="Verified"
+                class="consent-check-icon"
+              />
+            </div>
+          </div>
+          <div class="consent-spacer"></div>
+          <div class="consent-auth-section">
+            <div class="consent-auth-title">ต้องใช้การยืนยันตัวตนโดย</div>
+            <div class="consent-auth-method">
+              <img
+                src="รูป/face-id.png"
+                alt="Face ID"
+                class="consent-faceid-icon"
+              />
+              <span>Face ID</span>
+            </div>
+          </div>
+          <div class="consent-button-group">
+            <button
+              class="consent-btn-primary"
+              onclick="
+                faceIdFlow = 'consent';
+                goTo('page-faceid');
+              "
+            >
+              รับทราบและยืนยันข้อมูล
+            </button>
+            <button class="consent-btn-secondary" onclick="goBack()">
+              ไม่ยินยอม
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- ══════════ PAGE: PREPARE FACE ══════════ -->
+      <div class="page" id="page-face-prepare">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="รูป/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+
+        <div class="face-prepare-content">
+          <div class="face-prepare-title">สแกนใบหน้า</div>
+
+          <img
+            src="รูป/face-id.png.webp"
+            alt="Face Scan"
+            class="face-prepare-image"
+          />
+
+          <div class="face-prepare-subtitle">เตรียมสแกนใบหน้า</div>
+
+          <div class="face-prepare-desc">
+            สำหรับใช้ในการยืนยันตัวตน<br />
+            เพื่อความปลอดภัยของคุณ
+          </div>
+
+          <div class="face-guide">
+            <div class="face-guide-item">
+              <img src="รูป/light-bulb.png" />
+              <div class="face-guide-text">
+                อยู่ในที่ที่มีแสงเหมาะสม ไม่สว่างหรือมืดเกินไป
+              </div>
+            </div>
+
+            <div class="face-guide-item">
+              <div class="icon-circle green-circle">
+                <img src="รูป/poker-face.png" />
+              </div>
+
+              <div class="face-guide-text">
+                ขยับใบหน้าให้อยู่ภายในกรอบ
+                <span class="green-text">จนกรอบเป็นสีเขียว</span>
+              </div>
+            </div>
+
+            <div class="face-guide-item">
+              <img src="รูป/eye-2.png" />
+              <div class="face-guide-text">พยายามลืมตาให้กว้าง</div>
+            </div>
+
+            <div class="face-guide-item">
+              <div class="icon-circle red-circle">
+                <img src="รูป/mask.png" />
+              </div>
+
+              <div class="face-guide-text">
+                <span class="bold-text">ต้องเห็น ตา จมูก ปาก</span>
+                ชัดเจน ไม่สวมแว่น<br />
+                หน้ากากอนามัยและไม่ใส่หมวก
+              </div>
+            </div>
+          </div>
+
+          <button
+            class="face-scan-btn"
+            onclick="
+              faceIdFlow = 'verifier';
+              goTo('page-faceid');
+            "
+          >
+            สแกนใบหน้า
+          </button>
+        </div>
+      </div>
+      <!-- ══════════ PAGE: FACE ID ══════════ -->
+      <div class="page" id="page-faceid">
+        <div class="topbar-back">
+          <h1>Wallet</h1>
+          <div
+            style="position: absolute; right: 20px; cursor: pointer"
+            onclick="goBack()"
+          >
+            <div class="close-btn">
+              <img src="รูป/close.png" alt="close" />
+            </div>
+          </div>
+        </div>
+        <div class="content faceid-content">
+          <div class="faceid-title">กำลังสแกนใบหน้า...</div>
+          <div class="face-scan-ring">
+            <img src="รูป/image 42.png" alt="Face Scan" class="faceid-photo" />
+          </div>
+          <div class="faceid-text">กรุณาวางใบหน้าให้อยู่ในกรอบและกระพริบตา</div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: VERIFIED RESULT ══════════ -->
+      <div class="page" id="page-verified">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="รูป/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="verified-content">
+          <!-- ID Card compact -->
+          <div class="vr-idcard">
+            <div class="vr-idcard-header">
+              <h3>ID Card</h3>
+              <img src="รูป/check-5.png" alt="verified" class="vr-check-icon" />
+            </div>
+            <div class="vr-idcard-body">
+              <img src="รูป/คน ID Card.png" alt="photo" class="vr-photo" />
+              <div class="vr-info-block">
+                <div class="vr-info-label">ชื่อ - นามสกุล</div>
+                <div class="vr-info-value">นางสาว พิชญา รุ่งเรืองกิต</div>
+                <div class="vr-info-divider"></div>
+                <div class="vr-info-label">เลขบัตรประจำตัวประชาชน</div>
+                <div class="vr-info-value">1 1009 00xx xx xx</div>
+                <div class="vr-info-divider"></div>
+                <div class="vr-info-label">วันเดือนปีเกิด</div>
+                <div class="vr-info-value">15 พฤษภาคม 2546</div>
+              </div>
+            </div>
+            <div class="vr-dates-row">
+              <div class="vr-date-col">
+                <div class="vr-date-label">วันอนุญาต / Issue Date</div>
+                <div class="vr-date-value">8 กันยายน 2566</div>
+              </div>
+              <div class="vr-date-col">
+                <div class="vr-date-label red">วันหมดอายุ / Expiry Date</div>
+                <div class="vr-date-value red">7 พฤษภาคม 2573</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Approve by Wallet -->
+          <div class="vr-approve-card">
+            <div class="vr-approve-title">Approve by Wallet</div>
+            <div class="vr-device-row">
+              <img
+                src="รูป/smartphone.png"
+                alt="device"
+                class="vr-device-icon"
+              />
+              <div>
+                <div class="vr-device-name">iPhone 15Pro</div>
+                <div class="vr-device-os">ios 21.6</div>
+              </div>
+            </div>
+            <div class="vr-approve-row">
+              <span>ลงทะเบียนเมื่อ</span>
+              <span class="highlight">15 มกราคม 2569</span>
+              <span>เวลา</span>
+              <span class="highlight">09 : 42 น.</span>
+            </div>
+            <div class="vr-approve-row">
+              <span>สถานการณ์ลงทะเบียน</span>
+              <span class="status-linked">ลงทะเบียนแล้ว</span>
+            </div>
+          </div>
+
+          <!-- POP Signature -->
+          <div class="vr-pop-section">
+            <div class="vr-pop-title">
+              ลายเซ็นดิจิทัล POP (Proof of Possession)
+            </div>
+            <div class="vr-pop-box">
+              <div class="vr-pop-toprow">
+                <span class="vr-pop-algo">ECDSA - 256</span>
+                <span class="vr-pop-hash">HASH SHA256</span>
+              </div>
+              <div class="vr-pop-hex">
+                8f2d9c0e1b2c3d4e5f6g7h8i9j0k112m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9
+              </div>
+              <button class="vr-pop-copy-btn">คัดลอกลายเซ็น</button>
+            </div>
+          </div>
+
+          <!-- รายการที่ร้องขอ -->
+          <div class="vr-request-section">
+            <div class="vr-request-title">รายการที่ร้องขอ</div>
+            <div class="vr-request-item">
+              <img src="รูป/check-2.png" alt="check" class="vr-request-check" />
+              <div class="vr-request-text">
+                <div class="vr-request-name">Age</div>
+                <div class="vr-request-sub">22 ปี</div>
+              </div>
+              <img
+                src="รูป/warning-sign.png"
+                alt="info"
+                class="vr-request-info"
+              />
+            </div>
+          </div>
+
+          <!-- ยอมรับ -->
+          <button class="vr-accept-btn" onclick="goTo('page-face-prepare')">
+            ยอมรับ
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: SUCCESS ══════════ -->
+      <div class="page" id="page-success">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="รูป/arrow.png" alt="Back" />
+          </div>
+          <h1>Consent</h1>
+        </div>
+        <div class="success-content">
+          <div class="success-title">แชร์ข้อมูลสำเร็จ</div>
+          <div class="success-date">
+            วันที่ 27 มีนาคม 2569 คุณได้แชร์ข้อมูล ตำรวจแห่งชาติ
+          </div>
+          <div class="success-card">
+            <div class="success-item">
+              <img src="รูป/wine.png" alt="recipient" />
+              <div>
+                <div class="success-label">Recipient</div>
+                <div class="success-value">ร้านอาหาร</div>
+              </div>
+            </div>
+            <div class="success-item">
+              <img src="รูป/calendar-2.png" alt="calendar" />
+              <div>
+                <div class="success-label">Shared Date</div>
+                <div class="success-value">1 มกราคม 2569</div>
+              </div>
+            </div>
+            <div class="success-item">
+              <img src="รูป/check-2.png" alt="age" />
+              <div>
+                <div class="success-label">Age</div>
+                <div class="success-value">22 ปี</div>
+              </div>
+            </div>
+          </div>
+          <button class="consent-accept-btn" onclick="goTo('page-history')">
+            ยอมรับ
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: HISTORY LOG ══════════ -->
+      <div class="page" id="page-history">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="รูป/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet Transaction</h1>
+        </div>
+        <div class="history-content">
+          <div class="history-summary">
+            <div class="summary-label">รายการทั้งหมด</div>
+            <div class="summary-count">
+              <span class="count-number">10</span>
+              <span class="count-text">รายการ</span>
+            </div>
+          </div>
+          <!-- ITEM 1 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img src="รูป/wine.png" alt="" class="history-logo" />
+                <div>
+                  <div class="history-name">ร้านอาหาร</div>
+                  <div class="history-datetime">
+                    <span class="history-date">29 มกราคม 2569</span>
+                    <span class="history-time"> 10:30 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status success">
+                <img src="รูป/check-3.png" alt="" />สำเร็จแล้ว
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">การตรวจสอบอายุ ( Verified Age )</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="รูป/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 2 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img
+                  src="รูป/7-eleven_logo.svg.png"
+                  alt=""
+                  class="history-logo"
+                />
+                <div>
+                  <div class="history-name">บริษัท เซเว่น อีเลฟเว่น</div>
+                  <div class="history-datetime">
+                    <span class="history-date">24 กุมภาพันธ์ 2569</span>
+                    <span class="history-time"> 14:25 น.</span>
+                  </div>
+                </div>
+                <div class="status success">
+                  <img src="รูป/check-3.png" alt="" />สำเร็จแล้ว
+                </div>
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">ข้อมูลบัตรประชาชน</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="รูป/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 3 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img src="รูป/เซ็นทรัล.jpg.webp" alt="" class="history-logo" />
+                <div>
+                  <div class="history-name">Central</div>
+                  <div class="history-datetime">
+                    <span class="history-date">1 มีนาคม 2569</span>
+                    <span class="history-time"> 12:00 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status success">
+                <img src="รูป/check-3.png" alt="" />สำเร็จแล้ว
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">
+                ใบขับขี่ดิจิทัล (Digital Driving License)
+              </div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="รูป/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 4 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img src="รูป/red-cross.png" alt="" class="history-logo" />
+                <div>
+                  <div class="history-name">โรงพยาบาล</div>
+                  <div class="history-datetime">
+                    <span class="history-date">10 มีนาคม 2569</span>
+                    <span class="history-time"> 13:00 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status success">
+                <img src="รูป/check-3.png" alt="" />สำเร็จแล้ว
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">ใบรับรองแพทย์</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="รูป/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- ══════════ PAGE: VERIFIER SUCCESS ══════════ -->
+      <div class="page" id="page-vsuccess">
+        <div class="topbar-back">
+          <h1>Verifier</h1>
+          <div
+            style="position: absolute; right: 20px; cursor: pointer"
+            onclick="navTo('page-home', 'nav-wallet')"
+          >
+            <div class="close-btn">
+              <img src="รูป/close.png" alt="close" />
+            </div>
+          </div>
+        </div>
+        <div class="vsuccess-content">
+          <div class="vsuccess-check-circle">
+            <img src="รูป/check-4.png" alt="success" />
+          </div>
+          <div class="vsuccess-title">ส่งข้อมูลสำเร็จ</div>
+          <div class="vsuccess-desc">
+            ข้อมูลของคุณถูกส่งให้<br />Verifier เรียบร้อยแล้ว
+          </div>
+          <button
+            class="vsuccess-btn"
+            onclick="navTo('page-presentLog', 'nav-history')"
+          >
+            เสร็จสิ้น
+          </button>
+        </div>
+      </div>
+      <!-- ══════════ PAGE: Present LOG ══════════ -->
+      <div class="page" id="page-presentLog">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="รูป/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet Transaction</h1>
+        </div>
+        <div class="history-content">
+          <div class="history-summary">
+            <div class="summary-label">รายการทั้งหมด</div>
+            <div class="summary-count">
+              <span class="count-number">4</span>
+              <span class="count-text">รายการ</span>
+            </div>
+          </div>
+          <!-- ITEM 1 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img src="รูป/wine.png" alt="" class="history-logo" />
+                <div>
+                  <div class="history-name">ร้านอาหาร</div>
+                  <div class="history-datetime">
+                    <span class="history-date">29 มกราคม 2569</span>
+                    <span class="history-time"> 10:30 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status accept">ยอมรับ</div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">การตรวจสอบอายุ ( Verified Age )</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="รูป/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 2 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img
+                  src="รูป/7-eleven_logo.svg.png"
+                  alt=""
+                  class="history-logo"
+                />
+                <div>
+                  <div class="history-name">บริษัท เซเว่น อีเลฟเว่น</div>
+                  <div class="history-datetime">
+                    <span class="history-date">24 กุมภาพันธ์ 2569</span>
+                    <span class="history-time"> 14:25 น.</span>
+                  </div>
+                </div>
+                <div class="status accept">ยอมรับ</div>
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">ข้อมูลบัตรประชาชน</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="รูป/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 3 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img src="รูป/เซ็นทรัล.jpg.webp" alt="" class="history-logo" />
+                <div>
+                  <div class="history-name">Central</div>
+                  <div class="history-datetime">
+                    <span class="history-date">1 มีนาคม 2569</span>
+                    <span class="history-time"> 12:00 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status reject">ไม่ยอมรับ</div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">
+                ใบขับขี่ดิจิทัล (Digital Driving License)
+              </div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="รูป/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 4 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img src="รูป/red-cross.png" alt="" class="history-logo" />
+                <div>
+                  <div class="history-name">โรงพยาบาล</div>
+                  <div class="history-datetime">
+                    <span class="history-date">10 มีนาคม 2569</span>
+                    <span class="history-time"> 13:00 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status accept">ยอมรับ</div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">ใบรับรองแพทย์</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="รูป/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- ══════════ NAVBAR ══════════ -->
+      <div class="bottom-nav">
+        <div
+          class="nav-item active"
+          id="nav-wallet"
+          onclick="navTo('page-home', 'nav-wallet')"
+        >
+          <img src="รูป/wallet-2.png" alt="Wallet" />
+          <span>Wallet</span>
+          <div class="nav-indicator"></div>
+        </div>
+        <div
+          class="nav-item"
+          id="nav-qr"
+          onclick="navTo('page-myqr', 'nav-qr')"
+        >
+          <img src="รูป/qr-code-3.png" alt="My QR" />
+          <span>My QR</span>
+        </div>
+        <div class="nav-item" id="nav-scan" onclick="startScanFlow()">
+          <img src="รูป/scanner-4.png" alt="Scan" />
+          <span>Scan</span>
+        </div>
+        <div
+          class="nav-item"
+          id="nav-history"
+          onclick="navTo('page-history', 'nav-history')"
+        >
+          <img src="รูป/restore.png" alt="History Log" />
+          <span>History Log</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let currentPage = "page-home";
+      let currentNav = "nav-wallet";
+      let faceIdFlow = "consent";
+
+      function startQrScan() {
+        setTimeout(() => {
+          goTo("page-verified");
+        }, 2000);
+      }
+
+      function startFaceScan() {
+        setTimeout(() => {
+          if (faceIdFlow === "verifier") {
+            goTo("page-vsuccess");
+          } else {
+            goTo("page-success");
+          }
+        }, 2000);
+      }
+
+      function startScanFlow() {
+        navTo("page-scan", "nav-scan");
+        setTimeout(() => {
+          goTo("page-verified");
+        }, 2000);
+      }
+
+      function goTo(pageId) {
+        const current = document.getElementById(currentPage);
+        const next = document.getElementById(pageId);
+
+        if (current) {
+          current.classList.remove("active");
+        }
+
+        next.classList.add("active", "slide-in");
+
+        next.addEventListener(
+          "animationend",
+          () => {
+            next.classList.remove("slide-in");
+          },
+          { once: true },
+        );
+
+        currentPage = pageId;
+
+        if (pageId === "page-faceid") {
+          startFaceScan();
+        }
+      }
+
+      function goBack() {
+        const current = document.getElementById(currentPage);
+
+        current.classList.add("slide-out");
+
+        current.addEventListener(
+          "animationend",
+          () => {
+            current.classList.remove("active", "slide-out");
+            currentPage = "page-home";
+            document.getElementById("page-home").classList.add("active");
+            setActiveNav("nav-wallet");
+          },
+          { once: true },
+        );
+      }
+
+      function navTo(pageId, navId) {
+        document.getElementById(currentPage).classList.remove("active");
+        document.getElementById(pageId).classList.add("active");
+        currentPage = pageId;
+        setActiveNav(navId);
+      }
+
+      function setActiveNav(navId) {
+        const allNavs = document.querySelectorAll(".nav-item");
+
+        allNavs.forEach((n) => {
+          n.classList.remove("active");
+          const indicator = n.querySelector(".nav-indicator");
+          if (indicator) {
+            indicator.remove();
+          }
+        });
+
+        const activeNav = document.getElementById(navId);
+        activeNav.classList.add("active");
+
+        const indicator = document.createElement("div");
+        indicator.className = "nav-indicator";
+        activeNav.appendChild(indicator);
+
+        currentNav = navId;
+      }
+    </script>
+  </body>
+</html>
