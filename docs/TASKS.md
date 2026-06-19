@@ -15,7 +15,7 @@ Status: Complete.
 
 ## Phase 2: OID4VCI 1.0 Protocol Integration
 
-Status: Complete.
+Status: Complete (core flow). Spec compliance gaps tracked below.
 
 [x] Orval SDK generation setup
 [x] Generated SDK endpoint filtering
@@ -32,6 +32,10 @@ Status: Complete.
 [x] Separate `syncCredentialToBackend(record, { walletId, sessionToken })`
 [x] Backend import payload `{ jwt: record.rawVc, associated_did: getHolderDid() }`
 [x] HTTP 201-only backend sync success
+[x] Token endpoint discovery via `authorization_servers` metadata (OID4VCI §11)
+[x] `c_nonce` refresh retry on `invalid_proof` (OID4VCI §8.3.3)
+[ ] Drop `user_pin` dual-send in token request after ETDA Issuer confirms `tx_code`-only acceptance (`exchangeService.ts:760`). Currently sends both `tx_code` + `user_pin`; OID4VCI 1.0 final only defines `tx_code`.
+[ ] Deferred Credential Issuance (`transaction_id`, OID4VCI §8.4) — implement only if an Issuer starts returning `transaction_id` instead of an immediate credential
 
 ## Phase 3: Config-Driven UI
 
@@ -135,6 +139,10 @@ Implemented:
 Remaining:
 
 [ ] Replace development `redirect_uri:` Verifier with registered production `did:web` Verifier entries
+[ ] Signed Request Object (JAR) signature verification — currently decoded but not verified (`presentationService.ts:344-351`). Must close before onboarding additional Verifiers. Do together with `did:web` migration since both touch `findTrustedVerifier`/`readAuthorizationRequest`.
+[ ] `client_id_scheme` enforcement — `findTrustedVerifier()` does literal-prefix match only, does not branch on scheme (`did`, `x509_san_dns`, `verifier_attestation`, `redirect_uri`). Do together with `did:web` migration.
+[ ] `presentation_definition_uri` fetch support — currently throws `PresentationRequestUnsupported` (`presentationService.ts:393`). Implement if a Verifier requires it.
+[ ] DCQL `credential_sets` grouping — `readOptionalDcqlQuery()` reads `credentials` only, ignores `credential_sets` (DCQL §6.1). Needed for "present one of credential A or B" requests.
 [ ] Add broader claim sets only after trust and disclosure semantics are documented
 [ ] Add MSW Verifier handler group or integration harness for direct_post tests
 [ ] Decide whether to add a full ADR before expanding beyond the P5 age-over-20 slice
@@ -328,3 +336,8 @@ Remaining:
 
 - Added an Android-only weak biometric approval path for the OID4VP presentation preparation step. The existing `EtdaWalletEddsa` Expo module now exposes `authenticateWeakBiometric()`, which requests `BiometricManager.Authenticators.BIOMETRIC_WEAK` so supported Android devices may show Class 2 face unlock; the Wallet falls back to `react-native-biometrics` when the native method is unavailable. This is only a pre-submit UX gate: EdDSA signing still uses the production Keychain-protected signer and can still trigger a separate OS authentication prompt.
 - Added path-specific OID4VP biometric diagnostics so development logs now distinguish Android native weak-biometric approval from the `react-native-biometrics` fallback and record the fallback sensor type without exposing credential data. Focused `presentationApproval` tests cover both prompt paths.
+
+### Session 2026-06-19
+
+- Deleted unused development reference files `issuerApi.json` (IssuerAPI OpenAPI spec) and `oidvci.json` (OID4VCI issuer metadata dump). `walletApi.json` retained as Orval SDK generation input (`orval.config.ts`).
+- Updated `docs/TASKS.md`: cross-referenced spec compliance gaps from `docs/SPEC_COMPLIANCE_OID4VC.md` into Phase 2 and OID4VP tracked items (`user_pin` dual-send, deferred issuance, JAR signature verification, `client_id_scheme`, `presentation_definition_uri`, DCQL `credential_sets`). Verified all existing `[ ]` items still open against current codebase.
