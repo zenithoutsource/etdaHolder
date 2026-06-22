@@ -7,12 +7,16 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { PinKeypad } from '../src/components/PinKeypad'
 import { setWalletPin } from '../src/services/auth/walletPin'
 import { useAuthStore } from '../src/store/authStore'
+import { readPendingCredentialOfferRoute, useDeeplinkStore } from '../src/store/deeplinkStore'
 
 const PIN_LENGTH = 6
 
 export default function PinSetupScreen() {
   const router = useRouter()
   const setPinVerified = useAuthStore((s) => s.setPinVerified)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
+  const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
   const [phase, setPhase] = useState<'enter' | 'confirm'>('enter')
   const [firstPin, setFirstPin] = useState('')
   const [pin, setPin] = useState('')
@@ -34,6 +38,17 @@ export default function PinSetupScreen() {
             setWalletPin(next)
           }
           setPinVerified(true)
+          const pendingRoute = readPendingCredentialOfferRoute({
+            pendingUri: pendingDeeplinkUri,
+            dismissedUri: dismissedDeeplinkUri,
+            isAuthenticated,
+            platform: Platform.OS,
+            hasWalletPin: true,
+          })
+          if (pendingRoute) {
+            router.push(pendingRoute)
+            return
+          }
           router.replace('/(tabs)')
         } else {
           setPin('')
