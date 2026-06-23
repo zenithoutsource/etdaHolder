@@ -151,6 +151,25 @@ export default function RootLayout() {
     if (route) router.replace(route);
   }, [startupState.status, isAuthenticated, router, currentSegment]);
 
+  useEffect(() => {
+    if (startupState.status !== 'ready' || Platform.OS === 'web') return;
+
+    let isMounted = true;
+
+    void import('@/src/services/nfc/nfcStartup')
+      .then(({ prewarmNfc }) => {
+        if (!isMounted) return;
+        return prewarmNfc(Platform.OS);
+      })
+      .catch((error) => {
+        logWalletError('startup', 'nfc-prewarm-import-failed', error, { platform: Platform.OS });
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [startupState.status]);
+
   const routeDeeplink = useCallback((url: string, { store = false }: { store?: boolean } = {}) => {
     if (!isSupportedWalletDeeplink(url)) return;
     const dismissed = useDeeplinkStore.getState().dismissedUri;
