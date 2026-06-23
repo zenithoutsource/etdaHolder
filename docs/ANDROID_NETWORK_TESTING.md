@@ -205,7 +205,7 @@ Terminal 2, start Expo:
 
 ```powershell
 cd C:\project\etdaWallet
-yarn start -- --port 8082 --clear
+yarn start -- --port 8081 --clear
 ```
 
 Open the app from the Expo development client QR or launch it from ADB if USB is connected:
