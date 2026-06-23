@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "etdawallet",
+    "scheme": ["etdawallet", "openid-credential-offer"],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

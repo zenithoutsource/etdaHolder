@@ -2,6 +2,27 @@
 
 This guide covers physical Android testing for QR credential issuance and VP presentation when the Issuer or Verifier is on an office network.
 
+## Current Known Working Setup
+
+Use these addresses for the current local demo setup:
+
+| Service | URL | Used By |
+| --- | --- | --- |
+| Issuer dashboard | `http://192.168.1.36:3000` | Staff desktop browser |
+| Verifier dashboard | `http://192.168.1.36:3001` | Staff desktop browser |
+| Wallet backend/proxy | `http://192.168.1.36:4000` | Physical phone over Wi-Fi |
+| IssuerAPI target | `http://192.100.10.46` | Wallet backend proxy target |
+| VerifierAPI target | `http://192.100.10.48` | Wallet backend proxy target |
+
+Do not confuse the ports:
+
+- `:3000` is the Issuer web UI. It is not the phone proxy.
+- `:3001` is the Verifier web UI. It is not the phone proxy.
+- `:4000` is the Wallet backend and development proxy used by the phone.
+- `:5001` and `:5002` are local API fallbacks only when those APIs are actually running locally.
+
+Desktop QR generation can work while mobile scanning still fails. The phone must be able to reach the embedded OID4VC Issuer/Verifier URLs directly or through the Wallet backend proxy.
+
 ## Choose the Correct Mode
 
 Use only one mode at a time. The root app `.env` and `server/.env` must agree:
@@ -86,13 +107,13 @@ Android phone on Wi-Fi
 Root `.env`:
 
 ```env
-EXPO_PUBLIC_WALLET_API_BASE_URL=http://<windows-lan-ip>:4000
+EXPO_PUBLIC_WALLET_API_BASE_URL=http://192.168.1.36:4000
 EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET=http://192.100.10.46
-EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL=http://<windows-lan-ip>:4000/dev-issuer-proxy
+EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL=http://192.168.1.36:4000/dev-issuer-proxy
 EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://192.100.10.48
 EXPO_PUBLIC_VERIFIER_NAME=Verifier API
 EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET=http://192.100.10.48
-EXPO_PUBLIC_DEV_VERIFIER_PROXY_BASE_URL=http://<windows-lan-ip>:4000/dev-verifier-proxy
+EXPO_PUBLIC_DEV_VERIFIER_PROXY_BASE_URL=http://192.168.1.36:4000/dev-verifier-proxy
 ```
 
 If you only need the Verifier proxy, leave the Issuer proxy variables commented out. If you only need the Issuer proxy, leave the Verifier proxy variables commented out.
@@ -184,7 +205,7 @@ Terminal 2, start Expo:
 
 ```powershell
 cd C:\project\etdaWallet
-yarn start -- --port 8082 --clear
+yarn start -- --port 8081 --clear
 ```
 
 Open the app from the Expo development client QR or launch it from ADB if USB is connected:
@@ -209,17 +230,31 @@ Check active reverse mappings:
 adb reverse --list
 ```
 
-Check the local proxy from Windows:
+Check that the phone can reach the Wallet backend/proxy. Open this URL in the phone browser:
 
-```powershell
-Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:4000/dev-issuer-proxy/.well-known/openid-credential-issuer"
+```text
+http://192.168.1.36:4000
 ```
 
-Check the local Verifier proxy from Windows:
+The root path may return `404`; that is acceptable. A browser connection failure means the phone cannot reach the PC backend, so fix Wi-Fi, firewall, or LAN routing before debugging OID4VC.
+
+Check the Issuer proxy from Windows:
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:4000/dev-verifier-proxy/swagger/v1/swagger.json"
+Invoke-WebRequest -UseBasicParsing -Uri "http://192.168.1.36:4000/dev-issuer-proxy/openid4vc/credentialOffer?id=test"
 ```
+
+Check the Verifier proxy from Windows with a fresh state:
+
+1. Generate a fresh Verifier QR from `http://192.168.1.36:3001`.
+2. Extract the `state` from the generated session.
+3. Fetch that exact request through the proxy:
+
+```powershell
+Invoke-WebRequest -UseBasicParsing -Uri "http://192.168.1.36:4000/dev-verifier-proxy/openid4vc/request/<fresh-state>"
+```
+
+Do not use `/openid4vc/request/test` as a success check. Verifier request IDs are short-lived and must exist upstream. A random or old state can correctly return `404` even when the proxy is configured correctly.
 
 Check listening ports:
 
@@ -231,4 +266,6 @@ netstat -ano | Select-String -Pattern ":4000|:8082"
 
 - The development Issuer and Verifier proxies are only transport plumbing for local testing. The Wallet still resolves offers, signs proof/VP JWTs, requests credentials, presents credentials, and saves local history on-device.
 - Restart Expo with `--clear` after changing root `.env`; Expo public env values are bundled at Metro startup.
+- Restart `server` after changing `server/.env`; proxy target values are loaded when the backend starts.
+- If desktop dashboards work but phone scanning fails, debug the phone-to-`:4000` path first, then the proxy-to-`192.100.10.*` path.
 - Do not enable the development Issuer or Verifier proxies in production builds.

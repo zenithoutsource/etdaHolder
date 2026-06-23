@@ -7,6 +7,7 @@ import { AppButton } from '../src/components/AppButton';
 import { hasWalletPin } from '../src/services/auth/walletPin';
 import { readPostLoginRoute } from '../src/services/auth/walletPinNavigation';
 import { useAuthStore } from '../src/store/authStore';
+import { readPendingCredentialOfferRoute, useDeeplinkStore } from '../src/store/deeplinkStore';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -14,6 +15,8 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const login = useAuthStore((s) => s.login);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri);
+  const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri);
   const router = useRouter();
 
   async function handleLogin() {
@@ -24,7 +27,19 @@ export default function LoginScreen() {
     setError(null);
     try {
       await login(email.trim(), password);
-      router.replace(readPostLoginRoute({ platform: Platform.OS, hasWalletPin: hasWalletPin() }));
+      const pinExists = hasWalletPin()
+      const pendingRoute = readPendingCredentialOfferRoute({
+        pendingUri: pendingDeeplinkUri,
+        dismissedUri: dismissedDeeplinkUri,
+        isAuthenticated: true,
+        platform: Platform.OS,
+        hasWalletPin: pinExists,
+      })
+      if (pendingRoute) {
+        router.push(pendingRoute)
+        return
+      }
+      router.replace(readPostLoginRoute({ platform: Platform.OS, hasWalletPin: pinExists }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     }

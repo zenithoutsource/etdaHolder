@@ -296,6 +296,62 @@ test('default pre-authorized token exchange uses the development issuer proxy', 
   expect(String(requestInit?.body)).toContain('pre-authorized_code=mock-preauth-code')
 })
 
+test('token request sends tx_code only and never user_pin', async () => {
+  jest.resetModules()
+  process.env = {
+    ...process.env,
+    EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET: 'http://192.100.10.46',
+    EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL: 'http://127.0.0.1:4000/dev-issuer-proxy',
+  }
+  const { acquireCredentialRecord: acquire } = require('./exchangeService') as typeof import('./exchangeService')
+  const txCodeFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+    async () =>
+      new Response(
+        JSON.stringify({ access_token: 'access-token', c_nonce: 'nonce' }),
+        { headers: { 'Content-Type': 'application/json' } },
+      ),
+  )
+  globalThis.fetch = txCodeFetchMock as unknown as typeof fetch
+
+  await acquire(
+    {
+      offerUri,
+      issuer: 'http://192.100.10.46',
+      credentialOffer: {} as ResolvedCredentialOffer['credentialOffer'],
+      issuerMetadata: {
+        credential_issuer: 'http://192.100.10.46',
+        token_endpoint: 'http://192.100.10.46/token',
+        credential_endpoint: 'http://192.100.10.46/credential',
+        credential_configurations_supported: {},
+      },
+      credentialConfigurations: [
+        {
+          id: 'ThaiNationalID',
+          requestId: 'ThaiNationalID',
+          format: 'dc+sd-jwt',
+          rawConfiguration: { format: 'dc+sd-jwt', vct: 'idcard' } as ResolvedCredentialOffer['credentialConfigurations'][number]['rawConfiguration'],
+        },
+      ],
+      preAuthorizedCode: 'mock-preauth-code',
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+      version: 10015,
+    },
+    {
+      tx_code: '123456',
+      dependencies: {
+        signProof: async () => 'proof.jwt',
+        requestCredential: async () => unsignedJwt({ vc: { type: ['VerifiableCredential', 'ThaiNationalID'] } }),
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    },
+  )
+
+  const requestInit = txCodeFetchMock.mock.calls[0][1]
+  const requestBody = String(requestInit?.body)
+  expect(requestBody).toContain('tx_code=123456')
+  expect(requestBody).not.toContain('user_pin=123456')
+})
+
 async function acquisitionOrchestrationContract(): Promise<void> {
   const resolved = await contract()
 

@@ -2,9 +2,10 @@ import '@/src/sdk/fetchIndirection';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import '../global.css';
 import '@/src/styles/nativewindInterop';
@@ -17,6 +18,12 @@ import { hasWalletPin } from '@/src/services/auth/walletPin';
 import { readStartupRoute } from '@/src/services/auth/walletPinNavigation';
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger';
 import { useAuthStore } from '@/src/store/authStore';
+import {
+  isCredentialOfferDeeplink,
+  isSupportedWalletDeeplink,
+  readPendingCredentialOfferRoute,
+  useDeeplinkStore,
+} from '@/src/store/deeplinkStore';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -56,9 +63,20 @@ export default function RootLayout() {
   const [startupState, setStartupState] = useState<StartupState>({ status: 'loading' });
   const loadSession = useAuthStore((s) => s.loadSession);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri);
+  const setIncomingDeeplinkUri = useDeeplinkStore((s) => s.setIncomingDeeplinkUri);
+  const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri);
+  const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri);
   const router = useRouter();
+  const incomingUrl = Linking.useURL();
   const currentSegment = segments[0];
   const isTabRoute = currentSegment === '(tabs)';
+  const lastRoutedDeeplinkRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let isMounted = true;
@@ -132,6 +150,64 @@ export default function RootLayout() {
     });
     if (route) router.replace(route);
   }, [startupState.status, isAuthenticated, router, currentSegment]);
+
+  const routeDeeplink = useCallback((url: string, { store = false }: { store?: boolean } = {}) => {
+    if (!isSupportedWalletDeeplink(url)) return;
+    const dismissed = useDeeplinkStore.getState().dismissedUri;
+    if (url === dismissed) return;
+
+    if (store) setPendingDeeplinkUri(url);
+
+    const pinExists = Platform.OS === 'web' || hasWalletPin();
+    const pendingRoute = readPendingCredentialOfferRoute({
+      pendingUri: url,
+      dismissedUri: dismissed,
+      isAuthenticated: isAuthenticatedRef.current,
+      platform: Platform.OS,
+      hasWalletPin: pinExists,
+    });
+    if (pendingRoute) { router.push(pendingRoute); return; }
+    if (!isCredentialOfferDeeplink(url) && isAuthenticatedRef.current && pinExists) {
+      router.push('/(tabs)/scan');
+    }
+  }, [router, setPendingDeeplinkUri]);
+
+  useEffect(() => {
+    if (startupState.status !== 'ready') return;
+
+    if (incomingUrl && isSupportedWalletDeeplink(incomingUrl) && incomingUrl !== lastRoutedDeeplinkRef.current) {
+      const startupRoute = readStartupRoute({
+        isAuthenticated,
+        currentSegment,
+        platform: Platform.OS,
+        hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
+      });
+      if (startupRoute !== '/login' && startupRoute !== '/pin-setup') {
+        lastRoutedDeeplinkRef.current = incomingUrl;
+        routeDeeplink(incomingUrl, { store: true });
+      } else {
+        setPendingDeeplinkUri(incomingUrl);
+      }
+    }
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      if (!isSupportedWalletDeeplink(url)) return;
+      setIncomingDeeplinkUri(url);
+      routeDeeplink(url);
+    });
+
+    return () => { subscription.remove(); };
+  }, [startupState.status, incomingUrl, isAuthenticated, currentSegment, router, routeDeeplink, setPendingDeeplinkUri, setIncomingDeeplinkUri]);
+
+  useEffect(() => {
+    if (startupState.status !== 'ready' || !pendingDeeplinkUri) {
+      lastRoutedDeeplinkRef.current = null;
+      return;
+    }
+    if (pendingDeeplinkUri === lastRoutedDeeplinkRef.current) return;
+    lastRoutedDeeplinkRef.current = pendingDeeplinkUri;
+    routeDeeplink(pendingDeeplinkUri);
+  }, [startupState.status, pendingDeeplinkUri, dismissedDeeplinkUri, isAuthenticated, routeDeeplink]);
 
   if (startupState.status !== 'ready') {
     return (
