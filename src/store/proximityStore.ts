@@ -102,12 +102,12 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
   },
 
   denyPresentation: () => {
-    void denyProximityPresentation()
+    void denyProximityPresentation().catch((e) => logWalletError('proximity-store', 'deny-cleanup-failed', e))
     set({ ...initialState })
   },
 
   reset: () => {
-    void stopProximityPresentation()
+    void stopProximityPresentation().catch((e) => logWalletError('proximity-store', 'stop-cleanup-failed', e))
     set({ ...initialState })
   },
 }))

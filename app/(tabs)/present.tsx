@@ -1,8 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { AppButton } from '@/src/components/AppButton'
 import { ConsentPanel } from '@/src/components/proximity/ConsentPanel'
 import { PresentationResultPanel } from '@/src/components/proximity/PresentationResultPanel'
 import { WaitingForTapPanel } from '@/src/components/proximity/WaitingForTapPanel'
@@ -26,6 +27,7 @@ export default function PresentScreen() {
   const denyPresentation = useProximityStore((state) => state.denyPresentation)
   const reset = useProximityStore((state) => state.reset)
 
+  // Phase 2D: read availableFields from actual stored mDOC CBOR via mdocParser, not from JWT claims
   const availableFields = useMemo(() => {
     if (!credential) return []
     const claims = Object.fromEntries(
@@ -39,13 +41,17 @@ export default function PresentScreen() {
     })
   }, [credential])
 
+  const [mdocAvailable, setMdocAvailable] = useState<boolean | null>(null)
+
   useEffect(() => {
     if (!credentialId) return
 
     let cancelled = false
     void (async () => {
       const stored = await hasStoredMdoc(credentialId)
-      if (cancelled || !stored) return
+      if (cancelled) return
+      setMdocAvailable(stored)
+      if (!stored) return
       if (status === 'idle') {
         await startPresentation(credentialId)
       }
@@ -71,6 +77,17 @@ export default function PresentScreen() {
           <Text className="mb-4 text-center text-sm font-medium text-[#1a2a42]">
             {credential.type}
           </Text>
+        ) : null}
+
+        {mdocAvailable === false ? (
+          <View className="rounded-[12px] bg-white px-5 py-6">
+            <Text className="text-center text-base font-semibold text-[#1a2a42]">
+              No mDOC credential available for proximity presentation
+            </Text>
+            <View className="mt-4 items-center">
+              <AppButton variant="solid-block" label="Back" onPress={handleDone} className="rounded-xl bg-[#1a2a42] px-8 py-3" textClassName="text-sm font-semibold text-white" />
+            </View>
+          </View>
         ) : null}
 
         {status === 'waiting' || status === 'engaged' ? (
