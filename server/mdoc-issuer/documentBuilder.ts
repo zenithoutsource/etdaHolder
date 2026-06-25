@@ -1,5 +1,5 @@
 import cbor from 'cbor'
-import { createHash, createSign, randomBytes } from 'crypto'
+import { createHash, createSign } from 'crypto'
 
 import {
   documentSignerCertificateDer,

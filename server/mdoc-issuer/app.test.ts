@@ -60,18 +60,76 @@ describe('mdoc issuer app', () => {
     expect(Buffer.from(credential.body.credential, 'base64url').length).toBeGreaterThan(64)
   })
 
-  it('rejects unsupported credential formats and unknown access tokens', async () => {
+  it('rejects unknown access tokens', async () => {
     const app = createMdocIssuerApp({ issuerBaseUrl: 'http://127.0.0.1:4100' })
 
-    const unsupported = await request(app)
+    const res = await request(app)
       .post('/credential')
       .set('Authorization', 'Bearer missing-token')
+      .send({ format: 'mso_mdoc', doctype: DEFAULT_DOCTYPE })
+
+    expect(res.status).toBe(401)
+    expect(res.body).toEqual({ error: 'invalid_token' })
+  })
+
+  it('rejects unsupported credential format with valid token', async () => {
+    const app = createMdocIssuerApp({ issuerBaseUrl: 'http://127.0.0.1:4100' })
+
+    const offer = await request(app)
+      .post('/offers')
+      .send({ credentialConfigurationId: DEFAULT_CREDENTIAL_CONFIGURATION_ID })
+    const token = await request(app)
+      .post('/token')
+      .type('form')
       .send({
-        format: 'jwt_vc',
-        doctype: DEFAULT_DOCTYPE,
+        grant_type: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
+        'pre-authorized_code': offer.body.preAuthorizedCode,
       })
 
-    expect(unsupported.status).toBe(401)
-    expect(unsupported.body).toEqual({ error: 'invalid_token' })
+    const res = await request(app)
+      .post('/credential')
+      .set('Authorization', `Bearer ${token.body.access_token}`)
+      .send({ format: 'jwt_vc', doctype: DEFAULT_DOCTYPE })
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'unsupported_credential_format' })
+  })
+
+  it('rejects unsupported grant type', async () => {
+    const app = createMdocIssuerApp({ issuerBaseUrl: 'http://127.0.0.1:4100' })
+
+    const res = await request(app)
+      .post('/token')
+      .type('form')
+      .send({ grant_type: 'authorization_code', code: 'abc' })
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'unsupported_grant_type' })
+  })
+
+  it('rejects invalid pre-authorized code', async () => {
+    const app = createMdocIssuerApp({ issuerBaseUrl: 'http://127.0.0.1:4100' })
+
+    const res = await request(app)
+      .post('/token')
+      .type('form')
+      .send({
+        grant_type: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
+        'pre-authorized_code': 'nonexistent-code',
+      })
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'invalid_grant' })
+  })
+
+  it('rejects unsupported credential configuration in offers', async () => {
+    const app = createMdocIssuerApp({ issuerBaseUrl: 'http://127.0.0.1:4100' })
+
+    const res = await request(app)
+      .post('/offers')
+      .send({ credentialConfigurationId: 'unknown_config' })
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'unsupported_credential_configuration' })
   })
 })
