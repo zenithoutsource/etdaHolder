@@ -357,10 +357,8 @@ Remaining:
 - Fixed stale Scan success state after issuance: leaving the success screen now resets Scan state, clears any embedded deeplink claim screen, and navigates to Wallet home so returning to Scan starts from the scanner/permission state instead of the old "receive document success" page.
 - Split OID4VCI issuance back out of the Scan tab: credential-offer QR scans and same-device deeplinks now hand off to the root `/credential-offer` route, leaving Scan as camera/OID4VP-only and preventing tab-preserved issuance success state from appearing when the Holder returns to Scan.
 
-
 ### Session 2026-06-25
 
-- Implemented Phase 2B `modules/expo-mdoc-proximity/` Android Expo module with NFC/BLE config plugin, private mDOC storage, presentation session lifecycle, and event surface for engagement/consent/result.
-- Implemented Phase 2C proximity wallet layer: `src/services/proximity/*`, `src/store/proximityStore.ts`, consent/waiting/result UI under `src/components/proximity/`, hidden `app/(tabs)/present.tsx` route, and credential-detail "Present via NFC" entry point.
-- NFC engagement + BLE response wiring remains blocked on Phase 2D physical reader E2E (ACR1311U-N2). Until then, presentation starts into the waiting UI and native approve path returns `PROXIMITY_NOT_READY`.
-
+- Implemented the Phase 2A standalone development mDOC issuer under `server/mdoc-issuer/` instead of adding issuer behavior to the Wallet Backend routes. The service exposes OID4VCI issuer metadata, authorization-server metadata, pre-authorized offer creation, token exchange, and a sample `mso_mdoc` credential response with a signed issuer-auth COSE envelope.
+- Added deterministic ECDSA dev certificate fixtures, CBOR issuer-signed item/MSO construction, and focused Jest coverage for both the document builder and the issuer HTTP contract.
+- Added `server` scripts `yarn mdoc-issuer:dev` and `yarn mdoc-issuer:start`, documented the runbook in `server/mdoc-issuer/README.md`, and extended `server` TypeScript/Jest config so Phase 2A files participate in normal `server` verification.
