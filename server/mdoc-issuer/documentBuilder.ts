@@ -64,8 +64,9 @@ function buildValueDigests(
 
     for (const [elementIdentifier, elementValue] of Object.entries(claims)) {
       const itemBytes = buildIssuerSignedItemBytes(namespace, elementIdentifier, elementValue, digestId)
-      taggedItems.push(tagged24(itemBytes))
-      digests.set(digestId, createHash('sha256').update(itemBytes).digest())
+      const tagged = tagged24(itemBytes)
+      taggedItems.push(tagged)
+      digests.set(digestId, createHash('sha256').update(cbor.encodeCanonical(tagged)).digest())
       digestId += 1
     }
 

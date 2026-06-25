@@ -68,7 +68,7 @@ describe('buildIssuerSignedMdoc', () => {
       const itemBytes = expectTagged24(taggedItem)
       const item = cbor.decodeFirstSync(itemBytes) as Record<string, unknown>
       const digestId = item.digestID as number
-      const digest = createHash('sha256').update(itemBytes).digest()
+      const digest = createHash('sha256').update(cbor.encodeCanonical(taggedItem)).digest()
       expect(readNumericField<Buffer>(namespaceDigests, digestId)).toEqual(digest)
     })
   })
