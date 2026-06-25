@@ -84,7 +84,7 @@ Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operat
 [x] Save credential only after Holder confirmation
 [x] Decide Holder Confirmation semantics: confirm resolved offer before credential acquisition, then acquire and save immediately after successful issuance
 [x] Fix remaining corrupted UI labels in scanner confirmation screen
-[ ] Integrate NFC NDEF reader for offer URI after device testing is available
+[x] Integrate NFC NDEF reader for offer URI after device testing is available
 
 ## Phase 4: Security Hardening and Release
 
@@ -356,3 +356,9 @@ Remaining:
 - Fixed the mounted Scan-tab warm deeplink no-op: Scan now subscribes to pending deeplink store changes and opens `CredentialOfferClaimScreen` when a credential-offer URI arrives after the tab is already mounted, before camera permission UI can render.
 - Fixed stale Scan success state after issuance: leaving the success screen now resets Scan state, clears any embedded deeplink claim screen, and navigates to Wallet home so returning to Scan starts from the scanner/permission state instead of the old "receive document success" page.
 - Split OID4VCI issuance back out of the Scan tab: credential-offer QR scans and same-device deeplinks now hand off to the root `/credential-offer` route, leaving Scan as camera/OID4VP-only and preventing tab-preserved issuance success state from appearing when the Holder returns to Scan.
+
+### Session 2026-06-23
+
+- Completed Phase 3.3 NFC tag-read Phase 1 on branch `feat/nfc-tag-read`: added `src/services/nfc/nfcTagService.ts` for one-shot NDEF reads and supported URI classification, plus `src/services/nfc/nfcStartup.ts` for native-only best-effort startup prewarm that never blocks wallet launch.
+- Scan now exposes a `Use NFC` action that reads NDEF tags and reuses the existing routing boundaries: `openid-credential-offer://...` payloads hand off through the deeplink store to the credential-offer claim flow, while `openid4vp://...` payloads reuse the existing OID4VP request resolution path.
+- Added focused Jest coverage for NFC payload extraction/classification, startup prewarm behavior, and Scan-tab NFC routing/error handling. Verified with `yarn test src/services/nfc/nfcTagService.test.ts src/services/nfc/nfcStartup.test.ts src/screens/ScanScreenDeeplink.test.tsx --runInBand`.

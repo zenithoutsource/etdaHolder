@@ -1,9 +1,10 @@
-import { act, render, screen } from '@testing-library/react-native'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native'
 import React from 'react'
 import { Text } from 'react-native'
 
 import ScanScreen from '../../app/(tabs)/scan'
 import { useDeeplinkStore } from '../store/deeplinkStore'
+import { readSingleNfcPayload, NfcDisabledError } from '../services/nfc/nfcTagService'
 
 const mockReact = React
 const mockText = Text
@@ -65,6 +66,14 @@ jest.mock('../services/vci/exchangeService', () => ({
   resolveOffer: jest.fn(),
 }))
 
+jest.mock('../services/nfc/nfcTagService', () => ({
+  readSingleNfcPayload: jest.fn(),
+  NfcDisabledError: class NfcDisabledError extends Error {},
+  NfcUnsupportedTagError: class NfcUnsupportedTagError extends Error {},
+  NfcReadCancelledError: class NfcReadCancelledError extends Error {},
+  NfcUnsupportedError: class NfcUnsupportedError extends Error {},
+}))
+
 jest.mock('../services/vp/presentationApproval', () => ({
   confirmPresentationBiometric: jest.fn(),
   createApprovedPresentationResponse: jest.fn(),
@@ -83,6 +92,12 @@ jest.mock('../services/vp/presentationService', () => ({
   submitPresentationResponse: jest.fn(),
 }))
 
+const readSingleNfcPayloadMock = readSingleNfcPayload as jest.MockedFunction<typeof readSingleNfcPayload>
+const presentationServiceMock = jest.requireMock('../services/vp/presentationService') as {
+  isOid4VpAuthorizationRequest: jest.Mock
+  resolvePresentationRequest: jest.Mock
+}
+
 describe('ScanScreen deeplink handling', () => {
   beforeEach(() => {
     jest.clearAllMocks()
@@ -90,6 +105,14 @@ describe('ScanScreen deeplink handling', () => {
     mockRouterPush.mockClear()
     cameraMock.useCameraPermissions.mockReturnValue([{ granted: false }, jest.fn()])
     useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null })
+    readSingleNfcPayloadMock.mockReset()
+    presentationServiceMock.isOid4VpAuthorizationRequest.mockReturnValue(false)
+    presentationServiceMock.resolvePresentationRequest.mockResolvedValue({
+      verifier: { name: 'Verifier' },
+      matchedCredential: { id: 'cred-1', type: 'ThaiNationalID' },
+      disclosures: [],
+      presentationDefinition: null,
+    })
   })
 
   it('stores pending credential offer URI without navigating from Scan', async () => {
@@ -119,5 +142,51 @@ describe('ScanScreen deeplink handling', () => {
     expect(useDeeplinkStore.getState().pendingUri).toBe(offerUri)
     expect(mockRouterPush).not.toHaveBeenCalled()
     expect(screen.queryByText('Scan Success')).toBeNull()
+  })
+
+  it('stores NFC credential-offer payloads in the deeplink store', async () => {
+    cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-offer'
+    readSingleNfcPayloadMock.mockResolvedValue({
+      kind: 'credential-offer',
+      uri: offerUri,
+    })
+
+    render(<ScanScreen />)
+
+    fireEvent.press(screen.getByText('Use NFC'))
+
+    await waitFor(() => {
+      expect(useDeeplinkStore.getState().pendingUri).toBe(offerUri)
+    })
+  })
+
+  it('routes NFC OID4VP payloads into the existing scan handler', async () => {
+    cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
+    const requestUri = 'openid4vp://?client_id=did%3Aweb%3Averifier.example&response_type=vp_token'
+    presentationServiceMock.isOid4VpAuthorizationRequest.mockImplementation((uri: string) => uri === requestUri)
+    readSingleNfcPayloadMock.mockResolvedValue({
+      kind: 'oid4vp',
+      uri: requestUri,
+    })
+
+    render(<ScanScreen />)
+
+    fireEvent.press(screen.getByText('Use NFC'))
+
+    await waitFor(() => {
+      expect(presentationServiceMock.resolvePresentationRequest).toHaveBeenCalled()
+    })
+  })
+
+  it('shows a direct message when NFC is disabled', async () => {
+    cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
+    readSingleNfcPayloadMock.mockRejectedValue(new NfcDisabledError('NFC is disabled'))
+
+    render(<ScanScreen />)
+
+    fireEvent.press(screen.getByText('Use NFC'))
+
+    expect(await screen.findByText('Please enable NFC in Settings and try again.')).toBeOnTheScreen()
   })
 })

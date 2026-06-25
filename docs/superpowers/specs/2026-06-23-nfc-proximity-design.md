@@ -165,13 +165,41 @@ ISO 18013-5 supports both EdDSA and ES256. Start with Ed25519 (already have), ad
 - **Branch:** `feat/nfc-tag-read`
 - **Effort:** ~3-5 days
 - **Blocked on reader:** No
-- **What:** Install `react-native-nfc-manager`, read NDEF tags, route URIs to existing OID4VP/OID4VCI flows
+- **What:** Install `react-native-nfc-manager`, read NDEF tags, and route supported URIs into existing OID4VP/OID4VCI flows without adding new protocol logic
+- **Approved architecture boundary:**
+  - `src/services/nfc/nfcTagService.ts` owns NFC startup, single-tag read, NDEF payload extraction, URI normalization, and tag classification only
+  - Existing wallet flows remain the source of truth for protocol handling:
+    - `openid-credential-offer://...` routes to the current credential-offer claim flow
+    - `openid4vp://...` routes to the current OID4VP request flow
+  - `app/_layout.tsx` may perform native-safe NFC startup only; it must not own OID4VCI/OID4VP logic
+  - `app/(tabs)/scan.tsx` remains the user-facing surface that triggers NFC reads in Phase 1
+- **Approved user-flow boundary:**
+  - Support only in-app NFC reads started from the Scan experience
+  - Do not add background tag handling, cold-start tag launch handling, or root-level global NFC routing in this phase
+  - Unsupported or unreadable tags return a clear error and send the Holder back to Scan
+- **Approved error model:**
+  - `NFC unavailable` -> direct user message and raw diagnostic log with an NFC-scoped tag
+  - `NFC disabled` -> prompt the user to enable NFC in system settings
+  - `Unsupported tag` -> friendly unsupported-content message
+  - `Malformed supported URI` -> log the NFC intake error and let the downstream flow surface its own parse/protocol error
+  - `Read cancelled` or `timeout` -> normal exit path, not a severe error state
 - **New files:**
   - `src/services/nfc/nfcTagService.ts`
   - `src/services/nfc/nfcTagService.test.ts`
 - **Modified files:**
-  - `app/_layout.tsx` (NFC init)
+  - `app/_layout.tsx` (native-safe NFC startup only)
+  - `app/(tabs)/scan.tsx` (user-triggered NFC read entrypoint and routing handoff)
   - `app.json` (NFC permission)
+- **Phase 1 non-goals:**
+  - No ISO 18013-5 proximity presentation behavior
+  - No mDOC parsing or storage
+  - No placeholder NFC UI that cannot be exercised on device
+  - No web/static-export evaluation of native NFC startup paths
+- **Testing and validation:**
+  - Unit tests for NDEF extraction, URI classification, unsupported-tag handling, and cancellation/error mapping
+  - App-boundary tests that mock NFC results and verify routing into the existing credential-offer and OID4VP flows
+  - Manual Android verification with three physical tags: `openid-credential-offer://...`, `openid4vp://...`, and unsupported content
+  - Standard repo checks: `yarn tsc --noEmit`, `yarn lint`, focused tests, and `docs/TASKS.md` update before commit
 
 ### Phase 2A: Test mDOC Issuer
 - **Branch:** `feat/mdoc-issuer`
