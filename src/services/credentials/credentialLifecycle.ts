@@ -1,3 +1,4 @@
+import { readIssuerSuspensionStatuses } from './issuerSuspension'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
@@ -75,7 +76,8 @@ export function filterPresentableCredentials(
   credentials: VerifiableCredentialRecord[],
 ): VerifiableCredentialRecord[] {
   const lifecycleStatuses = readCredentialLifecycleStatuses(credentials)
-  return credentials.filter((record) => !lifecycleStatuses[record.id])
+  const suspensionStatuses = readIssuerSuspensionStatuses(credentials)
+  return credentials.filter((record) => !lifecycleStatuses[record.id] && !suspensionStatuses[record.id])
 }
 
 function isLifecycleStatusStaleForCredential(

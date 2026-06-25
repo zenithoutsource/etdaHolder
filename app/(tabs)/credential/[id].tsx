@@ -18,12 +18,18 @@ import {
 } from "../../../src/services/credentials/credentialLifecycle";
 import { readCredentialDetailDisplay, readCredentialHolderProfile } from "../../../src/services/credentials/credentialDisplay";
 import { shouldResetCredentialDetailSession } from "../../../src/services/credentials/credentialDetailSession";
+import {
+  acknowledgeIssuerSuspension,
+  readIssuerSuspension,
+} from "../../../src/services/credentials/issuerSuspension";
+import { resolveCredentialRevokeBehavior } from "../../../src/services/credentials/credentialInactiveState";
 import { hasWalletPin, setWalletPin, verifyWalletPin } from "../../../src/services/auth/walletPin";
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
 import { readCompactTokenSignature } from "../../../src/services/vp/presentationEvidence";
 
 type DetailPhase =
   | { tag: "detail" }
+  | { tag: "issuerAck" }
   | { tag: "security"; action: CredentialLifecycleAction; mode: "setup" | "confirm" | "verify"; initialPin?: string }
   | { tag: "approve"; action: CredentialLifecycleAction }
 
@@ -58,14 +64,7 @@ export default function CredentialDetailScreen() {
     [currentHolderProfile, thaiIdHolderProfile],
   );
 
-  useEffect(() => {
-    if (!__DEV__ || !isTranscript) return;
-    console.log("[TranscriptDetail] holder profile source", {
-      transcriptClaimKeys: credential ? Object.keys(credential.claims) : [],
-      thaiIdClaimKeys: thaiIdCredential ? Object.keys(thaiIdCredential.claims) : [],
-      holderProfile,
-    });
-  }, [credential, holderProfile, isTranscript, thaiIdCredential]);
+  const suspensionStatus = credential ? readIssuerSuspension(credential.id) : undefined;
 
   useEffect(() => {
     if (!shouldResetCredentialDetailSession(previousCredentialIdRef.current, id)) {
@@ -84,6 +83,12 @@ export default function CredentialDetailScreen() {
     setIsActionMenuOpen(false);
     setPin("");
     setPinError(null);
+
+    if (action === "Revoke" && resolveCredentialRevokeBehavior(suspensionStatus) === "issuer-acknowledgment") {
+      setPhase({ tag: "issuerAck" });
+      return;
+    }
+
     setPhase({
       tag: "security",
       action,
@@ -137,6 +142,47 @@ export default function CredentialDetailScreen() {
     if (!credential) return;
     recordCredentialLifecycleAction(credential.id, action);
     router.push("/(tabs)/history");
+  }
+
+  if (phase.tag === "issuerAck" && display) {
+    return (
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
+        <WalletHeader title="การระงับเอกสาร" onBack={() => setPhase({ tag: "detail" })} />
+        <View className="flex-1 items-center bg-[#eef1f4] px-5 pt-10">
+          <View className="w-full rounded-[12px] bg-white px-5 py-8">
+            <View className="mb-4 items-center">
+              <MaterialCommunityIcons name="alert-circle-outline" size={56} color="#c00000" />
+            </View>
+            <Text className="text-center text-lg font-bold text-[#1a2a42]">
+              เอกสารถูกระงับ
+            </Text>
+            <Text className="mt-2 text-center text-sm text-[#6d7a8d]">
+              เอกสาร {display.documentTitle} ถูกระงับโดยผู้ออกเอกสาร
+            </Text>
+            {suspensionStatus?.reasonCode ? (
+              <Text className="mt-1 text-center text-xs text-[#8a9bb0]">
+                เหตุผล: {suspensionStatus.reasonCode}
+              </Text>
+            ) : null}
+            <View className="mt-6">
+              <AppButton
+                variant="solid-block"
+                label="รับทราบการระงับ"
+                onPress={() => {
+                  if (credential) {
+                    acknowledgeIssuerSuspension(credential.id);
+                  }
+                  setPhase({ tag: "detail" });
+                  router.push("/(tabs)");
+                }}
+                className="w-full rounded-xl py-3"
+                textClassName="text-center text-sm font-bold"
+              />
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (phase.tag === "security") {
@@ -251,43 +297,41 @@ export default function CredentialDetailScreen() {
                   router.push({ pathname: "/(tabs)/present", params: { credentialId: credential.id } })
                 }}
               />
-              {isTranscript ? (
-                <View className="absolute right-3 top-3">
-                  <AppButton
-                    variant="icon-circle"
-                    iconName="dots-vertical"
-                    iconSize={22}
-                    iconColor="#002887"
-                    className="h-9 w-9 bg-white"
-                    onPress={() => setIsActionMenuOpen((value) => !value)}
-                    accessibilityLabel="Open transcript actions"
-                  />
-                  {isActionMenuOpen ? (
-                    <View className="absolute right-0 top-10 w-[184px] overflow-hidden rounded-[8px] bg-white shadow-md">
-                      <AppButton
-                        variant="icon-circle"
-                        iconName="file-cancel-outline"
-                        iconSize={18}
-                        iconColor="#c00000"
-                        label="Revoke"
-                        onPress={() => beginAction("Revoke")}
-                        className="self-stretch justify-start rounded-none border-b border-[#eef2f8] px-3 py-3"
-                        textClassName="text-sm font-semibold text-[#c00000]"
-                      />
-                      <AppButton
-                        variant="icon-circle"
-                        iconName="trash-can-outline"
-                        iconSize={18}
-                        iconColor="#6d7a8d"
-                        label="ลบเอกสารนี้"
-                        disabled
-                        className="self-stretch justify-start rounded-none px-3 py-3 opacity-40"
-                        textClassName="text-sm font-semibold text-[#6d7a8d]"
-                      />
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
+              <View className="absolute right-3 top-3">
+                <AppButton
+                  variant="icon-circle"
+                  iconName="dots-vertical"
+                  iconSize={22}
+                  iconColor="#002887"
+                  className="h-9 w-9 bg-white"
+                  onPress={() => setIsActionMenuOpen((value) => !value)}
+                  accessibilityLabel="Open credential actions"
+                />
+                {isActionMenuOpen ? (
+                  <View className="absolute right-0 top-10 w-[184px] overflow-hidden rounded-[8px] bg-white shadow-md">
+                    <AppButton
+                      variant="icon-circle"
+                      iconName="file-cancel-outline"
+                      iconSize={18}
+                      iconColor="#c00000"
+                      label="Revoke"
+                      onPress={() => beginAction("Revoke")}
+                      className="self-stretch justify-start rounded-none border-b border-[#eef2f8] px-3 py-3"
+                      textClassName="text-sm font-semibold text-[#c00000]"
+                    />
+                    <AppButton
+                      variant="icon-circle"
+                      iconName="trash-can-outline"
+                      iconSize={18}
+                      iconColor="#c00000"
+                      label="ลบเอกสารนี้"
+                      onPress={() => beginAction("Delete")}
+                      className="self-stretch justify-start rounded-none px-3 py-3"
+                      textClassName="text-sm font-semibold text-[#c00000]"
+                    />
+                  </View>
+                ) : null}
+              </View>
             </View>
           ) : (
             <View className="rounded-[8px] bg-white px-5 py-6">
