@@ -35,7 +35,7 @@ Status: Complete (core flow). Spec compliance gaps tracked below.
 [x] Token endpoint discovery via `authorization_servers` metadata (OID4VCI §11)
 [x] `c_nonce` refresh retry on `invalid_proof` (OID4VCI §8.3.3)
 [x] Drop `user_pin` dual-send in token request after ETDA Issuer confirms `tx_code`-only acceptance (`exchangeService.ts:760`). OID4VCI 1.0 final token requests now send `tx_code` only.
-[ ] Deferred Credential Issuance (`transaction_id`, OID4VCI §8.4) — implement only if an Issuer starts returning `transaction_id` instead of an immediate credential
+[x] Deferred Credential Issuance (`transaction_id`, OID4VCI §8.4) — `DeferredIssuancePending` error, `readDeferredTransactionId()`, `pollDeferredCredential()` in `exchangeService.ts`; UI polling not yet wired
 
 ## Phase 3: Config-Driven UI
 
