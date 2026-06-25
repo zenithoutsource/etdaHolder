@@ -40,16 +40,10 @@ let initPromise: Promise<void> | null = null
 
 function decodeRecordPayload(record: NdefRecord): string | null {
   const payload = Uint8Array.from(record.payload ?? [])
+  const typeCode = record.type?.[0]
 
-  try {
-    const uri = Ndef.uri.decodePayload(payload)?.trim()
-    if (uri) return uri
-  } catch {}
-
-  try {
-    const text = Ndef.text.decodePayload(payload)?.trim()
-    if (text) return text
-  } catch {}
+  if (typeCode === 0x55) return Ndef.uri.decodePayload(payload)?.trim() || null
+  if (typeCode === 0x54) return Ndef.text.decodePayload(payload)?.trim() || null
 
   return null
 }
@@ -109,6 +103,8 @@ export async function initNfc(): Promise<void> {
   return initPromise
 }
 
+const NFC_READ_TIMEOUT_MS = 30_000
+
 export async function readSingleNfcPayload(): Promise<NfcPayloadClassification> {
   await initNfc()
 
@@ -119,11 +115,25 @@ export async function readSingleNfcPayload(): Promise<NfcPayloadClassification> 
 
   logWalletStep('scan', 'nfc-read-start')
 
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
   try {
-    await NfcManager.requestTechnology(NfcTech.Ndef)
-    const tag = await NfcManager.getTag()
-    const uri = readNdefPayloadUri(tag)
-    const payload = classifyNfcPayloadUri(uri)
+    const nfcRead = async (): Promise<NfcPayloadClassification> => {
+      await NfcManager.requestTechnology(NfcTech.Ndef)
+      const tag = await NfcManager.getTag()
+      const uri = readNdefPayloadUri(tag)
+      return classifyNfcPayloadUri(uri)
+    }
+
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        logWalletStep('scan', 'nfc-read-timeout', { timeoutMs: NFC_READ_TIMEOUT_MS })
+        void NfcManager.cancelTechnologyRequest().catch(() => undefined)
+        reject(new NfcReadCancelledError('NFC scan timed out'))
+      }, NFC_READ_TIMEOUT_MS)
+    })
+
+    const payload = await Promise.race([nfcRead(), timeout])
     logWalletStep('scan', 'nfc-read-complete', { kind: payload.kind })
     return payload
   } catch (error) {
@@ -135,7 +145,17 @@ export async function readSingleNfcPayload(): Promise<NfcPayloadClassification> 
     logWalletError('scan', 'nfc-read-failed', error)
     throw error
   } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
     await NfcManager.cancelTechnologyRequest().catch(() => undefined)
+  }
+}
+
+export async function cancelNfcRead(): Promise<void> {
+  try {
+    await NfcManager.cancelTechnologyRequest()
+    logWalletStep('nfc', 'nfc-cancel-complete')
+  } catch (error) {
+    logWalletError('nfc', 'nfc-cancel-failed', error)
   }
 }
 

@@ -22,6 +22,7 @@ import {
   NfcReadCancelledError,
   NfcUnsupportedError,
   NfcUnsupportedTagError,
+  cancelNfcRead,
   readSingleNfcPayload,
 } from '../../src/services/nfc/nfcTagService'
 import { isCredentialOfferDeeplink, isSupportedWalletDeeplink, useDeeplinkStore } from '../../src/store/deeplinkStore'
@@ -105,7 +106,12 @@ export default function ScanScreen() {
 
   const resetScanner = useCallback(() => {
     generationRef.current++
-    setPhase({ tag: 'scanning' })
+    setPhase((prev) => {
+      if (prev.tag === 'readingNfc') {
+        void cancelNfcRead()
+      }
+      return { tag: 'scanning' }
+    })
     processingRef.current = false
     logWalletStep('scan', 'scanner-reset', { generation: generationRef.current })
   }, [])

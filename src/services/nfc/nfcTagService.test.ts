@@ -5,6 +5,7 @@ import {
   NfcReadCancelledError,
   NfcUnsupportedError,
   NfcUnsupportedTagError,
+  cancelNfcRead,
   classifyNfcPayloadUri,
   initNfc,
   readNdefPayloadUri,
@@ -51,6 +52,7 @@ const textDecodeMock = Ndef.text.decodePayload as jest.Mock<string, [Uint8Array]
 describe('nfcTagService', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    jest.useFakeTimers()
     resetNfcForTests()
     nfcManagerMock.isSupported.mockResolvedValue(true)
     nfcManagerMock.start.mockResolvedValue()
@@ -58,12 +60,12 @@ describe('nfcTagService', () => {
     nfcManagerMock.requestTechnology.mockResolvedValue(NfcTech.Ndef)
     nfcManagerMock.getTag.mockResolvedValue({ ndefMessage: [] })
     nfcManagerMock.cancelTechnologyRequest.mockResolvedValue()
-    uriDecodeMock.mockImplementation(() => {
-      throw new Error('not a uri record')
-    })
-    textDecodeMock.mockImplementation(() => {
-      throw new Error('not a text record')
-    })
+    uriDecodeMock.mockReturnValue('')
+    textDecodeMock.mockReturnValue('')
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
   })
 
   it('classifies credential offer URIs', () => {
@@ -124,7 +126,9 @@ describe('nfcTagService', () => {
       ndefMessage: [{ tnf: 1, type: [85], payload: [0x01] }],
     })
 
-    await expect(readSingleNfcPayload()).resolves.toEqual({
+    const promise = readSingleNfcPayload()
+    jest.advanceTimersByTime(0)
+    await expect(promise).resolves.toEqual({
       kind: 'credential-offer',
       uri: 'openid-credential-offer://?credential_offer={}',
     })
@@ -143,7 +147,42 @@ describe('nfcTagService', () => {
   it('maps user cancellation to a normal exit error', async () => {
     nfcManagerMock.requestTechnology.mockRejectedValue(new NfcError.UserCancel('cancelled'))
 
-    await expect(readSingleNfcPayload()).rejects.toThrow(NfcReadCancelledError)
+    const promise = readSingleNfcPayload()
+    jest.advanceTimersByTime(0)
+    await expect(promise).rejects.toThrow(NfcReadCancelledError)
     expect(nfcManagerMock.cancelTechnologyRequest).toHaveBeenCalled()
+  })
+
+  it('ignores records with unsupported type codes', () => {
+    uriDecodeMock.mockReturnValue('openid4vp://?response_type=vp_token')
+    textDecodeMock.mockReturnValue('openid-credential-offer://?credential_offer={}')
+
+    expect(() => readNdefPayloadUri({
+      ndefMessage: [{ tnf: 1, type: [0x00], payload: [0x01] }],
+    })).toThrow(NfcUnsupportedTagError)
+
+    expect(uriDecodeMock).not.toHaveBeenCalled()
+    expect(textDecodeMock).not.toHaveBeenCalled()
+  })
+
+  it('cancelNfcRead calls cancelTechnologyRequest', async () => {
+    await cancelNfcRead()
+    expect(nfcManagerMock.cancelTechnologyRequest).toHaveBeenCalled()
+  })
+
+  it('cancelNfcRead swallows errors gracefully', async () => {
+    nfcManagerMock.cancelTechnologyRequest.mockRejectedValue(new Error('no session'))
+    await expect(cancelNfcRead()).resolves.toBeUndefined()
+  })
+
+  it('times out after 30 seconds and throws NfcReadCancelledError', async () => {
+    nfcManagerMock.requestTechnology.mockReturnValue(new Promise(() => {}))
+
+    const promise = readSingleNfcPayload()
+    // Flush microtask queue so initNfc/isEnabled/requestTechnology awaits resolve
+    // before we advance the fake timer to trigger the timeout
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    jest.advanceTimersByTime(30_000)
+    await expect(promise).rejects.toThrow(NfcReadCancelledError)
   })
 })
