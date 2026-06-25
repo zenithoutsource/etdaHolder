@@ -22,6 +22,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
+      "permissions": ["android.permission.NFC"],
       "predictiveBackGestureEnabled": false,
       "package": "com.thanaboon.chan.etdaWallet"
     },
@@ -31,6 +32,8 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/with-android-long-paths.js",
+      "./modules/expo-mdoc-proximity/app.plugin.js",
       "expo-camera",
       [
         "expo-splash-screen",

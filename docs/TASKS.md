@@ -84,7 +84,7 @@ Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operat
 [x] Save credential only after Holder confirmation
 [x] Decide Holder Confirmation semantics: confirm resolved offer before credential acquisition, then acquire and save immediately after successful issuance
 [x] Fix remaining corrupted UI labels in scanner confirmation screen
-[ ] Integrate NFC NDEF reader for offer URI after device testing is available
+[x] Integrate NFC NDEF reader for offer URI after device testing is available
 
 ## Phase 4: Security Hardening and Release
 

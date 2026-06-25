@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wallet</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="phone">
+      <!-- STATUS BAR -->
+      <div class="status-bar">
+        <span class="time">9:51 PM</span>
+        <div class="status-icons">
+          <img src="../images/cellular.png" alt="" />
+          <img src="../images/wifi.png" alt="" />
+          <img src="../images/battery.png" alt="" />
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: WALLET HOME ══════════ -->
+      <div class="page active" id="page-home">
+        <div class="topbar"><h1>Wallet</h1></div>
+        <div class="content">
+          <div class="no-doc-card">
+            <span class="no-doc-text">ไม่มีบัตรหรือเอกสารดิจิทัลใน Wallet</span>
+          </div>
+          <div class="menu-list">
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/card-2.png" alt="ID Card" />
+              </div>
+              <span class="menu-label">ID Card</span>
+              <span class="menu-badge" onclick="goTo('page-thaid')"
+                >ขอเอกสาร</span
+              >
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/car.png" alt="Driving License" />
+              </div>
+              <span class="menu-label">Liense</span>
+              <span class="menu-badge" onclick="goTo('page-thaid')"
+                >ขอเอกสาร</span
+              >
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/document.png" alt="Transcript" />
+              </div>
+              <span class="menu-label">Transcript</span>
+              <span class="menu-badge" onclick="goTo('page-thaid')"
+                >ขอเอกสาร</span
+              >
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/doctor-bag.png" alt="Medical certificate" />
+              </div>
+              <span class="menu-label">Medical certificate</span>
+              <span class="menu-badge" onclick="goTo('page-thaid')"
+                >ขอเอกสาร</span
+              >
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: THAI ID ══════════ -->
+      <div class="page" id="page-thaid">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="content thaid-content">
+          <div class="thaid-card">
+            <div class="thaid-title">ยืนยันตัวตนผ่าน<br />ThaID</div>
+            <img src="../images/Thai Id.png" alt="ThaID" class="thaid-logo" />
+            <button class="thaid-btn" onclick="goTo('page-confirm')">
+              ยืนยัน
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: CONFIRM ══════════ -->
+      <div class="page" id="page-confirm">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="content confirm-content">
+          <div class="confirm-card">
+            <img
+              src="../images/Department of Provincial Administration.png"
+              alt="กรมการปกครอง"
+              class="confirm-logo"
+            />
+            <div class="confirm-org-name">กรมการปกครอง</div>
+            <div class="confirm-divider"></div>
+            <div class="confirm-info">
+              <div class="confirm-info-row">เอกสาร &nbsp;: บัตรประชาชน</div>
+              <div class="confirm-info-row">
+                หน่วยงานที่รับรอง : กรมการปกครอง
+              </div>
+            </div>
+            <button class="confirm-btn" onclick="goTo('page-idcard-detail')">
+              ยืนยัน
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: ID CARD DETAIL ══════════ -->
+      <div class="page" id="page-idcard-detail">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="content">
+          <div class="idcard-detail-card">
+            <div class="idcard-detail-header"><h2>ID CARD</h2></div>
+            <div class="idcard-detail-body">
+              <img
+                src="../images/profile.png"
+                alt="profile"
+                class="idcard-detail-photo"
+              />
+              <div class="idcard-detail-fields">
+                <div class="idcard-field">
+                  <div class="idcard-field-label">ชื่อ - นามสกุล</div>
+                  <div class="idcard-field-value">
+                    นางสาว พิชญา รุ่งเรืองกิต
+                  </div>
+                  <div class="idcard-field-value-en">
+                    Miss Pitchaya Rungruangkit
+                  </div>
+                </div>
+                <div class="idcard-field">
+                  <div class="idcard-field-label">เลขบัตรประจำตัวประชาชน</div>
+                  <div class="idcard-field-value">1-1009-000XX-XX-XX</div>
+                </div>
+                <div class="idcard-field">
+                  <div class="idcard-field-label">วันเดือนปีเกิด</div>
+                  <div class="idcard-field-value">15 พฤษภาคม 2546</div>
+                </div>
+                <div class="idcard-field">
+                  <div class="idcard-field-label">ศาสนา</div>
+                  <div class="idcard-field-value">พุทธ</div>
+                </div>
+                <div class="idcard-field">
+                  <div class="idcard-field-label">ที่อยู่ตามทะเบียนบ้าน</div>
+                  <div class="idcard-field-value">
+                    123/45 ถนนราชดำเนิน แขวง<br />
+                    พระบรมมหาราชวัง<br />
+                    เขตพระนคร กรุงเทพมหานคร 10200
+                  </div>
+                </div>
+              </div>
+              <button class="idcard-confirm-btn" onclick="goTo('page-success')">
+                ยืนยัน
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: SUCCESS ══════════ -->
+      <div class="page" id="page-success">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="content success-content">
+          <div class="success-icon">
+            <img src="../images/check-4.png" alt="สำเร็จ" />
+          </div>
+          <div class="success-title">รับเอกสารสำเร็จ</div>
+          <div class="success-info">
+            <div class="success-info-row">เอกสาร &nbsp;: บัตรประชาชน</div>
+            <div class="success-info-row">หน่วยงานที่รับรอง : กรมการปกครอง</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: HOME AFTER ══════════ -->
+      <div class="page" id="page-home-after">
+        <div class="topbar"><h1>Wallet</h1></div>
+        <div class="content">
+          <div class="profile-card">
+            <div class="profile-photo">
+              <img src="../images/profile.png" alt="profile" />
+            </div>
+            <div class="profile-info">
+              <div class="name">นางสาว พิชญา รุ่งเรืองกิต</div>
+              <div class="id">ID card : 1-1009-000XX-XX-XX</div>
+            </div>
+          </div>
+          <div class="menu-list">
+            <button class="menu-item" onclick="goTo('page-idcard')">
+              <span class="menu-badge green">เอกสารใหม่</span>
+              <div class="menu-icon">
+                <img src="../images/card-2.png" alt="ID Card" />
+              </div>
+              <span class="menu-label">ID Card</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/car.png" alt="Driving License" />
+              </div>
+              <span class="menu-label">Driving Lincese</span>
+              <span class="menu-badge" onclick="goTo('page-thaid')"
+                >ขอเอกสาร</span
+              >
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/document.png" alt="Transcript" />
+              </div>
+              <span class="menu-label">Transcript</span>
+              <span class="menu-badge" onclick="goTo('page-thaid')"
+                >ขอเอกสาร</span
+              >
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/doctor-bag.png" alt="Medical certificate" />
+              </div>
+              <span class="menu-label">Medical certificate</span>
+              <span class="menu-badge" onclick="goTo('page-thaid')"
+                >ขอเอกสาร</span
+              >
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: ID CARD ══════════ -->
+      <div class="page" id="page-idcard">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="content">
+          <div class="id-card">
+            <div class="id-card-header"><h2>ID Card</h2></div>
+            <div class="id-card-body">
+              <div class="id-top-row">
+                <div class="id-photo">
+                  <img src="../images/profile.png" alt="profile photo" />
+                </div>
+                <div class="id-main-info">
+                  <div class="info-label">ชื่อ - นามสกุล</div>
+                  <div class="info-value">นางสาว พิชญา รุ่งเรืองกิต</div>
+                  <div class="info-value-en">Miss Pitchaya Rungruangkit</div>
+                  <div class="info-label">เลขบัตรประจำตัวประชาชน</div>
+                  <div class="info-value-id">1-1009-000XX-XX-XX</div>
+                </div>
+              </div>
+              <div class="id-divider"></div>
+              <div class="id-bottom-grid">
+                <div class="id-col id-col-left">
+                  <div class="id-field">
+                    <div class="field-label">วันเดือนปีเกิด</div>
+                    <div class="field-value">15 พฤษภาคม 2546</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label">ที่อยู่ตามทะเบียนบ้าน</div>
+                    <div class="field-value">
+                      123/45 ถนนราชดำเนิน แขวง พระบรมมหาราชวัง เขตพระนคร
+                      กรุงเทพมหานคร 10200
+                    </div>
+                  </div>
+                </div>
+                <div class="id-col id-col-right">
+                  <div class="id-field">
+                    <div class="field-label">ศาสนา</div>
+                    <div class="field-value">พุทธ</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label">วันอนุญาต / Issue Date</div>
+                    <div class="field-value">8 กันยายน 2561</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label red">วันหมดอายุ / Expiry Date</div>
+                    <div class="field-value red">27 สิงหาคม 2570</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="qr-btn-row">
+            <div class="qr-btn" onclick="goTo('page-myqr')">
+              <img src="../images/qr-code-3.png" alt="QR" />
+              <span>My QR</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: MY QR ══════════ -->
+      <div class="page" id="page-myqr">
+        <div class="topbar">
+          <h1>Wallet</h1>
+        </div>
+        <div class="content myqr-content">
+          <div class="myqr-title">
+            <div class="myqr-title-text">My ID Card</div>
+            <div class="myqr-title-text">QR Code</div>
+          </div>
+          <div class="myqr-box">
+            <div class="myqr-inner">
+              <img src="../images/qr-code.png" alt="QR Code" class="myqr-image" />
+            </div>
+          </div>
+          <div class="myqr-desc">
+            สแกน QR Code ของฉัน<br />
+            เพื่อตรวจดูเอกสาร
+          </div>
+        </div>
+      </div>
+      <!-- NAVBAR -->
+      <div class="bottom-nav">
+  <div class="nav-item active" id="nav-wallet" onclick="navTo('page-home', 'nav-wallet')">
+    <img src="../images/wallet-2.png" alt="Wallet" />
+    <span>Wallet</span>
+    <div class="nav-indicator"></div>
+  </div>
+  <div class="nav-item" id="nav-qr">
+    <img src="../images/qr-code-3.png" alt="My QR" />
+    <span>My QR</span>
+  </div>
+  <div class="nav-item" id="nav-scan">
+    <img src="../images/scanner-4.png" alt="Scan" />
+    <span>Scan</span>
+  </div>
+  <div class="nav-item" id="nav-history">
+    <img src="../images/restore.png" alt="History Log" />
+    <span>History Log</span>
+  </div>
+</div>
+    <!-- ปิด .phone -->
+    <script src="script.js"></script>
+  
+  </body>
+</html>
