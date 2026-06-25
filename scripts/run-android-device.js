@@ -3,6 +3,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { resolveGradleEnvironment } = require('./gradle-env');
 
 const projectRoot = path.resolve(__dirname, '..');
 const defaultPort = '8081';
@@ -28,10 +29,12 @@ function run(command, args, options = {}) {
 }
 
 function runInherited(command, args, options = {}) {
+  const { env: optionEnv, ...rest } = options;
   const result = spawnSync(command, args, {
     cwd: projectRoot,
     stdio: 'inherit',
-    ...options,
+    ...rest,
+    env: resolveGradleEnvironment(optionEnv),
   });
 
   if (result.error) {
