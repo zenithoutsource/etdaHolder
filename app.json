@@ -31,6 +31,7 @@
     },
     "plugins": [
       "expo-router",
+      "./modules/expo-mdoc-proximity/app.plugin.js",
       "expo-camera",
       [
         "expo-splash-screen",

@@ -356,3 +356,11 @@ Remaining:
 - Fixed the mounted Scan-tab warm deeplink no-op: Scan now subscribes to pending deeplink store changes and opens `CredentialOfferClaimScreen` when a credential-offer URI arrives after the tab is already mounted, before camera permission UI can render.
 - Fixed stale Scan success state after issuance: leaving the success screen now resets Scan state, clears any embedded deeplink claim screen, and navigates to Wallet home so returning to Scan starts from the scanner/permission state instead of the old "receive document success" page.
 - Split OID4VCI issuance back out of the Scan tab: credential-offer QR scans and same-device deeplinks now hand off to the root `/credential-offer` route, leaving Scan as camera/OID4VP-only and preventing tab-preserved issuance success state from appearing when the Holder returns to Scan.
+
+
+### Session 2026-06-25
+
+- Implemented Phase 2B `modules/expo-mdoc-proximity/` Android Expo module with NFC/BLE config plugin, private mDOC storage, presentation session lifecycle, and event surface for engagement/consent/result.
+- Implemented Phase 2C proximity wallet layer: `src/services/proximity/*`, `src/store/proximityStore.ts`, consent/waiting/result UI under `src/components/proximity/`, hidden `app/(tabs)/present.tsx` route, and credential-detail "Present via NFC" entry point.
+- NFC engagement + BLE response wiring remains blocked on Phase 2D physical reader E2E (ACR1311U-N2). Until then, presentation starts into the waiting UI and native approve path returns `PROXIMITY_NOT_READY`.
+
