@@ -1,7 +1,9 @@
 import express from 'express'
 import { randomUUID } from 'crypto'
+import swaggerUi from 'swagger-ui-express'
 
 import { buildIssuerSignedMdoc } from './documentBuilder'
+import { createOpenApiSpec } from './openapi'
 
 export const DEFAULT_CREDENTIAL_CONFIGURATION_ID = 'TestMdocDrivingLicence'
 export const DEFAULT_DOCTYPE = 'org.iso.18013.5.1.mDL'
@@ -52,6 +54,10 @@ export function createMdocIssuerApp(options: CreateMdocIssuerAppOptions): expres
 
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: false }))
+
+  const spec = createOpenApiSpec(options.issuerBaseUrl)
+  app.use('/api-docs', swaggerUi.serve as unknown as express.RequestHandler[], swaggerUi.setup(spec) as unknown as express.RequestHandler)
+  app.get('/api-docs.json', (_req, res) => res.json(spec))
 
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' })
