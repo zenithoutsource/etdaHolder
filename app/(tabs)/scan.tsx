@@ -2,7 +2,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as Linking from 'expo-linking'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, Text, View } from 'react-native'
+import { ActivityIndicator, Animated, Platform, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
@@ -466,13 +466,15 @@ export default function ScanScreen() {
           {isLoading ? (
             <AppButton variant="icon-circle" label="Cancel" onPress={resetScanner} className="bg-white/20 px-6 py-2" textClassName="text-[14px] font-semibold text-white" />
           ) : (
-            <AppButton
-              variant="solid-block"
-              label="Use NFC"
-              onPress={() => { void handleNfcPress() }}
-              className="rounded-xl bg-white/20 px-5 py-3"
-              textClassName="text-[14px] font-semibold text-white"
-            />
+            {Platform.OS === 'android' ? (
+              <AppButton
+                variant="solid-block"
+                label="Use NFC"
+                onPress={() => { void handleNfcPress() }}
+                className="rounded-xl bg-white/20 px-5 py-3"
+                textClassName="text-[14px] font-semibold text-white"
+              />
+            ) : null}
           )}
         </View>
       </View>
