@@ -5,6 +5,7 @@ import { ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppButton } from "../../../src/components/AppButton";
+import { ProximityPresentButton } from "../../../src/components/proximity/ProximityPresentButton";
 import { CredentialDocumentDetailCard } from "../../../src/components/CredentialDocumentDetailCard";
 import { PinKeypad } from "../../../src/components/PinKeypad";
 import { PresentationApprovalDeviceCard } from "../../../src/components/PresentationApprovalDeviceCard";
@@ -243,6 +244,12 @@ export default function CredentialDetailScreen() {
                 display={display}
                 holderProfile={display.imageKey === "id" || isTranscript ? holderProfile : undefined}
                 onOpenQr={() => router.push("/(tabs)/qr")}
+              />
+              <ProximityPresentButton
+                onPress={() => {
+                  if (!credential) return
+                  router.push({ pathname: "/(tabs)/present", params: { credentialId: credential.id } })
+                }}
               />
               {isTranscript ? (
                 <View className="absolute right-3 top-3">
