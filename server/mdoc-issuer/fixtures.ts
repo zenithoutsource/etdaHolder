@@ -1,4 +1,4 @@
-import { createPublicKey } from 'crypto'
+import { createPrivateKey, createPublicKey } from 'crypto'
 
 export const issuingAuthorityCertificatePem = `-----BEGIN CERTIFICATE-----
 MIIBrzCCAVWgAwIBAgIQce6weeUysoJCls4psGAxkzAKBggqhkjOPQQDAjBAMQswCQYDVQQGEwJU
@@ -41,17 +41,30 @@ function pemToDer(pem: string): Buffer {
 export const issuingAuthorityCertificateDer = pemToDer(issuingAuthorityCertificatePem)
 export const documentSignerCertificateDer = pemToDer(documentSignerCertificatePem)
 
-const documentSignerJwk = createPublicKey(documentSignerCertificatePem).export({ format: 'jwk' }) as JsonWebKey
-
 function base64UrlToBuffer(value: string | undefined, field: string): Buffer {
   if (!value) throw new Error(`FixtureInvalid: missing ${field}`)
   return Buffer.from(value, 'base64url')
 }
 
-export const placeholderDeviceKeyCose = new Map<number, number | Buffer>([
+// Separate deterministic device key — distinct from document signer
+export const deviceKeyPem = (() => {
+  const keyObject = createPrivateKey({
+    key: Buffer.concat([
+      Buffer.from('308141020100301306072a8648ce3d020106082a8648ce3d030107042730250201010420', 'hex'),
+      Buffer.from('a94e3a26b83b52c82d14dc3eee5e543bc21c1219e2de7e86b5e21e2e3e5dff01', 'hex'),
+    ]),
+    format: 'der',
+    type: 'pkcs8',
+  })
+  return keyObject.export({ format: 'pem', type: 'pkcs8' }) as string
+})()
+
+const deviceKeyJwk = createPublicKey(deviceKeyPem).export({ format: 'jwk' }) as JsonWebKey
+
+export const deviceKeyCose = new Map<number, number | Buffer>([
   [1, 2],
   [3, -7],
   [-1, 1],
-  [-2, base64UrlToBuffer(documentSignerJwk.x, 'x')],
-  [-3, base64UrlToBuffer(documentSignerJwk.y, 'y')],
+  [-2, base64UrlToBuffer(deviceKeyJwk.x, 'x')],
+  [-3, base64UrlToBuffer(deviceKeyJwk.y, 'y')],
 ])

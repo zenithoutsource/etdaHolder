@@ -5,7 +5,7 @@ import {
   documentSignerCertificateDer,
   documentSignerPrivateKeyPem,
   issuingAuthorityCertificateDer,
-  placeholderDeviceKeyCose,
+  deviceKeyCose,
 } from './fixtures'
 
 export type MdocNamespaceClaims = Record<string, string | number | boolean>
@@ -33,6 +33,7 @@ function buildIssuerSignedItemBytes(
   elementValue: string | number | boolean,
   digestId: number,
 ): Buffer {
+  // Deterministic for test reproducibility — production must use crypto.randomBytes(16)
   const random = createHash('sha256')
     .update(`${namespace}:${elementIdentifier}:${digestId}`)
     .digest()
@@ -87,7 +88,7 @@ function buildMobileSecurityObject(
     ['version', '1.0'],
     ['digestAlgorithm', 'SHA-256'],
     ['valueDigests', valueDigests],
-    ['deviceKeyInfo', new Map<string, unknown>([['deviceKey', placeholderDeviceKeyCose]])],
+    ['deviceKeyInfo', new Map<string, unknown>([['deviceKey', deviceKeyCose]])],
     ['docType', docType],
     [
       'validityInfo',

@@ -169,6 +169,8 @@ export function createMdocIssuerApp(options: CreateMdocIssuerAppOptions): expres
       },
     })
 
+    accessTokens.delete(token)
+
     res.status(200).json({
       format: 'mso_mdoc',
       credential: credential.toString('base64url'),
