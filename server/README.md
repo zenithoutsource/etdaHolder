@@ -16,6 +16,8 @@ Implemented local endpoints mirror the mobile wallet's allowed SDK boundary:
 
 The backend does not resolve credential offers, exchange OID4VCI tokens, sign PoP JWTs, or request credentials from Issuers.
 
+For Phase 2A NFC proximity work, a separate standalone development issuer now lives under `mdoc-issuer/README.md`. It is not mounted under `/wallet-api/*` and should be run independently from the Wallet Backend.
+
 ## Setup
 
 1. Start XAMPP MySQL.
@@ -92,4 +94,11 @@ Use the Windows LAN IP, not `localhost`, when testing from a physical phone. Do 
 Set-Location server
 yarn tsc
 yarn test
+```
+
+Standalone mDOC issuer verification:
+
+```powershell
+Set-Location server
+yarn mdoc-issuer:dev
 ```

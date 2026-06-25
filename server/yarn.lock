@@ -1202,6 +1202,13 @@ caniuse-lite@^1.0.30001782:
   resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001793.tgz#238887ddf5fcfc8c36d872394d0a78a517312a72"
   integrity sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==
 
+cbor@^10.0.12:
+  version "10.0.12"
+  resolved "https://registry.yarnpkg.com/cbor/-/cbor-10.0.12.tgz#2ae291481ef6f28127ba39a9f8ee22f29677e04f"
+  integrity sha512-exQDevYd7ZQLP4moMQcZkKCVZsXLAtUSflObr3xTh4xzFIv/xBCdvCd6L259kQOUP2kcTC0jvC6PpZIf/WmRXA==
+  dependencies:
+    nofilter "^3.0.2"
+
 chalk@^4.0.0:
   version "4.1.2"
   resolved "https://registry.yarnpkg.com/chalk/-/chalk-4.1.2.tgz#aac4e2b7734a740867aeb16bf02aad556a1e7a01"
@@ -2715,6 +2722,11 @@ node-releases@^2.0.36:
   version "2.0.47"
   resolved "https://registry.yarnpkg.com/node-releases/-/node-releases-2.0.47.tgz#521bb2786da8eb140b748841c0b3b3a75334ffc4"
   integrity sha512-Uzmd6LXpouKo8EUK68IjH4+E01w/hXyV3R3g/geCJo+rXLNfh1xucB+LOzYEOQPSiUK3h/xZf0cQGcSsmyL2Og==
+
+nofilter@^3.0.2:
+  version "3.1.0"
+  resolved "https://registry.yarnpkg.com/nofilter/-/nofilter-3.1.0.tgz#c757ba68801d41ff930ba2ec55bab52ca184aa66"
+  integrity sha512-l2NNj07e9afPnhAhvgVrCD/oy2Ai1yfLpuo3EpiO1jFTsB4sFz6oIfAfSZyQzVpkZQ9xS8ZS5g1jCBgq4Hwo0g==
 
 nopt@^5.0.0:
   version "5.0.0"

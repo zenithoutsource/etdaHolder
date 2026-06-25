@@ -356,3 +356,9 @@ Remaining:
 - Fixed the mounted Scan-tab warm deeplink no-op: Scan now subscribes to pending deeplink store changes and opens `CredentialOfferClaimScreen` when a credential-offer URI arrives after the tab is already mounted, before camera permission UI can render.
 - Fixed stale Scan success state after issuance: leaving the success screen now resets Scan state, clears any embedded deeplink claim screen, and navigates to Wallet home so returning to Scan starts from the scanner/permission state instead of the old "receive document success" page.
 - Split OID4VCI issuance back out of the Scan tab: credential-offer QR scans and same-device deeplinks now hand off to the root `/credential-offer` route, leaving Scan as camera/OID4VP-only and preventing tab-preserved issuance success state from appearing when the Holder returns to Scan.
+
+### Session 2026-06-25
+
+- Implemented the Phase 2A standalone development mDOC issuer under `server/mdoc-issuer/` instead of adding issuer behavior to the Wallet Backend routes. The service exposes OID4VCI issuer metadata, authorization-server metadata, pre-authorized offer creation, token exchange, and a sample `mso_mdoc` credential response with a signed issuer-auth COSE envelope.
+- Added deterministic ECDSA dev certificate fixtures, CBOR issuer-signed item/MSO construction, and focused Jest coverage for both the document builder and the issuer HTTP contract.
+- Added `server` scripts `yarn mdoc-issuer:dev` and `yarn mdoc-issuer:start`, documented the runbook in `server/mdoc-issuer/README.md`, and extended `server` TypeScript/Jest config so Phase 2A files participate in normal `server` verification.

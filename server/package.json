@@ -5,12 +5,15 @@
   "type": "commonjs",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "mdoc-issuer:dev": "tsx watch mdoc-issuer/server.ts",
+    "mdoc-issuer:start": "tsx mdoc-issuer/server.ts",
     "start": "tsx src/server.ts",
     "test": "jest --runInBand",
     "tsc": "tsc --noEmit"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
+    "cbor": "^10.0.12",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
