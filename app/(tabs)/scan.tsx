@@ -2,7 +2,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as Linking from 'expo-linking'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, Text, View } from 'react-native'
+import { ActivityIndicator, Animated, Platform, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
@@ -17,6 +17,14 @@ import { useStoredCredentials } from '../../src/hooks/useStoredCredentials'
 import { filterPresentableCredentials } from '../../src/services/credentials/credentialLifecycle'
 import { readStoredCredentials } from '../../src/services/credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../../src/services/debug/walletLogger'
+import {
+  NfcDisabledError,
+  NfcReadCancelledError,
+  NfcUnsupportedError,
+  NfcUnsupportedTagError,
+  cancelNfcRead,
+  readSingleNfcPayload,
+} from '../../src/services/nfc/nfcTagService'
 import { isCredentialOfferDeeplink, isSupportedWalletDeeplink, useDeeplinkStore } from '../../src/store/deeplinkStore'
 import { recordSuccessfulPresentation } from '../../src/services/history/presentationHistory'
 import { describePresentationForLog, describeUriForLog } from '../../src/services/scan/scanLogDescriptors'
@@ -36,6 +44,7 @@ import {
 type ScanPhase =
   | { tag: 'scanning' }
   | { tag: 'resolving' }
+  | { tag: 'readingNfc' }
   | { tag: 'presentationFacePrepare'; request: ResolvedPresentationRequest; nextStep: 'consent' | 'result'; verifierName?: string; response?: VerifierResponse }
   | { tag: 'presentationConsent'; request: ResolvedPresentationRequest }
   | { tag: 'presentationInfo'; request: ResolvedPresentationRequest; verifierName: string; response: VerifierResponse }
@@ -52,6 +61,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 const RESOLVE_TIMEOUT_MS = 20_000
 const PRESENT_TIMEOUT_MS = 30_000
+
+function toNfcFriendlyError(error: unknown): string {
+  if (error instanceof NfcDisabledError) {
+    return 'Please enable NFC in Settings and try again.'
+  }
+
+  if (error instanceof NfcUnsupportedError) {
+    return 'NFC is not supported on this device.'
+  }
+
+  if (error instanceof NfcUnsupportedTagError) {
+    return 'This NFC tag is not supported by the wallet.'
+  }
+
+  return 'Unable to read NFC tag. Please try again.'
+}
 
 export default function ScanScreen() {
   useStoredCredentials()
@@ -81,7 +106,12 @@ export default function ScanScreen() {
 
   const resetScanner = useCallback(() => {
     generationRef.current++
-    setPhase({ tag: 'scanning' })
+    setPhase((prev) => {
+      if (prev.tag === 'readingNfc') {
+        void cancelNfcRead()
+      }
+      return { tag: 'scanning' }
+    })
     processingRef.current = false
     logWalletStep('scan', 'scanner-reset', { generation: generationRef.current })
   }, [])
@@ -165,6 +195,43 @@ export default function ScanScreen() {
   useEffect(() => {
     if (incomingUrl) handleDeeplink(incomingUrl, 'incoming')
   }, [incomingUrl, handleDeeplink])
+
+  const handleNfcPress = useCallback(async () => {
+    if (processingRef.current) {
+      logWalletStep('scan', 'nfc-ignored-processing')
+      return
+    }
+
+    const gen = generationRef.current
+    processingRef.current = true
+    setPhase({ tag: 'readingNfc' })
+    logWalletStep('scan', 'nfc-button-pressed')
+
+    try {
+      const payload = await readSingleNfcPayload()
+      logWalletStep('scan', 'nfc-payload-read', { kind: payload.kind })
+      if (generationRef.current !== gen) return
+
+      if (payload.kind === 'credential-offer') {
+        setPendingDeeplinkUri(payload.uri)
+        resetScanner()
+        return
+      }
+
+      processingRef.current = false
+      await handleBarcodeRef.current(payload.uri)
+    } catch (err) {
+      if (err instanceof NfcReadCancelledError) {
+        logWalletStep('scan', 'nfc-cancelled')
+        if (generationRef.current === gen) resetScanner()
+        return
+      }
+
+      logWalletError('scan', 'nfc-read-failed', err)
+      processingRef.current = false
+      if (generationRef.current === gen) setPhase({ tag: 'error', message: toNfcFriendlyError(err) })
+    }
+  }, [resetScanner, setPendingDeeplinkUri])
 
   async function approvePresentation(request: ResolvedPresentationRequest) {
     const gen = generationRef.current
@@ -329,8 +396,13 @@ export default function ScanScreen() {
     )
   }
 
-  const isLoading = phase.tag === 'resolving'
-  const loadingLabel = phase.tag === 'resolving' ? 'Reading Request' : 'Scan QR code'
+  const isLoading = phase.tag === 'resolving' || phase.tag === 'readingNfc'
+  const loadingLabel =
+    phase.tag === 'readingNfc'
+      ? 'Hold Near NFC Tag'
+      : phase.tag === 'resolving'
+        ? 'Reading Request'
+        : 'Scan QR code'
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
@@ -394,7 +466,15 @@ export default function ScanScreen() {
           {isLoading ? (
             <AppButton variant="icon-circle" label="Cancel" onPress={resetScanner} className="bg-white/20 px-6 py-2" textClassName="text-[14px] font-semibold text-white" />
           ) : (
-            <View className="h-9" />
+            {Platform.OS === 'android' ? (
+              <AppButton
+                variant="solid-block"
+                label="Use NFC"
+                onPress={() => { void handleNfcPress() }}
+                className="rounded-xl bg-white/20 px-5 py-3"
+                textClassName="text-[14px] font-semibold text-white"
+              />
+            ) : null}
           )}
         </View>
       </View>
