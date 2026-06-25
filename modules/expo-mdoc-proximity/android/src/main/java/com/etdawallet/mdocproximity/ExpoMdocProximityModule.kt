@@ -21,7 +21,6 @@ class ExpoMdocProximityModule : Module() {
           "platform" to "android",
           "nfcSupported" to false,
           "nfcEnabled" to false,
-          "identityCredentialSupported" to false,
           "presentationReady" to false,
         )
 

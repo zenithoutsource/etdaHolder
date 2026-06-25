@@ -67,7 +67,6 @@ export function readProximityAvailability(): ProximityAvailability {
       platform: Platform.OS,
       nfcSupported: false,
       nfcEnabled: false,
-      identityCredentialSupported: false,
       presentationReady: false,
     }
   }
@@ -78,7 +77,6 @@ export function readProximityAvailability(): ProximityAvailability {
       platform: 'android',
       nfcSupported: false,
       nfcEnabled: false,
-      identityCredentialSupported: false,
       presentationReady: false,
     }
   }

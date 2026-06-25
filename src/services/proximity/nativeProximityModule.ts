@@ -6,7 +6,6 @@ export type ProximityAvailability = {
   sdkInt?: number
   nfcSupported: boolean
   nfcEnabled: boolean
-  identityCredentialSupported: boolean
   presentationReady: boolean
 }
 
