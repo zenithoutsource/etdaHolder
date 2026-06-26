@@ -31,10 +31,10 @@ yarn lint
 yarn test
 ```
 
-Use Expo install for Expo or React Native native packages:
+Use Yarn Add for Expo or React Native native packages:
 
 ```bash
-npx expo install <package-name>
+yarn add <package-name>
 ```
 
 ## Environment
