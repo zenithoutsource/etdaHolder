@@ -14,7 +14,9 @@ import { WalletHeader } from '../components/WalletHeader'
 
 
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
-import { hasPidCredential, isPidCredentialOffer } from '../services/credentials/credentialGuard'
+import { isPidCredentialOffer, readPidGateStatus } from '../services/credentials/credentialGuard'
+import { readCredentialRenewalStatuses } from '../services/credentials/credentialKeyRenewal'
+import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
@@ -118,16 +120,48 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       const offer = await withTimeout(resolveOffer(uri), RESOLVE_TIMEOUT_MS, 'DeeplinkTimeout: resolving offer timed out')
       setTxCode('')
       const latestCredentials = readStoredCredentials()
+      const renewalStatuses = readCredentialRenewalStatuses(latestCredentials)
       const isPidOffer = isPidCredentialOffer(offer)
-      const holderHasPid = hasPidCredential(latestCredentials)
+      const pidGateStatus = readPidGateStatus(latestCredentials, renewalStatuses)
       logWalletStep('deeplink', 'offer-resolved', {
         ...describeOfferForLog(offer),
         isPidOffer,
-        holderHasPid,
+        pidGateStatus,
       })
-      if (!holderHasPid && !isPidOffer) {
-        logWalletError('deeplink', 'offer-requires-pid', new Error('PID credential required before this offer'), describeOfferForLog(offer))
-        if (generationRef.current === gen) setPhase({ tag: 'error', message: 'กรุณาขอ ThaID ก่อน' })
+      if (!isPidOffer && pidGateStatus !== 'ready') {
+        logWalletError(
+          'deeplink',
+          'offer-requires-pid',
+          new Error('Usable PID credential required before this offer'),
+          describeOfferForLog(offer),
+        )
+        if (generationRef.current === gen) {
+          setPhase({
+            tag: 'error',
+            message:
+              pidGateStatus === 'missing'
+                ? WALLET_HOME_COPY.pidRequiredMessage
+                : WALLET_HOME_COPY.renewThaIdRequiredMessage,
+          })
+        }
+        return
+      }
+      if (isPidOffer && pidGateStatus === 'ready') {
+        if (generationRef.current === gen) {
+          setPhase({
+            tag: 'error',
+            message: WALLET_HOME_COPY.thaIdAlreadyActiveMessage,
+          })
+        }
+        return
+      }
+      if (isPidOffer && pidGateStatus === 'renewal-required') {
+        if (generationRef.current === gen) {
+          setPhase({
+            tag: 'error',
+            message: WALLET_HOME_COPY.renewThaIdRequiredMessage,
+          })
+        }
         return
       }
       if (isPidOffer) {

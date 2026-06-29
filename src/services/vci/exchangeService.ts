@@ -18,6 +18,8 @@ import {
   signProof as defaultSignProof,
   getHolderDid,
 } from '../crypto/crypto'
+import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
+import { notifyCredentialsChanged } from '../credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import {
   importCredential as defaultImportCredential,
@@ -38,6 +40,8 @@ import {
 const CREDENTIAL_INDEX_KEY = 'credential:index'
 const CREDENTIAL_KEY_PREFIX = 'credential:'
 const CREDENTIAL_LIFECYCLE_KEY_PREFIX = 'credential:lifecycle:'
+const CREDENTIAL_SUSPENSION_KEY_PREFIX = 'credential:suspension:'
+const CREDENTIAL_RENEWAL_KEY_PREFIX = 'credential:renewal:'
 const PRE_AUTHORIZED_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:pre-authorized_code'
 const PRE_AUTHORIZED_CODE_KEY = 'pre-authorized_code'
 
@@ -1335,8 +1339,13 @@ function storeCredentialRecord(storage: CredentialStorage, record: VerifiableCre
     for (const id of replacementIds) {
       storage.remove?.(`${CREDENTIAL_KEY_PREFIX}${id}`)
       storage.remove?.(`${CREDENTIAL_LIFECYCLE_KEY_PREFIX}${id}`)
+      storage.remove?.(`${CREDENTIAL_SUSPENSION_KEY_PREFIX}${id}`)
+      storage.remove?.(`${CREDENTIAL_RENEWAL_KEY_PREFIX}${id}`)
     }
     storage.remove?.(`${CREDENTIAL_LIFECYCLE_KEY_PREFIX}${record.id}`)
+    storage.remove?.(`${CREDENTIAL_SUSPENSION_KEY_PREFIX}${record.id}`)
+    storage.remove?.(`${CREDENTIAL_RENEWAL_KEY_PREFIX}${record.id}`)
+    notifyCredentialsChanged()
   } catch (error) {
     throw new Error(`CredentialStorageFailed: ${toErrorMessage(error)}`)
   }
@@ -1354,7 +1363,16 @@ function isReplaceableCredentialId(
 
   try {
     const existing = JSON.parse(existingRaw) as Partial<VerifiableCredentialRecord>
-    return existing.type === replacement.type
+    if (existing.type !== replacement.type) return false
+
+    const existingHolderDid = readCredentialHolderDid(existing as VerifiableCredentialRecord)
+    const replacementHolderDid = readCredentialHolderDid(replacement)
+
+    if (!existingHolderDid || !replacementHolderDid) {
+      return false
+    }
+
+    return existingHolderDid === replacementHolderDid
   } catch {
     return false
   }

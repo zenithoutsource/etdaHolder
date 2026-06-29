@@ -135,4 +135,23 @@ describe('credentialLifecycle', () => {
       freshTranscriptRecord,
     ])
   })
+
+  test('excludes issuer-suspended credentials from presentation candidates', () => {
+    mockStorage({
+      'credential:suspension:transcript-1': JSON.stringify({
+        credentialId: 'transcript-1',
+        suspendedAt: '2026-06-25T10:00:00.000Z',
+        updatedAt: '2026-06-25T10:00:00.000Z',
+      }),
+    })
+
+    const freshTranscriptRecord: VerifiableCredentialRecord = {
+      ...transcriptRecord,
+      id: 'fresh-transcript',
+    }
+
+    expect(filterPresentableCredentials([transcriptRecord, freshTranscriptRecord])).toEqual([
+      freshTranscriptRecord,
+    ])
+  })
 })

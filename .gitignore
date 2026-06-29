@@ -39,7 +39,7 @@ server/.env
 .codex-expo*.log
 server/.codex-server.log
 .claude/reviews/
-.superpowers/brainstorm/
+.superpowers/
 
 # typescript
 *.tsbuildinfo
@@ -53,3 +53,4 @@ app-example
 # local Expo module build artifacts
 modules/**/android/build/
 modules/**/.cxx/
+google-services.json

@@ -10,6 +10,7 @@ import { base64UrlDecodeToString, isSameJwk, isSameKid, readRecord, toErrorMessa
 
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getMetaStorage } from '../storage/storage'
+import { notifyWalletKeyRegistrationChanged } from './walletKeyExpiryWatch'
 
 const KEY_ID = 'etda_wallet_signing_key'
 const KEYCHAIN_SERVICE = 'etda.wallet.ed25519_seed'
@@ -162,6 +163,16 @@ async function writeEd25519Seed(seed: Uint8Array): Promise<void> {
   if (!result) throw new Error('Ed25519SeedKeychainWriteFailed')
 }
 
+function cacheWalletPublicKey(publicKey: Uint8Array, registeredAt?: string): void {
+  assertEd25519PublicKeyLength(publicKey)
+  metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(publicKey))
+  metaStorage.set(KEY_SOURCE_STORAGE, KEY_SOURCE_KEYCHAIN_ED25519)
+  if (registeredAt) {
+    metaStorage.set(KEY_REGISTERED_AT_STORAGE, registeredAt)
+    notifyWalletKeyRegistrationChanged()
+  }
+}
+
 function readPublicKeyFromSeed(seed: Uint8Array): Uint8Array {
   const publicKey = getPublicKey(seed)
   assertEd25519PublicKeyLength(publicKey)
@@ -198,8 +209,7 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
     const existingSeed = await readStoredEd25519Seed()
     if (existingSeed) {
       const existingPublicKey = readPublicKeyFromSeed(existingSeed)
-      metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(existingPublicKey))
-      metaStorage.set(KEY_SOURCE_STORAGE, KEY_SOURCE_KEYCHAIN_ED25519)
+      cacheWalletPublicKey(existingPublicKey)
       logWalletStep('crypto', 'wallet-key-keychain-existing', { keyId: KEY_ID, publicKeyBytes: existingPublicKey.length })
       return
     }
@@ -208,15 +218,23 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
     assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
     await writeEd25519Seed(seed)
     const publicKey = readPublicKeyFromSeed(seed)
-    assertEd25519PublicKeyLength(publicKey)
-    metaStorage.set(ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(publicKey))
-    metaStorage.set(KEY_SOURCE_STORAGE, KEY_SOURCE_KEYCHAIN_ED25519)
-    metaStorage.set(KEY_REGISTERED_AT_STORAGE, new Date().toISOString())
+    cacheWalletPublicKey(publicKey, new Date().toISOString())
     logWalletStep('crypto', 'wallet-key-generated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
   } catch (error) {
     logWalletError('crypto', 'wallet-key-init-failed', error, { keyId: KEY_ID, alg: 'EdDSA', crv: 'Ed25519' })
     throw error
   }
+}
+
+export async function forceRotateWalletKey(now = new Date()): Promise<void> {
+  await readStoredEd25519Seed('Rotate Wallet Key')
+
+  const seed = randomBytes(32)
+  assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+  await writeEd25519Seed(seed)
+  const publicKey = readPublicKeyFromSeed(seed)
+  cacheWalletPublicKey(publicKey, now.toISOString())
+  logWalletStep('crypto', 'wallet-key-rotated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
 }
 
 export function hasWalletKey(): boolean {
@@ -430,6 +448,7 @@ function createUuid(): string {
 export async function resetWalletKey(): Promise<void> {
   await Keychain.resetGenericPassword({ service: KEYCHAIN_SERVICE })
   metaStorage.remove(ED25519_PUBLIC_KEY_STORAGE)
+  metaStorage.remove(KEY_REGISTERED_AT_STORAGE)
   metaStorage.remove(KEY_SOURCE_STORAGE)
   metaStorage.remove(LEGACY_COMPRESSED_KEY_STORAGE)
   metaStorage.remove(LEGACY_SOFTWARE_ED25519_SECRET_KEY_STORAGE)

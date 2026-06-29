@@ -222,4 +222,7 @@ runInherited(adb, [
 ]);
 
 const expoCli = require.resolve('expo/bin/cli');
-runInherited(process.execPath, [expoCli, 'start', '--dev-client', '--port', defaultPort]);
+const isWifiDevice = selectedDevice.serial.includes(':') || selectedDevice.serial.includes('._adb-tls');
+const expoArgs = ['start', '--dev-client', '--port', defaultPort];
+if (isWifiDevice) expoArgs.push('--host', 'lan');
+runInherited(process.execPath, [expoCli, ...expoArgs]);

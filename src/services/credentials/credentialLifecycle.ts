@@ -1,3 +1,5 @@
+import { blocksCredentialPresentation, readCredentialRenewalStatuses } from './credentialKeyRenewal'
+import { readIssuerSuspensionStatuses } from './issuerSuspension'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
@@ -25,6 +27,10 @@ export function recordCredentialLifecycleAction(
   }
   getCredentialStorage().set(`${LIFECYCLE_KEY_PREFIX}${credentialId}`, JSON.stringify(status))
   return status
+}
+
+export function clearCredentialLifecycleStatus(credentialId: string): void {
+  getCredentialStorage().remove(`${LIFECYCLE_KEY_PREFIX}${credentialId}`)
 }
 
 export function readCredentialLifecycleStatus(
@@ -75,7 +81,14 @@ export function filterPresentableCredentials(
   credentials: VerifiableCredentialRecord[],
 ): VerifiableCredentialRecord[] {
   const lifecycleStatuses = readCredentialLifecycleStatuses(credentials)
-  return credentials.filter((record) => !lifecycleStatuses[record.id])
+  const suspensionStatuses = readIssuerSuspensionStatuses(credentials)
+  const renewalStatuses = readCredentialRenewalStatuses(credentials)
+  return credentials.filter(
+    (record) =>
+      !lifecycleStatuses[record.id] &&
+      !suspensionStatuses[record.id] &&
+      !blocksCredentialPresentation(renewalStatuses[record.id]),
+  )
 }
 
 function isLifecycleStatusStaleForCredential(

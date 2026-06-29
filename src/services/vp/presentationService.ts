@@ -290,10 +290,16 @@ export async function submitPresentationResponse(
     responseUri: request.responseUri,
     verifierName: request.verifier.name,
     presentationBytes: options.vpToken.length,
-    vpTokenShape: request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw',
-    presentationSubmissionPresent: Boolean(options.presentationSubmission),
+    tokenShape: request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw',
+    submissionPresent: Boolean(options.presentationSubmission),
     statePresent: Boolean(request.state),
   })
+  if (__DEV__) {
+    console.info('[wallet:oid4vp] submit-response-debug', {
+      body: formatVpTokenForResponse(request, options.vpToken),
+      submission: options.presentationSubmission,
+    })
+  }
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
     method: 'POST',
     headers: {
