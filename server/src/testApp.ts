@@ -6,6 +6,8 @@ import { readConfig } from './config'
 import { authRouter } from './routes/auth'
 import { credentialsRouter } from './routes/credentials'
 import { devIssuerProxyRouter, devVerifierProxyRouter } from './routes/devIssuerProxy'
+import { devWalletRouter } from './routes/devWallet'
+import { pushTokensRouter } from './routes/pushTokens'
 import { walletsRouter } from './routes/wallets'
 
 type HttpParserError = Error & {
@@ -103,7 +105,9 @@ export function createTestApp(): express.Express {
 
   app.use('/wallet-api/auth', createAuthRateLimiter())
   app.use('/wallet-api/auth', authRouter)
+  app.use('/wallet-api/dev', devWalletRouter)
   app.use('/wallet-api/wallet', walletsRouter)
+  app.use('/wallet-api/wallet', pushTokensRouter)
   app.use('/wallet-api/wallet', credentialsRouter)
   app.use(errorHandler)
 

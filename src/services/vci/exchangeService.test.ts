@@ -629,11 +629,54 @@ test('saveCredentialRecord clears a stale local lifecycle status for a reissued 
   expect(writes.has('credential:lifecycle:transcript-1')).toBe(false)
 })
 
+test('saveCredentialRecord clears a stale issuer suspension status for a reissued credential', () => {
+  const writes = new Map<string, string>([
+    [
+      'credential:suspension:transcript-1',
+      JSON.stringify({
+        credentialId: 'transcript-1',
+        suspendedAt: '2026-06-25T10:00:00.000Z',
+        updatedAt: '2026-06-25T10:00:00.000Z',
+      }),
+    ],
+  ])
+  const storage = {
+    getString: jest.fn((key: string) => writes.get(key)),
+    set: jest.fn((key: string, value: string) => {
+      writes.set(key, value)
+    }),
+    remove: jest.fn((key: string) => {
+      writes.delete(key)
+      return true
+    }),
+  }
+
+  saveCredentialRecord(
+    {
+      id: 'transcript-1',
+      type: 'BangkokUniversityTranscript',
+      rawVc: 'new.header.payload',
+      claims: {},
+      issuedAt: '2026-06-25T11:00:00.000Z',
+    },
+    {
+      getCredentialStorage: () => storage,
+    },
+  )
+
+  expect(storage.remove).toHaveBeenCalledWith('credential:suspension:transcript-1')
+  expect(writes.has('credential:suspension:transcript-1')).toBe(false)
+})
+
 test('saveCredentialRecord replaces older local records of the same credential type', () => {
   const oldRecord: VerifiableCredentialRecord = {
     id: 'old-transcript',
     type: 'BangkokUniversityTranscript',
-    rawVc: 'old.header.payload',
+    rawVc: unsignedJwt({
+      cnf: {
+        kid: 'did:key:zHolder#zHolder',
+      },
+    }),
     claims: {},
     issuedAt: '2026-06-08T10:00:00.000Z',
   }
@@ -673,7 +716,11 @@ test('saveCredentialRecord replaces older local records of the same credential t
     {
       id: 'new-transcript',
       type: 'BangkokUniversityTranscript',
-      rawVc: 'new.header.payload',
+      rawVc: unsignedJwt({
+        cnf: {
+          kid: 'did:key:zHolder#zHolder',
+        },
+      }),
       claims: {},
       issuedAt: '2026-06-08T11:00:00.000Z',
     },

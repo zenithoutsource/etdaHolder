@@ -8,12 +8,13 @@ type Props = {
   request: ResolvedPresentationRequest
   onAccept: () => void
   onReject: () => void
+  disabled?: boolean
 }
 
-export function PresentationConsentPanel({ request, onAccept, onReject }: Props) {
+export function PresentationConsentPanel({ request, onAccept, onReject, disabled }: Props) {
   return (
     <View className="flex-1 bg-white px-6 pt-8">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32, alignItems: 'center' }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-8 items-center">
         <View className="h-[72px] w-[72px] items-center justify-center rounded-2xl bg-[#1a3a7a]">
           <MaterialCommunityIcons name="glass-cocktail" size={36} color="#ffffff" />
         </View>
@@ -41,7 +42,7 @@ export function PresentationConsentPanel({ request, onAccept, onReject }: Props)
           <Text className="text-[13px] font-bold text-[#071f5f]">ต้องใช้การยืนยันตัวตนโดย{'\n'}Face ID</Text>
         </View>
 
-        <AppButton variant="solid-block" label="รับทราบและยินยอมส่งข้อมูล" onPress={onAccept} className="mt-8 w-full py-4" />
+        <AppButton variant="solid-block" label="รับทราบและยินยอมส่งข้อมูล" onPress={onAccept} disabled={disabled} className="mt-8 w-full py-4" />
         <AppButton
           variant="icon-circle"
           label="ไม่ยินยอม"

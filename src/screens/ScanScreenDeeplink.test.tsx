@@ -27,6 +27,7 @@ jest.mock('expo-linking', () => ({
 jest.mock('expo-router', () => {
   return {
     useRouter: () => mockRouter,
+    useLocalSearchParams: jest.fn(() => ({})),
     useFocusEffect: (effect: () => void | (() => void)) => {
       mockReact.useEffect(() => effect(), [effect])
     },
@@ -67,6 +68,7 @@ jest.mock('../services/vci/exchangeService', () => ({
 }))
 
 jest.mock('../services/nfc/nfcTagService', () => ({
+  cancelNfcRead: jest.fn(),
   readSingleNfcPayload: jest.fn(),
   NfcDisabledError: class NfcDisabledError extends Error {},
   NfcUnsupportedTagError: class NfcUnsupportedTagError extends Error {},

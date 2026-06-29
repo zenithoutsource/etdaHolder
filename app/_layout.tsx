@@ -91,13 +91,15 @@ export default function RootLayout() {
         }
 
         const [
-          { generateWalletKeyIfNeeded },
+          { generateWalletKeyIfNeeded, getHolderDid },
+          { initPushNotifications },
           { initStorage },
           { assertDeviceIntegrity },
           { assertConfiguredWalletApiRuntimePolicy },
           { runNativeEd25519Diagnostics },
         ] = await Promise.all([
           import('@/src/services/crypto/crypto'),
+          import('@/src/services/notifications/pushNotificationService'),
           import('@/src/services/storage/storage'),
           import('@/src/services/security/deviceIntegrityPolicy'),
           import('@/src/sdk/walletApiRuntimePolicy'),
@@ -118,6 +120,8 @@ export default function RootLayout() {
         logWalletStep('startup', 'wallet-key-ready');
         await loadSession();
         logWalletStep('startup', 'session-loaded');
+        await initPushNotifications(getHolderDid());
+        logWalletStep('startup', 'push-notifications-ready');
         if (isMounted) setStartupState({ status: 'ready' });
         logWalletStep('startup', 'prepare-wallet-ready');
       } catch (error) {

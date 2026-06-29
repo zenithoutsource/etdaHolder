@@ -35,7 +35,7 @@ Status: Complete (core flow). Spec compliance gaps tracked below.
 [x] Token endpoint discovery via `authorization_servers` metadata (OID4VCI §11)
 [x] `c_nonce` refresh retry on `invalid_proof` (OID4VCI §8.3.3)
 [x] Drop `user_pin` dual-send in token request after ETDA Issuer confirms `tx_code`-only acceptance (`exchangeService.ts:760`). OID4VCI 1.0 final token requests now send `tx_code` only.
-[ ] Deferred Credential Issuance (`transaction_id`, OID4VCI §8.4) — implement only if an Issuer starts returning `transaction_id` instead of an immediate credential
+[x] Deferred Credential Issuance (`transaction_id`, OID4VCI §8.4) — `DeferredIssuancePending` typed error, `readDeferredTransactionId()`, `pollDeferredCredential()` — landed `feat/transaction-id` PR #7
 
 ## Phase 3: Config-Driven UI
 
@@ -85,6 +85,51 @@ Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operat
 [x] Decide Holder Confirmation semantics: confirm resolved offer before credential acquisition, then acquire and save immediately after successful issuance
 [x] Fix remaining corrupted UI labels in scanner confirmation screen
 [x] Integrate NFC NDEF reader for offer URI after device testing is available
+
+### 3.5 P3 Wallet Key Expiry and Credential Renewal
+
+Source: `docs/User_Journey/id_card/P3.md`, `docs/superpowers/specs/2026-06-25-p3-wallet-key-renewal-design.md` (canonical; merged async + UX specs 2026-06-26).
+
+[x] Wallet key TTL policy (`src/config/walletKeyPolicy.ts`) and `rotateWalletKey()` with per-credential `renewal-required` marking
+[x] Holder-binding parse (`credentialHolderBinding.ts`) and renewal state machine (`credentialKeyRenewal.ts`, `credentialRenewalService.ts`)
+[x] Async renewal flow: `submitRenewalRequest()` (one-shot after HTTP 201) + `refreshAndCompleteRenewals()` (poll on focus, auto-claim on `offer-ready`)
+[x] Dev renewal endpoints (`server/src/routes/devWallet.ts`: `POST /wallet/renewal-request` → `{ accepted: true }`, `GET /wallet/renewal-status` → `requested` → `offer-ready`)
+[x] Wallet home expiry modal (`WalletKeyExpiredModal`) and renewal badges on document rows (`app/(tabs)/index.tsx`)
+[x] Credential detail inactive/active overlay (`ribbon_badge.png`), renewal CTA (renewal-required only), P3-6 cleanup dialog (`app/(tabs)/credential/[id].tsx`)
+[x] Scan-tab renewal deep link via `?renew=<credentialId>` submits only, then routes to old credential detail (`app/(tabs)/scan.tsx`)
+[ ] Physical-device validation: rotate key → submit renewal → wait/poll → green Active on new VC → P3-6 delete old VC on hardware
+
+### 3.6 P6 Case 2: Issuer-Initiated Suspension + Unified Holder Actions
+
+Source: `docs/User_Journey/id_card/P6.md`, `docs/superpowers/specs/2026-06-25-p6-case2-issuer-suspension-design.md`.
+
+[x] Issuer suspension storage (`credential:suspension:<id>` MMKV, separate from lifecycle) — `src/services/credentials/issuerSuspension.ts`
+[x] `readIssuerSuspension()`, `acknowledgeIssuerSuspension()`, `readIssuerSuspensionStatuses()` — CRUD + ack + batch read
+[x] `resolveCredentialRevokeBehavior()` — routes Revoke to `issuer-acknowledgment` or `holder-revoke` based on suspension ack state
+[x] `filterPresentableCredentials` excludes both lifecycle-revoked and issuer-suspended credentials
+[x] Wallet home suspension poll on focus (`useFocusEffect` calls dev `/issuer/suspension-status`)
+[x] Dev endpoints: `POST /dev/issuer/suspend`, `GET /dev/wallet/suspension-status` — `server/src/routes/devWallet.ts`
+[x] Credential detail ⋮ menu visible for ALL credential types (not transcript-only) — `CredentialActionMenu`
+[x] Revoke routing: suspension pending → `issuerAck` phase overlay; no suspension → existing holder-revoke flow
+[x] `IssuerSuspensionAckOverlay` — รับทราบการระงับ button acknowledges suspension and resets phase
+[x] Delete action enabled in ⋮ menu for all credential types
+[x] Badge precedence: P6 lifecycle > P6 suspension > P3 renewal > verified/new — `credentialInactiveState.ts`
+[x] Approve phase hides My QR button (`onOpenQr` optional on `CredentialDocumentDetailCard`)
+[x] `PresentationApprovalDeviceCard` — date/time values blue `#071f5f`, ลงทะเบียนแล้ว blue
+[ ] Physical-device validation: issuer suspend → holder sees suspended badge → Revoke routes to ack → acknowledged → holder-revoke flow
+
+### 3.7 OS Push Notifications
+
+Source: `docs/superpowers/specs/2026-06-29-push-notifications-design.md`.
+
+[x] Mobile push notification init service (`src/services/notifications/pushNotificationService.ts`) requests OS permission, fetches Expo push token, registers it through the Wallet API boundary, and installs notification-tap routing
+[x] Notification tap router (`src/services/notifications/notificationRouter.ts`) deep-links push payloads to `/(tabs)/credential/[id]`
+[x] Root startup wiring calls `initPushNotifications(getHolderDid())` after wallet key + storage + session startup in `app/_layout.tsx`
+[x] SDK-bound push token registration helper added without hand-editing generated `src/sdk/walletApi.ts` (`src/sdk/pushTokenApi.ts`)
+[x] Dev backend push token endpoint (`POST /wallet-api/wallet/push-token`) stores Expo tokens in-memory by Holder DID
+[x] Dev webhook route (`POST /wallet-api/dev/webhook/credential-event`) maps the 5 credential lifecycle events to Thai notification copy and forwards pushes through Expo Push Service
+[x] Expo push sender (`server/src/services/expoPushClient.ts`) posts to `https://exp.host/--/api/v2/push/send` and logs Expo ticket errors without retry
+[ ] Physical-device validation: grant OS permission on Android/iOS, confirm token registration on startup, trigger dev webhook event, receive push, tap push, and land on the credential detail screen
 
 ## Phase 4: Security Hardening and Release
 
@@ -362,3 +407,36 @@ Remaining:
 - Implemented the Phase 2A standalone development mDOC issuer under `server/mdoc-issuer/` instead of adding issuer behavior to the Wallet Backend routes. The service exposes OID4VCI issuer metadata, authorization-server metadata, pre-authorized offer creation, token exchange, and a sample `mso_mdoc` credential response with a signed issuer-auth COSE envelope.
 - Added deterministic ECDSA dev certificate fixtures, CBOR issuer-signed item/MSO construction, and focused Jest coverage for both the document builder and the issuer HTTP contract.
 - Added `server` scripts `yarn mdoc-issuer:dev` and `yarn mdoc-issuer:start`, documented the runbook in `server/mdoc-issuer/README.md`, and extended `server` TypeScript/Jest config so Phase 2A files participate in normal `server` verification.
+
+### Session 2026-06-25 (P3 wallet key renewal)
+
+- Landed P3 wallet key expiry and per-credential renewal slice per `docs/superpowers/specs/2026-06-25-p3-wallet-key-renewal-design.md`: wallet key rotation marks bound credentials `renewal-required`, dev issuer renewal loop reuses OID4VCI `claimCredential()`, replacement credentials get `renewed-active` while old credentials move through `old-revoked` → `cleanup-pending` with P3-4/P3-6 dialogs.
+- UI: `WalletKeyExpiredModal` on home focus when `isWalletKeyExpired()`, inactive/active overlays on `CredentialDocumentDetailCard`, home list badges merge P6 → P3 → verified/new precedence, Scan tab handles `?renew=<credentialId>`.
+- Verification: root `yarn tsc --noEmit` pass; focused credential renewal tests pass; server `yarn test` includes dev renewal endpoint coverage.
+- Fixed dev renewal `offerUri` generation: `POST /wallet/renewal-request` now calls issuer `POST /credential-offer` (via `ISSUER_PROXY_TARGET`) and returns a parseable `credential_offer` / `credential_offer_uri` OID4VCI URI instead of custom `credential_type` query params that caused `CredentialOfferParseFailed: Wrong parameters provided` on-device.
+
+### Session 2026-06-26 (P3 async renewal flow)
+
+- Refactored P3 renewal (canonical spec §changelog 2026-06-26 async): **ขอเอกสาร** is one-shot after issuer accepts (HTTP 201); network failure keeps `renewal-required` and allows retry.
+- Split `credentialRenewalService`: `submitRenewalRequest()` POST only → `renewal-processing`; `refreshAndCompleteRenewals()` polls dev `renewal-status` on screen focus and auto-claims when `offer-ready`.
+- Dev server: `POST /wallet/renewal-request` returns `{ accepted: true }`; `GET /wallet/renewal-status` returns `offer-ready` only after `DEV_RENEWAL_DELAY_MS` (default 8000).
+- **UX revision** (canonical spec §changelog 2026-06-26 UX): grey `ribbon_badge_inactive.png` for waiting states; full-color `ribbon_badge.png` (no tint) for `renewed-active`; no auto P3-6 dialog or auto-navigate after claim; **ดูเอกสาร (เอกสารเดิม)** on home while `renewal-processing`; later slices removed home banner, limited Active badge to cleanup window, hid ⋮ menu during rotation flow.
+- Merged P3 renewal specs into single canonical `docs/superpowers/specs/2026-06-25-p3-wallet-key-renewal-design.md`; removed superseded `2026-06-26-p3-renewal-async-flow-design.md` and `2026-06-26-p3-renewal-ux-flow-design.md`.
+- Verification: `yarn tsc --noEmit` pass; `credentialRenewalService.test.ts` + server renewal tests pass; `ScanScreenDeeplink.test.tsx` mock updated for `useLocalSearchParams`.
+
+### Session 2026-06-26 (code review + fixes)
+
+- Confirmed `feat/transaction-id` PR #7 merged — marked Phase 2 deferred issuance `[x]`.
+- Code review of P3 spec implementation found 2 issues: (1) `forceRotateWalletKey()` swallowed biometric cancellation via `.catch(() => undefined)` — removed, cancellation now propagates; (2) `requestCredentialRenewal()` wrote stale `renewed-active` renewal record for replacement credential — deleted.
+- Full local review (P3 + P6 uncommitted changes): 0 CRITICAL / 0 HIGH findings; 4 MEDIUM/LOW fixed — `isReplaceableCredentialId()` returned `true` when either holder DID missing (now `false`), renewal fetch has 30s `AbortController` timeout, `walletHomeCopy.test.ts` covers all P3 copy fields, `credentialInactiveState.test.ts` covers all 5 renewal state transitions + P6 > P3 precedence.
+- Added P6 Case 2 task section (3.6) and updated Phase 2 deferred issuance checkbox.
+- Docs audit: ADR 0007 is the only fully superseded doc (superseded by ADR 0008); `docs/PLAN_SAME_DEVICE_DEEPLINK.md` complete and can be deleted. One production blocker: deterministic salt in `server/mdoc-issuer/documentBuilder.ts:36` must use `crypto.randomBytes(16)` before production mDOC issuance.
+
+### Session 2026-06-29
+
+- Implemented the approved OS push notification slice from `docs/superpowers/specs/2026-06-29-push-notifications-design.md`.
+- Mobile: added `src/services/notifications/pushNotificationService.ts` and `notificationRouter.ts`, registered Expo push tokens after native startup in `app/_layout.tsx`, and routed notification taps to `/(tabs)/credential/[id]`.
+- SDK boundary: kept generated `src/sdk/walletApi.ts` untouched and added adjacent helper `src/sdk/pushTokenApi.ts` for `POST /wallet-api/wallet/push-token`.
+- Dev backend: added in-memory push token storage (`server/src/routes/pushTokens.ts`), Expo push sender (`server/src/services/expoPushClient.ts`), and webhook event forwarding in `server/src/routes/devWallet.ts`.
+- Added `expo-notifications` plugin entry to `app.json` and test coverage for notification routing/registration plus the dev push webhook path.
+- Verification: root `yarn tsc --noEmit` pass, root `yarn lint` pass, root `yarn test --runInBand` pass (57 suites / 291 tests), server `yarn tsc` pass, server `yarn test --runInBand` pass (8 suites / 33 tests).

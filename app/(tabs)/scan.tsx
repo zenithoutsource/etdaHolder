@@ -1,8 +1,8 @@
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import * as Linking from 'expo-linking'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, Platform, Text, View } from 'react-native'
+import { ActivityIndicator, Animated, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
@@ -15,6 +15,7 @@ import { TRUSTED_VERIFIERS } from '../../src/config/trustedVerifiers'
 import { getCardSchema } from '../../src/config/cardSchemas'
 import { useStoredCredentials } from '../../src/hooks/useStoredCredentials'
 import { filterPresentableCredentials } from '../../src/services/credentials/credentialLifecycle'
+import { submitRenewalRequest } from '../../src/services/credentials/credentialRenewalService'
 import { readStoredCredentials } from '../../src/services/credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../../src/services/debug/walletLogger'
 import {
@@ -44,6 +45,7 @@ import {
 type ScanPhase =
   | { tag: 'scanning' }
   | { tag: 'resolving' }
+  | { tag: 'renewing' }
   | { tag: 'readingNfc' }
   | { tag: 'presentationFacePrepare'; request: ResolvedPresentationRequest; nextStep: 'consent' | 'result'; verifierName?: string; response?: VerifierResponse }
   | { tag: 'presentationConsent'; request: ResolvedPresentationRequest }
@@ -82,12 +84,15 @@ export default function ScanScreen() {
   useStoredCredentials()
   const [permission, requestPermission] = useCameraPermissions()
   const [phase, setPhase] = useState<ScanPhase>({ tag: 'scanning' })
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [viewfinderHeight, setViewfinderHeight] = useState(0)
   const processingRef = useRef(false)
   const generationRef = useRef(0)
   const handleBarcodeRef = useRef<(uri: string) => Promise<void>>(async () => undefined)
   const lastDeeplinkRef = useRef<string | null>(null)
   const router = useRouter()
+  const { renew } = useLocalSearchParams<{ renew?: string | string[] }>()
+  const renewCredentialId = Array.isArray(renew) ? renew[0] : renew
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
@@ -118,8 +123,40 @@ export default function ScanScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (renewCredentialId) {
+        if (processingRef.current) return undefined
+
+        processingRef.current = true
+        setPhase({ tag: 'renewing' })
+        logWalletStep('scan', 'renewal-request-start', { credentialId: renewCredentialId })
+
+        void (async () => {
+          try {
+            await submitRenewalRequest(renewCredentialId)
+            logWalletStep('scan', 'renewal-request-submitted', {
+              credentialId: renewCredentialId,
+            })
+            router.replace({
+              pathname: '/(tabs)/credential/[id]',
+              params: { id: renewCredentialId },
+            })
+          } catch (err) {
+            logWalletError('scan', 'renewal-request-failed', err, { credentialId: renewCredentialId })
+            setPhase({
+              tag: 'error',
+              message: 'Unable to renew this credential. Please try again.',
+            })
+          } finally {
+            processingRef.current = false
+          }
+        })()
+
+        return undefined
+      }
+
       resetScanner()
-    }, [resetScanner]),
+      return undefined
+    }, [renewCredentialId, resetScanner, router]),
   )
 
   async function handleBarcode(uri: string) {
@@ -234,6 +271,8 @@ export default function ScanScreen() {
   }, [resetScanner, setPendingDeeplinkUri])
 
   async function approvePresentation(request: ResolvedPresentationRequest) {
+    if (isSubmitting) return
+    setIsSubmitting(true)
     const gen = generationRef.current
     let presentationDebug: string | undefined
     try {
@@ -279,6 +318,7 @@ export default function ScanScreen() {
       logWalletError('scan', 'presentation-approve-failed', err, describePresentationForLog(request))
       const raw = err instanceof Error ? err.message : String(err)
       const diagnosticRaw = presentationDebug ? `${raw}\n\n${presentationDebug}` : raw
+      setIsSubmitting(false)
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(diagnosticRaw) })
     }
   }
@@ -352,6 +392,7 @@ export default function ScanScreen() {
             void approvePresentation(phase.request)
           }}
           onReject={resetScanner}
+          disabled={isSubmitting}
         />
       </SafeAreaView>
     )
@@ -396,10 +437,13 @@ export default function ScanScreen() {
     )
   }
 
-  const isLoading = phase.tag === 'resolving' || phase.tag === 'readingNfc'
+  const isLoading =
+    phase.tag === 'resolving' || phase.tag === 'readingNfc' || phase.tag === 'renewing'
   const loadingLabel =
     phase.tag === 'readingNfc'
       ? 'Hold Near NFC Tag'
+      : phase.tag === 'renewing'
+        ? 'Renewing Credential'
       : phase.tag === 'resolving'
         ? 'Reading Request'
         : 'Scan QR code'
@@ -466,15 +510,13 @@ export default function ScanScreen() {
           {isLoading ? (
             <AppButton variant="icon-circle" label="Cancel" onPress={resetScanner} className="bg-white/20 px-6 py-2" textClassName="text-[14px] font-semibold text-white" />
           ) : (
-            {Platform.OS === 'android' ? (
-              <AppButton
-                variant="solid-block"
-                label="Use NFC"
-                onPress={() => { void handleNfcPress() }}
-                className="rounded-xl bg-white/20 px-5 py-3"
-                textClassName="text-[14px] font-semibold text-white"
-              />
-            ) : null}
+            <AppButton
+              variant="solid-block"
+              label="Use NFC"
+              onPress={() => { void handleNfcPress() }}
+              className="rounded-xl bg-white/20 px-5 py-3"
+              textClassName="text-[14px] font-semibold text-white"
+            />
           )}
         </View>
       </View>

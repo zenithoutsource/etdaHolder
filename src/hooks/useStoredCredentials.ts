@@ -1,7 +1,10 @@
 import { useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 
-import { readStoredCredentials } from '../services/credentials/storedCredentials'
+import {
+  readStoredCredentials,
+  subscribeCredentialsChange,
+} from '../services/credentials/storedCredentials'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
 type UseStoredCredentialsResult = {
@@ -40,6 +43,7 @@ export function useStoredCredentials(): UseStoredCredentialsResult {
 
   useEffect(() => {
     refresh()
+    return subscribeCredentialsChange(refresh)
   }, [refresh])
 
   useFocusEffect(refresh)

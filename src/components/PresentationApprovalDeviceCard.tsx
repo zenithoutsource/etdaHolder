@@ -23,7 +23,7 @@ export function PresentationApprovalDeviceCard({ registeredAt }: Props) {
   const registered = formatRegisteredAt(registeredAt)
   return (
     <View className="rounded-2xl bg-white p-4">
-      <Text className="text-[13px] font-extrabold text-[#071f5f]">Approve by Wallet</Text>
+      <Text className="text-xl font-extrabold text-black">Approve by Wallet</Text>
       <View className="mt-3 flex-row items-center gap-3">
         <Image
           source={phoneImage}
@@ -37,12 +37,12 @@ export function PresentationApprovalDeviceCard({ registeredAt }: Props) {
       </View>
       {registered ? (
         <Text className="mt-3 text-[12px] text-[#6b7280]">
-          ลงทะเบียนเมื่อ {registered.date} เวลา {registered.time} น.
+          ลงทะเบียนเมื่อ <Text className="text-[#071f5f] font-bold">{registered.date} เวลา {registered.time} น.</Text>
         </Text>
       ) : null}
       <View className="mt-2 flex-row items-center gap-1.5">
         <Text className="text-[12px] text-[#6b7280]">สถานะการลงทะเบียน</Text>
-        <Text className="text-[12px] font-bold text-[#118f4b]">{registered ? 'ลงทะเบียนแล้ว' : 'ยังไม่ลงทะเบียน'}</Text>
+        <Text className="text-[12px] font-bold text-[#071f5f]">{registered ? 'ลงทะเบียนแล้ว' : 'ยังไม่ลงทะเบียน'}</Text>
       </View>
     </View>
   )

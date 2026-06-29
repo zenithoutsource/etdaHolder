@@ -5,7 +5,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": ["etdawallet", "openid-credential-offer"],
+    "scheme": [
+      "etdawallet",
+      "openid-credential-offer"
+    ],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -15,6 +18,7 @@
       }
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -22,7 +26,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "permissions": ["android.permission.NFC"],
+      "permissions": [
+        "android.permission.NFC",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "predictiveBackGestureEnabled": false,
       "package": "com.thanaboon.chan.etdaWallet"
     },
@@ -35,6 +43,7 @@
       "./plugins/with-android-long-paths.js",
       "./modules/expo-mdoc-proximity/app.plugin.js",
       "expo-camera",
+      "expo-notifications",
       [
         "expo-splash-screen",
         {
@@ -51,6 +60,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "02e2e8d0-81d3-4e6f-9351-e80d60781966"
+      }
+    },
+    "owner": "thanaboon.chan"
   }
 }

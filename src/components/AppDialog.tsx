@@ -13,6 +13,8 @@ export type AppDialogOptions = {
   title: string
   message?: string
   icon?: 'info' | 'success' | 'warning' | 'danger' | 'lock'
+  iconSize?: number
+  iconContainerClassName?: string
   actions?: AppDialogAction[]
   dismissible?: boolean
 }
@@ -116,8 +118,8 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
                 shadowRadius: 16,
               }}>
               <View className="items-center">
-                <View className={`h-14 w-14 items-center justify-center rounded-full ${iconClassByTone[icon]}`}>
-                  <MaterialCommunityIcons name={iconByTone[icon]} size={30} color={iconColorByTone[icon]} />
+                <View className={dialog.iconContainerClassName ?? `h-14 w-14 items-center justify-center rounded-full ${iconClassByTone[icon]}`}>
+                  <MaterialCommunityIcons name={iconByTone[icon]} size={dialog.iconSize ?? 30} color={iconColorByTone[icon]} />
                 </View>
                 <Text className="mt-4 text-center text-[18px] font-bold leading-6 text-[#1a2a42]">
                   {dialog.title}

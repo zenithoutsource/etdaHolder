@@ -44,8 +44,8 @@ export function PresentationPopCard({ signature }: Props) {
           accessibilityRole="button"
           label={copied ? 'คัดลอกแล้ว' : 'คัดลอกลายเซ็น'}
           onPress={() => { void handleCopy() }}
-          className="mt-3 h-8 self-end justify-center border-0 bg-white px-4"
-          textClassName="text-[12px] font-bold text-[#123b8c]"
+          className="mt-3 h-8 self-end justify-center border-0 bg-blue-950 px-4"
+          textClassName="text-[12px] font-bold text-white"
         />
       </View>
     </View>

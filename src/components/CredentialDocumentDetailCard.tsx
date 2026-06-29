@@ -1,6 +1,10 @@
+import type { ReactNode } from 'react'
 import { Image, Pressable, View, Text, type ImageSourcePropType } from 'react-native'
 
 import type { CredentialDetailDisplay, CredentialDisplayRow, CredentialHolderProfile } from '../services/credentials/credentialDisplay'
+import type { CredentialRenewalState } from '../services/credentials/credentialKeyRenewal'
+import type { CredentialInactiveState } from '../services/credentials/credentialInactiveState'
+import { CredentialRenewalOverlay } from './CredentialRenewalOverlay'
 
 const credentialImages: Record<CredentialDetailDisplay['imageKey'], ImageSourcePropType> = {
   profile: require('../../assets/images/profile.png'),
@@ -12,8 +16,36 @@ const qrCodeIcon = require('../../assets/images/qr_code.png') as ImageSourceProp
 
 type Props = {
   display: CredentialDetailDisplay
-  onOpenQr: () => void
+  onOpenQr?: () => void
   holderProfile?: CredentialHolderProfile
+  inactiveState?: CredentialInactiveState
+  renewalBadgeLabel?: string
+  renewalState?: CredentialRenewalState
+}
+
+function DocumentCardShell({
+  children,
+  inactiveState,
+  renewalBadgeLabel,
+  renewalState,
+}: {
+  children: ReactNode
+  inactiveState?: CredentialInactiveState
+  renewalBadgeLabel?: string
+  renewalState?: CredentialRenewalState
+}) {
+  return (
+    <View className="relative">
+      {children}
+      {inactiveState ? (
+        <CredentialRenewalOverlay
+          inactiveState={inactiveState}
+          badgeLabel={renewalBadgeLabel}
+          renewalState={renewalState}
+        />
+      ) : null}
+    </View>
+  )
 }
 
 const NAME_ROW_KEYS = new Set(['givenName', 'familyName'])
@@ -73,7 +105,7 @@ function TranscriptValue({ label, value, isCritical = false }: { label: string; 
   )
 }
 
-function TranscriptDocumentDetailCard({ display, onOpenQr, holderProfile }: Props) {
+function TranscriptDocumentDetailCard({ display, onOpenQr, holderProfile, inactiveState, renewalBadgeLabel, renewalState }: Props) {
   const rows = [...display.primaryRows, ...display.extraRows]
   const birthDate = findRow(rows, ['birthDate', 'dateOfBirth', 'dob'], /birth|dob|วันเกิด/i)
   const studentId = findRow(rows, ['studentId', 'student_id', 'studentID'], /student.*id|เลขประจำตัว/i)
@@ -91,20 +123,21 @@ function TranscriptDocumentDetailCard({ display, onOpenQr, holderProfile }: Prop
 
   return (
     <View>
-      <View
-        testID="document-detail-card"
-        className="overflow-hidden rounded-2xl bg-white"
-        style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
+      <DocumentCardShell inactiveState={inactiveState} renewalBadgeLabel={renewalBadgeLabel} renewalState={renewalState}>
         <View
-          testID="document-detail-band-wrap"
-          className="min-h-[60px] w-full justify-center overflow-hidden px-6"
-          style={{ alignSelf: 'stretch', backgroundColor: '#f45b9a', width: '100%' }}>
-          <Text testID="document-detail-band" className="text-[20px] font-extrabold leading-7 text-white">
-            TRANSCRIPT
-          </Text>
-        </View>
+          testID="document-detail-card"
+          className="overflow-hidden rounded-2xl bg-white"
+          style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
+          <View
+            testID="document-detail-band-wrap"
+            className="min-h-[60px] w-full justify-center overflow-hidden px-6"
+            style={{ alignSelf: 'stretch', backgroundColor: '#f45b9a', width: '100%' }}>
+            <Text testID="document-detail-band" className="text-[20px] font-extrabold leading-7 text-white">
+              TRANSCRIPT
+            </Text>
+          </View>
 
-        <View testID="document-detail-hero" className="min-h-[245px] flex-row px-8 pb-6 pt-12">
+          <View testID="document-detail-hero" className="min-h-[245px] flex-row px-8 pb-6 pt-12">
           <View testID="document-detail-photo" className="h-[190px] w-[150px] shrink-0 items-center justify-end overflow-hidden bg-white">
             <Image
               testID="document-detail-image"
@@ -145,25 +178,28 @@ function TranscriptDocumentDetailCard({ display, onOpenQr, holderProfile }: Prop
             <TranscriptValue label="วันหมดอายุ / Expiry Date" value={expiryValue} isCritical />
           </View>
         </View>
-      </View>
+        </View>
+      </DocumentCardShell>
 
-      <View className="mt-[18px] items-end pr-4">
-        <Pressable
-          testID="document-detail-my-qr"
-          className="items-center gap-[3px] rounded-md border border-[#d8dde8] bg-white px-2.5 py-2"
-          onPress={onOpenQr}
-          style={{ elevation: 2, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel="Open My QR">
-          <Image
-            source={qrCodeIcon}
-            className="h-[24px] w-[24px]"
-            resizeMode="contain"
-            style={{ tintColor: '#173a78' }}
-          />
-          <Text className="text-[10px] font-semibold text-[#173a78]">My QR</Text>
-        </Pressable>
-      </View>
+      {onOpenQr ? (
+        <View className="mt-[18px] items-end pr-4">
+          <Pressable
+            testID="document-detail-my-qr"
+            className="items-center gap-[3px] rounded-md border border-[#d8dde8] bg-white px-2.5 py-2"
+            onPress={onOpenQr}
+            style={{ elevation: 2, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open My QR">
+            <Image
+              source={qrCodeIcon}
+              className="h-[24px] w-[24px]"
+              resizeMode="contain"
+              style={{ tintColor: '#173a78' }}
+            />
+            <Text className="text-[10px] font-semibold text-[#173a78]">My QR</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -181,7 +217,7 @@ function IdCardValue({ label, value, isCritical = false }: { label: string; valu
   )
 }
 
-function IdCardDocumentDetailCard({ display, onOpenQr, holderProfile }: Props) {
+function IdCardDocumentDetailCard({ display, onOpenQr, holderProfile, inactiveState, renewalBadgeLabel, renewalState }: Props) {
   const rows = [...display.primaryRows, ...display.extraRows]
   const idNumber = findRow(rows, ['nationalId', 'idNumber', 'id_number'], /id|เลข|บัตร/i)
   const birthDate = findRow(rows, ['birthDate', 'birthdate', 'dateOfBirth', 'dob'], /birth|dob|เกิด/i)
@@ -196,20 +232,21 @@ function IdCardDocumentDetailCard({ display, onOpenQr, holderProfile }: Props) {
 
   return (
     <View>
-      <View
-        testID="document-detail-card"
-        className="overflow-hidden rounded-2xl bg-white"
-        style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
+      <DocumentCardShell inactiveState={inactiveState} renewalBadgeLabel={renewalBadgeLabel} renewalState={renewalState}>
         <View
-          testID="document-detail-band-wrap"
-          className="min-h-[60px] w-full justify-center overflow-hidden px-7"
-          style={{ alignSelf: 'stretch', backgroundColor: display.primaryColor || '#123b8c', width: '100%' }}>
-          <Text testID="document-detail-band" className="text-[20px] font-extrabold leading-7 text-white">
-            ID CARD
-          </Text>
-        </View>
+          testID="document-detail-card"
+          className="overflow-hidden rounded-2xl bg-white"
+          style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
+          <View
+            testID="document-detail-band-wrap"
+            className="min-h-[60px] w-full justify-center overflow-hidden px-7"
+            style={{ alignSelf: 'stretch', backgroundColor: display.primaryColor || '#123b8c', width: '100%' }}>
+            <Text testID="document-detail-band" className="text-[20px] font-extrabold leading-7 text-white">
+              ID CARD
+            </Text>
+          </View>
 
-        <View testID="document-detail-hero" className="min-h-[225px] flex-row px-7 pb-5 pt-10">
+          <View testID="document-detail-hero" className="min-h-[225px] flex-row px-7 pb-5 pt-10">
           <View testID="document-detail-photo" className="h-[168px] w-[148px] shrink-0 items-center justify-end overflow-hidden bg-white">
             <Image
               testID="document-detail-image"
@@ -251,35 +288,63 @@ function IdCardDocumentDetailCard({ display, onOpenQr, holderProfile }: Props) {
             <IdCardValue label="วันหมดอายุ / Expiry Date" value={expiryValue} isCritical />
           </View>
         </View>
-      </View>
+        </View>
+      </DocumentCardShell>
 
-      <View className="mt-[18px] items-end pr-4">
-        <Pressable
-          testID="document-detail-my-qr"
-          className="items-center gap-[3px] rounded-md border border-[#d8dde8] bg-white px-2.5 py-2"
-          onPress={onOpenQr}
-          style={{ elevation: 2, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel="Open My QR">
-          <Image
-            source={qrCodeIcon}
-            className="h-[24px] w-[24px]"
-            resizeMode="contain"
-            style={{ tintColor: '#173a78' }}
-          />
-          <Text className="text-[10px] font-semibold text-[#173a78]">My QR</Text>
-        </Pressable>
-      </View>
+      {onOpenQr ? (
+        <View className="mt-[18px] items-end pr-4">
+          <Pressable
+            testID="document-detail-my-qr"
+            className="items-center gap-[3px] rounded-md border border-[#d8dde8] bg-white px-2.5 py-2"
+            onPress={onOpenQr}
+            style={{ elevation: 2, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open My QR">
+            <Image
+              source={qrCodeIcon}
+              className="h-[24px] w-[24px]"
+              resizeMode="contain"
+              style={{ tintColor: '#173a78' }}
+            />
+            <Text className="text-[10px] font-semibold text-[#173a78]">My QR</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   )
 }
 
-export function CredentialDocumentDetailCard({ display, onOpenQr, holderProfile }: Props) {
+export function CredentialDocumentDetailCard({
+  display,
+  onOpenQr,
+  holderProfile,
+  inactiveState,
+  renewalBadgeLabel,
+  renewalState,
+}: Props) {
   if (display.imageKey === 'transcript') {
-    return <TranscriptDocumentDetailCard display={display} onOpenQr={onOpenQr} holderProfile={holderProfile} />
+    return (
+      <TranscriptDocumentDetailCard
+        display={display}
+        onOpenQr={onOpenQr}
+        holderProfile={holderProfile}
+        inactiveState={inactiveState}
+        renewalBadgeLabel={renewalBadgeLabel}
+        renewalState={renewalState}
+      />
+    )
   }
   if (display.imageKey === 'id') {
-    return <IdCardDocumentDetailCard display={display} onOpenQr={onOpenQr} holderProfile={holderProfile} />
+    return (
+      <IdCardDocumentDetailCard
+        display={display}
+        onOpenQr={onOpenQr}
+        holderProfile={holderProfile}
+        inactiveState={inactiveState}
+        renewalBadgeLabel={renewalBadgeLabel}
+        renewalState={renewalState}
+      />
+    )
   }
 
   const primaryId = pickPrimaryId(display.primaryRows)
@@ -294,20 +359,21 @@ export function CredentialDocumentDetailCard({ display, onOpenQr, holderProfile 
 
   return (
     <View>
-      <View
-        testID="document-detail-card"
-        className="overflow-hidden rounded-2xl bg-white"
-        style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
+      <DocumentCardShell inactiveState={inactiveState} renewalBadgeLabel={renewalBadgeLabel} renewalState={renewalState}>
         <View
-          testID="document-detail-band-wrap"
-          className="min-h-[48px] w-full justify-center overflow-hidden px-4 py-[11px]"
-          style={{ alignSelf: 'stretch', backgroundColor: display.primaryColor || '#123b8c', minHeight: 48, overflow: 'hidden', width: '100%' }}>
-          <Text testID="document-detail-band" className="text-[15px] font-extrabold leading-6 tracking-[1.5px] text-white" style={{ lineHeight: 24 }}>
-            {display.documentTitle}
-          </Text>
-        </View>
+          testID="document-detail-card"
+          className="overflow-hidden rounded-2xl bg-white"
+          style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
+          <View
+            testID="document-detail-band-wrap"
+            className="min-h-[48px] w-full justify-center overflow-hidden px-4 py-[11px]"
+            style={{ alignSelf: 'stretch', backgroundColor: display.primaryColor || '#123b8c', minHeight: 48, overflow: 'hidden', width: '100%' }}>
+            <Text testID="document-detail-band" className="text-[15px] font-extrabold leading-6 tracking-[1.5px] text-white" style={{ lineHeight: 24 }}>
+              {display.documentTitle}
+            </Text>
+          </View>
 
-        <View testID="document-detail-hero" className="h-[148px] flex-row border-b border-[#eef2f8]">
+          <View testID="document-detail-hero" className="h-[148px] flex-row border-b border-[#eef2f8]">
           <View testID="document-detail-photo" className="w-[120px] shrink-0 items-center justify-center overflow-hidden bg-white">
             <Image
               testID="document-detail-image"
@@ -348,25 +414,28 @@ export function CredentialDocumentDetailCard({ display, onOpenQr, holderProfile 
             ))}
           </View>
         </View>
-      </View>
+        </View>
+      </DocumentCardShell>
 
-      <View className="mt-[10px] items-end">
-        <Pressable
-          testID="document-detail-my-qr"
-          className="items-center gap-[3px] rounded-xl border border-[#e2e8f0] bg-white px-3 py-2"
-          onPress={onOpenQr}
-          style={{ elevation: 2, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel="Open My QR">
-          <Image
-            source={qrCodeIcon}
-            className="h-[26px] w-[26px]"
-            resizeMode="contain"
-            style={{ tintColor: '#9aabbf' }}
-          />
-          <Text className="text-[10px] font-semibold text-wallet-navy">My QR</Text>
-        </Pressable>
-      </View>
+      {onOpenQr ? (
+        <View className="mt-[10px] items-end">
+          <Pressable
+            testID="document-detail-my-qr"
+            className="items-center gap-[3px] rounded-xl border border-[#e2e8f0] bg-white px-3 py-2"
+            onPress={onOpenQr}
+            style={{ elevation: 2, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open My QR">
+            <Image
+              source={qrCodeIcon}
+              className="h-[26px] w-[26px]"
+              resizeMode="contain"
+              style={{ tintColor: '#9aabbf' }}
+            />
+            <Text className="text-[10px] font-semibold text-wallet-navy">My QR</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   )
 }
