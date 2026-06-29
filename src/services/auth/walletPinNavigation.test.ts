@@ -45,16 +45,22 @@ describe('walletPinNavigation', () => {
     })).toBe('/(tabs)')
   })
 
-  test('routes unauthenticated cold start to login and never routes resume to PIN screens', () => {
+  test('routes unauthenticated cold start to auth and never routes resume to PIN screens', () => {
     expect(readStartupRoute({
       isAuthenticated: false,
       platform: 'android',
       hasWalletPin: false,
-    })).toBe('/login')
+    })).toBe('/auth')
     expect(readResumeRoute()).toBeUndefined()
   })
 
   test('does not redirect unauthenticated public auth routes', () => {
+    expect(readStartupRoute({
+      isAuthenticated: false,
+      currentSegment: 'auth',
+      platform: 'android',
+      hasWalletPin: false,
+    })).toBeUndefined()
     expect(readStartupRoute({
       isAuthenticated: false,
       currentSegment: 'login',
@@ -69,19 +75,19 @@ describe('walletPinNavigation', () => {
     })).toBeUndefined()
   })
 
-  test('redirects unauthenticated protected routes to login', () => {
+  test('redirects unauthenticated protected routes to auth', () => {
     expect(readStartupRoute({
       isAuthenticated: false,
       currentSegment: '(tabs)',
       platform: 'android',
       hasWalletPin: false,
-    })).toBe('/login')
+    })).toBe('/auth')
   })
 
-  test('does not override login-driven PIN setup routes after authentication changes', () => {
+  test('does not override auth-driven PIN setup routes after authentication changes', () => {
     expect(readStartupRoute({
       isAuthenticated: true,
-      currentSegment: 'login',
+      currentSegment: 'auth',
       platform: 'android',
       hasWalletPin: false,
     })).toBeUndefined()

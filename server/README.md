@@ -33,6 +33,12 @@ Alternative PowerShell form:
 Get-Content server\src\migrations\001_init.sql | C:\xampp\mysql\bin\mysql.exe -u root
 ```
 
+For unified PIN auth (`refactor/auth`), also run:
+
+```powershell
+Get-Content server\src\migrations\002_pin_reset_otps.sql | C:\xampp\mysql\bin\mysql.exe -u root
+```
+
 3. Create `server/.env` from `server/.env.example`.
 4. Replace `JWT_SECRET=local-dev-change-me` with a local secret before testing real accounts.
 5. Start the backend:

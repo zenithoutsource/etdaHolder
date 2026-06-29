@@ -440,3 +440,12 @@ Remaining:
 - Dev backend: added in-memory push token storage (`server/src/routes/pushTokens.ts`), Expo push sender (`server/src/services/expoPushClient.ts`), and webhook event forwarding in `server/src/routes/devWallet.ts`.
 - Added `expo-notifications` plugin entry to `app.json` and test coverage for notification routing/registration plus the dev push webhook path.
 - Verification: root `yarn tsc --noEmit` pass, root `yarn lint` pass, root `yarn test --runInBand` pass (57 suites / 291 tests), server `yarn tsc` pass, server `yarn test --runInBand` pass (8 suites / 33 tests).
+
+### Session 2026-06-29 (unified PIN auth — `refactor/auth`)
+
+- Implemented `docs/superpowers/specs/2026-06-29-unified-pin-auth-design.md`: single 6-digit PIN for server login and local app lock; email-first `/auth` wizard replaces separate login/register flows.
+- Server: `password` → `pin` on register/login; new `email-status`, `pin-reset/request`, `pin-reset/confirm` routes; `002_pin_reset_otps.sql` migration; name profanity + weak-PIN validation.
+- Mobile: `AuthWizard`, `PinEntryStep`, `/forgot-pin` OTP reset; `authService` auto-login after register and `setWalletPin()` after every login; `/login` and `/register` redirect to `/auth`.
+- OpenAPI/SDK: `walletApi.json` + `yarn sdk:generate`; set `orval` `clean: false` so hand-written `src/sdk/*` helpers are not deleted on regen.
+- Verification: server `yarn test` pass (36 tests); root auth tests pass (22 tests); root `yarn tsc --noEmit` pass.
+- Manual setup: run `server/src/migrations/002_pin_reset_otps.sql`; dev PIN-reset OTP logs to server console as `[pin-reset] OTP for …`.

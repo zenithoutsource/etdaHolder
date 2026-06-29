@@ -1,7 +1,7 @@
 # Unified PIN Authentication Design
 
 **Date:** 2026-06-29  
-**Status:** Draft — pending user review  
+**Status:** Implemented on `refactor/auth`  
 **Scope:** Replace email+password auth with email+PIN; unify account PIN and local wallet PIN; single email-first auth entry screen.
 
 ---

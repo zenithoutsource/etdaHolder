@@ -4,6 +4,9 @@ const ALLOWED_PATHS = new Set([
   '/wallet-api/auth/login',
   '/wallet-api/auth/register',
   '/wallet-api/auth/logout',
+  '/wallet-api/auth/email-status',
+  '/wallet-api/auth/pin-reset/request',
+  '/wallet-api/auth/pin-reset/confirm',
   '/wallet-api/wallet/accounts/wallets',
   '/wallet-api/wallet/{wallet}/keys/generate',
   '/wallet-api/wallet/{wallet}/dids/create/key',
@@ -14,6 +17,9 @@ const OPERATION_NAMES: Record<string, string> = {
   'post /wallet-api/auth/login': 'loginUser',
   'post /wallet-api/auth/register': 'registerUser',
   'post /wallet-api/auth/logout': 'logoutUser',
+  'post /wallet-api/auth/email-status': 'checkEmailStatus',
+  'post /wallet-api/auth/pin-reset/request': 'requestPinReset',
+  'post /wallet-api/auth/pin-reset/confirm': 'confirmPinReset',
   'get /wallet-api/wallet/accounts/wallets': 'getWallets',
   'post /wallet-api/wallet/{wallet}/keys/generate': 'generateKey',
   'post /wallet-api/wallet/{wallet}/dids/create/key': 'createDidKey',
@@ -61,7 +67,7 @@ export default defineConfig({
       client: 'react-query',
       httpClient: 'fetch',
       mode: 'single',
-      clean: true,
+      clean: false,
       prettier: false,
       override: {
         query: {

@@ -205,7 +205,7 @@ export default function RootLayout() {
         platform: Platform.OS,
         hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
       });
-      if (startupRoute !== '/login' && startupRoute !== '/pin-setup') {
+      if (startupRoute !== '/auth' && startupRoute !== '/pin-setup') {
         lastRoutedDeeplinkRef.current = incomingUrl;
         routeDeeplink(incomingUrl, { store: true });
       } else {

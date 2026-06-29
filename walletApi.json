@@ -130,12 +130,12 @@
                 "$ref" : "#/components/schemas/id.walt.webwallet.web.model.AccountRequest"
               },
               "examples" : {
-                "E-mail + password" : {
+                "E-mail + PIN" : {
                   "value" : {
                     "type" : "email",
                     "name" : "Max Mustermann",
                     "email" : "user@email.com",
-                    "password" : "password"
+                    "pin" : "482910"
                   }
                 },
                 "Wallet address + ecosystem" : {
@@ -196,11 +196,11 @@
                 "$ref" : "#/components/schemas/id.walt.webwallet.web.model.AccountRequest"
               },
               "examples" : {
-                "E-mail + password" : {
+                "E-mail + PIN" : {
                   "value" : {
                     "type" : "email",
                     "email" : "user@email.com",
-                    "password" : "password"
+                    "pin" : "482910"
                   }
                 },
                 "Wallet address + ecosystem" : {
@@ -249,6 +249,105 @@
           },
           "400" : {
             "description" : "Login failed",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/email-status" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Check whether an email is already registered",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.controllers.auth.EmailStatusRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Email status",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/id.walt.webwallet.web.controllers.auth.EmailStatusResponse"
+                }
+              }
+            },
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Bad request",
+            "headers" : { }
+          },
+          "429" : {
+            "description" : "Too many requests",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/pin-reset/request" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Request a PIN reset OTP by email",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.controllers.auth.PinResetRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "Request accepted",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Bad request",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
+    "/wallet-api/auth/pin-reset/confirm" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Confirm PIN reset with OTP",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.controllers.auth.PinResetConfirmRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "PIN reset succeeded",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Invalid or expired OTP",
+            "headers" : { }
+          },
+          "429" : {
+            "description" : "Too many attempts",
             "headers" : { }
           }
         },
@@ -3950,7 +4049,7 @@
             "type" : "string",
             "title" : "String"
           },
-          "password" : {
+          "pin" : {
             "type" : "string",
             "title" : "String"
           },
@@ -3959,7 +4058,7 @@
             "title" : "String"
           }
         },
-        "required" : [ "email", "password" ],
+        "required" : [ "email", "pin" ],
         "title" : ""
       },
       "keycloak" : {
@@ -4067,6 +4166,58 @@
           "propertyName" : "type"
         },
         "title" : "AccountRequest"
+      },
+      "id.walt.webwallet.web.controllers.auth.EmailStatusRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "email" ],
+        "title" : "EmailStatusRequest"
+      },
+      "id.walt.webwallet.web.controllers.auth.EmailStatusResponse" : {
+        "type" : "object",
+        "properties" : {
+          "exists" : {
+            "type" : "boolean",
+            "title" : "Boolean"
+          }
+        },
+        "required" : [ "exists" ],
+        "title" : "EmailStatusResponse"
+      },
+      "id.walt.webwallet.web.controllers.auth.PinResetRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "email" ],
+        "title" : "PinResetRequest"
+      },
+      "id.walt.webwallet.web.controllers.auth.PinResetConfirmRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "otp" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "pin" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "email", "otp", "pin" ],
+        "title" : "PinResetConfirmRequest"
       },
       "id.walt.webwallet.web.controllers.auth.LoginResponseData" : {
         "type" : "object",

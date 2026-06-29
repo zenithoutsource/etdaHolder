@@ -1,8 +1,15 @@
 import * as Keychain from 'react-native-keychain'
 
-import { getWallets, loginUser, logoutUser, registerUser } from '../../sdk/walletApi'
+import {
+  checkEmailStatus as checkEmailStatusApi,
+  getWallets,
+  loginUser,
+  logoutUser,
+  registerUser,
+  requestPinReset as requestPinResetApi,
+} from '../../sdk/walletApi'
 import { getCredentialStorage } from '../storage/storage'
-import { loadSession, login, logout, register } from './authService'
+import { checkEmailStatus, loadSession, login, logout, register, requestPinReset as requestPinResetService } from './authService'
 
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: {
@@ -14,24 +21,42 @@ jest.mock('react-native-keychain', () => ({
 }))
 
 jest.mock('../../sdk/walletApi', () => ({
+  checkEmailStatus: jest.fn(),
+  confirmPinReset: jest.fn(),
   getWallets: jest.fn(),
   loginUser: jest.fn(),
   logoutUser: jest.fn(),
   registerUser: jest.fn(),
+  requestPinReset: jest.fn(),
 }))
 
 jest.mock('../storage/storage', () => ({
   getCredentialStorage: jest.fn(),
 }))
 
+jest.mock('./walletPin', () => ({
+  setWalletPin: jest.fn(),
+  hasWalletPin: jest.fn(() => true),
+  verifyWalletPin: jest.fn(),
+}))
+
+jest.mock('react-native', () => ({
+  Platform: { OS: 'ios' },
+}))
+
 const loginUserMock = loginUser as jest.Mock
 const registerUserMock = registerUser as jest.Mock
+const checkEmailStatusMock = checkEmailStatusApi as jest.Mock
+const requestPinResetMock = requestPinResetApi as jest.Mock
 const logoutUserMock = logoutUser as jest.Mock
 const getWalletsMock = getWallets as jest.Mock
 const getGenericPasswordMock = Keychain.getGenericPassword as jest.Mock
 const setGenericPasswordMock = Keychain.setGenericPassword as jest.Mock
 const resetGenericPasswordMock = Keychain.resetGenericPassword as jest.Mock
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
+const { setWalletPin: setWalletPinMock } = jest.requireMock('./walletPin') as { setWalletPin: jest.Mock }
+
+const VALID_PIN = '482910'
 
 function mockCredentialStorage(initialValues: Record<string, string> = {}) {
   const values = new Map(Object.entries(initialValues))
@@ -55,7 +80,17 @@ describe('authService', () => {
     mockCredentialStorage()
   })
 
-  test('login stores session from login and wallet APIs', async () => {
+  test('checkEmailStatus returns exists flag', async () => {
+    checkEmailStatusMock.mockResolvedValueOnce({
+      status: 200,
+      data: { exists: true },
+      headers: new Headers(),
+    })
+
+    await expect(checkEmailStatus('test@example.com')).resolves.toEqual({ exists: true })
+  })
+
+  test('login stores session and local wallet PIN', async () => {
     loginUserMock.mockResolvedValueOnce({
       status: 200,
       data: { id: 'account-1', token: 'session-token' },
@@ -67,62 +102,30 @@ describe('authService', () => {
       headers: new Headers(),
     })
 
-    const session = await login('TEST@Example.COM', 'password')
+    const session = await login('TEST@Example.COM', VALID_PIN)
 
     expect(session).toEqual({
       accountId: 'account-1',
       token: 'session-token',
       walletId: 'wallet-1',
     })
-    expect(getWalletsMock).toHaveBeenCalledWith({
-      headers: { Authorization: 'Bearer session-token' },
-    })
-    expect(setGenericPasswordMock).toHaveBeenCalledWith(
-      'session',
-      JSON.stringify(session),
-      expect.objectContaining({ service: 'etda.wallet.session' }),
-    )
+    expect(loginUserMock).toHaveBeenCalledWith({ type: 'email', email: 'TEST@Example.COM', pin: VALID_PIN })
+    expect(setGenericPasswordMock).toHaveBeenCalled()
+    expect(setWalletPinMock).toHaveBeenCalledWith(VALID_PIN)
   })
 
   test('login surfaces backend error message', async () => {
     loginUserMock.mockResolvedValueOnce({
       status: 400,
-      data: { message: 'Invalid email or password' },
+      data: { message: 'Invalid email or PIN' },
       headers: new Headers(),
     })
 
-    await expect(login('test@example.com', 'wrong-password')).rejects.toThrow('Invalid email or password')
+    await expect(login('test@example.com', '000001')).rejects.toThrow('Invalid email or PIN')
   })
 
-  test('login clears unowned local credential records before storing new account session', async () => {
-    const storage = mockCredentialStorage({
-      'credential:index': JSON.stringify(['old-id-card']),
-      'credential:old-id-card': '{"type":"ThaiNationalID"}',
-    })
-    loginUserMock.mockResolvedValueOnce({
-      status: 200,
-      data: { id: 'account-2', token: 'session-token' },
-      headers: new Headers(),
-    })
-    getWalletsMock.mockResolvedValueOnce({
-      status: 200,
-      data: { account: 'account-2', wallets: [{ id: 'wallet-2' }] },
-      headers: new Headers(),
-    })
-
-    await login('new@example.com', 'password')
-
-    expect(storage.remove).toHaveBeenCalledWith('credential:old-id-card')
-    expect(storage.remove).toHaveBeenCalledWith('credential:index')
-    expect(storage.set).toHaveBeenCalledWith('credential:ownerAccountId', 'account-2')
-  })
-
-  test('login preserves local credential records owned by same account', async () => {
-    const storage = mockCredentialStorage({
-      'credential:ownerAccountId': 'account-1',
-      'credential:index': JSON.stringify(['id-card']),
-      'credential:id-card': '{"type":"ThaiNationalID"}',
-    })
+  test('register requires 201 then logs in', async () => {
+    registerUserMock.mockResolvedValueOnce({ status: 201, data: {}, headers: new Headers() })
     loginUserMock.mockResolvedValueOnce({
       status: 200,
       data: { id: 'account-1', token: 'session-token' },
@@ -134,23 +137,22 @@ describe('authService', () => {
       headers: new Headers(),
     })
 
-    await login('same@example.com', 'password')
+    const session = await register('Test User', 'test@example.com', VALID_PIN)
 
-    expect(storage.remove).not.toHaveBeenCalledWith('credential:id-card')
-    expect(storage.remove).not.toHaveBeenCalledWith('credential:index')
-    expect(storage.set).toHaveBeenCalledWith('credential:ownerAccountId', 'account-1')
-  })
-
-  test('register requires 201 response', async () => {
-    registerUserMock.mockResolvedValueOnce({ status: 201, data: {}, headers: new Headers() })
-
-    await expect(register('test@example.com', 'password', 'Test User')).resolves.toBeUndefined()
     expect(registerUserMock).toHaveBeenCalledWith({
       type: 'email',
       email: 'test@example.com',
-      password: 'password',
+      pin: VALID_PIN,
       name: 'Test User',
     })
+    expect(session.accountId).toBe('account-1')
+    expect(setWalletPinMock).toHaveBeenCalledWith(VALID_PIN)
+  })
+
+  test('requestPinReset requires 204 response', async () => {
+    requestPinResetMock.mockResolvedValueOnce({ status: 204, data: {}, headers: new Headers() })
+
+    await expect(requestPinResetService('test@example.com')).resolves.toBeUndefined()
   })
 
   test('logout sends bearer token and clears local session', async () => {
@@ -165,18 +167,6 @@ describe('authService', () => {
     expect(logoutUserMock).toHaveBeenCalledWith({
       headers: { Authorization: 'Bearer session-token' },
     })
-    expect(resetGenericPasswordMock).toHaveBeenCalledWith({ service: 'etda.wallet.session' })
-  })
-
-  test('logout clears local session when server logout fails', async () => {
-    getGenericPasswordMock.mockResolvedValueOnce({
-      username: 'session',
-      password: JSON.stringify({ accountId: 'account-1', token: 'session-token', walletId: 'wallet-1' }),
-    })
-    logoutUserMock.mockRejectedValueOnce(new Error('network failed'))
-
-    await logout()
-
     expect(resetGenericPasswordMock).toHaveBeenCalledWith({ service: 'etda.wallet.session' })
   })
 

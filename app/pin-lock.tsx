@@ -6,18 +6,14 @@ import { Platform, Text, View } from 'react-native'
 import { AppButton } from '../src/components/AppButton'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { useAppDialog } from '../src/components/AppDialog'
 import { PinKeypad } from '../src/components/PinKeypad'
 import { isBiometricDisabledForTesting } from '../src/config/runtimeFlags'
 import { verifyWalletPin } from '../src/services/auth/walletPin'
-import { useAuthStore } from '../src/store/authStore'
 
 const PIN_LENGTH = 6
 
 export default function PinLockScreen() {
   const router = useRouter()
-  const logout = useAuthStore((s) => s.logout)
-  const { showDialog } = useAppDialog()
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -42,22 +38,7 @@ export default function PinLockScreen() {
   }
 
   function handleForgotPin() {
-    showDialog({
-      title: 'Forgot PIN?',
-      message: 'You will be logged out and need to sign in again.',
-      icon: 'warning',
-      actions: [
-        { label: 'Cancel', variant: 'secondary' },
-        {
-          label: 'Log Out',
-          variant: 'danger',
-          onPress: async () => {
-            await logout()
-            router.replace('/login')
-          },
-        },
-      ],
-    })
+    router.push('/forgot-pin')
   }
 
   return (

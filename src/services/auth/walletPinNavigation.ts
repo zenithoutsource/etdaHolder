@@ -12,7 +12,7 @@ type StartupRouteInput = {
   hasWalletPin: boolean
 }
 
-export type WalletRoute = '/(tabs)' | '/login' | '/pin-setup'
+export type WalletRoute = '/(tabs)' | '/auth' | '/pin-setup'
 
 export function readPostLoginRoute(input: PostLoginRouteInput): WalletRoute {
   if (input.platform !== 'web' && !input.hasWalletPin) return '/pin-setup'
@@ -20,13 +20,13 @@ export function readPostLoginRoute(input: PostLoginRouteInput): WalletRoute {
 }
 
 export function readStartupRoute(input: StartupRouteInput): WalletRoute | undefined {
-  if (!input.isAuthenticated && (input.currentSegment === 'login' || input.currentSegment === 'register')) {
+  if (!input.isAuthenticated && (input.currentSegment === 'auth' || input.currentSegment === 'login' || input.currentSegment === 'register')) {
     return undefined
   }
-  if (input.isAuthenticated && (input.currentSegment === 'login' || input.currentSegment === 'pin-setup')) {
+  if (input.isAuthenticated && (input.currentSegment === 'auth' || input.currentSegment === 'login' || input.currentSegment === 'pin-setup')) {
     return undefined
   }
-  if (!input.isAuthenticated) return '/login'
+  if (!input.isAuthenticated) return '/auth'
   if (input.platform !== 'web' && !input.hasWalletPin) return '/pin-setup'
   return '/(tabs)'
 }
