@@ -36,7 +36,34 @@ function readDevRenewalDelayMs(): number {
 const suspensions = new Map<string, DevIssuerSuspensionRecord>()
 const renewals = new Map<string, DevWalletRenewalRecord>()
 
-function readNotificationCopy(event: ExpoPushEvent, credentialType: string): Pick<ExpoPushPayload, 'title' | 'body'> {
+async function sendCredentialEventPush(
+  event: ExpoPushEvent,
+  holderDid: string,
+  credentialId: string,
+  credentialType: string,
+): Promise<boolean> {
+  const pushToken = readPushToken(holderDid)
+  if (!pushToken) {
+    return false
+  }
+
+  const copy = readNotificationCopy(event, credentialType)
+  await sendExpoPush(pushToken, {
+    ...copy,
+    data: {
+      event,
+      credentialId,
+      credentialType,
+    },
+  })
+
+  return true
+}
+
+export function readNotificationCopy(
+  event: ExpoPushEvent,
+  credentialType: string,
+): Pick<ExpoPushPayload, 'title' | 'body'> {
   const credentialLabel = credentialType === 'ThaiNationalID'
     ? 'Thai National ID'
     : credentialType === 'DLTDrivingLicence'
@@ -104,6 +131,13 @@ devWalletRouter.get('/wallet/renewal-status', (_req, res) => {
       state: 'offer-ready',
       updatedAt: new Date().toISOString(),
     })
+
+    void sendCredentialEventPush(
+      'renewal-ready',
+      record.newHolderDid,
+      record.credentialId,
+      record.credentialType,
+    ).catch(() => undefined)
   }
 
   const output = Array.from(renewals.values()).map((record) => {
@@ -171,21 +205,16 @@ devWalletRouter.post('/webhook/credential-event', async (req, res) => {
     return
   }
 
-  const pushToken = readPushToken(holderDid)
-  if (!pushToken) {
+  const delivered = await sendCredentialEventPush(
+    event,
+    holderDid,
+    credentialId,
+    credentialType,
+  ).catch(() => false)
+  if (!delivered) {
     res.status(200).json({ delivered: false })
     return
   }
-
-  const copy = readNotificationCopy(event, credentialType)
-  await sendExpoPush(pushToken, {
-    ...copy,
-    data: {
-      event,
-      credentialId,
-      credentialType,
-    },
-  })
 
   res.status(200).json({ delivered: true })
 })
@@ -240,6 +269,13 @@ devWalletRouter.post('/wallet/renewal-request', async (req, res) => {
     requestedAt: updatedAt,
     updatedAt,
   })
+
+  void sendCredentialEventPush(
+    'renewal-required',
+    newHolderDid,
+    credentialId,
+    credentialType,
+  ).catch(() => undefined)
 
   res.status(201).json({ accepted: true })
 })
