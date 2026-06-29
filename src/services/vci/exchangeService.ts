@@ -282,6 +282,15 @@ export async function acquireCredentialRecord(
       credentialIdentifier: token.credentialIdentifier,
     })
   } catch (error) {
+    if (error instanceof DeferredIssuancePending) {
+      logWalletStep('oid4vci', 'credential-deferred', {
+        issuer: resolvedOffer.issuer,
+        transactionId: error.transactionId,
+        deferredEndpoint: error.deferredEndpoint,
+      })
+      throw error
+    }
+
     if (!(error instanceof InvalidProofError)) {
       logWalletError('oid4vci', 'credential-request-failed', error, {
         issuer: resolvedOffer.issuer,
@@ -301,6 +310,14 @@ export async function acquireCredentialRecord(
     })
   }
   logWalletStep('oid4vci', 'credential-response-received', { issuer: resolvedOffer.issuer, credentialBytes: rawVc.length })
+  return finalizeCredentialRecord(rawVc, proof, resolvedOffer)
+}
+
+function finalizeCredentialRecord(
+  rawVc: string,
+  proof: string,
+  resolvedOffer: ResolvedCredentialOffer,
+): VerifiableCredentialRecord {
   assertCredentialIssuerSignatureAlg(rawVc)
   assertDevelopmentEddsaHolderBinding(rawVc, proof)
   logWalletStep('oid4vci', 'holder-binding-validated', { issuer: resolvedOffer.issuer })
@@ -316,6 +333,114 @@ export function saveCredentialRecord(
   },
 ): void {
   storeCredentialRecord(dependencies.getCredentialStorage(), record)
+}
+
+/**
+ * OID4VCI §8.4 — Polls the Deferred Credential Endpoint for a previously
+ * deferred credential issuance. Returns a `VerifiableCredentialRecord` when
+ * the credential is ready, or throws `DeferredIssuancePending` again when
+ * still pending (with an updated `interval` if provided by the Issuer).
+ *
+ * The caller is responsible for scheduling retries and for saving the
+ * returned record (this function does not write to storage).
+ */
+export async function pollDeferredCredential(params: {
+  transactionId: string
+  accessToken: string
+  deferredEndpoint: string
+  proof: string
+  resolvedOffer: ResolvedCredentialOffer
+}): Promise<VerifiableCredentialRecord> {
+  const { transactionId, accessToken, deferredEndpoint, proof, resolvedOffer } = params
+
+  logWalletStep('oid4vci', 'deferred-poll-start', {
+    issuer: resolvedOffer.issuer,
+    deferredEndpoint,
+  })
+
+  let response: Response
+  try {
+    response = await fetch(deferredEndpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ transaction_id: transactionId }),
+    })
+  } catch (error) {
+    logWalletError('oid4vci', 'deferred-poll-fetch-error', error, {
+      issuer: resolvedOffer.issuer,
+      deferredEndpoint,
+    })
+    throw new Error(`DeferredCredentialFetchFailed: ${toErrorMessage(error)}`)
+  }
+
+  const responseBody = await readJsonResponseBody(response)
+
+  if (!response.ok) {
+    const errorCode = readString(responseBody.error)
+    const errorDescription = readString(responseBody.error_description)
+    const interval = readNumber(responseBody.interval)
+
+    if (errorCode === 'issuance_pending') {
+      logWalletStep('oid4vci', 'deferred-poll-pending', {
+        issuer: resolvedOffer.issuer,
+        interval,
+      })
+      throw new DeferredIssuancePending(
+        transactionId,
+        accessToken,
+        deferredEndpoint,
+        proof,
+        resolvedOffer,
+        interval,
+      )
+    }
+
+    const statusMessage = `HTTP ${response.status}`
+    const detail = errorCode
+      ? (errorDescription ? `${errorCode} - ${errorDescription}` : errorCode)
+      : 'unknown_error'
+    logWalletError('oid4vci', 'deferred-poll-failed', new Error(`${statusMessage}: ${detail}`), {
+      issuer: resolvedOffer.issuer,
+      deferredEndpoint,
+      status: response.status,
+    })
+    throw new Error(`DeferredCredentialFailed: ${statusMessage}: ${detail}`)
+  }
+
+  // Success — extract the credential from the response body
+  const credential = readCompactCredentialValue(responseBody)
+  if (!credential) {
+    // Check if the response contains a new transaction_id (still pending via success response)
+    const newTransactionId = readString(responseBody.transaction_id)
+    if (newTransactionId) {
+      const interval = readNumber(responseBody.interval)
+      logWalletStep('oid4vci', 'deferred-poll-pending', {
+        issuer: resolvedOffer.issuer,
+        newTransactionId,
+        interval,
+      })
+      throw new DeferredIssuancePending(
+        newTransactionId,
+        accessToken,
+        deferredEndpoint,
+        proof,
+        resolvedOffer,
+        interval,
+      )
+    }
+
+    throw new Error(`DeferredCredentialFailed: response contains neither credential nor transaction_id`)
+  }
+
+  logWalletStep('oid4vci', 'deferred-poll-credential-received', {
+    issuer: resolvedOffer.issuer,
+    credentialBytes: credential.length,
+  })
+
+  return finalizeCredentialRecord(credential, proof, resolvedOffer)
 }
 
 export async function syncCredentialToBackend(
@@ -730,8 +855,28 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
           credentialConfiguration.format as OID4VCICredentialFormat,
         )
         assertCredentialEndpointSuccess(response)
+
+        const deferredTransactionId = readDeferredTransactionId(response)
+        if (deferredTransactionId) {
+          const deferredEndpoint = readString(readRecord(resolvedOffer.issuerMetadata)?.deferred_credential_endpoint)
+          if (!deferredEndpoint) {
+            throw new Error('CredentialRequestFailed: issuer returned transaction_id but no deferred_credential_endpoint in metadata')
+          }
+          throw new DeferredIssuancePending(
+            deferredTransactionId,
+            accessToken,
+            deferredEndpoint,
+            proof,
+            resolvedOffer,
+          )
+        }
+
         return readCompactCredentialFromResponse(response)
       } catch (error) {
+        if (error instanceof DeferredIssuancePending) {
+          throw error
+        }
+
         if (
           error instanceof Error &&
           (error.message.startsWith('CredentialFormatUnsupported') ||
@@ -829,6 +974,25 @@ export class InvalidProofError extends Error {
   }
 }
 
+/**
+ * OID4VCI §8.4 — Thrown when the Issuer returns `transaction_id` instead of
+ * an immediate credential. The caller (UI/scan flow) catches this, stores the
+ * transaction context, and polls `pollDeferredCredential()` later.
+ */
+export class DeferredIssuancePending extends Error {
+  constructor(
+    public readonly transactionId: string,
+    public readonly accessToken: string,
+    public readonly deferredEndpoint: string,
+    public readonly proof: string,
+    public readonly resolvedOffer: ResolvedCredentialOffer,
+    public readonly interval?: number,
+  ) {
+    super(`DeferredIssuancePending: transaction_id=${transactionId}`)
+    this.name = 'DeferredIssuancePending'
+  }
+}
+
 function assertCredentialEndpointSuccess(response: unknown): void {
   const responseRecord = readRecord(response)
   const errorBody = readRecord(responseRecord?.errorBody)
@@ -872,6 +1036,27 @@ export function readCompactCredentialFromResponse(response: unknown): string {
   if (credential) return credential
 
   throw new Error(`CredentialResponseUnsupported: compact credential response is required (${describeCredentialResponseShape(body)})`)
+}
+
+/**
+ * OID4VCI §8.4 — Reads `transaction_id` from a credential response that
+ * indicates deferred issuance. Returns the transaction ID string when the
+ * response contains `transaction_id` but no credential, or `undefined` when
+ * the response carries a credential (normal flow).
+ */
+export function readDeferredTransactionId(response: unknown): string | undefined {
+  const body = readCredentialResponseBody(response)
+  if (!body) return undefined
+
+  // Only treat as deferred when there is a transaction_id and no credential
+  const transactionId = readString(body.transaction_id)
+  if (!transactionId) return undefined
+
+  // If the response also has a credential, the issuer is done — not deferred
+  const credential = readCompactCredentialValue(body)
+  if (credential) return undefined
+
+  return transactionId
 }
 
 function readCredentialResponseBody(response: unknown): Record<string, unknown> | undefined {

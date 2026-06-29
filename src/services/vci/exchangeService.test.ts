@@ -1,8 +1,11 @@
 import {
   acquireCredentialRecord,
   claimCredential,
+  DeferredIssuancePending,
   InvalidProofError,
+  pollDeferredCredential,
   readCompactCredentialFromResponse,
+  readDeferredTransactionId,
   resolveOffer,
   saveCredentialRecord,
   syncCredentialToBackend,
@@ -1127,4 +1130,220 @@ test('acquireCredentialRecord retries once with a refreshed c_nonce on invalid_p
 
   expect(requestCredentialCalls).toBe(2)
   expect(signedNonces).toEqual(['nonce', 'fresh-nonce'])
+})
+
+describe('readDeferredTransactionId', () => {
+  test('returns transaction_id when present without credential', () => {
+    expect(
+      readDeferredTransactionId({
+        successBody: { transaction_id: 'txn-abc' },
+      }),
+    ).toBe('txn-abc')
+  })
+
+  test('returns transaction_id from direct response body', () => {
+    expect(
+      readDeferredTransactionId({ transaction_id: 'txn-direct' }),
+    ).toBe('txn-direct')
+  })
+
+  test('returns undefined when credential is present alongside transaction_id', () => {
+    expect(
+      readDeferredTransactionId({
+        successBody: {
+          transaction_id: 'txn-abc',
+          credential: 'issuer.jwt.sd-jwt~disclosure~',
+        },
+      }),
+    ).toBeUndefined()
+  })
+
+  test('returns undefined when no transaction_id', () => {
+    expect(
+      readDeferredTransactionId({
+        successBody: { credential: 'issuer.jwt.sd-jwt~disclosure~' },
+      }),
+    ).toBeUndefined()
+  })
+
+  test('returns undefined for empty response', () => {
+    expect(readDeferredTransactionId({})).toBeUndefined()
+    expect(readDeferredTransactionId(undefined)).toBeUndefined()
+  })
+})
+
+describe('acquireCredentialRecord deferred issuance', () => {
+  test('throws DeferredIssuancePending when requestCredential throws it', async () => {
+    const resolved = await contract()
+
+    try {
+      await acquireCredentialRecord(resolved, {
+        tx_code: '123456',
+        dependencies: {
+          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+          signProof: async () => 'proof.jwt',
+          requestCredential: async ({ accessToken, proof, resolvedOffer: offer }) => {
+            throw new DeferredIssuancePending(
+              'txn-123',
+              accessToken,
+              'https://issuer.example.com/deferred',
+              proof,
+              offer,
+              5,
+            )
+          },
+          getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+        },
+      })
+      throw new Error('should have thrown DeferredIssuancePending')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DeferredIssuancePending)
+      const deferred = error as DeferredIssuancePending
+      expect(deferred.transactionId).toBe('txn-123')
+      expect(deferred.accessToken).toBe('access-token')
+      expect(deferred.deferredEndpoint).toBe('https://issuer.example.com/deferred')
+      expect(deferred.proof).toBe('proof.jwt')
+      expect(deferred.interval).toBe(5)
+      expect(deferred.resolvedOffer).toBe(resolved)
+    }
+  })
+})
+
+describe('pollDeferredCredential', () => {
+  test('returns credential record when issuer responds with credential', async () => {
+    const resolved = await contract()
+    const vc = unsignedJwt({
+      jti: 'deferred-vc-1',
+      vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+      iat: 1760000000,
+    })
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(JSON.stringify({ credential: vc }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const record = await pollDeferredCredential({
+      transactionId: 'txn-ready',
+      accessToken: 'access-token',
+      deferredEndpoint: 'https://issuer.example.com/deferred',
+      proof: 'proof.jwt',
+      resolvedOffer: resolved,
+    })
+
+    expect(record.id).toBe('deferred-vc-1')
+    expect(record.type).toBe('ThaiNationalID')
+
+    expect(fetchMock).toHaveBeenCalledWith('https://issuer.example.com/deferred', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer access-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ transaction_id: 'txn-ready' }),
+    })
+  })
+
+  test('throws DeferredIssuancePending on issuance_pending error with interval', async () => {
+    const resolved = await contract()
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({ error: 'issuance_pending', interval: 10 }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    try {
+      await pollDeferredCredential({
+        transactionId: 'txn-pending',
+        accessToken: 'access-token',
+        deferredEndpoint: 'https://issuer.example.com/deferred',
+        proof: 'proof.jwt',
+        resolvedOffer: resolved,
+      })
+      throw new Error('should have thrown DeferredIssuancePending')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DeferredIssuancePending)
+      const deferred = error as DeferredIssuancePending
+      expect(deferred.transactionId).toBe('txn-pending')
+      expect(deferred.interval).toBe(10)
+      expect(deferred.proof).toBe('proof.jwt')
+    }
+  })
+
+  test('throws DeferredIssuancePending when success response has new transaction_id', async () => {
+    const resolved = await contract()
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({ transaction_id: 'txn-renewed' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    try {
+      await pollDeferredCredential({
+        transactionId: 'txn-pending',
+        accessToken: 'access-token',
+        deferredEndpoint: 'https://issuer.example.com/deferred',
+        proof: 'proof.jwt',
+        resolvedOffer: resolved,
+      })
+      throw new Error('should have thrown DeferredIssuancePending')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DeferredIssuancePending)
+      const deferred = error as DeferredIssuancePending
+      expect(deferred.transactionId).toBe('txn-renewed')
+    }
+  })
+
+  test('throws hard error on invalid_transaction_id', async () => {
+    const resolved = await contract()
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({ error: 'invalid_transaction_id', error_description: 'Transaction not found' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    await expect(
+      pollDeferredCredential({
+        transactionId: 'txn-invalid',
+        accessToken: 'access-token',
+        deferredEndpoint: 'https://issuer.example.com/deferred',
+        proof: 'proof.jwt',
+        resolvedOffer: resolved,
+      }),
+    ).rejects.toThrow('DeferredCredentialFailed: HTTP 400: invalid_transaction_id - Transaction not found')
+  })
+
+  test('throws hard error on network failure', async () => {
+    const resolved = await contract()
+
+    globalThis.fetch = (() => {
+      throw new Error('Network unreachable')
+    }) as unknown as typeof fetch
+
+    await expect(
+      pollDeferredCredential({
+        transactionId: 'txn-net-fail',
+        accessToken: 'access-token',
+        deferredEndpoint: 'https://issuer.example.com/deferred',
+        proof: 'proof.jwt',
+        resolvedOffer: resolved,
+      }),
+    ).rejects.toThrow('DeferredCredentialFetchFailed')
+  })
 })
