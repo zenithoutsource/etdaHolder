@@ -9,6 +9,7 @@ import {
   logoutUser,
   registerUser,
   requestPinReset as requestPinResetApi,
+  verifyPinResetOtp as verifyPinResetOtpApi,
 } from '../../sdk/walletApi'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getCredentialStorage } from '../storage/storage'
@@ -176,6 +177,21 @@ export async function requestPinReset(email: string): Promise<void> {
     }
   } catch (error) {
     logWalletError('sdk', 'pin-reset-request-failed', error, { userIdentifierProvided: email.length > 0 })
+    throw error
+  }
+}
+
+export async function verifyPinResetOtp(email: string, otp: string): Promise<void> {
+  logWalletStep('sdk', 'pin-reset-verify-start', { userIdentifierProvided: email.length > 0 })
+  try {
+    const res = await verifyPinResetOtpApi({ email, otp })
+    logWalletStep('sdk', 'pin-reset-verify-response', { status: res.status })
+
+    if (res.status !== 204) {
+      throw new Error(readResponseMessage(res.data) ?? `PinResetVerifyFailed: HTTP ${res.status}`)
+    }
+  } catch (error) {
+    logWalletError('sdk', 'pin-reset-verify-failed', error, { userIdentifierProvided: email.length > 0 })
     throw error
   }
 }

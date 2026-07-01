@@ -93,16 +93,16 @@ describe('auth routes', () => {
     ])
   })
 
-  it('register rejects weak PIN', async () => {
+  it('register accepts simple PIN', async () => {
     const response = await request(app).post('/wallet-api/auth/register').send({
       type: 'email',
       name: 'Test User',
-      email: 'test@example.com',
+      email: 'simple-pin@example.com',
       pin: '123456',
     })
 
-    expect(response.status).toBe(400)
-    expect(hashPasswordMock).not.toHaveBeenCalled()
+    expect(response.status).toBe(201)
+    expect(hashPasswordMock).toHaveBeenCalledWith('123456')
   })
 
   it('duplicate email returns 409', async () => {
@@ -175,6 +175,55 @@ describe('auth routes', () => {
     expect(response.body).toEqual({ message: 'Invalid email or PIN' })
     expect(verifyPasswordMock).toHaveBeenCalledWith('000001', expect.any(String))
     expect(storeSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('pin-reset verify accepts a valid OTP', async () => {
+    const crypto = await import('node:crypto')
+    const otp = '123456'
+
+    executeMock
+      .mockResolvedValueOnce([[{ id: 'user-1' }]])
+      .mockResolvedValueOnce([[{
+        id: 'otp-1',
+        user_id: 'user-1',
+        otp_hash: crypto.createHash('sha256').update(otp).digest('hex'),
+        expires_at: new Date('2099-01-01T00:00:00.000Z'),
+        used_at: null,
+        attempt_count: 0,
+      }]])
+
+    const response = await request(app).post('/wallet-api/auth/pin-reset/verify').send({
+      email: 'test@example.com',
+      otp,
+    })
+
+    expect(response.status).toBe(204)
+    expect(withTransactionMock).not.toHaveBeenCalled()
+  })
+
+  it('pin-reset verify rejects an invalid OTP', async () => {
+    const crypto = await import('node:crypto')
+
+    executeMock
+      .mockResolvedValueOnce([[{ id: 'user-1' }]])
+      .mockResolvedValueOnce([[{
+        id: 'otp-1',
+        user_id: 'user-1',
+        otp_hash: crypto.createHash('sha256').update('123456').digest('hex'),
+        expires_at: new Date('2099-01-01T00:00:00.000Z'),
+        used_at: null,
+        attempt_count: 0,
+      }]])
+      .mockResolvedValueOnce([{ affectedRows: 1 }])
+
+    const response = await request(app).post('/wallet-api/auth/pin-reset/verify').send({
+      email: 'test@example.com',
+      otp: '000000',
+    })
+
+    expect(response.status).toBe(400)
+    expect(response.body).toEqual({ message: 'Invalid or expired OTP' })
+    expect(withTransactionMock).not.toHaveBeenCalled()
   })
 
   it('pin-reset confirm updates PIN and revokes sessions', async () => {

@@ -1,7 +1,33 @@
 import { Platform } from 'react-native'
 import * as Keychain from 'react-native-keychain'
 
-import { initStorage, resetStorage } from './storage'
+const mockIsNativeWeakBiometricAvailable = jest.fn(() => false)
+const mockAuthenticateWeakBiometric = jest.fn(
+  async (_promptMessage: string, _cancelButtonText: string) => true,
+)
+
+jest.mock('@/src/services/crypto/nativeEddsaSigner', () => ({
+  isNativeWeakBiometricAvailable: () => mockIsNativeWeakBiometricAvailable(),
+  authenticateWeakBiometric: (promptMessage: string, cancelButtonText: string) =>
+    mockAuthenticateWeakBiometric(promptMessage, cancelButtonText),
+}))
+
+import { createHash } from 'react-native-quick-crypto'
+
+import {
+  initStorage,
+  initStorageWithPin,
+  getCredentialStorage,
+  canVerifyStoragePinUnlock,
+  isStoragePinFallbackAvailable,
+  persistWalletPinMeta,
+  provisionStoragePinFallback,
+  resetStorage,
+} from './storage'
+
+function hashWalletPinForTest(pin: string, salt: string): string {
+  return createHash('sha256').update(`${salt}:${pin}`).digest('hex')
+}
 
 describe('credential storage keychain policy', () => {
   const originalFlag = process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING
@@ -9,6 +35,8 @@ describe('credential storage keychain policy', () => {
   beforeEach(async () => {
     await resetStorage()
     jest.clearAllMocks()
+    mockIsNativeWeakBiometricAvailable.mockReturnValue(false)
+    mockAuthenticateWeakBiometric.mockResolvedValue(true)
     delete process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
@@ -60,5 +88,183 @@ describe('credential storage keychain policy', () => {
         authenticationPrompt: expect.anything(),
       })
     )
+  })
+
+  test('shares one Keychain read across concurrent storage initialization calls', async () => {
+    let resolveRead: ((value: false) => void) | undefined
+    jest.mocked(Keychain.getGenericPassword).mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveRead = resolve
+      }),
+    )
+
+    const firstInit = initStorage()
+    const secondInit = initStorage()
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
+    resolveRead?.(false)
+
+    await Promise.all([firstInit, secondInit])
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
+    expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1)
+  })
+
+  test('uses NO_AUTH Android keychain storage guarded by the weak biometric gate', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    mockIsNativeWeakBiometricAvailable.mockReturnValue(true)
+
+    await initStorage()
+
+    expect(mockAuthenticateWeakBiometric).toHaveBeenCalled()
+    expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
+      'wallet-credentials',
+      expect.any(String),
+      expect.objectContaining({
+        storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+      }),
+    )
+    expect(Keychain.getGenericPassword).toHaveBeenCalledWith({
+      service: 'etda.wallet.credential_storage_key',
+    })
+  })
+
+  test('maps Android weak biometric cancellation to a retryable storage unlock error', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    mockIsNativeWeakBiometricAvailable.mockReturnValue(true)
+    mockAuthenticateWeakBiometric.mockResolvedValueOnce(false)
+
+    await expect(initStorage()).rejects.toThrow('StorageUnlockCancelled')
+
+    expect(Keychain.getGenericPassword).not.toHaveBeenCalled()
+  })
+
+  test('maps Android Keychain prompt cancellation to a retryable storage unlock error', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    const cancellationError = Object.assign(new Error('code: 13, msg: Cancel'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    })
+    jest.mocked(Keychain.getGenericPassword)
+      .mockRejectedValueOnce(cancellationError)
+      .mockResolvedValueOnce(false)
+
+    await expect(initStorage()).rejects.toThrow('StorageUnlockCancelled')
+    await initStorage()
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(2)
+    expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1)
+  })
+
+  test('maps localized Android biometric dismiss to a retryable storage unlock error', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    const cancellationError = Object.assign(
+      new Error('code: 10, msg: ผู้ใช้ยกเลิกการทำงานของลายนิ้วมือ'),
+      {
+        code: 'E_CRYPTO_FAILED',
+        name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+      },
+    )
+    jest.mocked(Keychain.getGenericPassword)
+      .mockRejectedValueOnce(cancellationError)
+      .mockResolvedValueOnce(false)
+
+    await expect(initStorage()).rejects.toThrow('StorageUnlockCancelled')
+    await initStorage()
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(2)
+    expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps non-cancel Android crypto failures as storage initialization errors', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    const cryptoError = Object.assign(new Error('code: 42, msg: keystore unavailable'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(cryptoError)
+
+    await expect(initStorage()).rejects.toThrow('StorageInitializationFailed')
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
+    expect(Keychain.setGenericPassword).not.toHaveBeenCalled()
+  })
+
+  test('opens credential storage with the PIN-wrapped fallback after biometric cancellation', async () => {
+    await initStorage()
+    provisionStoragePinFallback('123456')
+    await resetStorage({ keepPinFallback: true })
+    jest.clearAllMocks()
+
+    expect(isStoragePinFallbackAvailable()).toBe(true)
+    await initStorageWithPin('123456')
+
+    expect(Keychain.getGenericPassword).not.toHaveBeenCalled()
+  })
+
+  test('does not clear PIN-opened storage when an older biometric unlock later cancels', async () => {
+    await initStorage()
+    provisionStoragePinFallback('123456')
+    await resetStorage({ keepPinFallback: true })
+    jest.clearAllMocks()
+
+    let rejectRead: ((reason: Error) => void) | undefined
+    jest.mocked(Keychain.getGenericPassword).mockImplementationOnce(
+      () => new Promise((_, reject) => {
+        rejectRead = reject
+      }),
+    )
+
+    const biometricInit = initStorage()
+    await initStorageWithPin('123456')
+    rejectRead?.(Object.assign(new Error('code: 13, msg: Cancel'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    }))
+
+    await expect(biometricInit).rejects.toThrow('StorageUnlockCancelled')
+    expect(() => getCredentialStorage()).not.toThrow()
+  })
+
+  test('rejects wrong PIN against wallet pin meta when storage fallback is missing', async () => {
+    await resetStorage()
+    const salt = 'meta-salt'
+    persistWalletPinMeta({ salt, hash: hashWalletPinForTest('123456', salt) })
+
+    await expect(initStorageWithPin('123456')).rejects.toThrow('StoragePinFallbackRequired')
+  })
+
+  test('rejects wrong PIN fallback without initializing credential storage', async () => {
+    await initStorage()
+    provisionStoragePinFallback('123456')
+    await resetStorage({ keepPinFallback: true })
+
+    await expect(initStorageWithPin('654321')).rejects.toThrow('StoragePinVerifierMismatch')
+    await expect(initStorageWithPin('abcdef')).rejects.toThrow('InvalidWalletPin')
+  })
+
+  test('resetStorage clears PIN fallback metadata by default', async () => {
+    await initStorage()
+    provisionStoragePinFallback('123456')
+
+    expect(isStoragePinFallbackAvailable()).toBe(true)
+    await resetStorage()
+
+    expect(isStoragePinFallbackAvailable()).toBe(false)
   })
 })

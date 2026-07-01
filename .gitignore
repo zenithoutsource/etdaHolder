@@ -54,3 +54,4 @@ app-example
 modules/**/android/build/
 modules/**/.cxx/
 google-services.json
+etda-wallet-firebase-adminsdk-fbsvc-5c08da928e.json

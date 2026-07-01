@@ -92,6 +92,15 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `app/(tabs)/scan.tsx` P1 issuance sub-flow uses one component per step (`ThaIdVerificationPanel`, `ThaiIdSuccessConfirmationPanel`, `ThaiIdReceivePanel`) — each is a distinct phase, not a per-document split, so do not merge them. `ThaiIdReceivePanel` extracts its repeated label/value blocks via `CredentialFieldRow`; reuse `CredentialFieldRow` for any new label/value list instead of inlining `<Text>` pairs.
 - `ThaIdVerificationPanel` and `ThaiIdSuccessConfirmationPanel` are schema-driven via `CardSchemaConfig.issuanceVerification` / `issuanceConfirmation` in `src/config/cardSchemas.ts` (provider label, agency labels, image key). A new document type that reuses these steps needs only a schema entry plus the referenced image asset registered in the panel's image map — not a new component file.
 
+## Planning Philosophy
+
+When planning any new system, feature, or integration:
+
+1. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs stated.
+2. **Best practice before convenience** — prefer APNs/FCM push with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant protocol flows over custom shortcuts.
+3. **Name the tradeoffs explicitly** — if recommending a simpler path, state what production capability is deferred and the trigger for when it must be addressed.
+4. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before writing implementation steps.
+
 ## Core Principles
 
 Decoupled Architecture - Separate the public OID4VCI 1.0 protocol layer from internal wallet state storage.

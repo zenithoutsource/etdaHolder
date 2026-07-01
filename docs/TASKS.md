@@ -2,6 +2,19 @@
 
 Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
 
+### Session 2026-07-01
+
+- Fixed Android Keychain biometric prompt cancellation during credential storage startup: `react-native-keychain` can surface Cancel as `E_CRYPTO_FAILED` / `CryptoFailedException` with `code: 13`, and storage now maps that native diagnostic to retryable `StorageUnlockCancelled` instead of `StorageInitializationFailed`.
+- Added focused storage regression coverage proving cancellation does not poison the next `initStorage()` attempt.
+- Fixed PIN-lock biometric cancellation logging: pressing Cancel on the unlock prompt now records normal `biometric-cancelled` / `pin-lock-biometric-cancelled` steps instead of emitting `[wallet:wallet-unlock] biometric-failed` and `pin-lock-biometric-failed` error logs.
+- Added focused auth-service and PIN-lock screen regressions for biometric cancellation while preserving error logging for real native biometric failures.
+- Implemented storage PIN fallback for startup biometric Cancel: the Wallet provisions a PBKDF2-SHA256/AES-256-GCM wrapped copy of the MMKV encryption key in meta storage after PIN setup/login or a successful normal PIN unlock, then `RootLayout` can show a PIN surface and call `initStorageWithPin()` instead of failing startup after `StorageUnlockCancelled`.
+- Changed native cold start to render loading through native module/device-policy checks, then show the storage PIN unlock surface once the Keychain biometric unlock is ready to be requested; the PIN/fingerprint keypad remains guarded until the startup unlock attempt finishes to avoid concurrent storage unlock races.
+- Fixed the startup PIN biometric retry blink by keeping the PIN surface mounted when retrying biometric unlock from the lower-left keypad button instead of bouncing through the loading screen.
+- Enabled PIN digit entry while the biometric storage prompt is still pending, including when PIN fallback availability is false/unknown, and guarded storage/startup races so a later biometric cancellation cannot clear or overwrite a successful PIN unlock.
+- Mapped startup PIN unlock attempts before fallback provisioning to a normal biometric-required message instead of logging `[wallet:startup] storage-pin-unlock-failed`.
+- Documented the storage-only PIN fallback security tradeoff in `docs/SECURITY.md`; signing-key release remains Keychain biometric/device gated with no JavaScript PIN fallback.
+
 ## Phase 1: Cryptography and Secure Storage
 
 Status: Complete.

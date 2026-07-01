@@ -35,6 +35,7 @@ function readDevRenewalDelayMs(): number {
 
 const suspensions = new Map<string, DevIssuerSuspensionRecord>()
 const renewals = new Map<string, DevWalletRenewalRecord>()
+const renewalReadyTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 async function sendCredentialEventPush(
   event: ExpoPushEvent,
@@ -44,20 +45,79 @@ async function sendCredentialEventPush(
 ): Promise<boolean> {
   const pushToken = readPushToken(holderDid)
   if (!pushToken) {
+    console.warn('[push-notifications] token-missing', {
+      event,
+      credentialId,
+      credentialType,
+      holderDidLength: holderDid.length,
+    })
     return false
   }
 
   const copy = readNotificationCopy(event, credentialType)
-  await sendExpoPush(pushToken, {
-    ...copy,
-    data: {
+  try {
+    await sendExpoPush(pushToken, {
+      ...copy,
+      data: {
+        event,
+        credentialId,
+        credentialType,
+      },
+    })
+  } catch (error) {
+    console.error('[push-notifications] expo-send-failed', {
       event,
       credentialId,
       credentialType,
-    },
-  })
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
 
   return true
+}
+
+function clearRenewalReadyTimer(credentialId: string): void {
+  const timer = renewalReadyTimers.get(credentialId)
+  if (!timer) return
+
+  clearTimeout(timer)
+  renewalReadyTimers.delete(credentialId)
+}
+
+function transitionRenewalToOfferReadyIfElapsed(credentialId: string, now = Date.now()): void {
+  const record = renewals.get(credentialId)
+  if (!record || record.state !== 'requested') return
+
+  const requestedAt = Date.parse(record.requestedAt)
+  if (!Number.isFinite(requestedAt) || now - requestedAt < readDevRenewalDelayMs()) {
+    return
+  }
+
+  clearRenewalReadyTimer(credentialId)
+  renewals.set(credentialId, {
+    ...record,
+    state: 'offer-ready',
+    updatedAt: new Date().toISOString(),
+  })
+
+  void sendCredentialEventPush(
+    'renewal-ready',
+    record.newHolderDid,
+    record.credentialId,
+    record.credentialType,
+  ).catch(() => undefined)
+}
+
+function scheduleRenewalReadyTransition(credentialId: string): void {
+  clearRenewalReadyTimer(credentialId)
+
+  const timer = setTimeout(() => {
+    console.info('[push-notifications] renewal-ready-timer-fired', { credentialId })
+    renewalReadyTimers.delete(credentialId)
+    transitionRenewalToOfferReadyIfElapsed(credentialId)
+  }, readDevRenewalDelayMs())
+  renewalReadyTimers.set(credentialId, timer)
 }
 
 export function readNotificationCopy(
@@ -104,6 +164,10 @@ export function readNotificationCopy(
 export function resetDevWalletState(): void {
   suspensions.clear()
   renewals.clear()
+  for (const timer of renewalReadyTimers.values()) {
+    clearTimeout(timer)
+  }
+  renewalReadyTimers.clear()
 }
 
 export const devWalletRouter = Router()
@@ -120,24 +184,8 @@ devWalletRouter.get('/wallet/renewal-status', (_req, res) => {
 
   for (const record of renewals.values()) {
     if (record.state !== 'requested') continue
-
-    const requestedAt = Date.parse(record.requestedAt)
-    if (!Number.isFinite(requestedAt) || now - requestedAt < delayMs) {
-      continue
-    }
-
-    renewals.set(record.credentialId, {
-      ...record,
-      state: 'offer-ready',
-      updatedAt: new Date().toISOString(),
-    })
-
-    void sendCredentialEventPush(
-      'renewal-ready',
-      record.newHolderDid,
-      record.credentialId,
-      record.credentialType,
-    ).catch(() => undefined)
+    if (now - Date.parse(record.requestedAt) < delayMs) continue
+    transitionRenewalToOfferReadyIfElapsed(record.credentialId, now)
   }
 
   const output = Array.from(renewals.values()).map((record) => {
@@ -269,6 +317,7 @@ devWalletRouter.post('/wallet/renewal-request', async (req, res) => {
     requestedAt: updatedAt,
     updatedAt,
   })
+  scheduleRenewalReadyTransition(credentialId)
 
   void sendCredentialEventPush(
     'renewal-required',

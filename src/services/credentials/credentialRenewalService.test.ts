@@ -31,6 +31,10 @@ jest.mock('../crypto/walletKeyRotation', () => ({
   clearWalletKeyRotationRecord: jest.fn(),
 }))
 
+jest.mock('../notifications/pushNotificationService', () => ({
+  syncPushTokenRegistration: jest.fn(),
+}))
+
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
 
 const mockCredential: VerifiableCredentialRecord = {
@@ -92,6 +96,32 @@ describe('submitRenewalRequest', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(claimMock).not.toHaveBeenCalled()
     expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-processing')
+  })
+
+  test('re-registers the current push token for the rotated holder DID before requesting renewal', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      state: 'renewal-required',
+      updatedAt: new Date().toISOString(),
+    })
+
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ accepted: true }),
+    })
+    const syncPushTokenRegistration = jest.fn().mockResolvedValue(undefined)
+
+    await submitRenewalRequest(mockCredential.id, {
+      fetchImpl: fetchMock,
+      syncPushTokenRegistration,
+    })
+
+    expect(syncPushTokenRegistration).toHaveBeenCalledWith('did:key:new')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   test('stays renewal-required on HTTP failure', async () => {

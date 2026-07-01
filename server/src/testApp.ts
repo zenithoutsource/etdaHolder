@@ -66,7 +66,7 @@ function createAuthRateLimiter(): RequestHandler {
   return (req, res, next) => {
     if (
       req.method !== 'POST' ||
-      !['/login', '/register', '/email-status', '/pin-reset/request', '/pin-reset/confirm'].includes(req.path)
+      !['/login', '/register', '/email-status', '/pin-reset/request', '/pin-reset/verify', '/pin-reset/confirm'].includes(req.path)
     ) {
       next()
       return

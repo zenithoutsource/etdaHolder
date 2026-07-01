@@ -322,6 +322,38 @@
         "deprecated" : false
       }
     },
+    "/wallet-api/auth/pin-reset/verify" : {
+      "post" : {
+        "tags" : [ "Authentication" ],
+        "summary" : "Verify PIN reset OTP before setting a new PIN",
+        "parameters" : [ ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/id.walt.webwallet.web.controllers.auth.PinResetVerifyRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "OTP verified",
+            "headers" : { }
+          },
+          "400" : {
+            "description" : "Invalid or expired OTP",
+            "headers" : { }
+          },
+          "429" : {
+            "description" : "Too many attempts",
+            "headers" : { }
+          }
+        },
+        "deprecated" : false
+      }
+    },
     "/wallet-api/auth/pin-reset/confirm" : {
       "post" : {
         "tags" : [ "Authentication" ],
@@ -4199,6 +4231,21 @@
         },
         "required" : [ "email" ],
         "title" : "PinResetRequest"
+      },
+      "id.walt.webwallet.web.controllers.auth.PinResetVerifyRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "title" : "String"
+          },
+          "otp" : {
+            "type" : "string",
+            "title" : "String"
+          }
+        },
+        "required" : [ "email", "otp" ],
+        "title" : "PinResetVerifyRequest"
       },
       "id.walt.webwallet.web.controllers.auth.PinResetConfirmRequest" : {
         "type" : "object",

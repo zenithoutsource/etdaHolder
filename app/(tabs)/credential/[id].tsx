@@ -42,6 +42,7 @@ import {
   shouldShowRenewedActiveBadge,
 } from "../../../src/services/credentials/credentialRenewalPresentation";
 import { logWalletError } from "../../../src/services/debug/walletLogger";
+import { resolveRenewalReadyReplacementRoute } from "../../../src/services/notifications/notificationRenewalRoute";
 import { readCredentialDetailDisplay, readCredentialHolderProfile } from "../../../src/services/credentials/credentialDisplay";
 import { shouldResetCredentialDetailSession } from "../../../src/services/credentials/credentialDetailSession";
 import {
@@ -60,7 +61,7 @@ type DetailPhase =
   | { tag: "approve"; action: CredentialLifecycleAction }
 
 export default function CredentialDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, notificationEvent } = useLocalSearchParams<{ id: string; notificationEvent?: string }>();
   const router = useRouter();
   const { showDialog } = useAppDialog();
   const { credentials, error, refresh } = useStoredCredentials();
@@ -127,6 +128,19 @@ export default function CredentialDetailScreen() {
       setIsActionMenuOpen(false);
     }
   }, [hideCredentialActionMenu]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const replacementRoute = resolveRenewalReadyReplacementRoute({
+      credentialId: id,
+      notificationEvent,
+      replacementCredentialId: renewalStatus?.replacementCredentialId,
+    });
+    if (replacementRoute) {
+      router.replace(replacementRoute);
+    }
+  }, [id, notificationEvent, renewalStatus?.replacementCredentialId, router]);
 
   const resetDetailSession = useCallback(() => {
     setPhase({ tag: "detail" });
@@ -392,7 +406,7 @@ export default function CredentialDetailScreen() {
             onBackspace={() => setPin((value) => value.slice(0, -1))}
             onFingerprint={handleFingerprintBypass}
           />
-          <Text className="mt-8 text-xs text-[#8a9bb0]">Forgot PIN?</Text>
+          <Text className="mt-8 text-xs text-[#8a9bb0]">ลืมรหัสผ่าน?</Text>
         </View>
       </SafeAreaView>
     );

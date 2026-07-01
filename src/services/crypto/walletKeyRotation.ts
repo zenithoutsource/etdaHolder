@@ -10,6 +10,8 @@ import { getMetaStorage } from '../storage/storage'
 import { readStoredCredentials } from '../credentials/storedCredentials'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
 import { upsertCredentialRenewal } from '../credentials/credentialKeyRenewal'
+import { confirmWalletUnlockBiometric } from '../auth/walletUnlockBiometric'
+import { logWalletStep } from '../debug/walletLogger'
 
 const ROTATION_RECORD_KEY = 'wallet.key_rotation'
 
@@ -63,10 +65,16 @@ export async function rotateWalletKey(now = new Date()): Promise<{
 }> {
   const previousHolderDid = hasWalletKey() ? getHolderDid() : undefined
 
+  logWalletStep('wallet-key-expiry', 'wallet-key-rotation-auth-start')
+  await confirmWalletUnlockBiometric()
+  logWalletStep('wallet-key-expiry', 'wallet-key-rotation-auth-complete')
+  logWalletStep('wallet-key-expiry', 'wallet-key-rotation-seed-write-start')
   await forceRotateWalletKey(now)
+  logWalletStep('wallet-key-expiry', 'wallet-key-rotation-seed-write-complete')
   const holderDid = getHolderDid()
 
   if (previousHolderDid && previousHolderDid !== holderDid) {
+    logWalletStep('wallet-key-expiry', 'wallet-key-rotation-record-write')
     writeWalletKeyRotationRecord({
       previousHolderDid,
       rotatedAt: now.toISOString(),
@@ -88,6 +96,10 @@ export async function rotateWalletKey(now = new Date()): Promise<{
     )
     affectedCredentialIds.push(credential.id)
   }
+
+  logWalletStep('wallet-key-expiry', 'wallet-key-rotation-renewal-mark-complete', {
+    affectedCredentialCount: affectedCredentialIds.length,
+  })
 
   return {
     previousHolderDid,

@@ -227,8 +227,6 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
 }
 
 export async function forceRotateWalletKey(now = new Date()): Promise<void> {
-  await readStoredEd25519Seed('Rotate Wallet Key')
-
   const seed = randomBytes(32)
   assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
   await writeEd25519Seed(seed)

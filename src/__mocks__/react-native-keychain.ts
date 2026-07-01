@@ -26,6 +26,7 @@ const SECURITY_LEVEL = {
 
 const STORAGE_TYPE = {
   AES_GCM: 'AesGcm',
+  AES_GCM_NO_AUTH: 'KeystoreAESGCM_NoAuth',
 }
 
 type KeychainOptions = {

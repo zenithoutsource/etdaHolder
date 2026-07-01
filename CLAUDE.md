@@ -17,6 +17,15 @@ Primary references:
 | `docs/adr/` | Locked architecture decisions |
 | `docs/TASKS.md` | Active backlog and blockers |
 
+## Planning Philosophy
+
+When planning any new system, feature, or integration:
+
+1. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs.
+2. **Best practice before convenience** — prefer push notifications via APNs/FCM with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant flows over custom shortcuts.
+3. **Name the tradeoffs explicitly** — if recommending a simpler approach, state what production capability is deferred and when it must be addressed.
+4. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before implementation steps.
+
 ## Architecture Rules
 
 - Mobile code must never connect directly to MySQL.

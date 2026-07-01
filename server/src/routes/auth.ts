@@ -109,6 +109,65 @@ function generateOtp(): string {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
 }
 
+type PinResetOtpCheckSuccess = {
+  ok: true
+  userId: string
+  otpRecordId: string
+}
+
+type PinResetOtpCheckFailure = {
+  ok: false
+  status: 400 | 429
+  message: string
+}
+
+type PinResetOtpCheck = PinResetOtpCheckSuccess | PinResetOtpCheckFailure
+
+async function checkPinResetOtp(email: string, otp: string): Promise<PinResetOtpCheck> {
+  if (!isValidEmailFormat(email) || !/^\d{6}$/.test(otp)) {
+    return { ok: false, status: 400, message: 'Invalid or expired OTP' }
+  }
+
+  const [userRows] = await pool.execute<UserIdRow[]>(
+    `SELECT id FROM users WHERE email = ? LIMIT 1`,
+    [email],
+  )
+  const user = userRows[0]
+  if (!user) {
+    return { ok: false, status: 400, message: 'Invalid or expired OTP' }
+  }
+
+  const [otpRows] = await pool.execute<PinResetRow[]>(
+    `SELECT id, user_id, otp_hash, expires_at, used_at, attempt_count
+       FROM pin_reset_otps
+      WHERE user_id = ?
+        AND used_at IS NULL
+        AND expires_at > CURRENT_TIMESTAMP
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [user.id],
+  )
+  const otpRecord = otpRows[0]
+  if (!otpRecord) {
+    return { ok: false, status: 400, message: 'Invalid or expired OTP' }
+  }
+
+  if (otpRecord.attempt_count >= MAX_OTP_ATTEMPTS) {
+    return { ok: false, status: 429, message: 'Too Many Requests' }
+  }
+
+  const otpMatches = hashOtp(otp) === otpRecord.otp_hash
+  if (!otpMatches) {
+    await pool.execute<ResultSetHeader>(
+      `UPDATE pin_reset_otps SET attempt_count = attempt_count + 1 WHERE id = ?`,
+      [otpRecord.id],
+    )
+    return { ok: false, status: 400, message: 'Invalid or expired OTP' }
+  }
+
+  return { ok: true, userId: user.id, otpRecordId: otpRecord.id }
+}
+
 function readClientIp(req: { ip?: string }): string {
   return req.ip ?? 'unknown'
 }
@@ -310,6 +369,29 @@ authRouter.post('/pin-reset/request', async (req, res) => {
   }
 })
 
+authRouter.post('/pin-reset/verify', async (req, res) => {
+  const body: unknown = req.body
+  if (!isRecord(body) || !isNonEmptyString(body.email) || !isNonEmptyString(body.otp)) {
+    res.status(400).json({ message: 'Bad Request' })
+    return
+  }
+
+  const email = normalizeEmail(body.email)
+  const otp = body.otp.trim()
+
+  try {
+    const result = await checkPinResetOtp(email, otp)
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message })
+      return
+    }
+
+    res.status(204).end()
+  } catch {
+    res.status(500).json({ message: 'Internal Server Error' })
+  }
+})
+
 authRouter.post('/pin-reset/confirm', async (req, res) => {
   const body: unknown = req.body
   if (
@@ -326,11 +408,6 @@ authRouter.post('/pin-reset/confirm', async (req, res) => {
   const otp = body.otp.trim()
   const pin = body.pin
 
-  if (!isValidEmailFormat(email) || !/^\d{6}$/.test(otp)) {
-    res.status(400).json({ message: 'Bad Request' })
-    return
-  }
-
   const pinError = pinValidationMessage(pin)
   if (pinError) {
     res.status(400).json({ message: pinError })
@@ -338,44 +415,9 @@ authRouter.post('/pin-reset/confirm', async (req, res) => {
   }
 
   try {
-    const [userRows] = await pool.execute<UserIdRow[]>(
-      `SELECT id FROM users WHERE email = ? LIMIT 1`,
-      [email],
-    )
-    const user = userRows[0]
-    if (!user) {
-      res.status(400).json({ message: 'Invalid or expired OTP' })
-      return
-    }
-
-    const [otpRows] = await pool.execute<PinResetRow[]>(
-      `SELECT id, user_id, otp_hash, expires_at, used_at, attempt_count
-         FROM pin_reset_otps
-        WHERE user_id = ?
-          AND used_at IS NULL
-          AND expires_at > CURRENT_TIMESTAMP
-        ORDER BY created_at DESC
-        LIMIT 1`,
-      [user.id],
-    )
-    const otpRecord = otpRows[0]
-    if (!otpRecord) {
-      res.status(400).json({ message: 'Invalid or expired OTP' })
-      return
-    }
-
-    if (otpRecord.attempt_count >= MAX_OTP_ATTEMPTS) {
-      res.status(429).json({ message: 'Too Many Requests' })
-      return
-    }
-
-    const otpMatches = hashOtp(otp) === otpRecord.otp_hash
-    if (!otpMatches) {
-      await pool.execute<ResultSetHeader>(
-        `UPDATE pin_reset_otps SET attempt_count = attempt_count + 1 WHERE id = ?`,
-        [otpRecord.id],
-      )
-      res.status(400).json({ message: 'Invalid or expired OTP' })
+    const result = await checkPinResetOtp(email, otp)
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message })
       return
     }
 
@@ -384,16 +426,16 @@ authRouter.post('/pin-reset/confirm', async (req, res) => {
     await withTransaction(async (connection) => {
       await connection.execute<ResultSetHeader>(
         `UPDATE users SET password_hash = ? WHERE id = ?`,
-        [passwordHash, user.id],
+        [passwordHash, result.userId],
       )
       await connection.execute<ResultSetHeader>(
         `UPDATE pin_reset_otps SET used_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [otpRecord.id],
+        [result.otpRecordId],
       )
       await connection.execute<ResultSetHeader>(
         `UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP
           WHERE user_id = ? AND revoked_at IS NULL`,
-        [user.id],
+        [result.userId],
       )
     })
 

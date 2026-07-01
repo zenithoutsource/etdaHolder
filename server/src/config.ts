@@ -15,6 +15,15 @@ export type ServerConfig = {
   jwtSecret: string
   jwtExpiresIn: string
   sessionExpiresInDays: number
+  mail: {
+    smtpHost?: string
+    smtpPort: number
+    smtpSecure: boolean
+    smtpUser?: string
+    smtpPassword?: string
+    fromAddress: string
+    fromName: string
+  }
 }
 
 function readString(name: string, fallback?: string): string {
@@ -37,6 +46,18 @@ function readIntegerInRange(name: string, fallback: string, min: number, max: nu
 
 function readPort(name: string, fallback: string): number {
   return readIntegerInRange(name, fallback, 1, 65535)
+}
+
+function readOptionalString(name: string): string | undefined {
+  const value = process.env[name]?.trim()
+  return value && value.length > 0 ? value : undefined
+}
+
+function readBoolean(name: string, fallback: string): boolean {
+  const value = (process.env[name] ?? fallback).trim().toLowerCase()
+  if (value === 'true' || value === '1' || value === 'yes') return true
+  if (value === 'false' || value === '0' || value === 'no') return false
+  throw new Error(`ConfigInvalid: ${name}`)
 }
 
 export function readConfig(): ServerConfig {
@@ -64,5 +85,14 @@ export function readConfig(): ServerConfig {
     jwtSecret,
     jwtExpiresIn: readString('JWT_EXPIRES_IN', '7d'),
     sessionExpiresInDays: readIntegerInRange('SESSION_EXPIRES_IN_DAYS', '7', 1, 30),
+    mail: {
+      smtpHost: readOptionalString('SMTP_HOST'),
+      smtpPort: readPort('SMTP_PORT', '587'),
+      smtpSecure: readBoolean('SMTP_SECURE', 'false'),
+      smtpUser: readOptionalString('SMTP_USER'),
+      smtpPassword: readOptionalString('SMTP_PASSWORD'),
+      fromAddress: readString('MAIL_FROM', 'wallet-noreply@localhost'),
+      fromName: readString('MAIL_FROM_NAME', 'ETDA Wallet'),
+    },
   }
 }

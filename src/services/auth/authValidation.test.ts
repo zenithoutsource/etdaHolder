@@ -14,8 +14,9 @@ describe('authValidation', () => {
     expect(displayNameValidationMessage('Bad Shit')).toBe('Name contains inappropriate language')
   })
 
-  test('rejects weak PINs', () => {
-    expect(pinValidationMessage('123456')).toBe('PIN is too easy to guess')
+  test('accepts any six-digit PIN', () => {
+    expect(pinValidationMessage('123456')).toBeUndefined()
     expect(pinValidationMessage('482910')).toBeUndefined()
+    expect(pinValidationMessage('111111')).toBeUndefined()
   })
 })

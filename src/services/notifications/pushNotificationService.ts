@@ -11,6 +11,13 @@ import { routeNotificationTap, type NotificationData } from './notificationRoute
 let notificationResponseSubscription:
   | { remove: () => void }
   | undefined
+let notificationHandlerInstalled = false
+
+export function _resetPushNotificationStateForTesting(): void {
+  notificationResponseSubscription?.remove()
+  notificationResponseSubscription = undefined
+  notificationHandlerInstalled = false
+}
 
 function readExpoProjectId(): string | undefined {
   const envProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID
@@ -27,6 +34,26 @@ function readExpoProjectId(): string | undefined {
   return typeof expoProjectId === 'string' && expoProjectId.length > 0
     ? expoProjectId
     : undefined
+}
+
+async function retryable<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number,
+  baseDelayMs: number,
+): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      if (attempt < maxAttempts) {
+        logWalletStep('startup', 'push-token-server-register-retry', { attempt })
+        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt))
+      }
+    }
+  }
+  throw lastError
 }
 
 async function ensureNotificationPermission(): Promise<boolean> {
@@ -59,6 +86,22 @@ function installNotificationTapListener(): void {
   })
 }
 
+function installNotificationPresentationHandler(): void {
+  if (notificationHandlerInstalled) {
+    return
+  }
+
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  })
+  notificationHandlerInstalled = true
+}
+
 async function routeLastNotificationResponseIfPresent(): Promise<void> {
   const response = await Notifications.getLastNotificationResponseAsync()
   if (!response) {
@@ -66,6 +109,7 @@ async function routeLastNotificationResponseIfPresent(): Promise<void> {
   }
 
   routeNotificationTap(readNotificationData(response.notification.request.content.data))
+  await Notifications.clearLastNotificationResponseAsync()
 }
 
 function assertExpoProjectId(projectId: string | undefined): string {
@@ -78,6 +122,33 @@ function assertExpoProjectId(projectId: string | undefined): string {
   )
 }
 
+export async function syncPushTokenRegistration(holderDid: string): Promise<boolean> {
+  if (__DEV__ && process.env.EXPO_PUBLIC_SKIP_PUSH_REGISTRATION === 'true') {
+    logWalletStep('startup', 'push-notifications-skip-dev-flag')
+    return false
+  }
+
+  const permissionGranted = await ensureNotificationPermission()
+  if (!permissionGranted) {
+    logWalletStep('startup', 'push-notifications-permission-denied')
+    return false
+  }
+
+  const projectId = assertExpoProjectId(readExpoProjectId())
+
+  logWalletStep('startup', 'push-token-native-fetch-start')
+  const pushToken = await Notifications.getExpoPushTokenAsync({ projectId })
+  logWalletStep('startup', 'push-token-native-fetch-complete', { tokenLength: pushToken.data.length })
+
+  logWalletStep('startup', 'push-token-server-register-start')
+  await retryable(() => registerPushToken(pushToken.data, holderDid), 3, 2000)
+  logWalletStep('startup', 'push-notifications-token-registered', {
+    holderDidLength: holderDid.length,
+    tokenLength: pushToken.data.length,
+  })
+  return true
+}
+
 export async function initPushNotifications(holderDid: string): Promise<void> {
   if (!Device.isDevice) {
     logWalletStep('startup', 'push-notifications-skip-simulator')
@@ -85,6 +156,8 @@ export async function initPushNotifications(holderDid: string): Promise<void> {
   }
 
   try {
+    installNotificationPresentationHandler()
+
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'default',
@@ -92,23 +165,10 @@ export async function initPushNotifications(holderDid: string): Promise<void> {
       })
     }
 
-    const permissionGranted = await ensureNotificationPermission()
-    if (!permissionGranted) {
-      logWalletStep('startup', 'push-notifications-permission-denied')
+    const registered = await syncPushTokenRegistration(holderDid)
+    if (!registered) {
       return
     }
-
-    const projectId = assertExpoProjectId(readExpoProjectId())
-    const pushToken = await Notifications.getExpoPushTokenAsync(
-      { projectId },
-    )
-
-    await registerPushToken(pushToken.data, holderDid)
-    logWalletStep('startup', 'push-notifications-token-registered', {
-      holderDid,
-      tokenLength: pushToken.data.length,
-    })
-
     installNotificationTapListener()
     await routeLastNotificationResponseIfPresent()
   } catch (error) {

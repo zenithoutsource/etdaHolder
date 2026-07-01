@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'react-native-quick-crypto'
 
-import { getCredentialStorage } from '../storage/storage'
+import { getCredentialStorage, persistWalletPinMeta, provisionStoragePinFallback } from '../storage/storage'
 
 const WALLET_PIN_KEY = 'wallet:pin:v1'
 const PIN_LENGTH = 6
@@ -44,11 +44,11 @@ export function setWalletPin(pin: string): void {
   }
 
   const salt = randomBytes(16).toString('hex')
-  const stored: StoredWalletPin = {
-    salt,
-    hash: hashPin(pin, salt),
-  }
+  const hash = hashPin(pin, salt)
+  const stored: StoredWalletPin = { salt, hash }
   getCredentialStorage().set(WALLET_PIN_KEY, JSON.stringify(stored))
+  persistWalletPinMeta({ salt, hash })
+  provisionStoragePinFallback(pin)
 }
 
 export function verifyWalletPin(pin: string): boolean {

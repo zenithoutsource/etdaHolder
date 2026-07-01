@@ -8,6 +8,7 @@ import {
   loadSession,
   register as authRegister,
   requestPinReset as authRequestPinReset,
+  verifyPinResetOtp as authVerifyPinResetOtp,
   type SessionData,
 } from '../services/auth/authService'
 
@@ -26,6 +27,7 @@ type AuthActions = {
   login: (email: string, pin: string) => Promise<void>
   register: (name: string, email: string, pin: string) => Promise<void>
   requestPinReset: (email: string) => Promise<void>
+  verifyPinResetOtp: (email: string, otp: string) => Promise<void>
   confirmPinReset: (email: string, otp: string, pin: string) => Promise<void>
   logout: () => Promise<void>
   setPinVerified: (verified: boolean) => void
@@ -51,7 +53,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   loadSession: async () => {
     const session = await loadSession()
     if (session) {
-      set(applySession(session))
+      set({ ...applySession(session), isPinVerified: false })
     }
   },
 
@@ -93,6 +95,17 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
     set({ isLoading: true })
     try {
       await authRequestPinReset(email)
+      set({ isLoading: false })
+    } catch (error) {
+      set({ isLoading: false })
+      throw error
+    }
+  },
+
+  verifyPinResetOtp: async (email, otp) => {
+    set({ isLoading: true })
+    try {
+      await authVerifyPinResetOtp(email, otp)
       set({ isLoading: false })
     } catch (error) {
       set({ isLoading: false })

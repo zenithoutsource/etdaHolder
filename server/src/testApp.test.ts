@@ -172,6 +172,7 @@ describe('test app security middleware', () => {
             credentialId: 'cred-1',
             credentialType: 'ThaiNationalID',
           },
+          channelId: 'default',
           sound: 'default',
           priority: 'high',
         }),
@@ -284,6 +285,7 @@ describe('test app security middleware', () => {
         credentialId: 'thai-id-3',
         credentialType: 'ThaiNationalID',
       },
+      channelId: 'default',
       sound: 'default',
       priority: 'high',
     })
@@ -295,9 +297,62 @@ describe('test app security middleware', () => {
         credentialId: 'thai-id-3',
         credentialType: 'ThaiNationalID',
       },
+      channelId: 'default',
       sound: 'default',
       priority: 'high',
     })
+  })
+
+  test('renewal flow sends renewal-ready without waiting for client status polling', async () => {
+    process.env.DEV_RENEWAL_DELAY_MS = '0'
+    process.env.ISSUER_PROXY_TARGET = 'https://issuer.office.example'
+    const issuerOfferUri =
+      'openid-credential-offer://?credential_offer_uri=http%3A%2F%2Fissuer.office.example%2Fopenid4vc%2FcredentialOffer%3Fid%3Drenewal-4'
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/credential-offer')) {
+        return new Response(JSON.stringify({ offerUri: issuerOfferUri }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+
+      if (url === 'https://exp.host/--/api/v2/push/send') {
+        return new Response(JSON.stringify({ data: [{ status: 'ok', id: 'ticket-1' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+
+      throw new Error(`Unexpected fetch: ${url} ${String(init?.method ?? 'GET')}`)
+    })
+    const app = createTestApp()
+
+    await request(app).post('/wallet-api/wallet/push-token').send({
+      token: 'ExponentPushToken[device-1]',
+      holderDid: 'did:key:new',
+    })
+
+    const created = await request(app).post('/wallet-api/dev/wallet/renewal-request').send({
+      credentialId: 'thai-id-4',
+      credentialType: 'ThaiNationalID',
+      oldHolderDid: 'did:key:old',
+      newHolderDid: 'did:key:new',
+      rawVc: 'eyJhbGciOiJFZERTQSJ9.payload.signature',
+    })
+
+    expect(created.status).toBe(201)
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    const pushBodies = fetchMock.mock.calls
+      .filter(([url]) => String(url) === 'https://exp.host/--/api/v2/push/send')
+      .map(([, init]) => JSON.parse(String(init?.body)))
+
+    expect(pushBodies.map((body) => body.data.event)).toEqual([
+      'renewal-required',
+      'renewal-ready',
+    ])
   })
 
   test('renewal-status stays requested until DEV_RENEWAL_DELAY_MS elapses', async () => {

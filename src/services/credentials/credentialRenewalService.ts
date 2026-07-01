@@ -19,6 +19,7 @@ import { clearWalletKeyRotationRecord } from '../crypto/walletKeyRotation'
 import { clearRenewalCleanupBannerDismissal, isRenewalAwaitingHolderCleanup } from './renewalCleanupNotification'
 import { clearCredentialLifecycleStatus } from './credentialLifecycle'
 import { findRenewedActiveCredentialForType } from './credentialGuard'
+import { syncPushTokenRegistration } from '../notifications/pushNotificationService'
 
 const DEV_RENEWAL_REQUEST_ENDPOINT = '/wallet-api/dev/wallet/renewal-request'
 const DEV_RENEWAL_STATUS_ENDPOINT = '/wallet-api/dev/wallet/renewal-status'
@@ -46,6 +47,7 @@ type RenewalServiceDependencies = {
     resolvedOffer: ResolvedCredentialOffer,
   ) => Promise<VerifiableCredentialRecord>
   getHolderDid: () => string
+  syncPushTokenRegistration: (holderDid: string) => Promise<boolean>
 }
 
 function resolveDependencies(
@@ -56,6 +58,7 @@ function resolveDependencies(
     resolveOffer,
     claimCredential,
     getHolderDid,
+    syncPushTokenRegistration,
     ...dependencies,
   }
 }
@@ -133,6 +136,12 @@ export async function submitRenewalRequest(
   const newHolderDid = resolvedDependencies.getHolderDid()
 
   try {
+    try {
+      await resolvedDependencies.syncPushTokenRegistration(newHolderDid)
+    } catch (error) {
+      logWalletError('renewal', 'push-token-sync-failed', error, { credentialId })
+    }
+
     logWalletStep('renewal', 'request-start', {
       credentialId,
       credentialType: currentCredential.type,

@@ -100,6 +100,11 @@ export interface IdWaltWebwalletWebControllersAuthPinResetRequest {
   email: string;
 }
 
+export interface IdWaltWebwalletWebControllersAuthPinResetVerifyRequest {
+  email: string;
+  otp: string;
+}
+
 export interface IdWaltWebwalletWebControllersAuthPinResetConfirmRequest {
   email: string;
   otp: string;
@@ -777,6 +782,100 @@ export const useRequestPinReset = <TError = void,
       > => {
 
       const mutationOptions = getRequestPinResetMutationOptions(options);
+
+      return useMutation(mutationOptions , queryClient);
+    }
+    
+/**
+ * @summary Verify PIN reset OTP before setting a new PIN
+ */
+export type verifyPinResetOtpResponse204 = {
+  data: void
+  status: 204
+}
+
+export type verifyPinResetOtpResponse400 = {
+  data: void
+  status: 400
+}
+    
+export type verifyPinResetOtpResponseComposite = verifyPinResetOtpResponse204 | verifyPinResetOtpResponse400;
+    
+export type verifyPinResetOtpResponse = verifyPinResetOtpResponseComposite & {
+  headers: Headers;
+}
+
+export const getVerifyPinResetOtpUrl = () => {
+
+
+  
+
+  return `/wallet-api/auth/pin-reset/verify`
+}
+
+export const verifyPinResetOtp = async (idWaltWebwalletWebControllersAuthPinResetVerifyRequest: IdWaltWebwalletWebControllersAuthPinResetVerifyRequest, options?: RequestInit): Promise<verifyPinResetOtpResponse> => {
+  
+  const res = await fetch(getVerifyPinResetOtpUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      idWaltWebwalletWebControllersAuthPinResetVerifyRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text()
+  const data: verifyPinResetOtpResponse['data'] = body ? JSON.parse(body) : {}
+
+  return { data, status: res.status, headers: res.headers } as verifyPinResetOtpResponse
+}
+
+
+
+
+export const getVerifyPinResetOtpMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyPinResetOtp>>, TError,{data: IdWaltWebwalletWebControllersAuthPinResetVerifyRequest}, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyPinResetOtp>>, TError,{data: IdWaltWebwalletWebControllersAuthPinResetVerifyRequest}, TContext> => {
+
+const mutationKey = ['verifyPinResetOtp'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyPinResetOtp>>, {data: IdWaltWebwalletWebControllersAuthPinResetVerifyRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  verifyPinResetOtp(data,fetchOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyPinResetOtpMutationResult = NonNullable<Awaited<ReturnType<typeof verifyPinResetOtp>>>
+    export type VerifyPinResetOtpMutationBody = IdWaltWebwalletWebControllersAuthPinResetVerifyRequest
+    export type VerifyPinResetOtpMutationError = void
+
+    /**
+ * @summary Verify PIN reset OTP before setting a new PIN
+ */
+export const useVerifyPinResetOtp = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyPinResetOtp>>, TError,{data: IdWaltWebwalletWebControllersAuthPinResetVerifyRequest}, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof verifyPinResetOtp>>,
+        TError,
+        {data: IdWaltWebwalletWebControllersAuthPinResetVerifyRequest},
+        TContext
+      > => {
+
+      const mutationOptions = getVerifyPinResetOtpMutationOptions(options);
 
       return useMutation(mutationOptions , queryClient);
     }
