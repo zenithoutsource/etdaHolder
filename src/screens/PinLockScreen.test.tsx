@@ -11,7 +11,7 @@ const mockLogWalletError = jest.fn()
 const mockLogWalletStep = jest.fn()
 const mockSetPinVerified = jest.fn()
 const mockVerifyWalletPin = jest.fn()
-const mockProvisionStoragePinFallback = jest.fn()
+const mockSetWalletPin = jest.fn()
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -28,6 +28,7 @@ jest.mock('../config/runtimeFlags', () => ({
 
 jest.mock('../services/auth/walletPin', () => ({
   verifyWalletPin: (pin: string) => mockVerifyWalletPin(pin),
+  setWalletPin: (pin: string) => mockSetWalletPin(pin),
 }))
 
 jest.mock('../services/auth/walletUnlockBiometric', () => ({
@@ -38,10 +39,6 @@ jest.mock('../services/auth/walletUnlockBiometric', () => ({
 jest.mock('../services/debug/walletLogger', () => ({
   logWalletError: (...args: unknown[]) => mockLogWalletError(...args),
   logWalletStep: (...args: unknown[]) => mockLogWalletStep(...args),
-}))
-
-jest.mock('../services/storage/storage', () => ({
-  provisionStoragePinFallback: (pin: string) => mockProvisionStoragePinFallback(pin),
 }))
 
 jest.mock('../store/authStore', () => ({
@@ -59,7 +56,7 @@ describe('PinLockScreen biometric unlock', () => {
     mockLogWalletStep.mockReset()
     mockSetPinVerified.mockReset()
     mockVerifyWalletPin.mockReset()
-    mockProvisionStoragePinFallback.mockReset()
+    mockSetWalletPin.mockReset()
     mockVerifyWalletPin.mockReturnValue(false)
     mockIsWalletUnlockBiometricCancellation.mockImplementation(
       (error: unknown) => error instanceof Error && error.message === 'WalletUnlockBiometricCancelled',
@@ -67,7 +64,9 @@ describe('PinLockScreen biometric unlock', () => {
   })
 
   afterEach(() => {
-    jest.runOnlyPendingTimers()
+    act(() => {
+      jest.runOnlyPendingTimers()
+    })
     jest.useRealTimers()
   })
 
@@ -96,7 +95,7 @@ describe('PinLockScreen biometric unlock', () => {
     })
   })
 
-  test('provisions storage PIN fallback after successful PIN unlock', () => {
+  test('refreshes local wallet PIN after successful PIN unlock', () => {
     mockVerifyWalletPin.mockReturnValueOnce(true)
 
     render(<PinLockScreen />)
@@ -105,8 +104,12 @@ describe('PinLockScreen biometric unlock', () => {
       fireEvent.press(screen.getByTestId(`pin-key-${digit}`))
     }
 
+    act(() => {
+      jest.runAllTimers()
+    })
+
     expect(mockVerifyWalletPin).toHaveBeenCalledWith('123456')
-    expect(mockProvisionStoragePinFallback).toHaveBeenCalledWith('123456')
+    expect(mockSetWalletPin).toHaveBeenCalledWith('123456')
     expect(mockSetPinVerified).toHaveBeenCalledWith(true)
   })
 })

@@ -1,15 +1,12 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
-import { Platform, Text, View } from 'react-native'
+import { Platform, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { PinKeypad } from '../src/components/PinKeypad'
+import { PIN_ENTRY_LENGTH, PinEntrySurface } from '../src/components/PinEntrySurface'
 import { setWalletPin } from '../src/services/auth/walletPin'
 import { useAuthStore } from '../src/store/authStore'
 import { readPendingCredentialOfferRoute, useDeeplinkStore } from '../src/store/deeplinkStore'
-
-const PIN_LENGTH = 6
 
 export default function PinSetupScreen() {
   const router = useRouter()
@@ -23,11 +20,11 @@ export default function PinSetupScreen() {
   const [error, setError] = useState<string | null>(null)
 
   function handleDigit(digit: string) {
-    if (pin.length >= PIN_LENGTH) return
+    if (pin.length >= PIN_ENTRY_LENGTH) return
     const next = pin + digit
     setPin(next)
     setError(null)
-    if (next.length === PIN_LENGTH) {
+    if (next.length === PIN_ENTRY_LENGTH) {
       if (phase === 'enter') {
         setFirstPin(next)
         setPin('')
@@ -74,21 +71,16 @@ export default function PinSetupScreen() {
   return (
     <SafeAreaView className="flex-1 bg-[#eef1f4]" edges={['top', 'bottom']}>
       <View className="flex-1 items-center px-5 pt-8 mt-28">
-        <MaterialCommunityIcons name="lock" size={48} color="#f2c230" />
-        <Text className="mt-3 text-2xl font-semibold text-[#1a2a42]">{title}</Text>
-        <Text className="mt-2 text-center text-xs text-[#8a9bb0]">{subtitle}</Text>
-        <View className="mt-7 flex-row gap-3">
-          {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-            <View
-              key={i}
-              className={`h-3 w-3 rounded-full ${i < pin.length ? 'bg-black' : 'border border-[#8a9bb0]'}`}
-            />
-          ))}
-        </View>
-        {error ? (
-          <Text className="mt-4 text-center text-sm font-medium text-[#c00000]">{error}</Text>
-        ) : null}
-        <PinKeypad onDigit={handleDigit} onBackspace={handleBackspace} onFingerprint={() => {}} showFingerprint={false} />
+        <PinEntrySurface
+          title={title}
+          subtitle={subtitle}
+          pin={pin}
+          error={error}
+          onDigit={handleDigit}
+          onBackspace={handleBackspace}
+          onFingerprint={() => {}}
+          showFingerprint={false}
+        />
       </View>
     </SafeAreaView>
   )

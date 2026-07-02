@@ -1,7 +1,10 @@
 import {
   readPrepareWalletStartState,
+  readStartupStorageUnlockCopy,
   readStorageBiometricReadyState,
   readStoragePinForgotPinMode,
+  readStoragePinMigrationBiometricState,
+  readStoragePinMigrationPinState,
   readStoragePinUnlockFailureState,
   readStoragePinUnlockMode,
   readStorageUnlockCancelledState,
@@ -59,14 +62,35 @@ describe('startup state transitions', () => {
     })
   })
 
-  test('maps unavailable PIN fallback to a biometric-only message', () => {
+  test('maps unavailable PIN fallback to a legacy upgrade message', () => {
     expect(readStoragePinUnlockFailureState('StoragePinFallbackUnavailable', false, false)).toEqual({
       status: 'storage-pin-required',
       fallbackAvailable: false,
       pinUnlockEnabled: false,
       mode: 'unlock',
       isSubmitting: false,
-      error: 'ไม่สามารถปลดล็อกด้วย PIN ได้ กรุณาใช้สแกนใบหน้าหรือลายนิ้วมือ',
+      error: 'หลังอัปเดต ครั้งแรกให้กดปุ่มลายนิ้วมือด้านล่าง ครั้งถัดไปใช้ PIN ได้เลย',
+    })
+  })
+
+  test('reads legacy startup unlock copy when fallback is unavailable', () => {
+    expect(readStartupStorageUnlockCopy(false, false)).toEqual({
+      title: 'ปลดล็อก Wallet',
+      subtitle: 'หลังอัปเดต ครั้งแรกให้กดปุ่มลายนิ้วมือด้านล่าง ครั้งถัดไปใช้ PIN ได้เลย',
+    })
+  })
+
+  test('reads migration wizard states', () => {
+    expect(readStoragePinMigrationBiometricState()).toEqual({
+      status: 'storage-pin-migration',
+      step: 'biometric',
+      isSubmitting: false,
+    })
+    expect(readStoragePinMigrationPinState('bad')).toEqual({
+      status: 'storage-pin-migration',
+      step: 'pin',
+      isSubmitting: false,
+      error: 'bad',
     })
   })
 

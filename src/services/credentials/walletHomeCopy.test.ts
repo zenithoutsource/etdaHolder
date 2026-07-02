@@ -48,6 +48,6 @@ describe('walletHomeCopy', () => {
   })
 
   test('readWalletHomeBadgeLabel returns active badge label', () => {
-    expect(readWalletHomeBadgeLabel('active')).toBe('Active')
+    expect(readWalletHomeBadgeLabel('active')).toBe(WALLET_HOME_COPY.activeBadge)
   })
 })

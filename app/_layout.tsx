@@ -13,16 +13,19 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppDialogProvider } from '@/src/components/AppDialog';
+import { StoragePinMigrationStep } from '@/src/components/auth/StoragePinMigrationStep';
 import { ForgotPinFlow } from '@/src/components/auth/ForgotPinFlow';
 import { StartupStoragePinUnlock } from '@/src/components/StartupStoragePinUnlock';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
-import { hasWalletPin } from '@/src/services/auth/walletPin';
+import { hasWalletPin, setWalletPin } from '@/src/services/auth/walletPin';
 import { readStartupRoute, readWalletAccessRedirect } from '@/src/services/auth/walletPinNavigation';
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger';
 import {
   readPrepareWalletStartState,
   readStorageBiometricReadyState,
   readStoragePinForgotPinMode,
+  readStoragePinMigrationBiometricState,
+  readStoragePinMigrationPinState,
   readStoragePinUnlockFailureState,
   readStoragePinUnlockMode,
   readStorageUnlockCancelledState,
@@ -88,7 +91,10 @@ export default function RootLayout() {
     isAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
 
-  const prepareWallet = useCallback(async ({ storagePin }: { storagePin?: string } = {}): Promise<void> => {
+  const prepareWallet = useCallback(async ({
+    storagePin,
+    openStorageForMigration = false,
+  }: { storagePin?: string; openStorageForMigration?: boolean } = {}): Promise<void> => {
     const runId = prepareWalletRunIdRef.current + 1;
     prepareWalletRunIdRef.current = runId;
     const isCurrentRun = () => prepareWalletRunIdRef.current === runId;
@@ -105,7 +111,7 @@ export default function RootLayout() {
       const [
         { generateWalletKeyIfNeeded, getHolderDid },
         { initPushNotifications },
-        { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock },
+        { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock, needsStoragePinFallbackMigration },
         { assertDeviceIntegrity },
         { assertConfiguredWalletApiRuntimePolicy },
         { runNativeEd25519Diagnostics },
@@ -135,11 +141,47 @@ export default function RootLayout() {
       assertConfiguredWalletApiRuntimePolicy();
       logWalletStep('startup', 'runtime-policy-ok');
 
+      const { loadSession: loadSessionFromKeychain } = await import('@/src/services/auth/authService');
+      const existingSession = await loadSessionFromKeychain();
+
+      if (
+        !storagePin &&
+        !openStorageForMigration &&
+        existingSession &&
+        !isStoragePinFallbackAvailable()
+      ) {
+        logWalletStep('startup', 'storage-pin-migration-biometric-deferred');
+        if (isCurrentRun()) {
+          setStartupState(readStoragePinMigrationBiometricState());
+        }
+        return;
+      }
+
       try {
         if (storagePin) {
-          await initStorageWithPin(storagePin);
+          try {
+            await initStorageWithPin(storagePin);
+          } catch (pinUnlockError) {
+            const pinUnlockMessage = toErrorMessage(pinUnlockError);
+            if (pinUnlockMessage !== 'StoragePinFallbackRequired') {
+              throw pinUnlockError;
+            }
+
+            logWalletStep('startup', 'storage-pin-fallback-provision-required');
+            if (isCurrentRun()) {
+              setStartupState(
+                readStorageBiometricReadyState(
+                  isStoragePinFallbackAvailable(),
+                  canVerifyStoragePinUnlock(),
+                ),
+              );
+            }
+            await initStorage();
+            setWalletPin(storagePin);
+            logWalletStep('startup', 'storage-pin-fallback-provisioned-after-pin');
+          }
         } else {
-          if (isCurrentRun()) {
+          if (isCurrentRun() && !openStorageForMigration) {
             setStartupState(
               readStorageBiometricReadyState(
                 isStoragePinFallbackAvailable(),
@@ -153,6 +195,12 @@ export default function RootLayout() {
         if (!isCurrentRun()) return;
 
         if (!storagePin && toErrorMessage(storageError) === 'StorageUnlockCancelled') {
+          if (openStorageForMigration) {
+            logWalletStep('startup', 'storage-pin-migration-biometric-cancelled');
+            setStartupState(readStoragePinMigrationBiometricState());
+            return;
+          }
+
           logWalletStep('startup', 'storage-unlock-cancelled');
           setStartupState(
             readStorageUnlockCancelledState(
@@ -163,12 +211,38 @@ export default function RootLayout() {
           return;
         }
 
+        if (storagePin && toErrorMessage(storageError) === 'StorageUnlockCancelled') {
+          logWalletStep('startup', 'storage-pin-biometric-cancelled-after-pin');
+          setStartupState(
+            readStorageUnlockCancelledState(
+              isStoragePinFallbackAvailable(),
+              canVerifyStoragePinUnlock(),
+            ),
+          );
+          return;
+        }
+
+        if (openStorageForMigration && !storagePin) {
+          logWalletError('startup', 'storage-pin-migration-biometric-failed', storageError);
+          setStartupState(
+            readStoragePinMigrationBiometricState('ไม่สามารถสแกนลายนิ้วมือได้ กรุณาลองใหม่อีกครั้ง'),
+          );
+          return;
+        }
+
         if (storagePin) {
           const storageErrorMessage = toErrorMessage(storageError);
           const fallbackAvailable = isStoragePinFallbackAvailable();
           const pinUnlockEnabled = canVerifyStoragePinUnlock();
-          if (storageErrorMessage === 'StoragePinFallbackUnavailable') {
-            logWalletStep('startup', 'storage-pin-fallback-unavailable');
+          if (
+            storageErrorMessage === 'StoragePinFallbackUnavailable' ||
+            storageErrorMessage === 'StoragePinVerifierMismatch'
+          ) {
+            if (storageErrorMessage === 'StoragePinFallbackUnavailable') {
+              logWalletStep('startup', 'storage-pin-fallback-unavailable');
+            } else {
+              logWalletStep('startup', 'storage-pin-verifier-mismatch');
+            }
           } else {
             logWalletError('startup', 'storage-pin-unlock-failed', storageError);
           }
@@ -196,8 +270,15 @@ export default function RootLayout() {
       logWalletStep('startup', 'wallet-key-ready');
       await loadSession();
       if (!isCurrentRun()) return;
+
+      const authState = useAuthStore.getState();
+      if (authState.isAuthenticated && needsStoragePinFallbackMigration()) {
+        logWalletStep('startup', 'storage-pin-migration-required');
+        setStartupState(readStoragePinMigrationPinState());
+        return;
+      }
+
       // PIN storage unlock, or biometric unlock when PIN fallback already exists — skip pin-lock.
-      const authState = useAuthStore.getState()
       if (authState.isAuthenticated && (storagePin || (hasWalletPin() && isStoragePinFallbackAvailable()))) {
         setPinVerified(true)
       }
@@ -221,9 +302,7 @@ export default function RootLayout() {
   }, [loadSession, logout, setPinVerified]);
 
   const handleStartupStoragePinSubmit = useCallback(
-    async (pin: string) => {
-      const { canVerifyStoragePinUnlock } = await import('@/src/services/storage/storage');
-      if (!canVerifyStoragePinUnlock()) return;
+    (pin: string) => {
       void prepareWallet({ storagePin: pin });
     },
     [prepareWallet],
@@ -232,6 +311,32 @@ export default function RootLayout() {
   const handleStartupBiometricRetry = useCallback(() => {
     void prepareWallet();
   }, [prepareWallet]);
+
+  const handleStoragePinMigrationBeginBiometric = useCallback(() => {
+    setStartupState((currentState) =>
+      currentState.status === 'storage-pin-migration'
+        ? { ...currentState, step: 'biometric', isSubmitting: true, error: undefined }
+        : currentState,
+    );
+    void prepareWallet({ openStorageForMigration: true });
+  }, [prepareWallet]);
+
+  const handleStoragePinMigrationComplete = useCallback(async () => {
+    try {
+      setPinVerified(true);
+      const { getHolderDid } = await import('@/src/services/crypto/crypto');
+      const { initPushNotifications } = await import('@/src/services/notifications/pushNotificationService');
+      await initPushNotifications(getHolderDid());
+      setStartupState({ status: 'ready' });
+      logWalletStep('startup', 'prepare-wallet-ready-after-migration');
+    } catch (error) {
+      logWalletError('startup', 'storage-pin-migration-ready-failed', error);
+      setStartupState({
+        status: 'error',
+        message: toUserMessage(toErrorMessage(error)),
+      });
+    }
+  }, [setPinVerified]);
 
   const handleStartupForgotPin = useCallback(() => {
     setStartupState((currentState) => readStoragePinForgotPinMode(currentState));
@@ -353,7 +458,15 @@ export default function RootLayout() {
   if (startupState.status !== 'ready') {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        {startupState.status === 'storage-pin-required' ? (
+        {startupState.status === 'storage-pin-migration' ? (
+          <StoragePinMigrationStep
+            step={startupState.step}
+            error={startupState.error}
+            isSubmitting={startupState.isSubmitting}
+            onBeginBiometric={handleStoragePinMigrationBeginBiometric}
+            onComplete={() => void handleStoragePinMigrationComplete()}
+          />
+        ) : startupState.status === 'storage-pin-required' ? (
           startupState.mode === 'forgot-pin' ? (
             <ForgotPinFlow
               showResetNotice
@@ -362,8 +475,9 @@ export default function RootLayout() {
             />
           ) : (
             <StartupStoragePinUnlock
-              pinUnlockEnabled={startupState.pinUnlockEnabled}
               isSubmitting={startupState.isSubmitting}
+              fallbackAvailable={startupState.fallbackAvailable}
+              pinUnlockEnabled={startupState.pinUnlockEnabled}
               error={startupState.error}
               onSubmit={handleStartupStoragePinSubmit}
               onRetryBiometric={handleStartupBiometricRetry}

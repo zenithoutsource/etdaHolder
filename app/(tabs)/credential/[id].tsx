@@ -9,7 +9,7 @@ import { useAppDialog } from "../../../src/components/AppDialog";
 import { ProximityPresentButton } from "../../../src/components/proximity/ProximityPresentButton";
 import { CredentialDocumentDetailCard } from "../../../src/components/CredentialDocumentDetailCard";
 import { CredentialActionMenu } from "../../../src/components/CredentialActionMenu";
-import { PinKeypad } from "../../../src/components/PinKeypad";
+import { PinEntrySurface } from "../../../src/components/PinEntrySurface";
 import { PresentationApprovalDeviceCard } from "../../../src/components/PresentationApprovalDeviceCard";
 import { PresentationPopCard } from "../../../src/components/PresentationPopCard";
 import { WalletHeader } from "../../../src/components/WalletHeader";
@@ -385,23 +385,11 @@ export default function CredentialDetailScreen() {
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
         <WalletHeader title="Security Access" onBack={() => setPhase({ tag: "detail" })} />
         <View className="flex-1 items-center bg-[#eef1f4] px-5 pt-8">
-          <MaterialCommunityIcons name="lock" size={48} color="#f2c230" />
-          <Text className="mt-3 text-2xl font-semibold text-[#1a2a42]">{titleByMode}</Text>
-          <Text className="mt-2 text-center text-xs text-[#8a9bb0]">
-            {messageByMode}
-          </Text>
-          <View className="mt-7 flex-row gap-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <View
-                key={index}
-                className={`h-3 w-3 rounded-full ${index < pin.length ? "bg-black" : "border border-[#8a9bb0]"}`}
-              />
-            ))}
-          </View>
-          {pinError ? (
-            <Text className="mt-4 text-center text-sm font-medium text-[#c00000]">{pinError}</Text>
-          ) : null}
-          <PinKeypad
+          <PinEntrySurface
+            title={titleByMode}
+            subtitle={messageByMode}
+            pin={pin}
+            error={pinError}
             onDigit={handleKeyPress}
             onBackspace={() => setPin((value) => value.slice(0, -1))}
             onFingerprint={handleFingerprintBypass}

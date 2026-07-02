@@ -2,6 +2,10 @@
 
 Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
 
+### Session 2026-07-02
+
+- Rate-limited `POST /wallet-api/auth/pin-reset/request` with existing in-memory IP and normalized-email limiters before DB lookup and SMTP send; added a route regression proving the fourth valid request for the same email returns `429 { message: 'Too Many Requests' }` and does not send another OTP.
+
 ### Session 2026-07-01
 
 - Fixed Android Keychain biometric prompt cancellation during credential storage startup: `react-native-keychain` can surface Cancel as `E_CRYPTO_FAILED` / `CryptoFailedException` with `code: 13`, and storage now maps that native diagnostic to retryable `StorageUnlockCancelled` instead of `StorageInitializationFailed`.
@@ -14,6 +18,8 @@ Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCH
 - Enabled PIN digit entry while the biometric storage prompt is still pending, including when PIN fallback availability is false/unknown, and guarded storage/startup races so a later biometric cancellation cannot clear or overwrite a successful PIN unlock.
 - Mapped startup PIN unlock attempts before fallback provisioning to a normal biometric-required message instead of logging `[wallet:startup] storage-pin-unlock-failed`.
 - Documented the storage-only PIN fallback security tradeoff in `docs/SECURITY.md`; signing-key release remains Keychain biometric/device gated with no JavaScript PIN fallback.
+- Extracted the duplicated PIN unlock UI into `src/components/PinUnlockPrompt.tsx` and reused it from both `app/pin-lock.tsx` and `src/components/StartupStoragePinUnlock.tsx`, keeping route-level wallet PIN verification separate from startup storage PIN unlock.
+- Consolidated reusable UI surfaces across PIN/auth, Wallet Home summary cards, presentation disclosure/result panels, and Scan QR capture: added `PinEntrySurface`, `StatusBadge`, `WalletCredentialSummaryCard`, `PresentationDisclosureList`, `PresentationSuccessPanel`, `PresentationStepScaffold`, and `ScanCaptureSurface`; migrated the current callers while preserving each flow's security and protocol logic.
 
 ## Phase 1: Cryptography and Secure Storage
 

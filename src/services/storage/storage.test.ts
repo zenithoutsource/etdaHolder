@@ -20,6 +20,7 @@ import {
   getCredentialStorage,
   canVerifyStoragePinUnlock,
   isStoragePinFallbackAvailable,
+  needsStoragePinFallbackMigration,
   persistWalletPinMeta,
   provisionStoragePinFallback,
   resetStorage,
@@ -246,7 +247,45 @@ describe('credential storage keychain policy', () => {
     const salt = 'meta-salt'
     persistWalletPinMeta({ salt, hash: hashWalletPinForTest('123456', salt) })
 
+    await expect(initStorageWithPin('654321')).rejects.toThrow('StoragePinVerifierMismatch')
+  })
+
+  test('requires biometric when wallet pin meta matches but storage fallback is missing', async () => {
+    await resetStorage()
+    const salt = 'meta-salt'
+    persistWalletPinMeta({ salt, hash: hashWalletPinForTest('123456', salt) })
+
     await expect(initStorageWithPin('123456')).rejects.toThrow('StoragePinFallbackRequired')
+  })
+
+  test('reports whether storage PIN unlock can be verified from meta or fallback', async () => {
+    await resetStorage()
+    expect(canVerifyStoragePinUnlock()).toBe(false)
+
+    persistWalletPinMeta({ salt: 'meta-salt', hash: hashWalletPinForTest('123456', 'meta-salt') })
+    expect(canVerifyStoragePinUnlock()).toBe(true)
+
+    await resetStorage()
+    await initStorage()
+    provisionStoragePinFallback('123456')
+    await resetStorage({ keepPinFallback: true })
+    expect(canVerifyStoragePinUnlock()).toBe(true)
+  })
+
+  test('reports when storage PIN fallback migration is required', async () => {
+    await resetStorage()
+    expect(needsStoragePinFallbackMigration()).toBe(false)
+
+    await initStorage()
+    persistWalletPinMeta({ salt: 'meta-salt', hash: hashWalletPinForTest('123456', 'meta-salt') })
+    getCredentialStorage().set(
+      'wallet:pin:v1',
+      JSON.stringify({ salt: 'meta-salt', hash: hashWalletPinForTest('123456', 'meta-salt') }),
+    )
+    expect(needsStoragePinFallbackMigration()).toBe(true)
+
+    provisionStoragePinFallback('123456')
+    expect(needsStoragePinFallbackMigration()).toBe(false)
   })
 
   test('rejects wrong PIN fallback without initializing credential storage', async () => {

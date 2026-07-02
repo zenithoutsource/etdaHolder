@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from 'react-native'
 
 import type { ResolvedPresentationRequest } from '../services/vp/presentationService'
 import { AppButton } from './AppButton'
+import { PresentationDisclosureList } from './PresentationDisclosureList'
 
 type Props = {
   request: ResolvedPresentationRequest
@@ -25,16 +26,8 @@ export function PresentationConsentPanel({ request, onAccept, onReject, disabled
 
         <Text className="mt-1 text-[13px] text-[#6b7280]">ข้อมูลที่ร้องขอ</Text>
 
-        <View className="mt-5 w-full gap-3">
-          {request.disclosures.map((disclosure) => (
-            <View key={disclosure.key} className="flex-row items-center justify-between rounded-xl bg-[#f4f6fa] px-4 py-4">
-              <View className="flex-1">
-                <Text className="text-[15px] font-bold text-[#071f5f]">{disclosure.label}</Text>
-                <Text className="text-[13px] text-[#6b7280]">{disclosure.value}</Text>
-              </View>
-              <MaterialCommunityIcons name="check-circle" size={24} color="#18a05d" />
-            </View>
-          ))}
+        <View className="mt-5 w-full">
+          <PresentationDisclosureList items={request.disclosures} variant="consent" />
         </View>
 
         <View className="mt-8 w-full flex-row items-center gap-2 rounded-xl bg-[#f4f6fa] px-4 py-3">
@@ -47,6 +40,7 @@ export function PresentationConsentPanel({ request, onAccept, onReject, disabled
           variant="icon-circle"
           label="ไม่ยินยอม"
           onPress={onReject}
+          disabled={disabled}
           className="mt-3 w-full rounded-xl border border-[#d1d5db] bg-white py-4"
           textClassName="text-[15px] font-bold text-[#364152]"
         />

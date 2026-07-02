@@ -1,4 +1,8 @@
-import { createCipheriv as nodeCreateCipheriv, createDecipheriv as nodeCreateDecipheriv } from 'crypto'
+import {
+  createCipheriv as nodeCreateCipheriv,
+  createDecipheriv as nodeCreateDecipheriv,
+  pbkdf2Sync as nodePbkdf2Sync,
+} from 'crypto'
 
 export const createHash = jest.fn(() => {
   let input = ''
@@ -23,6 +27,11 @@ export const createHash = jest.fn(() => {
 })
 
 export const randomBytes = jest.fn((size: number) => Buffer.alloc(size, 0))
+
+export const pbkdf2Sync = jest.fn(
+  (password: string, salt: string, iterations: number, keylen: number, digest: string) =>
+    nodePbkdf2Sync(password, salt, iterations, keylen, digest),
+)
 
 export const createCipheriv = jest.fn((
   algorithm: string,

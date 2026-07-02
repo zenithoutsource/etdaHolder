@@ -1,6 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native'
-
-import { STARTUP_PIN_UNLOCK_DISABLED_MESSAGE } from '@/src/services/startup/startupState'
+import { act, fireEvent, render, screen } from '@testing-library/react-native'
 
 import { StartupStoragePinUnlock } from './StartupStoragePinUnlock'
 
@@ -11,17 +9,26 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
 })
 
 const defaultProps = {
-  pinUnlockEnabled: true,
   isSubmitting: false,
+  fallbackAvailable: true,
+  pinUnlockEnabled: true,
   onForgotPin: jest.fn(),
 }
 
 describe('StartupStoragePinUnlock', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    jest.useFakeTimers()
   })
 
-  test('submits the six-digit PIN when PIN unlock is enabled', () => {
+  afterEach(() => {
+    act(() => {
+      jest.runAllTimers()
+    })
+    jest.useRealTimers()
+  })
+
+  test('submits the six-digit PIN', () => {
     const onSubmit = jest.fn()
 
     render(
@@ -35,36 +42,57 @@ describe('StartupStoragePinUnlock', () => {
     for (const digit of ['1', '2', '3', '4', '5', '6']) {
       fireEvent.press(screen.getByTestId(`pin-key-${digit}`))
     }
+    act(() => {
+      jest.runAllTimers()
+    })
 
     expect(onSubmit).toHaveBeenCalledWith('123456')
-    expect(screen.queryByText(STARTUP_PIN_UNLOCK_DISABLED_MESSAGE)).toBeNull()
+    expect(
+      screen.getByText('โปรดระบุรหัส PIN 6 หลัก หรือใช้สแกนใบหน้า / ลายนิ้วมือ'),
+    ).toBeTruthy()
   })
 
-  test('disables PIN entry and shows helper text when PIN unlock is unavailable', () => {
+  test('shows legacy copy when PIN fallback is unavailable', () => {
+    render(
+      <StartupStoragePinUnlock
+        {...defaultProps}
+        fallbackAvailable={false}
+        pinUnlockEnabled={false}
+        onSubmit={jest.fn()}
+        onRetryBiometric={jest.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText('หลังอัปเดต ครั้งแรกให้กดปุ่มลายนิ้วมือด้านล่าง ครั้งถัดไปใช้ PIN ได้เลย'),
+    ).toBeTruthy()
+  })
+
+  test('accepts PIN entry and keeps biometric retry in the lower-left keypad button', () => {
     const onSubmit = jest.fn()
     const onRetryBiometric = jest.fn()
 
     render(
       <StartupStoragePinUnlock
         {...defaultProps}
-        pinUnlockEnabled={false}
         onSubmit={onSubmit}
         onRetryBiometric={onRetryBiometric}
       />,
     )
 
-    expect(screen.getByText(STARTUP_PIN_UNLOCK_DISABLED_MESSAGE)).toBeTruthy()
-
     for (const digit of ['1', '2', '3', '4', '5', '6']) {
       fireEvent.press(screen.getByTestId(`pin-key-${digit}`))
     }
+    act(() => {
+      jest.runAllTimers()
+    })
     fireEvent.press(screen.getByTestId('pin-key-fingerprint'))
 
-    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onSubmit).toHaveBeenCalledWith('123456')
     expect(onRetryBiometric).toHaveBeenCalledTimes(1)
   })
 
-  test('accepts PIN while startup biometric unlock is in progress when PIN unlock is enabled', () => {
+  test('accepts PIN while startup biometric unlock is in progress', () => {
     const onSubmit = jest.fn()
     const onRetryBiometric = jest.fn()
 
@@ -80,6 +108,9 @@ describe('StartupStoragePinUnlock', () => {
     for (const digit of ['1', '2', '3', '4', '5', '6']) {
       fireEvent.press(screen.getByTestId(`pin-key-${digit}`))
     }
+    act(() => {
+      jest.runAllTimers()
+    })
     fireEvent.press(screen.getByTestId('pin-key-fingerprint'))
 
     expect(onSubmit).toHaveBeenCalledWith('123456')
