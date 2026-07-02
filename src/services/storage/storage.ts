@@ -2,13 +2,11 @@ import { Platform } from 'react-native'
 import * as Keychain from 'react-native-keychain'
 import type { MMKV } from 'react-native-mmkv'
 import { createMMKV } from 'react-native-mmkv'
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'react-native-quick-crypto'
+import { createCipheriv, createDecipheriv, createHash, pbkdf2Sync, randomBytes } from 'react-native-quick-crypto'
 import { Buffer } from '@craftzdog/react-native-buffer'
-import { pbkdf2 } from '@noble/hashes/pbkdf2.js'
-import { sha256 } from '@noble/hashes/sha2.js'
 
+import { confirmBiometricGate } from '@/src/services/auth/biometricGate'
 import { isBiometricDisabledForTesting } from '@/src/config/runtimeFlags'
-import { authenticateWeakBiometric, isNativeWeakBiometricAvailable } from '@/src/services/crypto/nativeEddsaSigner'
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 import { toErrorMessage } from '@/src/utils/jwtUtils'
 
@@ -82,7 +80,9 @@ function isSixDigitPin(pin: string): boolean {
 }
 
 function derivePinFallbackKey(pin: string, salt: string, iterations: number): Uint8Array {
-  return pbkdf2(sha256, pin, salt, { c: iterations, dkLen: PIN_KDF_BYTES })
+  // Native (JSI) PBKDF2 instead of @noble/hashes' pure-JS loop: the latter took
+  // ~10s on-device at 210k iterations, blocking the JS thread during PIN unlock.
+  return pbkdf2Sync(pin, salt, iterations, PIN_KDF_BYTES, 'sha256')
 }
 
 function readPinFallbackRecord(): StoragePinFallbackRecord | undefined {
@@ -220,13 +220,14 @@ function getKeychainGetOptions(): Keychain.GetOptions {
 }
 
 async function getOrCreateEncryptionKey(): Promise<{ encryptionKey: string; isNewKey: boolean }> {
-  if (Platform.OS === 'android' && !isBiometricDisabledForTesting() && isNativeWeakBiometricAvailable()) {
-    logWalletStep('storage', 'android-weak-biometric-start')
-    const success = await authenticateWeakBiometric(STORAGE_BIOMETRIC_TITLE, STORAGE_BIOMETRIC_CANCEL)
-    if (!success) {
-      throw new Error('StorageUnlockCancelled')
-    }
-    logWalletStep('storage', 'android-weak-biometric-complete')
+  if (Platform.OS === 'android' && !isBiometricDisabledForTesting()) {
+    await confirmBiometricGate({
+      promptMessage: STORAGE_BIOMETRIC_TITLE,
+      cancelButtonText: STORAGE_BIOMETRIC_CANCEL,
+      logScope: 'storage',
+      errorPrefix: 'StorageUnlock',
+      allowFallback: false,
+    })
   }
 
   logWalletStep('storage', 'keychain-read-start')
@@ -317,6 +318,24 @@ export function canVerifyStoragePinUnlock(): boolean {
 
 export function hasWalletPinMeta(): boolean {
   return readWalletPinMetaRecord() !== undefined
+}
+
+function hasWalletPinRecordInCredentialStorage(): boolean {
+  if (!credentialStorage) return false
+
+  const raw = credentialStorage.getString(WALLET_PIN_CREDENTIAL_KEY)
+  if (!raw) return false
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<WalletPinMetaRecord>
+    return typeof parsed.salt === 'string' && typeof parsed.hash === 'string'
+  } catch {
+    return false
+  }
+}
+
+export function needsStoragePinFallbackMigration(): boolean {
+  return hasWalletPinRecordInCredentialStorage() && !isStoragePinFallbackAvailable()
 }
 
 export function persistWalletPinMeta(record: WalletPinMetaRecord): void {
