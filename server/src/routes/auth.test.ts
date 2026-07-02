@@ -36,6 +36,7 @@ import {
   verifyPassword,
 } from '../auth'
 import { pool, withTransaction } from '../db'
+import { sendPinResetOtp } from '../mail'
 import { createTestApp } from '../testApp'
 
 const app = createTestApp()
@@ -46,6 +47,7 @@ const verifyPasswordMock = verifyPassword as jest.Mock
 const issueTokenMock = issueToken as jest.Mock
 const storeSessionMock = storeSession as jest.Mock
 const sessionExpiryFromNowMock = sessionExpiryFromNow as jest.Mock
+const sendPinResetOtpMock = sendPinResetOtp as jest.Mock
 
 const VALID_PIN = '482910'
 
@@ -58,6 +60,7 @@ describe('auth routes', () => {
     issueTokenMock.mockClear()
     storeSessionMock.mockClear()
     sessionExpiryFromNowMock.mockClear()
+    sendPinResetOtpMock.mockClear()
   })
 
   it('email-status reports whether an email exists', async () => {
@@ -175,6 +178,33 @@ describe('auth routes', () => {
     expect(response.body).toEqual({ message: 'Invalid email or PIN' })
     expect(verifyPasswordMock).toHaveBeenCalledWith('000001', expect.any(String))
     expect(storeSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('pin-reset request rate limits repeated requests for the same email', async () => {
+    executeMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT id FROM users')) {
+        return [[{ id: 'user-1' }]]
+      }
+      if (sql.includes('INSERT INTO pin_reset_otps')) {
+        return [{ affectedRows: 1 }]
+      }
+      throw new Error(`Unexpected SQL: ${sql}`)
+    })
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await request(app).post('/wallet-api/auth/pin-reset/request').send({
+        email: 'PIN-RESET-LIMIT@Example.COM',
+      })
+      expect(response.status).toBe(204)
+    }
+
+    const blocked = await request(app).post('/wallet-api/auth/pin-reset/request').send({
+      email: 'pin-reset-limit@example.com',
+    })
+
+    expect(blocked.status).toBe(429)
+    expect(blocked.body).toEqual({ message: 'Too Many Requests' })
+    expect(sendPinResetOtpMock).toHaveBeenCalledTimes(3)
   })
 
   it('pin-reset verify accepts a valid OTP', async () => {

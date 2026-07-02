@@ -45,6 +45,8 @@ const authRouter = Router()
 
 const emailStatusIpLimiter = createRateLimiter(10, 60_000)
 const emailStatusEmailLimiter = createRateLimiter(5, 60_000)
+const pinResetRequestIpLimiter = createRateLimiter(10, 60_000)
+const pinResetRequestEmailLimiter = createRateLimiter(3, 60_000)
 const loginFailureLimiter = createRateLimiter(5, 15 * 60_000)
 
 const ALLOWED_EMAIL_TLDS = new Set([
@@ -338,6 +340,12 @@ authRouter.post('/pin-reset/request', async (req, res) => {
   const email = normalizeEmail(body.email)
   if (!isValidEmailFormat(email)) {
     res.status(204).end()
+    return
+  }
+
+  const ip = readClientIp(req)
+  if (pinResetRequestIpLimiter.consume(`ip:${ip}`) || pinResetRequestEmailLimiter.consume(`email:${email}`)) {
+    res.status(429).json({ message: 'Too Many Requests' })
     return
   }
 
