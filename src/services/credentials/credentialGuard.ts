@@ -4,6 +4,7 @@ import {
   type CredentialRenewalRecord,
   type CredentialRenewalState,
 } from './credentialKeyRenewal'
+import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 const PID_CREDENTIAL_TYPE = 'ThaiNationalID'
@@ -50,6 +51,7 @@ export function hasUsablePidCredential(
 ): boolean {
   return credentials.some((credential) => {
     if (credential.type !== PID_CREDENTIAL_TYPE) return false
+    if (isCredentialDocumentExpired(credential)) return false
 
     const state = readRenewalState(credential.id, renewalStatuses)
     if (!state) return true
@@ -104,28 +106,33 @@ export function pickPreferredHomeCredential(
 ): VerifiableCredentialRecord | undefined {
   if (matches.length === 0) return undefined
 
-  const renewedActive = matches.find(
+  const presentableMatches = matches.filter(
+    (record) => !isCredentialDocumentExpired(record),
+  )
+  const candidates = presentableMatches.length > 0 ? presentableMatches : matches
+
+  const renewedActive = candidates.find(
     (record) => readRenewalState(record.id, renewalStatuses) === 'renewed-active',
   )
   if (renewedActive) return renewedActive
 
-  const normalActive = matches.find(
+  const normalActive = candidates.find(
     (record) => readRenewalState(record.id, renewalStatuses) === undefined,
   )
   if (normalActive) return normalActive
 
-  const waiting = matches.find((record) => {
+  const waiting = candidates.find((record) => {
     const state = readRenewalState(record.id, renewalStatuses)
     return state === 'renewal-required' || state === 'renewal-processing'
   })
   if (waiting) return waiting
 
-  const cleanupPending = matches.find(
+  const cleanupPending = candidates.find(
     (record) => readRenewalState(record.id, renewalStatuses) === 'cleanup-pending',
   )
   if (cleanupPending) return cleanupPending
 
-  return matches[0]
+  return candidates[0]
 }
 
 export function canRequestCredentialType(
@@ -144,11 +151,16 @@ export function canRequestCredentialType(
       return false
     }
 
-    return credentials.some(
-      (credential) =>
-        credential.type === PID_CREDENTIAL_TYPE &&
-        readRenewalState(credential.id, statuses) === 'renewal-required',
-    )
+    if (hasUsablePidCredential(credentials, statuses)) {
+      return false
+    }
+
+    return credentials.some((credential) => {
+      if (credential.type !== PID_CREDENTIAL_TYPE) return false
+
+      const state = readRenewalState(credential.id, statuses)
+      return state === 'renewal-required' || isCredentialDocumentExpired(credential)
+    })
   }
 
   return hasUsablePidCredential(credentials, statuses)

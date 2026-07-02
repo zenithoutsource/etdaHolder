@@ -4,6 +4,7 @@ import { Image, type ImageSourcePropType } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { WalletKeyExpiryHost } from '@/src/components/WalletKeyExpiryHost';
+import { CredentialExpiryHost } from '@/src/components/CredentialExpiryHost';
 
 type TabIconProps = {
   color: string;
@@ -30,6 +31,7 @@ export default function TabLayout() {
   return (
     <>
       <WalletKeyExpiryHost />
+      <CredentialExpiryHost />
       <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#002887',

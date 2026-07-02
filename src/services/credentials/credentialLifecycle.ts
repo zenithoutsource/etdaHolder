@@ -1,3 +1,4 @@
+import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
 import { blocksCredentialPresentation, readCredentialRenewalStatuses } from './credentialKeyRenewal'
 import { readIssuerSuspensionStatuses } from './issuerSuspension'
 import { getCredentialStorage } from '../storage/storage'
@@ -87,7 +88,8 @@ export function filterPresentableCredentials(
     (record) =>
       !lifecycleStatuses[record.id] &&
       !suspensionStatuses[record.id] &&
-      !blocksCredentialPresentation(renewalStatuses[record.id]),
+      !blocksCredentialPresentation(renewalStatuses[record.id]) &&
+      !isCredentialDocumentExpired(record),
   )
 }
 

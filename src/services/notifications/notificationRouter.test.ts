@@ -1,59 +1,80 @@
-import { router } from 'expo-router'
-
-import { routeNotificationTap } from './notificationRouter'
-
-jest.mock('expo-router', () => ({
-  router: {
-    push: jest.fn(),
-    replace: jest.fn(),
-  },
-}))
-
-const routerPushMock = router.push as jest.Mock
-const routerReplaceMock = router.replace as jest.Mock
+import { buildNotificationRoute, routeNotificationTap } from './notificationRouter'
+import { useNotificationRouteStore } from '@/src/store/notificationRouteStore'
 
 describe('notificationRouter', () => {
   beforeEach(() => {
-    routerPushMock.mockReset()
-    routerReplaceMock.mockReset()
+    useNotificationRouteStore.setState({ pendingRoute: null })
   })
 
-  test('routes renewal-ready taps with notification context for replacement handoff', () => {
-    routeNotificationTap({
-      event: 'renewal-ready',
-      credentialId: 'cred-123',
-      credentialType: 'ThaiNationalID',
+  describe('buildNotificationRoute', () => {
+    test('builds renewal-ready routes with notification context for replacement handoff', () => {
+      expect(buildNotificationRoute({
+        event: 'renewal-ready',
+        credentialId: 'cred-123',
+        credentialType: 'ThaiNationalID',
+      })).toEqual({
+        pathname: '/(tabs)/credential/[id]',
+        params: {
+          id: 'cred-123',
+          notificationEvent: 'renewal-ready',
+        },
+      })
     })
 
-    expect(routerReplaceMock).toHaveBeenCalledWith({
-      pathname: '/(tabs)/credential/[id]',
-      params: {
-        id: 'cred-123',
-        notificationEvent: 'renewal-ready',
-      },
+    test('builds non-renewal-ready credential routes to credential detail', () => {
+      expect(buildNotificationRoute({
+        event: 'issuer-suspended',
+        credentialId: 'cred-123',
+        credentialType: 'ThaiNationalID',
+      })).toEqual({
+        pathname: '/(tabs)/credential/[id]',
+        params: { id: 'cred-123' },
+      })
     })
-    expect(routerPushMock).not.toHaveBeenCalled()
+
+    test('builds document expiry routes to credential detail', () => {
+      expect(buildNotificationRoute({
+        event: 'document-expiring-soon',
+        credentialId: 'cred-123',
+        credentialType: 'ThaiNationalID',
+      })).toEqual({
+        pathname: '/(tabs)/credential/[id]',
+        params: { id: 'cred-123' },
+      })
+    })
+
+    test('ignores notification taps without a credential id', () => {
+      expect(buildNotificationRoute({
+        event: 'renewal-ready',
+        credentialType: 'ThaiNationalID',
+      })).toBeUndefined()
+    })
   })
 
-  test('routes non-renewal-ready credential taps to credential detail', () => {
-    routeNotificationTap({
-      event: 'issuer-suspended',
-      credentialId: 'cred-123',
-      credentialType: 'ThaiNationalID',
+  describe('routeNotificationTap', () => {
+    test('stores a pending route instead of navigating directly, deferring to the PIN gate', () => {
+      routeNotificationTap({
+        event: 'renewal-ready',
+        credentialId: 'cred-123',
+        credentialType: 'ThaiNationalID',
+      })
+
+      expect(useNotificationRouteStore.getState().pendingRoute).toEqual({
+        pathname: '/(tabs)/credential/[id]',
+        params: {
+          id: 'cred-123',
+          notificationEvent: 'renewal-ready',
+        },
+      })
     })
 
-    expect(routerReplaceMock).toHaveBeenCalledWith({
-      pathname: '/(tabs)/credential/[id]',
-      params: { id: 'cred-123' },
-    })
-  })
+    test('does not store a pending route for taps without a credential id', () => {
+      routeNotificationTap({
+        event: 'renewal-ready',
+        credentialType: 'ThaiNationalID',
+      })
 
-  test('ignores notification taps without a credential id', () => {
-    routeNotificationTap({
-      event: 'renewal-ready',
-      credentialType: 'ThaiNationalID',
+      expect(useNotificationRouteStore.getState().pendingRoute).toBeNull()
     })
-
-    expect(routerPushMock).not.toHaveBeenCalled()
   })
 })

@@ -1,4 +1,5 @@
 import { getCredentialStorage as getDefaultCredentialStorage } from '../storage/storage'
+import { logWalletStep } from '../debug/walletLogger'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 const CREDENTIAL_INDEX_KEY = 'credential:index'
@@ -49,7 +50,13 @@ export function removeStoredCredential(
   const storage = getCredentialStorage()
   const indexRaw = storage.getString(CREDENTIAL_INDEX_KEY)
   const ids: string[] = indexRaw ? (JSON.parse(indexRaw) as string[]) : []
+  const foundInIndex = ids.includes(credentialId)
+  logWalletStep('credentials', 'remove-stored-credential-start', { credentialId, foundInIndex, indexSize: ids.length })
   storage.set?.(CREDENTIAL_INDEX_KEY, JSON.stringify(ids.filter((id) => id !== credentialId)))
   storage.remove?.(`${CREDENTIAL_KEY_PREFIX}${credentialId}`)
+  void import('../notifications/documentExpiryNotificationService').then(
+    ({ cancelDocumentExpiryNotifications }) => cancelDocumentExpiryNotifications(credentialId),
+  )
   notifyCredentialsChanged()
+  logWalletStep('credentials', 'remove-stored-credential-complete', { credentialId, listenerCount: credentialsChangeListeners.size })
 }

@@ -1,9 +1,12 @@
 import type { CredentialLifecycleStatus } from './credentialLifecycle'
 import type { CredentialRenewalRecord } from './credentialKeyRenewal'
+import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
 import {
   hasPendingIssuerSuspensionAck,
   type IssuerSuspensionRecord,
 } from './issuerSuspension'
+import { WALLET_HOME_COPY } from './walletHomeCopy'
+import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 type ActiveCredentialState = {
   kind: 'active'
@@ -18,6 +21,7 @@ type InactiveCredentialState = {
     | 'renewal-processing'
     | 'old-revoked'
     | 'cleanup-pending'
+    | 'document-expired'
   badgeLabel: string
   badgeClassName: string
   panelMessage: string
@@ -37,22 +41,25 @@ export function resolveCredentialRevokeBehavior(
 
 function readRenewalInactiveState(
   renewalStatus: CredentialRenewalRecord | undefined,
+  credential?: VerifiableCredentialRecord,
 ): CredentialInactiveState | undefined {
   if (!renewalStatus) return undefined
-  return readCredentialInactiveState({ renewalStatus }, false)
+  return readCredentialInactiveState({ renewalStatus, credential }, false)
 }
 
 export function readCredentialInactiveState({
   lifecycleStatus,
   suspensionStatus,
   renewalStatus,
+  credential,
 }: {
   lifecycleStatus?: CredentialLifecycleStatus
   suspensionStatus?: IssuerSuspensionRecord
   renewalStatus?: CredentialRenewalRecord
+  credential?: VerifiableCredentialRecord
 }, preferRenewalState = true): CredentialInactiveState {
   if (preferRenewalState && !suspensionStatus) {
-    const renewalInactiveState = readRenewalInactiveState(renewalStatus)
+    const renewalInactiveState = readRenewalInactiveState(renewalStatus, credential)
     if (renewalInactiveState) return renewalInactiveState
   }
 
@@ -122,6 +129,15 @@ export function readCredentialInactiveState({
   if (renewalStatus?.state === 'renewed-active') {
     return {
       kind: 'active',
+    }
+  }
+
+  if (credential && isCredentialDocumentExpired(credential)) {
+    return {
+      kind: 'document-expired',
+      badgeLabel: WALLET_HOME_COPY.documentExpiredBadge,
+      badgeClassName: 'bg-[#7a7a7a]',
+      panelMessage: WALLET_HOME_COPY.documentExpiredMessage,
     }
   }
 

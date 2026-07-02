@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, ScrollView, Text, TextInput, View, type Image
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../components/AppButton'
+import { useAppDialog } from '../components/AppDialog'
 import { CodeBoxField } from '../components/auth/CodeBoxField'
 import { ScanSuccessPanel } from '../components/ScanSuccessPanel'
 import { ThaIdVerificationPanel } from '../components/ThaIdVerificationPanel'
@@ -18,6 +19,10 @@ import { useStoredCredentials } from '../hooks/useStoredCredentials'
 import { isPidCredentialOffer, readPidGateStatus } from '../services/credentials/credentialGuard'
 import { readCredentialRenewalStatuses } from '../services/credentials/credentialKeyRenewal'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
+import {
+  deleteExpiredCredentialAfterReissue,
+  readExpiredCredentialsForCleanupAfterClaim,
+} from '../services/credentials/documentExpiryCleanup'
 import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
@@ -73,7 +78,8 @@ type Props = {
 }
 
 export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props = {}) {
-  const { refresh: refreshCredentials } = useStoredCredentials()
+  const { refresh: refreshCredentials, credentials } = useStoredCredentials()
+  const { showDialog } = useAppDialog()
   const [phase, setPhase] = useState<ClaimPhase>({ tag: 'initializing' })
   const [txCode, setTxCode] = useState('')
   const generationRef = useRef(0)
@@ -84,6 +90,40 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
   const activeOfferUriRef = useRef<string | null>(null)
+  const expiredCleanupPromptedRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (phase.tag !== 'success') return
+
+    const expiredCredentials = readExpiredCredentialsForCleanupAfterClaim(
+      phase.record,
+      credentials.length > 0 ? credentials : readStoredCredentials(),
+    )
+    const expiredCredential = expiredCredentials[0]
+    if (!expiredCredential) return
+    if (expiredCleanupPromptedRef.current === phase.record.id) return
+
+    expiredCleanupPromptedRef.current = phase.record.id
+    showDialog({
+      title: WALLET_HOME_COPY.documentExpiredCleanupTitle,
+      message: WALLET_HOME_COPY.documentExpiredCleanupMessage,
+      icon: 'danger',
+      actions: [
+        {
+          label: WALLET_HOME_COPY.cancel,
+          variant: 'secondary',
+        },
+        {
+          label: WALLET_HOME_COPY.confirmDelete,
+          variant: 'danger',
+          onPress: () => {
+            deleteExpiredCredentialAfterReissue(expiredCredential.id)
+            refreshCredentials()
+          },
+        },
+      ],
+    })
+  }, [credentials, phase, refreshCredentials, showDialog])
 
   const acquireForPreview = useCallback(async (offer: ResolvedCredentialOffer, code?: string) => {
     const gen = generationRef.current

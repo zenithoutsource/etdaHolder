@@ -38,6 +38,7 @@ import {
   readPendingCredentialOfferRoute,
   useDeeplinkStore,
 } from '@/src/store/deeplinkStore';
+import { useNotificationRouteStore } from '@/src/store/notificationRouteStore';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -454,6 +455,12 @@ export default function RootLayout() {
     lastRoutedDeeplinkRef.current = pendingDeeplinkUri;
     routeDeeplink(pendingDeeplinkUri);
   }, [startupState.status, pendingDeeplinkUri, dismissedDeeplinkUri, isAuthenticated, isPinVerified, routeDeeplink]);
+
+  useEffect(() => {
+    if (startupState.status !== 'ready' || !isPinVerified) return;
+    const route = useNotificationRouteStore.getState().consumePendingNotificationRoute();
+    if (route) router.replace(route);
+  }, [startupState.status, isPinVerified, router]);
 
   if (startupState.status !== 'ready') {
     return (

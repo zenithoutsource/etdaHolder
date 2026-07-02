@@ -56,7 +56,9 @@ export function CredentialRenewalOverlay({
     inactiveState.kind === "old-revoked" ||
     inactiveState.kind === "cleanup-pending";
 
-  if (!isRenewalState) return null;
+  const isDocumentExpiredState = inactiveState.kind === "document-expired";
+
+  if (!isRenewalState && !isDocumentExpiredState) return null;
 
   return (
     <>
