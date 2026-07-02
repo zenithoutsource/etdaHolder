@@ -1,8 +1,8 @@
-import { CameraView, useCameraPermissions } from 'expo-camera'
+import { useCameraPermissions } from 'expo-camera'
 import * as Linking from 'expo-linking'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Animated, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
@@ -10,6 +10,8 @@ import { FacePreparePanel } from '../../src/components/FacePreparePanel'
 import { PresentationConsentPanel } from '../../src/components/PresentationConsentPanel'
 import { PresentationInfoPanel } from '../../src/components/PresentationInfoPanel'
 import { PresentationResultPanel, type PresentationResultItem } from '../../src/components/PresentationResultPanel'
+import { PresentationStepScaffold } from '../../src/components/PresentationStepScaffold'
+import { ScanCaptureSurface } from '../../src/components/ScanCaptureSurface'
 import { WalletHeader } from '../../src/components/WalletHeader'
 import { TRUSTED_VERIFIERS } from '../../src/config/trustedVerifiers'
 import { getCardSchema } from '../../src/config/cardSchemas'
@@ -85,7 +87,6 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions()
   const [phase, setPhase] = useState<ScanPhase>({ tag: 'scanning' })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [viewfinderHeight, setViewfinderHeight] = useState(0)
   const processingRef = useRef(false)
   const generationRef = useRef(0)
   const handleBarcodeRef = useRef<(uri: string) => Promise<void>>(async () => undefined)
@@ -96,19 +97,6 @@ export default function ScanScreen() {
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
-  const scanLineAnim = useRef(new Animated.Value(0)).current
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scanLineAnim, { toValue: 1, duration: 2000, useNativeDriver: false }),
-        Animated.timing(scanLineAnim, { toValue: 0, duration: 2000, useNativeDriver: false }),
-      ]),
-    )
-    loop.start()
-    return () => loop.stop()
-  }, [scanLineAnim])
-
   const resetScanner = useCallback(() => {
     generationRef.current++
     setPhase((prev) => {
@@ -326,9 +314,20 @@ export default function ScanScreen() {
   async function confirmPresentationFacePrepare(preparePhase: Extract<ScanPhase, { tag: 'presentationFacePrepare' }>) {
     const gen = generationRef.current
     try {
-      logWalletStep('scan', 'presentation-biometric-start', describePresentationForLog(preparePhase.request))
-      await confirmPresentationBiometric()
-      logWalletStep('scan', 'presentation-biometric-complete', describePresentationForLog(preparePhase.request))
+      // Signed presentation modes (vp-token / sd-jwt-kb) already get a mandatory
+      // Keychain biometric gate at sign time (crypto.ts signJwtLikeObject). Running
+      // the app-level biometric check here too asks the user twice for one approval.
+      // raw-credential mode never signs, so it still needs this as its only gate.
+      const needsAppLevelBiometric =
+        preparePhase.nextStep !== 'consent' || readPresentationTokenMode(preparePhase.request) === 'raw-credential'
+
+      if (needsAppLevelBiometric) {
+        logWalletStep('scan', 'presentation-biometric-start', describePresentationForLog(preparePhase.request))
+        await confirmPresentationBiometric()
+        logWalletStep('scan', 'presentation-biometric-complete', describePresentationForLog(preparePhase.request))
+      } else {
+        logWalletStep('scan', 'presentation-biometric-skipped-signed-mode', describePresentationForLog(preparePhase.request))
+      }
       if (generationRef.current !== gen) return
       if (preparePhase.nextStep === 'consent') {
         setPhase({ tag: 'presentationConsent', request: preparePhase.request })
@@ -369,22 +368,20 @@ export default function ScanScreen() {
 
   if (phase.tag === 'presentationFacePrepare') {
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
-        <WalletHeader onBack={resetScanner} />
+      <PresentationStepScaffold onBack={resetScanner}>
         <FacePreparePanel
           onScan={() => {
             logWalletStep('scan', 'presentation-face-prepare-done', describePresentationForLog(phase.request))
             void confirmPresentationFacePrepare(phase)
           }}
         />
-      </SafeAreaView>
+      </PresentationStepScaffold>
     )
   }
 
   if (phase.tag === 'presentationConsent') {
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
-        <WalletHeader onBack={resetScanner} />
+      <PresentationStepScaffold onBack={resetScanner}>
         <PresentationConsentPanel
           request={phase.request}
           onAccept={() => {
@@ -394,14 +391,13 @@ export default function ScanScreen() {
           onReject={resetScanner}
           disabled={isSubmitting}
         />
-      </SafeAreaView>
+      </PresentationStepScaffold>
     )
   }
 
   if (phase.tag === 'presentationInfo') {
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
-        <WalletHeader title="Wallet" onBack={resetScanner} />
+      <PresentationStepScaffold title="Wallet" onBack={resetScanner}>
         <PresentationInfoPanel
           request={phase.request}
           onConfirm={() => {
@@ -409,7 +405,7 @@ export default function ScanScreen() {
             setPhase({ tag: 'presentationFacePrepare', request: phase.request, nextStep: 'result', verifierName: phase.verifierName, response: phase.response })
           }}
         />
-      </SafeAreaView>
+      </PresentationStepScaffold>
     )
   }
 
@@ -421,10 +417,9 @@ export default function ScanScreen() {
     ]
 
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
-        <WalletHeader title="Verifier" onBack={goToWalletHome} />
+      <PresentationStepScaffold title="Verifier" onBack={goToWalletHome}>
         <PresentationResultPanel verifierName={phase.verifierName} items={items} onDone={goToWalletHome} />
-      </SafeAreaView>
+      </PresentationStepScaffold>
     )
   }
 
@@ -452,74 +447,17 @@ export default function ScanScreen() {
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
       <WalletHeader />
 
-      <View className="relative flex-1 items-center">
-        <CameraView
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          facing="back"
-          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={isLoading ? undefined : ({ data }) => { void handleBarcode(data) }}
-        />
-        <View className="w-full items-center bg-black/25 px-4 pb-10 pt-16">
-          <Text className="text-3xl font-bold text-blue-700">{loadingLabel}</Text>
-        </View>
-
-        {/* Viewfinder box */}
-        <View
-          className="w-full max-w-[310px] overflow-hidden rounded-[18px]"
-          style={{ aspectRatio: 1 }}
-          onLayout={(e) => setViewfinderHeight(e.nativeEvent.layout.height)}>
-          {/* Corner brackets */}
-          <View style={{ position: 'absolute', top: 14, left: 14, width: 36, height: 36, borderTopWidth: 3.5, borderLeftWidth: 3.5, borderColor: 'white', borderTopLeftRadius: 12 }} />
-          <View style={{ position: 'absolute', top: 14, right: 14, width: 36, height: 36, borderTopWidth: 3.5, borderRightWidth: 3.5, borderColor: 'white', borderTopRightRadius: 12 }} />
-          <View style={{ position: 'absolute', bottom: 14, left: 14, width: 36, height: 36, borderBottomWidth: 3.5, borderLeftWidth: 3.5, borderColor: 'white', borderBottomLeftRadius: 12 }} />
-          <View style={{ position: 'absolute', bottom: 14, right: 14, width: 36, height: 36, borderBottomWidth: 3.5, borderRightWidth: 3.5, borderColor: 'white', borderBottomRightRadius: 12 }} />
-
-          {/* Animated scan line */}
-          {!isLoading && viewfinderHeight > 0 && (
-            <Animated.View
-              style={{
-                position: 'absolute',
-                left: 14,
-                right: 14,
-                height: 2,
-                borderRadius: 2,
-                backgroundColor: 'rgba(0,40,135,0.55)',
-                shadowColor: 'rgba(0,40,135,1)',
-                shadowOffset: { width: 0, height: 0 },
-                shadowRadius: 8,
-                shadowOpacity: 0.35,
-                top: scanLineAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [
-                    Math.round(viewfinderHeight * 0.1),
-                    Math.round(viewfinderHeight * 0.88),
-                  ],
-                }),
-              }}
-            />
-          )}
-
-          {isLoading ? (
-            <View className="absolute inset-0 items-center justify-center bg-black/25">
-              <ActivityIndicator size="large" color="#fff" />
-            </View>
-          ) : null}
-        </View>
-
-        <View className="w-full flex-1 items-center bg-black/25 px-4 pt-10">
-          {isLoading ? (
-            <AppButton variant="icon-circle" label="Cancel" onPress={resetScanner} className="bg-white/20 px-6 py-2" textClassName="text-[14px] font-semibold text-white" />
-          ) : (
-            <AppButton
-              variant="solid-block"
-              label="Use NFC"
-              onPress={() => { void handleNfcPress() }}
-              className="rounded-xl bg-white/20 px-5 py-3"
-              textClassName="text-[14px] font-semibold text-white"
-            />
-          )}
-        </View>
-      </View>
+      <ScanCaptureSurface
+        isLoading={isLoading}
+        loadingLabel={loadingLabel}
+        onBarcode={(data) => {
+          void handleBarcode(data)
+        }}
+        onNfcPress={() => {
+          void handleNfcPress()
+        }}
+        onCancel={resetScanner}
+      />
     </SafeAreaView>
   )
 }

@@ -104,6 +104,22 @@ describe('credentialInactiveState', () => {
     })
   })
 
+  test('prefers renewal-required over local lifecycle inactive state so key rotation can be recovered', () => {
+    const renewalStatus = {
+      credentialId: 'credential-1',
+      state: 'renewal-required' as const,
+      previousHolderDid: 'did:key:old',
+      updatedAt: '2026-06-29T10:00:00.000Z',
+    }
+
+    expect(
+      readCredentialInactiveState({
+        lifecycleStatus: revokedLifecycle,
+        renewalStatus,
+      }),
+    ).toEqual(readCredentialInactiveState({ renewalStatus }))
+  })
+
   test('treats renewed-active credentials as active for inactive rendering', () => {
     expect(
       readCredentialInactiveState({

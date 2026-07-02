@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { Router } from 'express'
 import { v4 as uuid } from 'uuid'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2'
@@ -13,10 +14,27 @@ import {
   verifyPassword,
 } from '../auth'
 import { pool, withTransaction } from '../db'
+import { sendPinResetOtp } from '../mail'
+import { createRateLimiter } from '../rateLimit'
+import { displayNameValidationMessage, normalizeDisplayName } from '../validation/displayName'
+import { isValidPin, pinValidationMessage } from '../validation/pin'
 
 type UserRow = RowDataPacket & {
   id: string
   password_hash: string
+}
+
+type UserIdRow = RowDataPacket & {
+  id: string
+}
+
+type PinResetRow = RowDataPacket & {
+  id: string
+  user_id: string
+  otp_hash: string
+  expires_at: Date
+  used_at: Date | null
+  attempt_count: number
 }
 
 type MysqlError = Error & {
@@ -24,6 +42,12 @@ type MysqlError = Error & {
 }
 
 const authRouter = Router()
+
+const emailStatusIpLimiter = createRateLimiter(10, 60_000)
+const emailStatusEmailLimiter = createRateLimiter(5, 60_000)
+const pinResetRequestIpLimiter = createRateLimiter(10, 60_000)
+const pinResetRequestEmailLimiter = createRateLimiter(3, 60_000)
+const loginFailureLimiter = createRateLimiter(5, 15 * 60_000)
 
 const ALLOWED_EMAIL_TLDS = new Set([
   'ac',
@@ -41,6 +65,9 @@ const ALLOWED_EMAIL_TLDS = new Set([
   'org',
   'th',
 ])
+
+const OTP_TTL_MS = 10 * 60_000
+const MAX_OTP_ATTEMPTS = 3
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -76,6 +103,107 @@ function isDuplicateEmail(error: unknown): boolean {
   return error instanceof Error && (error as MysqlError).code === 'ER_DUP_ENTRY'
 }
 
+function hashOtp(otp: string): string {
+  return crypto.createHash('sha256').update(otp).digest('hex')
+}
+
+function generateOtp(): string {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
+}
+
+type PinResetOtpCheckSuccess = {
+  ok: true
+  userId: string
+  otpRecordId: string
+}
+
+type PinResetOtpCheckFailure = {
+  ok: false
+  status: 400 | 429
+  message: string
+}
+
+type PinResetOtpCheck = PinResetOtpCheckSuccess | PinResetOtpCheckFailure
+
+async function checkPinResetOtp(email: string, otp: string): Promise<PinResetOtpCheck> {
+  if (!isValidEmailFormat(email) || !/^\d{6}$/.test(otp)) {
+    return { ok: false, status: 400, message: 'Invalid or expired OTP' }
+  }
+
+  const [userRows] = await pool.execute<UserIdRow[]>(
+    `SELECT id FROM users WHERE email = ? LIMIT 1`,
+    [email],
+  )
+  const user = userRows[0]
+  if (!user) {
+    return { ok: false, status: 400, message: 'Invalid or expired OTP' }
+  }
+
+  const [otpRows] = await pool.execute<PinResetRow[]>(
+    `SELECT id, user_id, otp_hash, expires_at, used_at, attempt_count
+       FROM pin_reset_otps
+      WHERE user_id = ?
+        AND used_at IS NULL
+        AND expires_at > CURRENT_TIMESTAMP
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [user.id],
+  )
+  const otpRecord = otpRows[0]
+  if (!otpRecord) {
+    return { ok: false, status: 400, message: 'Invalid or expired OTP' }
+  }
+
+  if (otpRecord.attempt_count >= MAX_OTP_ATTEMPTS) {
+    return { ok: false, status: 429, message: 'Too Many Requests' }
+  }
+
+  const otpMatches = hashOtp(otp) === otpRecord.otp_hash
+  if (!otpMatches) {
+    await pool.execute<ResultSetHeader>(
+      `UPDATE pin_reset_otps SET attempt_count = attempt_count + 1 WHERE id = ?`,
+      [otpRecord.id],
+    )
+    return { ok: false, status: 400, message: 'Invalid or expired OTP' }
+  }
+
+  return { ok: true, userId: user.id, otpRecordId: otpRecord.id }
+}
+
+function readClientIp(req: { ip?: string }): string {
+  return req.ip ?? 'unknown'
+}
+
+authRouter.post('/email-status', async (req, res) => {
+  const body: unknown = req.body
+  if (!isRecord(body) || !isNonEmptyString(body.email)) {
+    res.status(400).json({ message: 'Bad Request' })
+    return
+  }
+
+  const email = normalizeEmail(body.email)
+  if (!isValidEmailFormat(email)) {
+    res.status(400).json({ message: 'Invalid email format' })
+    return
+  }
+
+  const ip = readClientIp(req)
+  if (emailStatusIpLimiter.consume(`ip:${ip}`) || emailStatusEmailLimiter.consume(`email:${email}`)) {
+    res.status(429).json({ message: 'Too Many Requests' })
+    return
+  }
+
+  try {
+    const [rows] = await pool.execute<UserIdRow[]>(
+      `SELECT id FROM users WHERE email = ? LIMIT 1`,
+      [email],
+    )
+    res.status(200).json({ exists: rows.length > 0 })
+  } catch {
+    res.status(500).json({ message: 'Internal Server Error' })
+  }
+})
+
 authRouter.post('/register', async (req, res) => {
   const body: unknown = req.body
   if (
@@ -83,22 +211,35 @@ authRouter.post('/register', async (req, res) => {
     body.type !== 'email' ||
     !isNonEmptyString(body.name) ||
     !isNonEmptyString(body.email) ||
-    !isNonEmptyString(body.password)
+    !isNonEmptyString(body.pin)
   ) {
     res.status(400).json({ message: 'Bad Request' })
     return
   }
 
-  const name = body.name.trim()
+  const name = normalizeDisplayName(body.name)
   const email = normalizeEmail(body.email)
-  const password = body.password
+  const pin = body.pin
+
+  const nameError = displayNameValidationMessage(name)
+  if (nameError) {
+    res.status(400).json({ message: nameError })
+    return
+  }
+
   if (!isValidEmailFormat(email)) {
     res.status(400).json({ message: 'Invalid email format' })
     return
   }
 
+  const pinError = pinValidationMessage(pin)
+  if (pinError) {
+    res.status(400).json({ message: pinError })
+    return
+  }
+
   try {
-    const passwordHash = await hashPassword(password)
+    const passwordHash = await hashPassword(pin)
 
     await withTransaction(async (connection) => {
       const userId = uuid()
@@ -132,13 +273,29 @@ authRouter.post('/login', async (req, res) => {
     !isRecord(body) ||
     body.type !== 'email' ||
     !isNonEmptyString(body.email) ||
-    !isNonEmptyString(body.password)
+    !isNonEmptyString(body.pin)
   ) {
     res.status(400).json({ message: 'Bad Request' })
     return
   }
 
   const email = normalizeEmail(body.email)
+  const pin = body.pin
+
+  if (!isValidEmailFormat(email)) {
+    res.status(400).json({ message: 'Invalid email format' })
+    return
+  }
+
+  if (!isValidPin(pin)) {
+    res.status(400).json({ message: 'Invalid PIN' })
+    return
+  }
+
+  if (loginFailureLimiter.isLimited(`login:${email}`)) {
+    res.status(429).json({ message: 'Too Many Requests' })
+    return
+  }
 
   try {
     const [rows] = await pool.execute<UserRow[]>(
@@ -150,18 +307,147 @@ authRouter.post('/login', async (req, res) => {
     )
     const user = rows[0]
     const passwordHash = user?.password_hash ?? getDummyPasswordHash()
-    const isPasswordValid = await verifyPassword(body.password, passwordHash)
+    const isPinValid = await verifyPassword(pin, passwordHash)
 
-    if (!user || !isPasswordValid) {
-      res.status(400).json({ message: 'Invalid email or password' })
+    if (!user || !isPinValid) {
+      if (loginFailureLimiter.recordFailure(`login:${email}`)) {
+        res.status(429).json({ message: 'Too Many Requests' })
+        return
+      }
+      res.status(400).json({ message: 'Invalid email or PIN' })
       return
     }
+
+    loginFailureLimiter.reset(`login:${email}`)
 
     const sessionId = uuid()
     const token = issueToken(user.id, sessionId)
     await storeSession(pool, sessionId, user.id, token, sessionExpiryFromNow())
 
     res.status(200).json({ id: user.id, token })
+  } catch {
+    res.status(500).json({ message: 'Internal Server Error' })
+  }
+})
+
+authRouter.post('/pin-reset/request', async (req, res) => {
+  const body: unknown = req.body
+  if (!isRecord(body) || !isNonEmptyString(body.email)) {
+    res.status(400).json({ message: 'Bad Request' })
+    return
+  }
+
+  const email = normalizeEmail(body.email)
+  if (!isValidEmailFormat(email)) {
+    res.status(204).end()
+    return
+  }
+
+  const ip = readClientIp(req)
+  if (pinResetRequestIpLimiter.consume(`ip:${ip}`) || pinResetRequestEmailLimiter.consume(`email:${email}`)) {
+    res.status(429).json({ message: 'Too Many Requests' })
+    return
+  }
+
+  try {
+    const [rows] = await pool.execute<UserIdRow[]>(
+      `SELECT id FROM users WHERE email = ? LIMIT 1`,
+      [email],
+    )
+    const user = rows[0]
+    if (!user) {
+      res.status(204).end()
+      return
+    }
+
+    const otp = generateOtp()
+    const otpId = uuid()
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS)
+
+    await pool.execute<ResultSetHeader>(
+      `INSERT INTO pin_reset_otps (id, user_id, otp_hash, expires_at)
+       VALUES (?, ?, ?, ?)`,
+      [otpId, user.id, hashOtp(otp), expiresAt],
+    )
+
+    await sendPinResetOtp(email, otp)
+    res.status(204).end()
+  } catch {
+    res.status(500).json({ message: 'Internal Server Error' })
+  }
+})
+
+authRouter.post('/pin-reset/verify', async (req, res) => {
+  const body: unknown = req.body
+  if (!isRecord(body) || !isNonEmptyString(body.email) || !isNonEmptyString(body.otp)) {
+    res.status(400).json({ message: 'Bad Request' })
+    return
+  }
+
+  const email = normalizeEmail(body.email)
+  const otp = body.otp.trim()
+
+  try {
+    const result = await checkPinResetOtp(email, otp)
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message })
+      return
+    }
+
+    res.status(204).end()
+  } catch {
+    res.status(500).json({ message: 'Internal Server Error' })
+  }
+})
+
+authRouter.post('/pin-reset/confirm', async (req, res) => {
+  const body: unknown = req.body
+  if (
+    !isRecord(body) ||
+    !isNonEmptyString(body.email) ||
+    !isNonEmptyString(body.otp) ||
+    !isNonEmptyString(body.pin)
+  ) {
+    res.status(400).json({ message: 'Bad Request' })
+    return
+  }
+
+  const email = normalizeEmail(body.email)
+  const otp = body.otp.trim()
+  const pin = body.pin
+
+  const pinError = pinValidationMessage(pin)
+  if (pinError) {
+    res.status(400).json({ message: pinError })
+    return
+  }
+
+  try {
+    const result = await checkPinResetOtp(email, otp)
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message })
+      return
+    }
+
+    const passwordHash = await hashPassword(pin)
+
+    await withTransaction(async (connection) => {
+      await connection.execute<ResultSetHeader>(
+        `UPDATE users SET password_hash = ? WHERE id = ?`,
+        [passwordHash, result.userId],
+      )
+      await connection.execute<ResultSetHeader>(
+        `UPDATE pin_reset_otps SET used_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [result.otpRecordId],
+      )
+      await connection.execute<ResultSetHeader>(
+        `UPDATE sessions SET revoked_at = CURRENT_TIMESTAMP
+          WHERE user_id = ? AND revoked_at IS NULL`,
+        [result.userId],
+      )
+    })
+
+    res.status(204).end()
   } catch {
     res.status(500).json({ message: 'Internal Server Error' })
   }

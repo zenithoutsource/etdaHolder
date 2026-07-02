@@ -35,6 +35,13 @@ export function resolveCredentialRevokeBehavior(
     : 'holder-revoke'
 }
 
+function readRenewalInactiveState(
+  renewalStatus: CredentialRenewalRecord | undefined,
+): CredentialInactiveState | undefined {
+  if (!renewalStatus) return undefined
+  return readCredentialInactiveState({ renewalStatus }, false)
+}
+
 export function readCredentialInactiveState({
   lifecycleStatus,
   suspensionStatus,
@@ -43,7 +50,12 @@ export function readCredentialInactiveState({
   lifecycleStatus?: CredentialLifecycleStatus
   suspensionStatus?: IssuerSuspensionRecord
   renewalStatus?: CredentialRenewalRecord
-}): CredentialInactiveState {
+}, preferRenewalState = true): CredentialInactiveState {
+  if (preferRenewalState && !suspensionStatus) {
+    const renewalInactiveState = readRenewalInactiveState(renewalStatus)
+    if (renewalInactiveState) return renewalInactiveState
+  }
+
   if (lifecycleStatus?.status === 'deleted') {
     return {
       kind: 'deleted',

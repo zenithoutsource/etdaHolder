@@ -1,3 +1,9 @@
+import {
+  createCipheriv as nodeCreateCipheriv,
+  createDecipheriv as nodeCreateDecipheriv,
+  pbkdf2Sync as nodePbkdf2Sync,
+} from 'crypto'
+
 export const createHash = jest.fn(() => {
   let input = ''
   type MockHash = {
@@ -21,6 +27,23 @@ export const createHash = jest.fn(() => {
 })
 
 export const randomBytes = jest.fn((size: number) => Buffer.alloc(size, 0))
+
+export const pbkdf2Sync = jest.fn(
+  (password: string, salt: string, iterations: number, keylen: number, digest: string) =>
+    nodePbkdf2Sync(password, salt, iterations, keylen, digest),
+)
+
+export const createCipheriv = jest.fn((
+  algorithm: string,
+  key: Buffer,
+  iv: Buffer,
+) => nodeCreateCipheriv(algorithm, key, iv))
+
+export const createDecipheriv = jest.fn((
+  algorithm: string,
+  key: Buffer,
+  iv: Buffer,
+) => nodeCreateDecipheriv(algorithm, key, iv))
 
 export const subtle = {
   generateKey: jest.fn().mockResolvedValue({

@@ -33,9 +33,28 @@ Alternative PowerShell form:
 Get-Content server\src\migrations\001_init.sql | C:\xampp\mysql\bin\mysql.exe -u root
 ```
 
+For unified PIN auth (`refactor/auth`), also run:
+
+```powershell
+Get-Content server\src\migrations\002_pin_reset_otps.sql | C:\xampp\mysql\bin\mysql.exe -u root
+```
+
 3. Create `server/.env` from `server/.env.example`.
 4. Replace `JWT_SECRET=local-dev-change-me` with a local secret before testing real accounts.
-5. Start the backend:
+5. Configure SMTP for PIN reset emails (optional in dev). Example for Gmail with an app password:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-account@gmail.com
+SMTP_PASSWORD=your-app-password
+MAIL_FROM=your-account@gmail.com
+MAIL_FROM_NAME=ETDA Wallet
+```
+
+If `SMTP_HOST` is left empty, the backend logs OTP codes to the server terminal instead of sending email.
+6. Start the backend:
 
 ```powershell
 Set-Location server

@@ -1,22 +1,36 @@
 import '@/src/sdk/fetchIndirection';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Redirect, Stack, useRouter, useSegments } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Text, View } from 'react-native';
 import '../global.css';
 import '@/src/styles/nativewindInterop';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppDialogProvider } from '@/src/components/AppDialog';
+import { StoragePinMigrationStep } from '@/src/components/auth/StoragePinMigrationStep';
+import { ForgotPinFlow } from '@/src/components/auth/ForgotPinFlow';
+import { StartupStoragePinUnlock } from '@/src/components/StartupStoragePinUnlock';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
-import { hasWalletPin } from '@/src/services/auth/walletPin';
-import { readStartupRoute } from '@/src/services/auth/walletPinNavigation';
+import { hasWalletPin, setWalletPin } from '@/src/services/auth/walletPin';
+import { readStartupRoute, readWalletAccessRedirect } from '@/src/services/auth/walletPinNavigation';
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger';
+import {
+  readPrepareWalletStartState,
+  readStorageBiometricReadyState,
+  readStoragePinForgotPinMode,
+  readStoragePinMigrationBiometricState,
+  readStoragePinMigrationPinState,
+  readStoragePinUnlockFailureState,
+  readStoragePinUnlockMode,
+  readStorageUnlockCancelledState,
+  type RootStartupState,
+} from '@/src/services/startup/startupState';
 import { useAuthStore } from '@/src/store/authStore';
 import {
   isCredentialOfferDeeplink,
@@ -31,11 +45,6 @@ export const unstable_settings = {
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 installWalletApiFetch();
-
-type StartupState =
-  | { status: 'loading' }
-  | { status: 'ready' }
-  | { status: 'error'; message: string };
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -60,9 +69,12 @@ function toUserMessage(message: string): string {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const segments = useSegments();
-  const [startupState, setStartupState] = useState<StartupState>({ status: 'loading' });
+  const [startupState, setStartupState] = useState<RootStartupState>({ status: 'loading' });
   const loadSession = useAuthStore((s) => s.loadSession);
+  const logout = useAuthStore((s) => s.logout);
+  const setPinVerified = useAuthStore((s) => s.setPinVerified);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isPinVerified = useAuthStore((s) => s.isPinVerified);
   const isAuthenticatedRef = useRef(isAuthenticated);
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri);
   const setIncomingDeeplinkUri = useDeeplinkStore((s) => s.setIncomingDeeplinkUri);
@@ -73,87 +85,294 @@ export default function RootLayout() {
   const currentSegment = segments[0];
   const isTabRoute = currentSegment === '(tabs)';
   const lastRoutedDeeplinkRef = useRef<string | null>(null);
+  const prepareWalletRunIdRef = useRef(0);
 
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    let isMounted = true;
+  const prepareWallet = useCallback(async ({
+    storagePin,
+    openStorageForMigration = false,
+  }: { storagePin?: string; openStorageForMigration?: boolean } = {}): Promise<void> => {
+    const runId = prepareWalletRunIdRef.current + 1;
+    prepareWalletRunIdRef.current = runId;
+    const isCurrentRun = () => prepareWalletRunIdRef.current === runId;
 
-    async function prepareWallet(): Promise<void> {
+    try {
+      logWalletStep('startup', 'prepare-wallet-start', { platform: Platform.OS, storagePin: Boolean(storagePin) });
+
+      if (Platform.OS === 'web') {
+        logWalletStep('startup', 'platform-web-ready');
+        setStartupState({ status: 'ready' });
+        return;
+      }
+
+      const [
+        { generateWalletKeyIfNeeded, getHolderDid },
+        { initPushNotifications },
+        { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock, needsStoragePinFallbackMigration },
+        { assertDeviceIntegrity },
+        { assertConfiguredWalletApiRuntimePolicy },
+        { runNativeEd25519Diagnostics },
+      ] = await Promise.all([
+        import('@/src/services/crypto/crypto'),
+        import('@/src/services/notifications/pushNotificationService'),
+        import('@/src/services/storage/storage'),
+        import('@/src/services/security/deviceIntegrityPolicy'),
+        import('@/src/sdk/walletApiRuntimePolicy'),
+        import('@/src/services/crypto/nativeEddsaDiagnostics'),
+      ]);
+
+      setStartupState((currentState) =>
+        readPrepareWalletStartState(currentState, {
+          platform: Platform.OS,
+          storagePin,
+          fallbackAvailable: isStoragePinFallbackAvailable(),
+          pinUnlockEnabled: canVerifyStoragePinUnlock(),
+        }),
+      );
+      logWalletStep('startup', 'native-modules-imported');
+      runNativeEd25519Diagnostics();
+
+      const { default: JailMonkey } = await import('jail-monkey');
+      assertDeviceIntegrity({ isJailBroken: JailMonkey.isJailBroken() });
+      logWalletStep('startup', 'device-integrity-ok');
+      assertConfiguredWalletApiRuntimePolicy();
+      logWalletStep('startup', 'runtime-policy-ok');
+
+      const { loadSession: loadSessionFromKeychain } = await import('@/src/services/auth/authService');
+      const existingSession = await loadSessionFromKeychain();
+
+      if (
+        !storagePin &&
+        !openStorageForMigration &&
+        existingSession &&
+        !isStoragePinFallbackAvailable()
+      ) {
+        logWalletStep('startup', 'storage-pin-migration-biometric-deferred');
+        if (isCurrentRun()) {
+          setStartupState(readStoragePinMigrationBiometricState());
+        }
+        return;
+      }
+
       try {
-        logWalletStep('startup', 'prepare-wallet-start', { platform: Platform.OS });
-        if (Platform.OS === 'web') {
-          logWalletStep('startup', 'platform-web-ready');
-          if (isMounted) setStartupState({ status: 'ready' });
+        if (storagePin) {
+          try {
+            await initStorageWithPin(storagePin);
+          } catch (pinUnlockError) {
+            const pinUnlockMessage = toErrorMessage(pinUnlockError);
+            if (pinUnlockMessage !== 'StoragePinFallbackRequired') {
+              throw pinUnlockError;
+            }
+
+            logWalletStep('startup', 'storage-pin-fallback-provision-required');
+            if (isCurrentRun()) {
+              setStartupState(
+                readStorageBiometricReadyState(
+                  isStoragePinFallbackAvailable(),
+                  canVerifyStoragePinUnlock(),
+                ),
+              );
+            }
+            await initStorage();
+            setWalletPin(storagePin);
+            logWalletStep('startup', 'storage-pin-fallback-provisioned-after-pin');
+          }
+        } else {
+          if (isCurrentRun() && !openStorageForMigration) {
+            setStartupState(
+              readStorageBiometricReadyState(
+                isStoragePinFallbackAvailable(),
+                canVerifyStoragePinUnlock(),
+              ),
+            );
+          }
+          await initStorage();
+        }
+      } catch (storageError) {
+        if (!isCurrentRun()) return;
+
+        if (!storagePin && toErrorMessage(storageError) === 'StorageUnlockCancelled') {
+          if (openStorageForMigration) {
+            logWalletStep('startup', 'storage-pin-migration-biometric-cancelled');
+            setStartupState(readStoragePinMigrationBiometricState());
+            return;
+          }
+
+          logWalletStep('startup', 'storage-unlock-cancelled');
+          setStartupState(
+            readStorageUnlockCancelledState(
+              isStoragePinFallbackAvailable(),
+              canVerifyStoragePinUnlock(),
+            ),
+          );
           return;
         }
 
-        const [
-          { generateWalletKeyIfNeeded, getHolderDid },
-          { initPushNotifications },
-          { initStorage },
-          { assertDeviceIntegrity },
-          { assertConfiguredWalletApiRuntimePolicy },
-          { runNativeEd25519Diagnostics },
-        ] = await Promise.all([
-          import('@/src/services/crypto/crypto'),
-          import('@/src/services/notifications/pushNotificationService'),
-          import('@/src/services/storage/storage'),
-          import('@/src/services/security/deviceIntegrityPolicy'),
-          import('@/src/sdk/walletApiRuntimePolicy'),
-          import('@/src/services/crypto/nativeEddsaDiagnostics'),
-        ]);
-        logWalletStep('startup', 'native-modules-imported');
-        runNativeEd25519Diagnostics();
-
-        const { default: JailMonkey } = await import('jail-monkey');
-        assertDeviceIntegrity({ isJailBroken: JailMonkey.isJailBroken() });
-        logWalletStep('startup', 'device-integrity-ok');
-        assertConfiguredWalletApiRuntimePolicy();
-        logWalletStep('startup', 'runtime-policy-ok');
-
-        await initStorage();
-        logWalletStep('startup', 'storage-init-complete');
-        await generateWalletKeyIfNeeded();
-        logWalletStep('startup', 'wallet-key-ready');
-        await loadSession();
-        logWalletStep('startup', 'session-loaded');
-        await initPushNotifications(getHolderDid());
-        logWalletStep('startup', 'push-notifications-ready');
-        if (isMounted) setStartupState({ status: 'ready' });
-        logWalletStep('startup', 'prepare-wallet-ready');
-      } catch (error) {
-        logWalletError('startup', 'prepare-wallet-failed', error);
-        if (isMounted) {
-          setStartupState({
-            status: 'error',
-            message: toUserMessage(toErrorMessage(error)),
-          });
+        if (storagePin && toErrorMessage(storageError) === 'StorageUnlockCancelled') {
+          logWalletStep('startup', 'storage-pin-biometric-cancelled-after-pin');
+          setStartupState(
+            readStorageUnlockCancelledState(
+              isStoragePinFallbackAvailable(),
+              canVerifyStoragePinUnlock(),
+            ),
+          );
+          return;
         }
-      } finally {
-        await SplashScreen.hideAsync().catch(() => undefined);
+
+        if (openStorageForMigration && !storagePin) {
+          logWalletError('startup', 'storage-pin-migration-biometric-failed', storageError);
+          setStartupState(
+            readStoragePinMigrationBiometricState('ไม่สามารถสแกนลายนิ้วมือได้ กรุณาลองใหม่อีกครั้ง'),
+          );
+          return;
+        }
+
+        if (storagePin) {
+          const storageErrorMessage = toErrorMessage(storageError);
+          const fallbackAvailable = isStoragePinFallbackAvailable();
+          const pinUnlockEnabled = canVerifyStoragePinUnlock();
+          if (
+            storageErrorMessage === 'StoragePinFallbackUnavailable' ||
+            storageErrorMessage === 'StoragePinVerifierMismatch'
+          ) {
+            if (storageErrorMessage === 'StoragePinFallbackUnavailable') {
+              logWalletStep('startup', 'storage-pin-fallback-unavailable');
+            } else {
+              logWalletStep('startup', 'storage-pin-verifier-mismatch');
+            }
+          } else {
+            logWalletError('startup', 'storage-pin-unlock-failed', storageError);
+          }
+          setStartupState((currentState) => {
+            const mode =
+              currentState.status === 'storage-pin-required' ? currentState.mode : 'unlock';
+            return readStoragePinUnlockFailureState(
+              storageErrorMessage,
+              fallbackAvailable,
+              pinUnlockEnabled,
+              mode,
+            );
+          });
+          return;
+        }
+
+        throw storageError;
       }
+
+      if (!isCurrentRun()) return;
+
+      logWalletStep('startup', 'storage-init-complete');
+      await generateWalletKeyIfNeeded();
+      if (!isCurrentRun()) return;
+      logWalletStep('startup', 'wallet-key-ready');
+      await loadSession();
+      if (!isCurrentRun()) return;
+
+      const authState = useAuthStore.getState();
+      if (authState.isAuthenticated && needsStoragePinFallbackMigration()) {
+        logWalletStep('startup', 'storage-pin-migration-required');
+        setStartupState(readStoragePinMigrationPinState());
+        return;
+      }
+
+      // PIN storage unlock, or biometric unlock when PIN fallback already exists — skip pin-lock.
+      if (authState.isAuthenticated && (storagePin || (hasWalletPin() && isStoragePinFallbackAvailable()))) {
+        setPinVerified(true)
+      }
+      logWalletStep('startup', 'session-loaded');
+      await initPushNotifications(getHolderDid());
+      if (!isCurrentRun()) return;
+      logWalletStep('startup', 'push-notifications-ready');
+      setStartupState({ status: 'ready' });
+      logWalletStep('startup', 'prepare-wallet-ready');
+    } catch (error) {
+      if (!isCurrentRun()) return;
+
+      logWalletError('startup', 'prepare-wallet-failed', error);
+      setStartupState({
+        status: 'error',
+        message: toUserMessage(toErrorMessage(error)),
+      });
+    } finally {
+      await SplashScreen.hideAsync().catch(() => undefined);
     }
+  }, [loadSession, logout, setPinVerified]);
 
+  const handleStartupStoragePinSubmit = useCallback(
+    (pin: string) => {
+      void prepareWallet({ storagePin: pin });
+    },
+    [prepareWallet],
+  );
+
+  const handleStartupBiometricRetry = useCallback(() => {
     void prepareWallet();
+  }, [prepareWallet]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [loadSession]);
+  const handleStoragePinMigrationBeginBiometric = useCallback(() => {
+    setStartupState((currentState) =>
+      currentState.status === 'storage-pin-migration'
+        ? { ...currentState, step: 'biometric', isSubmitting: true, error: undefined }
+        : currentState,
+    );
+    void prepareWallet({ openStorageForMigration: true });
+  }, [prepareWallet]);
+
+  const handleStoragePinMigrationComplete = useCallback(async () => {
+    try {
+      setPinVerified(true);
+      const { getHolderDid } = await import('@/src/services/crypto/crypto');
+      const { initPushNotifications } = await import('@/src/services/notifications/pushNotificationService');
+      await initPushNotifications(getHolderDid());
+      setStartupState({ status: 'ready' });
+      logWalletStep('startup', 'prepare-wallet-ready-after-migration');
+    } catch (error) {
+      logWalletError('startup', 'storage-pin-migration-ready-failed', error);
+      setStartupState({
+        status: 'error',
+        message: toUserMessage(toErrorMessage(error)),
+      });
+    }
+  }, [setPinVerified]);
+
+  const handleStartupForgotPin = useCallback(() => {
+    setStartupState((currentState) => readStoragePinForgotPinMode(currentState));
+  }, []);
+
+  const handleStartupForgotPinBack = useCallback(() => {
+    setStartupState((currentState) => readStoragePinUnlockMode(currentState));
+  }, []);
+
+  const handleStartupForgotPinComplete = useCallback(async () => {
+    const { resetStorage } = await import('@/src/services/storage/storage');
+    await resetStorage();
+    await logout();
+    setStartupState({ status: 'ready' });
+    router.replace('/auth');
+  }, [logout, router]);
 
   useEffect(() => {
-    if (startupState.status !== 'ready') return;
-    const route = readStartupRoute({
-      isAuthenticated,
-      currentSegment,
-      platform: Platform.OS,
-      hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
+    void prepareWallet();
+  }, [prepareWallet]);
+
+  useEffect(() => {
+    if (startupState.status !== 'ready' || Platform.OS === 'web') return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') return;
+
+      const authState = useAuthStore.getState();
+      if (!authState.isAuthenticated || !hasWalletPin() || !authState.isPinVerified) return;
+
+      authState.setPinVerified(false);
+      logWalletStep('wallet-unlock', 'session-locked', { appState: nextState });
     });
-    if (route) router.replace(route);
-  }, [startupState.status, isAuthenticated, router, currentSegment]);
+
+    return () => subscription.remove();
+  }, [startupState.status]);
 
   useEffect(() => {
     if (startupState.status !== 'ready' || Platform.OS === 'web') return;
@@ -182,6 +401,9 @@ export default function RootLayout() {
     if (store) setPendingDeeplinkUri(url);
 
     const pinExists = Platform.OS === 'web' || hasWalletPin();
+    const pinVerified = useAuthStore.getState().isPinVerified;
+    if (pinExists && Platform.OS !== 'web' && !pinVerified) return;
+
     const pendingRoute = readPendingCredentialOfferRoute({
       pendingUri: url,
       dismissedUri: dismissed,
@@ -201,11 +423,12 @@ export default function RootLayout() {
     if (incomingUrl && isSupportedWalletDeeplink(incomingUrl) && incomingUrl !== lastRoutedDeeplinkRef.current) {
       const startupRoute = readStartupRoute({
         isAuthenticated,
+        isPinVerified,
         currentSegment,
         platform: Platform.OS,
         hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
       });
-      if (startupRoute !== '/login' && startupRoute !== '/pin-setup') {
+      if (startupRoute !== '/auth' && startupRoute !== '/pin-setup' && startupRoute !== '/pin-lock' && currentSegment !== 'forgot-pin') {
         lastRoutedDeeplinkRef.current = incomingUrl;
         routeDeeplink(incomingUrl, { store: true });
       } else {
@@ -220,45 +443,95 @@ export default function RootLayout() {
     });
 
     return () => { subscription.remove(); };
-  }, [startupState.status, incomingUrl, isAuthenticated, currentSegment, router, routeDeeplink, setPendingDeeplinkUri, setIncomingDeeplinkUri]);
+  }, [startupState.status, incomingUrl, isAuthenticated, isPinVerified, currentSegment, router, routeDeeplink, setPendingDeeplinkUri, setIncomingDeeplinkUri]);
 
   useEffect(() => {
-    if (startupState.status !== 'ready' || !pendingDeeplinkUri) {
+    if (startupState.status !== 'ready' || !pendingDeeplinkUri || !isPinVerified) {
       lastRoutedDeeplinkRef.current = null;
       return;
     }
     if (pendingDeeplinkUri === lastRoutedDeeplinkRef.current) return;
     lastRoutedDeeplinkRef.current = pendingDeeplinkUri;
     routeDeeplink(pendingDeeplinkUri);
-  }, [startupState.status, pendingDeeplinkUri, dismissedDeeplinkUri, isAuthenticated, routeDeeplink]);
+  }, [startupState.status, pendingDeeplinkUri, dismissedDeeplinkUri, isAuthenticated, isPinVerified, routeDeeplink]);
 
   if (startupState.status !== 'ready') {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <View className="absolute inset-0 flex-1 items-center justify-center gap-3 bg-white p-6">
-          {startupState.status === 'loading' ? (
-            <>
-              <ActivityIndicator color="#002887" />
-              <Text className="text-sm text-[#6b7280]">Starting wallet...</Text>
-            </>
+        {startupState.status === 'storage-pin-migration' ? (
+          <StoragePinMigrationStep
+            step={startupState.step}
+            error={startupState.error}
+            isSubmitting={startupState.isSubmitting}
+            onBeginBiometric={handleStoragePinMigrationBeginBiometric}
+            onComplete={() => void handleStoragePinMigrationComplete()}
+          />
+        ) : startupState.status === 'storage-pin-required' ? (
+          startupState.mode === 'forgot-pin' ? (
+            <ForgotPinFlow
+              showResetNotice
+              onBack={handleStartupForgotPinBack}
+              onComplete={handleStartupForgotPinComplete}
+            />
           ) : (
-            <>
-              <Text className="text-center text-lg font-semibold">Wallet startup failed</Text>
-              <Text className="text-center text-[#6b7280]">{startupState.message}</Text>
-            </>
-          )}
-        </View>
+            <StartupStoragePinUnlock
+              isSubmitting={startupState.isSubmitting}
+              fallbackAvailable={startupState.fallbackAvailable}
+              pinUnlockEnabled={startupState.pinUnlockEnabled}
+              error={startupState.error}
+              onSubmit={handleStartupStoragePinSubmit}
+              onRetryBiometric={handleStartupBiometricRetry}
+              onForgotPin={handleStartupForgotPin}
+            />
+          )
+        ) : (
+          <View className="absolute inset-0 flex-1 items-center justify-center gap-3 bg-white p-6">
+            {startupState.status === 'loading' ? (
+              <>
+                <ActivityIndicator color="#002887" />
+                <Text className="text-sm text-[#6b7280]">Starting wallet...</Text>
+              </>
+            ) : (
+              <>
+                <Text className="text-center text-lg font-semibold">Wallet startup failed</Text>
+                <Text className="text-center text-[#6b7280]">{startupState.message}</Text>
+              </>
+            )}
+          </View>
+        )}
       </ThemeProvider>
     );
+  }
+
+  const walletPinExists = Platform.OS !== 'web' && hasWalletPin();
+  const accessRedirect = readWalletAccessRedirect({
+    isAuthenticated,
+    isPinVerified,
+    currentSegment,
+    platform: Platform.OS,
+    hasWalletPin: walletPinExists,
+  });
+
+  if (accessRedirect && __DEV__) {
+    logWalletStep('wallet-unlock', 'access-redirect', {
+      target: accessRedirect,
+      currentSegment,
+      isAuthenticated,
+      isPinVerified,
+      hasWalletPin: walletPinExists,
+    });
   }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AppDialogProvider>
+        {accessRedirect ? <Redirect href={accessRedirect} /> : null}
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="auth" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="register" options={{ title: 'Create Account' }} />
+          <Stack.Screen name="register" options={{ headerShown: false }} />
+          <Stack.Screen name="forgot-pin" options={{ headerShown: false }} />
           <Stack.Screen name="pin-setup" options={{ headerShown: false }} />
           <Stack.Screen name="pin-lock" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />

@@ -28,3 +28,7 @@ Use a hardware-backed non-extractable signing key.
 - Devices without a supported secure environment must fail loudly in production.
 - Changing this decision later requires user re-enrollment and potential credential re-issuance.
 - Software signing must not be used as a production fallback.
+
+## Supersession Note
+
+On 2026-06-16, ADR 0008 established that the target Android hardware (Galaxy S24 Ultra) cannot generate Ed25519 keys in AndroidKeyStore (it silently returns EC keys instead — see ADR 0007). For the Ed25519 wallet signing key specifically, ADR 0008 supersedes the "no production software fallback" decision here with a Keychain-protected software Ed25519 signer. This ADR's hardware-non-extractable principle remains the target for any future signing key where the platform can satisfy it.

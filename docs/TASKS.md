@@ -2,6 +2,25 @@
 
 Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
 
+### Session 2026-07-02
+
+- Rate-limited `POST /wallet-api/auth/pin-reset/request` with existing in-memory IP and normalized-email limiters before DB lookup and SMTP send; added a route regression proving the fourth valid request for the same email returns `429 { message: 'Too Many Requests' }` and does not send another OTP.
+
+### Session 2026-07-01
+
+- Fixed Android Keychain biometric prompt cancellation during credential storage startup: `react-native-keychain` can surface Cancel as `E_CRYPTO_FAILED` / `CryptoFailedException` with `code: 13`, and storage now maps that native diagnostic to retryable `StorageUnlockCancelled` instead of `StorageInitializationFailed`.
+- Added focused storage regression coverage proving cancellation does not poison the next `initStorage()` attempt.
+- Fixed PIN-lock biometric cancellation logging: pressing Cancel on the unlock prompt now records normal `biometric-cancelled` / `pin-lock-biometric-cancelled` steps instead of emitting `[wallet:wallet-unlock] biometric-failed` and `pin-lock-biometric-failed` error logs.
+- Added focused auth-service and PIN-lock screen regressions for biometric cancellation while preserving error logging for real native biometric failures.
+- Implemented storage PIN fallback for startup biometric Cancel: the Wallet provisions a PBKDF2-SHA256/AES-256-GCM wrapped copy of the MMKV encryption key in meta storage after PIN setup/login or a successful normal PIN unlock, then `RootLayout` can show a PIN surface and call `initStorageWithPin()` instead of failing startup after `StorageUnlockCancelled`.
+- Changed native cold start to render loading through native module/device-policy checks, then show the storage PIN unlock surface once the Keychain biometric unlock is ready to be requested; the PIN/fingerprint keypad remains guarded until the startup unlock attempt finishes to avoid concurrent storage unlock races.
+- Fixed the startup PIN biometric retry blink by keeping the PIN surface mounted when retrying biometric unlock from the lower-left keypad button instead of bouncing through the loading screen.
+- Enabled PIN digit entry while the biometric storage prompt is still pending, including when PIN fallback availability is false/unknown, and guarded storage/startup races so a later biometric cancellation cannot clear or overwrite a successful PIN unlock.
+- Mapped startup PIN unlock attempts before fallback provisioning to a normal biometric-required message instead of logging `[wallet:startup] storage-pin-unlock-failed`.
+- Documented the storage-only PIN fallback security tradeoff in `docs/SECURITY.md`; signing-key release remains Keychain biometric/device gated with no JavaScript PIN fallback.
+- Extracted the duplicated PIN unlock UI into `src/components/PinUnlockPrompt.tsx` and reused it from both `app/pin-lock.tsx` and `src/components/StartupStoragePinUnlock.tsx`, keeping route-level wallet PIN verification separate from startup storage PIN unlock.
+- Consolidated reusable UI surfaces across PIN/auth, Wallet Home summary cards, presentation disclosure/result panels, and Scan QR capture: added `PinEntrySurface`, `StatusBadge`, `WalletCredentialSummaryCard`, `PresentationDisclosureList`, `PresentationSuccessPanel`, `PresentationStepScaffold`, and `ScanCaptureSurface`; migrated the current callers while preserving each flow's security and protocol logic.
+
 ## Phase 1: Cryptography and Secure Storage
 
 Status: Complete.
@@ -440,3 +459,12 @@ Remaining:
 - Dev backend: added in-memory push token storage (`server/src/routes/pushTokens.ts`), Expo push sender (`server/src/services/expoPushClient.ts`), and webhook event forwarding in `server/src/routes/devWallet.ts`.
 - Added `expo-notifications` plugin entry to `app.json` and test coverage for notification routing/registration plus the dev push webhook path.
 - Verification: root `yarn tsc --noEmit` pass, root `yarn lint` pass, root `yarn test --runInBand` pass (57 suites / 291 tests), server `yarn tsc` pass, server `yarn test --runInBand` pass (8 suites / 33 tests).
+
+### Session 2026-06-29 (unified PIN auth — `refactor/auth`)
+
+- Implemented `docs/superpowers/specs/2026-06-29-unified-pin-auth-design.md`: single 6-digit PIN for server login and local app lock; email-first `/auth` wizard replaces separate login/register flows.
+- Server: `password` → `pin` on register/login; new `email-status`, `pin-reset/request`, `pin-reset/confirm` routes; `002_pin_reset_otps.sql` migration; name profanity + weak-PIN validation.
+- Mobile: `AuthWizard`, `PinEntryStep`, `/forgot-pin` OTP reset; `authService` auto-login after register and `setWalletPin()` after every login; `/login` and `/register` redirect to `/auth`.
+- OpenAPI/SDK: `walletApi.json` + `yarn sdk:generate`; set `orval` `clean: false` so hand-written `src/sdk/*` helpers are not deleted on regen.
+- Verification: server `yarn test` pass (36 tests); root auth tests pass (22 tests); root `yarn tsc --noEmit` pass.
+- Manual setup: run `server/src/migrations/002_pin_reset_otps.sql`; dev PIN-reset OTP logs to server console as `[pin-reset] OTP for …`.

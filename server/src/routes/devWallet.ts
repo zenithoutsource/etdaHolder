@@ -35,8 +35,95 @@ function readDevRenewalDelayMs(): number {
 
 const suspensions = new Map<string, DevIssuerSuspensionRecord>()
 const renewals = new Map<string, DevWalletRenewalRecord>()
+const renewalReadyTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-function readNotificationCopy(event: ExpoPushEvent, credentialType: string): Pick<ExpoPushPayload, 'title' | 'body'> {
+async function sendCredentialEventPush(
+  event: ExpoPushEvent,
+  holderDid: string,
+  credentialId: string,
+  credentialType: string,
+): Promise<boolean> {
+  const pushToken = readPushToken(holderDid)
+  if (!pushToken) {
+    console.warn('[push-notifications] token-missing', {
+      event,
+      credentialId,
+      credentialType,
+      holderDidLength: holderDid.length,
+    })
+    return false
+  }
+
+  const copy = readNotificationCopy(event, credentialType)
+  try {
+    await sendExpoPush(pushToken, {
+      ...copy,
+      data: {
+        event,
+        credentialId,
+        credentialType,
+      },
+    })
+  } catch (error) {
+    console.error('[push-notifications] expo-send-failed', {
+      event,
+      credentialId,
+      credentialType,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+
+  return true
+}
+
+function clearRenewalReadyTimer(credentialId: string): void {
+  const timer = renewalReadyTimers.get(credentialId)
+  if (!timer) return
+
+  clearTimeout(timer)
+  renewalReadyTimers.delete(credentialId)
+}
+
+function transitionRenewalToOfferReadyIfElapsed(credentialId: string, now = Date.now()): void {
+  const record = renewals.get(credentialId)
+  if (!record || record.state !== 'requested') return
+
+  const requestedAt = Date.parse(record.requestedAt)
+  if (!Number.isFinite(requestedAt) || now - requestedAt < readDevRenewalDelayMs()) {
+    return
+  }
+
+  clearRenewalReadyTimer(credentialId)
+  renewals.set(credentialId, {
+    ...record,
+    state: 'offer-ready',
+    updatedAt: new Date().toISOString(),
+  })
+
+  void sendCredentialEventPush(
+    'renewal-ready',
+    record.newHolderDid,
+    record.credentialId,
+    record.credentialType,
+  ).catch(() => undefined)
+}
+
+function scheduleRenewalReadyTransition(credentialId: string): void {
+  clearRenewalReadyTimer(credentialId)
+
+  const timer = setTimeout(() => {
+    console.info('[push-notifications] renewal-ready-timer-fired', { credentialId })
+    renewalReadyTimers.delete(credentialId)
+    transitionRenewalToOfferReadyIfElapsed(credentialId)
+  }, readDevRenewalDelayMs())
+  renewalReadyTimers.set(credentialId, timer)
+}
+
+export function readNotificationCopy(
+  event: ExpoPushEvent,
+  credentialType: string,
+): Pick<ExpoPushPayload, 'title' | 'body'> {
   const credentialLabel = credentialType === 'ThaiNationalID'
     ? 'Thai National ID'
     : credentialType === 'DLTDrivingLicence'
@@ -77,6 +164,10 @@ function readNotificationCopy(event: ExpoPushEvent, credentialType: string): Pic
 export function resetDevWalletState(): void {
   suspensions.clear()
   renewals.clear()
+  for (const timer of renewalReadyTimers.values()) {
+    clearTimeout(timer)
+  }
+  renewalReadyTimers.clear()
 }
 
 export const devWalletRouter = Router()
@@ -93,17 +184,8 @@ devWalletRouter.get('/wallet/renewal-status', (_req, res) => {
 
   for (const record of renewals.values()) {
     if (record.state !== 'requested') continue
-
-    const requestedAt = Date.parse(record.requestedAt)
-    if (!Number.isFinite(requestedAt) || now - requestedAt < delayMs) {
-      continue
-    }
-
-    renewals.set(record.credentialId, {
-      ...record,
-      state: 'offer-ready',
-      updatedAt: new Date().toISOString(),
-    })
+    if (now - Date.parse(record.requestedAt) < delayMs) continue
+    transitionRenewalToOfferReadyIfElapsed(record.credentialId, now)
   }
 
   const output = Array.from(renewals.values()).map((record) => {
@@ -171,21 +253,16 @@ devWalletRouter.post('/webhook/credential-event', async (req, res) => {
     return
   }
 
-  const pushToken = readPushToken(holderDid)
-  if (!pushToken) {
+  const delivered = await sendCredentialEventPush(
+    event,
+    holderDid,
+    credentialId,
+    credentialType,
+  ).catch(() => false)
+  if (!delivered) {
     res.status(200).json({ delivered: false })
     return
   }
-
-  const copy = readNotificationCopy(event, credentialType)
-  await sendExpoPush(pushToken, {
-    ...copy,
-    data: {
-      event,
-      credentialId,
-      credentialType,
-    },
-  })
 
   res.status(200).json({ delivered: true })
 })
@@ -240,6 +317,14 @@ devWalletRouter.post('/wallet/renewal-request', async (req, res) => {
     requestedAt: updatedAt,
     updatedAt,
   })
+  scheduleRenewalReadyTransition(credentialId)
+
+  void sendCredentialEventPush(
+    'renewal-required',
+    newHolderDid,
+    credentialId,
+    credentialType,
+  ).catch(() => undefined)
 
   res.status(201).json({ accepted: true })
 })

@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, ScrollView, Text, TextInput, View, type Image
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../components/AppButton'
+import { CodeBoxField } from '../components/auth/CodeBoxField'
 import { ScanSuccessPanel } from '../components/ScanSuccessPanel'
 import { ThaIdVerificationPanel } from '../components/ThaIdVerificationPanel'
 import { ThaiIdReceivePanel } from '../components/ThaiIdReceivePanel'
@@ -34,6 +35,7 @@ import {
 } from '../services/vci/exchangeService'
 import { readCredentialPreviewDisplay } from '../services/vci/qrIssuanceFlow'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
+import { normalizeNumericCode } from '../utils/normalizeNumericCode'
 
 type ClaimPhase =
   | { tag: 'initializing' }
@@ -342,6 +344,18 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
   if (phase.tag === 'txCode') {
     const canContinue = txCode.trim().length > 0
+    const txCodeMeta = phase.offer.txCode
+    const isNumericTxCode = txCodeMeta?.input_mode === 'numeric'
+    const txCodeMaxLength = txCodeMeta?.length
+    const useCodeBoxes = isNumericTxCode && txCodeMaxLength === 6
+
+    function handleTxCodeChange(text: string) {
+      if (isNumericTxCode) {
+        setTxCode(normalizeNumericCode(text, txCodeMaxLength ?? 32))
+        return
+      }
+      setTxCode(text)
+    }
 
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
@@ -349,15 +363,33 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         <View className="flex-1 bg-[#eef1f4] px-4 pt-6">
           <View className="rounded-lg bg-white p-6">
             <Text className="text-[16px] font-extrabold text-[#071f5f]">Transaction code</Text>
-            <TextInput
-              value={txCode}
-              onChangeText={setTxCode}
-              keyboardType={phase.offer.txCode?.input_mode === 'numeric' ? 'number-pad' : 'default'}
-              placeholder="Enter transaction code"
-              placeholderTextColor="#9aa1ad"
-              secureTextEntry
-              className="mt-3 min-h-[44px] rounded-lg border border-[#d1d5db] px-3 text-[15px] font-semibold text-[#071f5f]"
-            />
+            <Text className="mt-1 text-xs text-[#6d7a8d]">
+              {useCodeBoxes
+                ? 'Tap the boxes to enter or paste the code from your email'
+                : 'Enter the code from your email'}
+            </Text>
+            {useCodeBoxes ? (
+              <View className="mt-4">
+                <CodeBoxField
+                  value={txCode}
+                  onChange={handleTxCodeChange}
+                  length={6}
+                  testID="tx-code-boxes"
+                />
+              </View>
+            ) : (
+              <TextInput
+                value={txCode}
+                onChangeText={handleTxCodeChange}
+                keyboardType={isNumericTxCode ? 'number-pad' : 'default'}
+                textContentType={isNumericTxCode ? 'oneTimeCode' : 'none'}
+                autoComplete={isNumericTxCode ? 'one-time-code' : 'off'}
+                maxLength={txCodeMaxLength}
+                placeholder="Enter transaction code"
+                placeholderTextColor="#9aa1ad"
+                className="mt-3 min-h-[44px] rounded-lg border border-[#d1d5db] px-3 text-[15px] font-semibold text-[#071f5f]"
+              />
+            )}
             <AppButton
               variant="solid-block"
               label="Continue"

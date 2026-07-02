@@ -16,6 +16,9 @@ class EtdaWalletWeakBiometrics(
   private val cancelCb: () -> Unit,
   private val errorCb: (code: Number, message: String) -> Unit,
 ) : BiometricPrompt.AuthenticationCallback() {
+  private val allowedAuthenticators =
+    BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.BIOMETRIC_STRONG
+
   private val activity: FragmentActivity
     get() = appContext.currentActivity as? FragmentActivity
       ?: throw CodedException("WeakBiometricActivityUnavailable: current activity is not a FragmentActivity")
@@ -25,7 +28,7 @@ class EtdaWalletWeakBiometrics(
       .Builder()
       .setTitle(promptMessage.ifBlank { "Biometrics" })
       .setNegativeButtonText(cancelButtonText.ifBlank { "Cancel" })
-      .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+      .setAllowedAuthenticators(allowedAuthenticators)
       .build()
 
   override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -51,7 +54,7 @@ class EtdaWalletWeakBiometrics(
 
     val authStatus = BiometricManager
       .from(currentActivity)
-      .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+      .canAuthenticate(allowedAuthenticators)
     if (authStatus != BiometricManager.BIOMETRIC_SUCCESS) {
       errorCb(authStatus, "Weak biometric authentication is unavailable")
       return

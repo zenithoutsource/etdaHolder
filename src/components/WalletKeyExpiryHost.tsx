@@ -3,9 +3,19 @@ import { useState } from 'react'
 import { useAppDialog } from '@/src/components/AppDialog'
 import { WalletKeyExpiredModal } from '@/src/components/WalletKeyExpiredModal'
 import { useWalletKeyExpired } from '@/src/hooks/useWalletKeyExpired'
-import { logWalletError } from '@/src/services/debug/walletLogger'
+import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 import { WALLET_HOME_COPY } from '@/src/services/credentials/walletHomeCopy'
 import { rotateWalletKey } from '@/src/services/crypto/walletKeyRotation'
+
+export function shouldShowWalletKeyExpiredModal({
+  isExpired,
+  isRotatingWalletKey,
+}: {
+  isExpired: boolean
+  isRotatingWalletKey: boolean
+}): boolean {
+  return isExpired && !isRotatingWalletKey
+}
 
 export function WalletKeyExpiryHost() {
   const { isExpired, refreshExpiryState } = useWalletKeyExpired()
@@ -15,7 +25,12 @@ export function WalletKeyExpiryHost() {
   async function handleCreateNewWalletKey() {
     setIsRotatingWalletKey(true)
     try {
-      await rotateWalletKey()
+      logWalletStep('wallet-key-expiry', 'wallet-key-rotation-start')
+      const result = await rotateWalletKey()
+      logWalletStep('wallet-key-expiry', 'wallet-key-rotation-complete', {
+        affectedCredentialCount: result.affectedCredentialIds.length,
+        holderDidLength: result.holderDid.length,
+      })
       refreshExpiryState()
     } catch (error) {
       logWalletError('wallet-key-expiry', 'wallet-key-rotation-failed', error)
@@ -32,7 +47,10 @@ export function WalletKeyExpiryHost() {
 
   return (
     <WalletKeyExpiredModal
-      visible={isExpired}
+      visible={shouldShowWalletKeyExpiredModal({
+        isExpired,
+        isRotatingWalletKey,
+      })}
       isRotating={isRotatingWalletKey}
       onCreateNewKey={() => {
         void handleCreateNewWalletKey()

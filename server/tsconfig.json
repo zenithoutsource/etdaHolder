@@ -3,11 +3,12 @@
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
+    "resolveJsonModule": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
     "types": ["node", "jest"]
   },
-  "include": ["src/**/*.ts", "mdoc-issuer/**/*.ts"]
+  "include": ["src/**/*.ts", "../shared/**/*.json", "mdoc-issuer/**/*.ts"]
 }

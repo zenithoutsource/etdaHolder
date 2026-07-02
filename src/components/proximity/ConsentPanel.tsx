@@ -1,7 +1,7 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
 import { AppButton } from '@/src/components/AppButton'
+import { PresentationDisclosureList } from '@/src/components/PresentationDisclosureList'
 import { formatMdocFieldLabel } from '@/src/services/proximity/mdocParser'
 
 type ConsentPanelProps = {
@@ -30,22 +30,15 @@ export function ConsentPanel({
         The reader requested the fields below
       </Text>
 
-      <View className="mt-5 gap-3">
-        {availableFields.map((fieldKey) => {
-          const isRequested = requested.has(fieldKey)
-          return (
-            <View key={fieldKey} className="flex-row items-center gap-3 rounded-[8px] bg-[#f7f9fc] px-3 py-3">
-              <MaterialCommunityIcons
-                name={isRequested ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
-                size={20}
-                color={isRequested ? '#0f8f4b' : '#b7c0cc'}
-              />
-              <Text className={`flex-1 text-sm ${isRequested ? 'font-semibold text-[#1a2a42]' : 'text-[#8a9bb0]'}`}>
-                {formatMdocFieldLabel(fieldKey)}
-              </Text>
-            </View>
-          )
-        })}
+      <View className="mt-5">
+        <PresentationDisclosureList
+          variant="selectable"
+          items={availableFields.map((fieldKey) => ({
+            key: fieldKey,
+            label: formatMdocFieldLabel(fieldKey),
+            selected: requested.has(fieldKey),
+          }))}
+        />
       </View>
 
       <View className="mt-6 flex-row gap-3">

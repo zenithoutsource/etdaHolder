@@ -22,5 +22,9 @@ pushTokensRouter.post('/push-token', (req, res) => {
   }
 
   pushTokensByHolderDid.set(holderDid, token)
+  console.info('[push-notifications] token-registered', {
+    holderDidLength: holderDid.length,
+    tokenLength: token.length,
+  })
   res.status(200).json({ ok: true })
 })

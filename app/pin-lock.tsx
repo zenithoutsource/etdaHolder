@@ -1,97 +1,145 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import { useRouter } from 'expo-router'
-import { useState } from 'react'
-import { Platform, Text, View } from 'react-native'
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useRef, useState } from "react";
+import { Platform } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { AppButton } from '../src/components/AppButton'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { PinUnlockPrompt } from "../src/components/PinUnlockPrompt";
+import { isBiometricDisabledForTesting } from "../src/config/runtimeFlags";
+import { setWalletPin, verifyWalletPin } from "../src/services/auth/walletPin";
+import {
+  confirmWalletUnlockBiometric,
+  isWalletUnlockBiometricCancellation,
+} from "../src/services/auth/walletUnlockBiometric";
+import {
+  logWalletError,
+  logWalletStep,
+} from "../src/services/debug/walletLogger";
+import { useAuthStore } from "../src/store/authStore";
 
-import { useAppDialog } from '../src/components/AppDialog'
-import { PinKeypad } from '../src/components/PinKeypad'
-import { isBiometricDisabledForTesting } from '../src/config/runtimeFlags'
-import { verifyWalletPin } from '../src/services/auth/walletPin'
-import { useAuthStore } from '../src/store/authStore'
+const BIOMETRIC_TIMEOUT_MS = 15_000;
 
-const PIN_LENGTH = 6
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("WalletUnlockBiometricTimeout"));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 export default function PinLockScreen() {
-  const router = useRouter()
-  const logout = useAuthStore((s) => s.logout)
-  const { showDialog } = useAppDialog()
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const router = useRouter();
+  const setPinVerified = useAuthStore((s) => s.setPinVerified);
+  const [error, setError] = useState<string | null>(null);
+  const biometricAttemptRef = useRef(0);
 
-  function handleDigit(digit: string) {
-    if (pin.length >= PIN_LENGTH) return
-    const next = pin + digit
-    setPin(next)
-    setError(null)
-    if (next.length === PIN_LENGTH) {
-      if (Platform.OS !== 'web' && verifyWalletPin(next)) {
-        router.replace('/(tabs)')
-      } else {
-        setPin('')
-        setError('Incorrect PIN. Try again.')
+  const cancelBiometricAttempt = useCallback(() => {
+    biometricAttemptRef.current += 1;
+  }, []);
+
+  const completeUnlock = useCallback(() => {
+    cancelBiometricAttempt();
+    logWalletStep("wallet-unlock", "pin-lock-unlock-complete");
+    setPinVerified(true);
+  }, [cancelBiometricAttempt, setPinVerified]);
+
+  const handleBiometricUnlock = useCallback(async () => {
+    if (Platform.OS === "web") return;
+
+    const attemptId = biometricAttemptRef.current + 1;
+    biometricAttemptRef.current = attemptId;
+    setError(null);
+
+    try {
+      logWalletStep("wallet-unlock", "pin-lock-biometric-request");
+      await withTimeout(confirmWalletUnlockBiometric(), BIOMETRIC_TIMEOUT_MS);
+      if (attemptId !== biometricAttemptRef.current) return;
+      completeUnlock();
+    } catch (err) {
+      if (attemptId !== biometricAttemptRef.current) return;
+      if (isWalletUnlockBiometricCancellation(err)) {
+        logWalletStep("wallet-unlock", "pin-lock-biometric-cancelled");
+        return;
       }
+
+      logWalletError("wallet-unlock", "pin-lock-biometric-failed", err);
+      setError("Biometric verification failed. Enter your PIN instead.");
+    }
+  }, [completeUnlock]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setError(null);
+      cancelBiometricAttempt();
+
+      return () => {
+        cancelBiometricAttempt();
+      };
+    }, [cancelBiometricAttempt]),
+  );
+
+  function handlePinInteraction() {
+    cancelBiometricAttempt();
+    setError(null);
+  }
+
+  function handlePinSubmit(next: string) {
+    if (Platform.OS !== "web" && verifyWalletPin(next)) {
+      logWalletStep("wallet-unlock", "pin-lock-pin-verified");
+      completeUnlock();
+      // setWalletPin() re-derives the PIN-wrapped storage-key fallback with a
+      // 210k-iteration PBKDF2 (storage.ts). That's synchronous, JS-thread-blocking
+      // work, so it runs after the unlock transition instead of gating it.
+      setTimeout(() => {
+        try {
+          setWalletPin(next);
+        } catch (provisionError) {
+          logWalletError(
+            "wallet-unlock",
+            "pin-fallback-provision-failed",
+            provisionError,
+          );
+        }
+      }, 0);
+    } else {
+      setError("รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง");
     }
   }
 
-  function handleBackspace() {
-    setPin((p) => p.slice(0, -1))
-    setError(null)
+  function handleForgotPin() {
+    cancelBiometricAttempt();
+    router.push("/forgot-pin");
   }
 
-  function handleForgotPin() {
-    showDialog({
-      title: 'Forgot PIN?',
-      message: 'You will be logged out and need to sign in again.',
-      icon: 'warning',
-      actions: [
-        { label: 'Cancel', variant: 'secondary' },
-        {
-          label: 'Log Out',
-          variant: 'danger',
-          onPress: async () => {
-            await logout()
-            router.replace('/login')
-          },
-        },
-      ],
-    })
+  function handleFingerprintPress() {
+    if (isBiometricDisabledForTesting()) {
+      completeUnlock();
+      return;
+    }
+
+    cancelBiometricAttempt();
+    void handleBiometricUnlock();
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-[#eef1f4]" edges={['top', 'bottom']}>
-      <View className="flex-1 items-center px-5 pt-8">
-        <MaterialCommunityIcons name="lock" size={48} color="#f2c230" />
-        <Text className="mt-3 text-2xl font-semibold text-[#1a2a42]">Enter PIN</Text>
-        <Text className="mt-2 text-center text-xs text-[#8a9bb0]">
-          โปรดระบุรหัส PIN 6 หลักเพื่อเข้าถึงข้อมูลของคุณ
-        </Text>
-        <View className="mt-7 flex-row gap-3">
-          {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-            <View
-              key={i}
-              className={`h-3 w-3 rounded-full ${i < pin.length ? 'bg-black' : 'border border-[#8a9bb0]'}`}
-            />
-          ))}
-        </View>
-        {error ? (
-          <Text className="mt-4 text-center text-sm font-medium text-[#c00000]">{error}</Text>
-        ) : null}
-        <PinKeypad
-          onDigit={handleDigit}
-          onBackspace={handleBackspace}
-          onFingerprint={isBiometricDisabledForTesting() ? () => router.replace('/(tabs)') : () => {}}
-        />
-        <AppButton
-          variant="icon-circle"
-          label="Forgot PIN?"
-          onPress={handleForgotPin}
-          className="mt-8 self-auto rounded-none px-0 py-0"
-          textClassName="text-xs text-[#8a9bb0]"
-        />
-      </View>
+    <SafeAreaView className="flex-1 bg-[#eef1f4]" edges={["top", "bottom"]}>
+      <PinUnlockPrompt
+        error={error}
+        forgotPinLabel="ลืมรหัสผ่าน?"
+        onSubmit={handlePinSubmit}
+        onBiometricPress={handleFingerprintPress}
+        onForgotPin={handleForgotPin}
+        onInteraction={handlePinInteraction}
+      />
     </SafeAreaView>
-  )
+  );
 }

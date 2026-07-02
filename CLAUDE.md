@@ -17,6 +17,15 @@ Primary references:
 | `docs/adr/` | Locked architecture decisions |
 | `docs/TASKS.md` | Active backlog and blockers |
 
+## Planning Philosophy
+
+When planning any new system, feature, or integration:
+
+1. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs.
+2. **Best practice before convenience** — prefer push notifications via APNs/FCM with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant flows over custom shortcuts.
+3. **Name the tradeoffs explicitly** — if recommending a simpler approach, state what production capability is deferred and when it must be addressed.
+4. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before implementation steps.
+
 ## Architecture Rules
 
 - Mobile code must never connect directly to MySQL.
@@ -24,7 +33,8 @@ Primary references:
 - OID4VCI protocol work must run on-device through `@sphereon/oid4vci-client`; do not call backend `/exchange/*` endpoints.
 - Credentials are normalized into `VerifiableCredentialRecord` before encrypted MMKV storage.
 - Dynamic credential UI must use `src/config/cardSchemas.ts` and generic components, not issuer-specific card screens.
-- Production signing uses a Keychain-protected Ed25519 seed with `@noble/curves` EdDSA signing because target AndroidKeyStore hardware generated EC keys for Ed25519 requests. This satisfies protocol-level EdDSA but is not hardware non-extractable.
+- Production signing uses a Keychain-protected Ed25519 seed with `@noble/ed25519` EdDSA signing because target AndroidKeyStore hardware generated EC keys for Ed25519 requests. This satisfies protocol-level EdDSA but is not hardware non-extractable.
+- One biometric prompt per user action: a single user-initiated action (approve a presentation, claim a credential, rotate a key) must trigger exactly one authentication event. If the action requires a cryptographic sign call, that sign-time Keychain gate is the only prompt — do not add a separate app-level biometric/consent check in front of it for the same action. Only add a second, independent prompt when the action does no signing at all (so the sign-time gate never fires) and still needs its own auth.
 
 ## Expo SDK 54
 
@@ -78,6 +88,10 @@ yarn test
 - Keep screen files (`app/**`) thin: composition and data wiring only; push logic/layout into `src/components/**`.
 - `app/(tabs)/scan.tsx` P1 issuance sub-flow uses one component per step (`ThaIdVerificationPanel`, `ThaiIdSuccessConfirmationPanel`, `ThaiIdReceivePanel`) — each is a distinct phase, not a per-document split, so do not merge them. `ThaiIdReceivePanel` extracts its repeated label/value blocks via `CredentialFieldRow`; reuse `CredentialFieldRow` for any new label/value list instead of inlining `<Text>` pairs.
 - `ThaIdVerificationPanel` and `ThaiIdSuccessConfirmationPanel` are schema-driven via `CardSchemaConfig.issuanceVerification` / `issuanceConfirmation` in `src/config/cardSchemas.ts` (provider label, agency labels, image key). A new document type that reuses these steps needs only a schema entry plus the referenced image asset registered in the panel's image map — not a new component file.
+- Before writing any new UI or logic, search for an existing component/hook/service that already does it (or something close). If found, reuse or extend it — don't write a second implementation of the same concern next to the first.
+- If new UI/behavior is reusable across screens (a panel shape, a gating flow, a card row), it must ship as a component/hook under `src/components/` or `src/hooks/`, not copy-pasted or reimplemented per screen.
+- When two pieces of code do the same job, they must be written the same way — same naming, same structure, same patterns — as if one person wrote the whole codebase. Diverging implementations of a shared concern (e.g. two slightly different biometric-gate call sites, two slightly different card-row renderers) are a defect: consolidate to one shared implementation instead of leaving near-duplicates that read as inconsistent.
+- When touching a feature area, check sibling files in the same directory for the established pattern first, and match it rather than inventing a new one.
 
 ## Skills and Routing Patterns
 

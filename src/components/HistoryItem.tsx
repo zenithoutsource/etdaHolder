@@ -2,6 +2,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Text, View, type ImageSourcePropType } from "react-native";
 
 import { AppButton } from "./AppButton";
+import { StatusBadge } from "./StatusBadge";
 import type { WalletHistoryEvent } from "../services/history/walletHistory";
 
 const trashCanImage =
@@ -82,17 +83,13 @@ export function HistoryItem({ item }: { item: WalletHistoryEvent }) {
                 ) : null}
               </View>
             </View>
-            <View
-              className="rounded-full px-2.5 py-1"
-              style={{ backgroundColor: statusConfig.bg }}
-            >
-              <Text
-                className="text-[11px] font-semibold"
-                style={{ color: statusConfig.color }}
-              >
-                {statusConfig.label}
-              </Text>
-            </View>
+            <StatusBadge
+              label={statusConfig.label}
+              backgroundColor={statusConfig.bg}
+              color={statusConfig.color}
+              className=""
+              textClassName="text-[11px] font-semibold"
+            />
           </View>
 
           <View className="mt-3 rounded-lg bg-gray-300/50 px-3 py-2.5">

@@ -99,8 +99,8 @@ describe('presentationApproval', () => {
     expect(mockConstructorOptions).toEqual([])
     expect(mockIsSensorAvailable).not.toHaveBeenCalled()
     expect(mockSimplePrompt).not.toHaveBeenCalled()
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-native-weak-start')
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-complete', {
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-native-weak-start')
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-complete', {
       authenticator: 'android-native-biometric-weak',
     })
   })
@@ -123,11 +123,11 @@ describe('presentationApproval', () => {
       promptMessage: 'ยืนยันตัวตนด้วย Biometric',
       cancelButtonText: 'ยกเลิก',
     })
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-rn-fallback-start')
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-sensor-available', {
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-rn-fallback-start')
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-sensor-available', {
       biometryType: 'Biometrics',
     })
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-complete', {
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-complete', {
       authenticator: 'react-native-biometrics',
     })
   })

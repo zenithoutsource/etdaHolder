@@ -1,5 +1,5 @@
-const DEV_WALLET_KEY_TTL_MS = 5 * 60 * 1000;
-const PROD_WALLET_KEY_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+const DEV_WALLET_KEY_TTL_MS = Number(process.env.EXPO_PUBLIC_WALLET_KEY_DEV_TTL_MS) || 5 * 60 * 1000;
+const PROD_WALLET_KEY_TTL_MS = Number(process.env.EXPO_PUBLIC_WALLET_KEY_PROD_TTL_MS) || 180 * 24 * 60 * 60 * 1000;
 
 export const WALLET_KEY_TTL_MS = __DEV__
   ? DEV_WALLET_KEY_TTL_MS
