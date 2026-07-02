@@ -50,4 +50,10 @@ describe('walletHomeCopy', () => {
   test('readWalletHomeBadgeLabel returns active badge label', () => {
     expect(readWalletHomeBadgeLabel('active')).toBe(WALLET_HOME_COPY.activeBadge)
   })
+
+  test('provides P7 document expiry copy', () => {
+    expect(WALLET_HOME_COPY.expiringSoonBadge).toBe('ใกล้หมดอายุ')
+    expect(WALLET_HOME_COPY.documentExpiredBadge).toBe('หมดอายุ')
+    expect(WALLET_HOME_COPY.requestNewCredential).toBe('ขอเอกสารใหม่')
+  })
 })

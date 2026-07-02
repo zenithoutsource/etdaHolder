@@ -138,4 +138,30 @@ describe('credentialGuard', () => {
 
     expect(picked?.id).toBe('id-card-new')
   })
+
+  test('allows ThaiNationalID re-issue when only document-expired PID exists', () => {
+    const expiredPid: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      expiresAt: '2020-01-01T00:00:00.000Z',
+    }
+
+    expect(hasUsablePidCredential([expiredPid], {})).toBe(false)
+    expect(canRequestCredentialType('ThaiNationalID', [expiredPid], {})).toBe(true)
+  })
+
+  test('prefers non-expired credential on home list', () => {
+    const expiredPid: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      id: 'id-card-expired',
+      expiresAt: '2020-01-01T00:00:00.000Z',
+    }
+    const activePid: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      id: 'id-card-active',
+      expiresAt: '2035-01-01T00:00:00.000Z',
+    }
+
+    const picked = pickPreferredHomeCredential([expiredPid, activePid], {})
+    expect(picked?.id).toBe('id-card-active')
+  })
 })

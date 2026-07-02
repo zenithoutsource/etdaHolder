@@ -26,6 +26,21 @@ export const WALLET_HOME_COPY = {
   renewThaIdRequiredMessage:
     'กรุณาขอและรับ ThaID ใหม่ให้เสร็จก่อนขอเอกสารอื่น',
   thaIdAlreadyActiveMessage: 'คุณมี ThaID ที่ใช้งานได้อยู่แล้ว',
+  expiringSoonBadge: 'ใกล้หมดอายุ',
+  documentExpiredBadge: 'หมดอายุ',
+  documentExpiringSoonMessage:
+    'เอกสารจะหมดอายุในอีกไม่นาน กรุณาติดต่อผู้ออกเอกสารเพื่อขอเอกสารใหม่',
+  documentExpiredMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+  requestNewCredential: 'ขอเอกสารใหม่',
+  documentExpiredCleanupTitle: '!! ดำเนินการลบเอกสาร !!',
+  documentExpiredCleanupMessage:
+    'เอกสารเดิมหมดอายุแล้ว กรุณาลบเอกสารเดิมเพื่อดำเนินการต่อ',
+  documentExpiringSoonNotificationTitle: 'เอกสารใกล้หมดอายุ',
+  documentExpiringSoonNotificationBody:
+    'เอกสารใน Wallet ของคุณจะหมดอายุในอีกไม่นาน กรุณาติดต่อผู้ออกเอกสารเพื่อขอเอกสารใหม่',
+  documentExpiredNotificationTitle: 'เอกสารหมดอายุ',
+  documentExpiredNotificationBody:
+    'เอกสารใน Wallet ของคุณหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
 } as const
 
 export function readWalletHomeBadgeLabel(

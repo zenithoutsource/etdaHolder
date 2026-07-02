@@ -1,6 +1,5 @@
-import { router } from 'expo-router'
-
 import { logWalletStep } from '@/src/services/debug/walletLogger'
+import { useNotificationRouteStore, type PendingNotificationRoute } from '@/src/store/notificationRouteStore'
 
 export type NotificationEvent =
   | 'renewal-ready'
@@ -8,6 +7,8 @@ export type NotificationEvent =
   | 'issuer-suspended'
   | 'cleanup-pending'
   | 'old-revoked'
+  | 'document-expiring-soon'
+  | 'document-expired'
 
 export type NotificationData = {
   event?: NotificationEvent | string
@@ -15,13 +16,13 @@ export type NotificationData = {
   credentialType?: string
 }
 
-export function routeNotificationTap(data: NotificationData): void {
+export function buildNotificationRoute(data: NotificationData): PendingNotificationRoute | undefined {
   if (!data.credentialId) {
     logWalletStep('push-notifications', 'tap-ignored', {
       event: data.event,
       reason: 'missing-credential-id',
     })
-    return
+    return undefined
   }
 
   if (!/^[\w:.-]+$/.test(data.credentialId)) {
@@ -29,11 +30,10 @@ export function routeNotificationTap(data: NotificationData): void {
       event: data.event,
       reason: 'invalid-credential-id',
     })
-    return
+    return undefined
   }
 
-  logWalletStep('push-notifications', 'tap-route', { event: data.event })
-  router.replace({
+  return {
     pathname: '/(tabs)/credential/[id]',
     params: data.event === 'renewal-ready'
       ? {
@@ -41,5 +41,13 @@ export function routeNotificationTap(data: NotificationData): void {
           notificationEvent: 'renewal-ready',
         }
       : { id: data.credentialId },
-  })
+  }
+}
+
+export function routeNotificationTap(data: NotificationData): void {
+  const route = buildNotificationRoute(data)
+  if (!route) return
+
+  logWalletStep('push-notifications', 'tap-route', { event: data.event })
+  useNotificationRouteStore.getState().setPendingNotificationRoute(route)
 }

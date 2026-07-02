@@ -4,8 +4,21 @@ import {
   readCredentialLifecycleStatuses,
   recordCredentialLifecycleAction,
 } from './credentialLifecycle'
+import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+
+jest.mock('./credentialDocumentExpiry', () => {
+  const actual = jest.requireActual('./credentialDocumentExpiry') as typeof import('./credentialDocumentExpiry')
+  return {
+    ...actual,
+    isCredentialDocumentExpired: jest.fn(actual.isCredentialDocumentExpired),
+  }
+})
+
+const isCredentialDocumentExpiredMock = isCredentialDocumentExpired as jest.MockedFunction<
+  typeof isCredentialDocumentExpired
+>
 
 jest.mock('../storage/storage', () => ({
   getCredentialStorage: jest.fn(),
@@ -40,6 +53,9 @@ const transcriptRecord: VerifiableCredentialRecord = {
 describe('credentialLifecycle', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    isCredentialDocumentExpiredMock.mockImplementation(
+      jest.requireActual('./credentialDocumentExpiry').isCredentialDocumentExpired,
+    )
   })
 
   test('records a revoke action without removing the credential record', () => {
@@ -153,5 +169,43 @@ describe('credentialLifecycle', () => {
     expect(filterPresentableCredentials([transcriptRecord, freshTranscriptRecord])).toEqual([
       freshTranscriptRecord,
     ])
+  })
+
+  test('excludes document-expired credentials from presentation candidates', () => {
+    const expiredTranscript: VerifiableCredentialRecord = {
+      ...transcriptRecord,
+      expiresAt: '2020-01-01T00:00:00.000Z',
+    }
+    const freshTranscriptRecord: VerifiableCredentialRecord = {
+      ...transcriptRecord,
+      id: 'fresh-transcript',
+      expiresAt: '2035-01-01T00:00:00.000Z',
+    }
+
+    expect(
+      filterPresentableCredentials([expiredTranscript, freshTranscriptRecord]),
+    ).toEqual([freshTranscriptRecord])
+  })
+
+  test('keeps expiring-soon credentials presentable until expiry day ends', () => {
+    const expiringSoonTranscript: VerifiableCredentialRecord = {
+      ...transcriptRecord,
+      expiresAt: '2030-06-15T00:00:00.000Z',
+    }
+    isCredentialDocumentExpiredMock.mockReturnValue(false)
+
+    expect(filterPresentableCredentials([expiringSoonTranscript])).toEqual([
+      expiringSoonTranscript,
+    ])
+  })
+
+  test('excludes credentials when document expiry helper reports expired', () => {
+    const expiringSoonTranscript: VerifiableCredentialRecord = {
+      ...transcriptRecord,
+      expiresAt: '2030-06-15T00:00:00.000Z',
+    }
+    isCredentialDocumentExpiredMock.mockReturnValue(true)
+
+    expect(filterPresentableCredentials([expiringSoonTranscript])).toEqual([])
   })
 })

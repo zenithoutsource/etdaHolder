@@ -31,6 +31,7 @@ import {
   readCredentialInactiveState,
   type CredentialInactiveState,
 } from "../../src/services/credentials/credentialInactiveState";
+import { isCredentialExpiringSoon } from "../../src/services/credentials/credentialDocumentExpiry";
 import {
   readCredentialLifecycleStatuses,
   type CredentialLifecycleStatus,
@@ -51,7 +52,7 @@ import {
   refreshIssuerSuspensionsFromServer,
   type IssuerSuspensionRecord,
 } from "../../src/services/credentials/issuerSuspension";
-import { logWalletError } from "../../src/services/debug/walletLogger";
+import { logWalletError, logWalletStep } from "../../src/services/debug/walletLogger";
 import {
   WALLET_HOME_COPY,
   readWalletHomeBadgeLabel,
@@ -106,16 +107,25 @@ function readCredentialBadge({
   isVerifiedCredential,
   isNewCredential,
   isRenewedActive,
+  credential,
 }: {
   inactiveState: CredentialInactiveState;
   isVerifiedCredential: boolean;
   isNewCredential: boolean;
   isRenewedActive: boolean;
+  credential?: VerifiableCredentialRecord;
 }): { label: string; className: string } | undefined {
   if (inactiveState.kind !== "active") {
     return {
       label: inactiveState.badgeLabel,
       className: inactiveState.badgeClassName,
+    };
+  }
+
+  if (credential && isCredentialExpiringSoon(credential)) {
+    return {
+      label: WALLET_HOME_COPY.expiringSoonBadge,
+      className: "bg-[#d97706]",
     };
   }
 
@@ -168,6 +178,9 @@ export default function WalletHomeScreen() {
 
   const syncLocalCredentialStatuses = useCallback(() => {
     const latestCredentials = readStoredCredentials();
+    logWalletStep("wallet-home", "sync-local-credential-statuses", {
+      credentialCount: latestCredentials.length,
+    });
     setNewCredentialIds(readNewCredentialBadgeIds());
     setVerifiedCredentialIds(readSuccessfullyPresentedCredentialIds());
     setIssuerSuspensionStatuses(
@@ -256,6 +269,7 @@ export default function WalletHomeScreen() {
         ? issuerSuspensionStatuses[credential.id]
         : undefined,
       renewalStatus: credential ? renewalStatuses[credential.id] : undefined,
+      credential,
     });
   }
 
@@ -345,6 +359,7 @@ export default function WalletHomeScreen() {
                         renewalStatus,
                       )
                     : false,
+                credential,
               });
 
               return (

@@ -207,4 +207,50 @@ describe('credentialInactiveState', () => {
       panelMessage: 'เอกสารถูกระงับโดยผู้ออกเอกสาร',
     })
   })
+
+  test('marks document-expired credentials as inactive', () => {
+    expect(
+      readCredentialInactiveState({
+        credential: {
+          id: 'credential-1',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-06-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'document-expired',
+      badgeLabel: 'หมดอายุ',
+      badgeClassName: 'bg-[#7a7a7a]',
+      panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+    })
+  })
+
+  test('P3 renewal-required takes precedence over document-expired', () => {
+    expect(
+      readCredentialInactiveState({
+        renewalStatus: {
+          credentialId: 'credential-1',
+          state: 'renewal-required',
+          previousHolderDid: 'did:key:old',
+          updatedAt: '2026-06-25T10:00:00.000Z',
+        },
+        credential: {
+          id: 'credential-1',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-06-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'renewal-required',
+      badgeLabel: 'Inactive',
+      badgeClassName: 'bg-[#7a7a7a]',
+      panelMessage: 'เอกสารผูกกับกุญแจ Wallet ที่หมดอายุแล้ว กรุณาขอเอกสารใหม่',
+    })
+  })
 })

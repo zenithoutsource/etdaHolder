@@ -365,6 +365,11 @@ export function markCredentialRenewalCleanupPending(
 export function confirmOldCredentialCleanup(credentialId: string): void {
   const oldRenewal = readCredentialRenewal(credentialId)
   const replacementCredentialId = oldRenewal?.replacementCredentialId
+  logWalletStep('credentials', 'confirm-old-cleanup-start', {
+    credentialId,
+    replacementCredentialId,
+    oldRenewalState: oldRenewal?.state,
+  })
 
   clearCredentialRenewal(credentialId)
   clearRenewalCleanupBannerDismissal(credentialId)
@@ -375,7 +380,9 @@ export function confirmOldCredentialCleanup(credentialId: string): void {
     clearCredentialRenewal(replacementCredentialId)
   }
 
-  const hasPendingRenewalWork = readStoredCredentials().some((credential) => {
+  const remainingCredentials = readStoredCredentials()
+  const stillPresent = remainingCredentials.some((credential) => credential.id === credentialId)
+  const hasPendingRenewalWork = remainingCredentials.some((credential) => {
     const renewal = readCredentialRenewal(credential.id)
     if (!renewal) return false
 
@@ -386,6 +393,11 @@ export function confirmOldCredentialCleanup(credentialId: string): void {
   }
 
   notifyCredentialsChanged()
+  logWalletStep('credentials', 'confirm-old-cleanup-complete', {
+    credentialId,
+    stillPresentAfterRemoval: stillPresent,
+    remainingCredentialCount: remainingCredentials.length,
+  })
 }
 
 export async function refreshCredentialRenewalStatuses(

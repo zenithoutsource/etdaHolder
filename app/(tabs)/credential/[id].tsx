@@ -33,6 +33,7 @@ import {
   submitRenewalRequest,
 } from "../../../src/services/credentials/credentialRenewalService";
 import { canSubmitCredentialRenewal } from "../../../src/services/credentials/credentialGuard";
+import { isCredentialExpiringSoon } from "../../../src/services/credentials/credentialDocumentExpiry";
 import {
   isRenewalAwaitingHolderCleanup,
 } from "../../../src/services/credentials/renewalCleanupNotification";
@@ -105,6 +106,7 @@ export default function CredentialDetailScreen() {
     lifecycleStatus,
     suspensionStatus,
     renewalStatus,
+    credential,
   });
   const showRenewedActiveBadge = credential
     ? shouldShowRenewedActiveBadge(credential.type, renewalStatus)
@@ -120,7 +122,13 @@ export default function CredentialDetailScreen() {
     inactiveState.kind === "renewal-required" ||
     inactiveState.kind === "renewal-processing" ||
     inactiveState.kind === "old-revoked" ||
-    inactiveState.kind === "cleanup-pending";
+    inactiveState.kind === "cleanup-pending" ||
+    inactiveState.kind === "document-expired";
+  const canRequestDocumentReissue = inactiveState.kind === "document-expired";
+  const showExpiringSoonBanner =
+    inactiveState.kind === "active" &&
+    credential !== undefined &&
+    isCredentialExpiringSoon(credential);
   const showRenewalCleanupCta = isRenewalAwaitingHolderCleanup(renewalStatus);
 
   useEffect(() => {
@@ -467,6 +475,20 @@ export default function CredentialDetailScreen() {
                   isRenewalBlocked ? undefined : () => router.push("/(tabs)/qr")
                 }
               />
+              {showExpiringSoonBanner ? (
+                <View className="mt-4 rounded-xl bg-[#fff7ed] px-4 py-3">
+                  <Text className="text-center text-sm text-[#9a3412]">
+                    {WALLET_HOME_COPY.documentExpiringSoonMessage}
+                  </Text>
+                </View>
+              ) : null}
+              {inactiveState.kind !== "active" ? (
+                <View className="mt-4 rounded-xl bg-[#f3f4f6] px-4 py-3">
+                  <Text className="text-center text-sm text-[#4b5563]">
+                    {inactiveState.panelMessage}
+                  </Text>
+                </View>
+              ) : null}
               {canRequestRenewal ? (
                 <View className="mt-4">
                   <AppButton
@@ -475,6 +497,17 @@ export default function CredentialDetailScreen() {
                     onPress={() => {
                       void beginRenewalRequest();
                     }}
+                    className="w-full rounded-xl py-3"
+                    textClassName="text-center text-sm font-bold"
+                  />
+                </View>
+              ) : null}
+              {canRequestDocumentReissue ? (
+                <View className="mt-4">
+                  <AppButton
+                    variant="solid-block"
+                    label={WALLET_HOME_COPY.requestNewCredential}
+                    onPress={() => router.push("/(tabs)/scan")}
                     className="w-full rounded-xl py-3"
                     textClassName="text-center text-sm font-bold"
                   />
