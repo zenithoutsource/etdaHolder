@@ -46,25 +46,37 @@ type WalletHistoryEventKind =
 type WalletHistoryEvent = {
   id: string
   kind: WalletHistoryEventKind
-  status: 'completed' | 'cancelled' | 'revoked' | 'deleted'
+  status: 'completed' | 'cancelled' | 'revoked' | 'deleted'  // denormalized; see note below
   occurredAt: string            // ISO-8601
   credentialId: string
   documentType: string            // CardSchemaConfig.title
   partyName: string               // issuer (issuance/lifecycle) or verifier.name (presentation)
   disclosedClaims: string[]       // claim labels; empty for issuance/lifecycle
   channel: 'oid4vp' | 'oid4vci' | 'wallet'
+  initiatedBy?: 'holder' | 'system'  // lifecycle events only; default 'holder'
 }
 ```
 
+**`status` is denormalized** — it is 1:1 derivable from `kind` today (see events table). Kept for UI/badge convenience. **Dedupe and index logic must never key on `status`.**
+
+### `channel` mapping (explicit)
+
+| `kind` | `channel` |
+|--------|-----------|
+| `credential-received` | `oid4vci` |
+| `presentation-success`, `presentation-declined` | `oid4vp` |
+| `credential-revoked`, `credential-deleted` | `wallet` |
+
 ### Events in scope
 
-| Event | `kind` | `status` | Trigger |
-|-------|--------|----------|---------|
-| Credential received | `credential-received` | `completed` | `saveCredentialRecord()` |
-| Presentation succeeded | `presentation-success` | `completed` | Verifier `direct_post` success |
-| Presentation declined | `presentation-declined` | `cancelled` | `PresentationConsentPanel` → "ไม่ยินยอม" |
-| Credential revoked | `credential-revoked` | `revoked` | `recordCredentialLifecycleAction('Revoke')` |
-| Credential deleted | `credential-deleted` | `deleted` | `recordCredentialLifecycleAction('Delete')` |
+| Event | `kind` | `status` | Trigger | `initiatedBy` |
+|-------|--------|----------|---------|---------------|
+| Credential received | `credential-received` | `completed` | `saveCredentialRecord()` | — |
+| Presentation succeeded | `presentation-success` | `completed` | Verifier `direct_post` success | — |
+| Presentation declined | `presentation-declined` | `cancelled` | `PresentationConsentPanel` → "ไม่ยินยอม" | — |
+| Credential revoked | `credential-revoked` | `revoked` | `recordCredentialLifecycleAction('Revoke')` | `holder` |
+| Credential deleted (Holder) | `credential-deleted` | `deleted` | P6 `recordCredentialLifecycleAction('Delete')` | `holder` |
+| Credential deleted (expiry) | `credential-deleted` | `deleted` | `documentExpiryCleanup` → `deleteExpiredCredentialAfterReissue()` | `system` |
 
 ### Thai display projection
 
@@ -74,7 +86,8 @@ type WalletHistoryEvent = {
 | `presentation-success` | แสดงเอกสารสำเร็จ | ข้อมูลที่เปิดเผย: {claims} |
 | `presentation-declined` | ปฏิเสธการแสดงเอกสาร | ไม่ยินยอมส่งข้อมูลไปยัง {partyName} |
 | `credential-revoked` | ระงับเอกสารแล้ว | ยืนยันการระงับเอกสารใน Wallet |
-| `credential-deleted` | ลบเอกสารแล้ว | ยืนยันการลบเอกสารใน Wallet |
+| `credential-deleted` (`holder`) | ลบเอกสารแล้ว | ยืนยันการลบเอกสารใน Wallet |
+| `credential-deleted` (`system`) | ลบเอกสารแล้ว | เอกสารหมดอายุ — ระบบลบออกจาก Wallet อัตโนมัติ |
 
 List row `partyName`: verifier for presentation events, issuer for all others.
 
@@ -86,43 +99,59 @@ List row `partyName`: verifier for presentation events, issuer for all others.
 |-----|---------|
 | `wallet:history:index` | Ordered array of event `id` strings |
 | `wallet:history:event:{id}` | JSON `WalletHistoryEvent` |
-| `wallet:history:backfill:v1` | `"done"` after one-time credential backfill |
+| `wallet:history:backfill:v1` | `"done"` after one-time unified backfill + legacy migration |
+| `presentation:badge-cleared:{credentialId}` | **Unchanged** — Wallet Home badge dismiss timestamp (see Badge semantics) |
+
+Legacy keys (`presentation:history:index`, `presentation:history:{id}`) are read once during backfill v1 only; no new writes after migration.
 
 ### Service API (`src/services/history/walletEventLog.ts`)
 
-- `appendWalletHistoryEvent(input)` — append event, update index; best-effort (never blocks protocol flows)
-- `readWalletHistoryEvents()` — parse all, sort newest-first, skip corrupt entries
+- `appendWalletHistoryEvent(input)` — append event, update index; best-effort (never blocks protocol flows); **no dedupe on live append**
+- `readWalletHistoryEvents()` — parse all, sort newest-first, skip corrupt entries (O(n) MMKV reads; acceptable v1 — retention in roadmap)
 - `readWalletHistoryEvent(id)` — single event for detail screen
-- `ensureWalletHistoryBackfill(credentials)` — idempotent backfill + legacy migration
-- `readSuccessfullyPresentedCredentialIds()` — reimplemented from `presentation-success` events (preserves Wallet Home badge behavior)
+- `ensureWalletHistoryBackfill(credentials)` — single idempotent pass (see Migration); **must run at storage init, not on History tab mount**
+- `readSuccessfullyPresentedCredentialIds()` — scan `presentation-success` events **and** `presentation:badge-cleared:*` keys (same semantics as today)
+- `clearSuccessfulPresentationBadge(credentialId)` — **keep writing** `presentation:badge-cleared:{credentialId}` (re-export or move alongside event log; callers unchanged)
 
-### Migration
+### Migration (single pass under `wallet:history:backfill:v1`)
 
-1. **Presentation history** — import existing `presentation:history:*` as `presentation-success` on first read; stop writing to legacy keys.
-2. **Issuance** — backfill `credential-received` from stored credentials using `issuedAt`.
-3. **Lifecycle** — backfill from `credential:lifecycle:*` where not already logged.
+All steps run inside `ensureWalletHistoryBackfill()` in one transaction-like sequence. If flag is already `"done"`, return immediately. Set flag only after all steps complete.
 
-Dedupe: skip backfill when `credentialId + kind` already exists in log.
+1. **Presentation history** — for each legacy `presentation:history:{id}` entry, append `presentation-success` using the **legacy `id` as the wallet event `id`** (format `{credentialId}:{occurredAt}:{nonce}` — already unique). Skip if `wallet:history:event:{legacyId}` already exists. **Do not use `credentialId + kind` dedupe here** — multiple presentations per credential must all migrate.
+2. **Issuance** — backfill `credential-received` from stored credentials using `issuedAt`. Dedupe: skip when an event with same `credentialId + kind` already exists in the log.
+3. **Lifecycle** — backfill from current `credential:lifecycle:{credentialId}` keys. Dedupe: skip when `credentialId + kind` already exists. **Only the latest lifecycle action per credential is recoverable** (`credential:lifecycle:*` is a single overwritten key per credential — acceptable limitation; state in UI if needed).
+
+**Backfill timing (required):** call `ensureWalletHistoryBackfill(credentials)` immediately after successful `initStorage()` / `initStorageWithPin()` in `app/_layout.tsx` startup — **before** any screen reads lifecycle statuses (which may delete stale `credential:lifecycle:*` keys via `readCredentialLifecycleStatuses()`). Do not defer to History tab mount.
+
+**Re-issue + dedupe note:** live `saveCredentialRecord()` always appends a new `credential-received` (no dedupe). Backfill `credentialId + kind` dedupe applies only to v1 backfill. If a future `backfill:v2` is introduced, re-issue rows must not be collapsed — use per-credential `issuedAt` or event `id` instead of `credentialId + kind` alone.
 
 ### Privacy
 
 - Store claim **labels** only (e.g. "Date of Birth") — never JWT, VP token, or claim values.
 - `walletLogger` tags: `event-appended`, `backfill-complete`, `presentation-history-migrated`, `event-parse-failed` — metadata only, no PII.
 
+### Badge semantics (Wallet Home)
+
+Preserve existing behavior from `presentationHistory.ts`:
+
+- `readSuccessfullyPresentedCredentialIds()` returns credential IDs whose **latest** `presentation-success` event occurred **after** `presentation:badge-cleared:{credentialId}` (if set).
+- `clearSuccessfulPresentationBadge(credentialId)` writes `presentation:badge-cleared:{credentialId}` = now ISO timestamp.
+- Badge keys are **independent** of the event log index — do not remove or merge into `wallet:history:*`.
+
 ## Recording points
 
 | Event | Call site | Notes |
 |-------|-----------|-------|
 | `credential-received` | `saveCredentialRecord()` in `exchangeService.ts` | Single choke point for OID4VCI, `scannedCredentialSave`, `dualFormatIssuance` |
-| `presentation-success` | `app/(tabs)/scan.tsx` after successful `submitPresentationResponse` | Replaces direct `recordSuccessfulPresentation()` |
-| `presentation-declined` | `scan.tsx` — `onReject` before `resetScanner` | Explicit "ไม่ยินยอม" only |
-| `credential-revoked` / `credential-deleted` | `recordCredentialLifecycleAction()` in `credentialLifecycle.ts` | Covers Credential Detail P6 and `documentExpiryCleanup` |
+| `presentation-success` | `app/(tabs)/scan.tsx` after successful `submitPresentationResponse` | Replaces `recordSuccessfulPresentation()`; writes to unified log only |
+| `presentation-declined` | `scan.tsx` — `onReject` before `resetScanner` (`phase.request` has `verifier.name`) | Explicit "ไม่ยินยอม" only |
+| `credential-revoked` | `recordCredentialLifecycleAction('Revoke')` | `initiatedBy: 'holder'` |
+| `credential-deleted` (Holder) | P6 `recordCredentialLifecycleAction('Delete')` | `initiatedBy: 'holder'` |
+| `credential-deleted` (system) | `deleteExpiredCredentialAfterReissue()` in `documentExpiryCleanup.ts` | `initiatedBy: 'system'` — append here or inside lifecycle helper with parameter |
 
-**Re-issue:** new `credential-received` when `saveCredentialRecord` stores a replacement credential; no extra row for lifecycle clear.
+**Re-issue:** new `credential-received` on every `saveCredentialRecord` for a new/replacement record; lifecycle clear on re-issue does not emit a history row.
 
 **Read path:** `history.tsx` reads unified log only; `readWalletHistory()` becomes a display projection helper.
-
-**Startup:** `ensureWalletHistoryBackfill(credentials)` on History mount or wallet startup after storage init.
 
 ## UI/UX
 
@@ -168,10 +197,10 @@ Shows: party + role label, document type, date/time, status, disclosures (presen
 
 | File | Coverage |
 |------|----------|
-| `walletEventLog.test.ts` | append, read, sort, backfill dedupe, corrupt skip |
-| `walletHistory.test.ts` | Thai projection per kind/status |
-| `presentationHistory.test.ts` | Legacy migration |
-| Badge helper | `readSuccessfullyPresentedCredentialIds()` from unified log |
+| `walletEventLog.test.ts` | append, read, sort, issuance/lifecycle backfill dedupe, presentation migration preserves multiple events per credential, corrupt skip |
+| `walletHistory.test.ts` | Thai projection per kind/status/initiatedBy |
+| `presentationHistory.test.ts` | Legacy migration by legacy id; badge-cleared interaction |
+| Badge helper | `readSuccessfullyPresentedCredentialIds()` + `clearSuccessfulPresentationBadge()` unchanged semantics |
 
 ## Follow-up roadmap
 
@@ -189,4 +218,5 @@ Shows: party + role label, document type, date/time, status, disclosures (presen
 
 - History append is **best-effort** — never fail credential save or VP submit because logging failed.
 - Replace English action labels throughout History UI with Thai projection.
+- `readWalletHistoryEvents()` is O(n) over the index per mount; unbounded growth acceptable for v1 (retention deferred).
 - Update `docs/TASKS.md` when implementation slice completes.
