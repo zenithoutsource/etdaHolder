@@ -74,9 +74,9 @@ type WalletHistoryEvent = {
 | Credential received | `credential-received` | `completed` | `saveCredentialRecord()` | — |
 | Presentation succeeded | `presentation-success` | `completed` | Verifier `direct_post` success | — |
 | Presentation declined | `presentation-declined` | `cancelled` | `PresentationConsentPanel` → "ไม่ยินยอม" | — |
-| Credential revoked | `credential-revoked` | `revoked` | `recordCredentialLifecycleAction('Revoke')` | `holder` |
-| Credential deleted (Holder) | `credential-deleted` | `deleted` | P6 `recordCredentialLifecycleAction('Delete')` | `holder` |
-| Credential deleted (expiry) | `credential-deleted` | `deleted` | `documentExpiryCleanup` → `deleteExpiredCredentialAfterReissue()` | `system` |
+| Credential revoked | `credential-revoked` | `revoked` | `recordCredentialLifecycleAction(id, 'Revoke')` | `holder` (default) |
+| Credential deleted (Holder) | `credential-deleted` | `deleted` | P6 `recordCredentialLifecycleAction(id, 'Delete')` | `holder` (default) |
+| Credential deleted (expiry) | `credential-deleted` | `deleted` | `deleteExpiredCredentialAfterReissue()` → `recordCredentialLifecycleAction(id, 'Delete', 'system')` | `system` |
 
 ### Thai display projection
 
@@ -145,11 +145,15 @@ Preserve existing behavior from `presentationHistory.ts`:
 | `credential-received` | `saveCredentialRecord()` in `exchangeService.ts` | Single choke point for OID4VCI, `scannedCredentialSave`, `dualFormatIssuance` |
 | `presentation-success` | `app/(tabs)/scan.tsx` after successful `submitPresentationResponse` | Replaces `recordSuccessfulPresentation()`; writes to unified log only |
 | `presentation-declined` | `scan.tsx` — `onReject` before `resetScanner` (`phase.request` has `verifier.name`) | Explicit "ไม่ยินยอม" only |
-| `credential-revoked` | `recordCredentialLifecycleAction('Revoke')` | `initiatedBy: 'holder'` |
-| `credential-deleted` (Holder) | P6 `recordCredentialLifecycleAction('Delete')` | `initiatedBy: 'holder'` |
-| `credential-deleted` (system) | `deleteExpiredCredentialAfterReissue()` in `documentExpiryCleanup.ts` | `initiatedBy: 'system'` — append here or inside lifecycle helper with parameter |
+| `credential-revoked` | `recordCredentialLifecycleAction(id, 'Revoke')` | Appends history inside lifecycle helper; `initiatedBy` defaults to `'holder'` |
+| `credential-deleted` (Holder) | P6 `recordCredentialLifecycleAction(id, 'Delete')` | Same choke point; default `initiatedBy: 'holder'` |
+| `credential-deleted` (system) | `deleteExpiredCredentialAfterReissue()` in `documentExpiryCleanup.ts` | Calls `recordCredentialLifecycleAction(id, 'Delete', 'system')` only — **no separate history append** in cleanup |
 
-**Re-issue:** new `credential-received` on every `saveCredentialRecord` for a new/replacement record; lifecycle clear on re-issue does not emit a history row.
+**Lifecycle history choke point:** extend `recordCredentialLifecycleAction(credentialId, action, initiatedBy = 'holder')` to append the wallet history event. All revoke/delete rows (Holder P6 and expiry cleanup) flow through this function exactly once.
+
+**Expiry re-issue sequence:** `CredentialOfferClaimScreen` calls `deleteExpiredCredentialAfterReissue()` during claim after a replacement credential is saved (`CredentialOfferClaimScreen.tsx` ~line 126). Expected history order: `credential-received` (new record) then `credential-deleted` (`system`, old expired record). Lifecycle clear on re-issue (`clearCredentialLifecycleStatus`) does not emit a history row.
+
+**Re-issue:** new `credential-received` on every `saveCredentialRecord` for a new/replacement record.
 
 **Read path:** `history.tsx` reads unified log only; `readWalletHistory()` becomes a display projection helper.
 
@@ -216,6 +220,7 @@ Shows: party + role label, document type, date/time, status, disclosures (presen
 
 ## Implementation notes
 
+- Extend `recordCredentialLifecycleAction(credentialId, action, initiatedBy?)` before wiring history — expiry cleanup passes `'system'`; P6 passes default `'holder'`.
 - History append is **best-effort** — never fail credential save or VP submit because logging failed.
 - Replace English action labels throughout History UI with Thai projection.
 - `readWalletHistoryEvents()` is O(n) over the index per mount; unbounded growth acceptable for v1 (retention deferred).
