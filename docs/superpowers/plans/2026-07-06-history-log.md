@@ -591,6 +591,8 @@ Re-export `readSuccessfullyPresentedCredentialIds` and `clearSuccessfulPresentat
 
 Success path — replace `recordSuccessfulPresentation({...})` with `appendWalletHistoryEvent` (or keep wrapper).
 
+**VP relay (when `walletInitiatedPresentation.ts` exists):** after successful `submitVpToSession()` PUT, append `presentation-success` with `channel: 'wallet'` and relay display name as `partyName` (history spec § Recording points).
+
 Decline path:
 
 ```typescript
@@ -769,6 +771,7 @@ git commit -m "docs: record History Log v1 implementation complete"
 | Lifecycle single choke point | Task 4 |
 | Issuance on saveCredentialRecord | Task 5 |
 | Presentation success + decline | Task 5 |
+| VP relay presentation-success | Task 5 (when relay service ships) |
 | Thai UI + detail screen | Task 7, 8 |
 | Remove delete button | Task 7 |
 | Best-effort append | Task 1 (try/catch) |
