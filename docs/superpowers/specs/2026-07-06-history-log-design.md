@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-06  
 **Status:** Approved for implementation planning  
-**Related:** P1 Audit Trail (issuance), P4/P5 presentation flows, P6 lifecycle, `docs/ui-reference/wallet_fixed5/Wallet P4-P5/index.html`
+**Related:** P1 Audit Trail (issuance), P4/P5 presentation flows, P6 lifecycle, `docs/superpowers/specs/2026-06-29-vp-qr-wallet-initiated-design.md` (VP relay), `docs/ui-reference/wallet_fixed5/Wallet P4-P5/index.html`
 
 ## Summary
 
@@ -61,18 +61,21 @@ type WalletHistoryEvent = {
 
 ### `channel` mapping (explicit)
 
-| `kind` | `channel` |
-|--------|-----------|
-| `credential-received` | `oid4vci` |
-| `presentation-success`, `presentation-declined` | `oid4vp` |
-| `credential-revoked`, `credential-deleted` | `wallet` |
+| `kind` | `channel` | Notes |
+|--------|-----------|-------|
+| `credential-received` | `oid4vci` | |
+| `presentation-success` | `oid4vp` | Verifier-initiated OID4VP (`direct_post` success) |
+| `presentation-success` | `wallet` | Holder-initiated VP relay — successful PUT to `/dev/vp-session`; `partyName` = relay display name (e.g. `"VP Relay (dev)"`) |
+| `presentation-declined` | `oid4vp` | |
+| `credential-revoked`, `credential-deleted` | `wallet` | |
 
 ### Events in scope
 
 | Event | `kind` | `status` | Trigger | `initiatedBy` |
 |-------|--------|----------|---------|---------------|
 | Credential received | `credential-received` | `completed` | `saveCredentialRecord()` | — |
-| Presentation succeeded | `presentation-success` | `completed` | Verifier `direct_post` success | — |
+| Presentation succeeded (OID4VP) | `presentation-success` | `completed` | Verifier `direct_post` success | — |
+| VP relay submitted (dev) | `presentation-success` | `completed` | Successful PUT to `/dev/vp-session` (wallet-initiated QR) | — |
 | Presentation declined | `presentation-declined` | `cancelled` | `PresentationConsentPanel` → "ไม่ยินยอม" | — |
 | Credential revoked | `credential-revoked` | `revoked` | `recordCredentialLifecycleAction(id, 'Revoke')` | `holder` (default) |
 | Credential deleted (Holder) | `credential-deleted` | `deleted` | P6 `recordCredentialLifecycleAction(id, 'Delete')` | `holder` (default) |
@@ -89,7 +92,7 @@ type WalletHistoryEvent = {
 | `credential-deleted` (`holder`) | ลบเอกสารแล้ว | ยืนยันการลบเอกสารใน Wallet |
 | `credential-deleted` (`system`) | ลบเอกสารแล้ว | เอกสารหมดอายุ — ระบบลบออกจาก Wallet อัตโนมัติ |
 
-List row `partyName`: verifier for presentation events, issuer for all others.
+List row `partyName`: verifier name for `presentation-*` with `channel: 'oid4vp'`; relay display name for `presentation-success` with `channel: 'wallet'`; issuer for all others.
 
 ## Storage
 
@@ -119,7 +122,7 @@ All steps run inside `ensureWalletHistoryBackfill()` in one transaction-like seq
 
 1. **Presentation history** — for each legacy `presentation:history:{id}` entry, append `presentation-success` using the **legacy `id` as the wallet event `id`** (format `{credentialId}:{occurredAt}:{nonce}` — already unique). Skip if `wallet:history:event:{legacyId}` already exists. **Do not use `credentialId + kind` dedupe here** — multiple presentations per credential must all migrate.
 2. **Issuance** — backfill `credential-received` from stored credentials using `issuedAt`. Dedupe: skip when an event with same `credentialId + kind` already exists in the log.
-3. **Lifecycle** — backfill from current `credential:lifecycle:{credentialId}` keys. Dedupe: skip when `credentialId + kind` already exists. **Only the latest lifecycle action per credential is recoverable** (`credential:lifecycle:*` is a single overwritten key per credential — acceptable limitation; state in UI if needed).
+3. **Lifecycle** — backfill from current `credential:lifecycle:{credentialId}` keys. Dedupe: skip when `credentialId + kind` already exists. **Only the latest lifecycle action per credential is recoverable** (`credential:lifecycle:*` is a single overwritten key per credential — acceptable limitation; state in UI if needed). Legacy lifecycle keys carry no `initiatedBy`; backfilled delete rows default to `holder` and use the user-confirmed subtitle even when the original action was system expiry cleanup — **accepted** (metadata was not persisted).
 
 **Backfill timing (required):** call `ensureWalletHistoryBackfill(credentials)` immediately after successful `initStorage()` / `initStorageWithPin()` in `app/_layout.tsx` startup — **before** any screen reads lifecycle statuses (which may delete stale `credential:lifecycle:*` keys via `readCredentialLifecycleStatuses()`). Do not defer to History tab mount.
 
@@ -143,7 +146,8 @@ Preserve existing behavior from `presentationHistory.ts`:
 | Event | Call site | Notes |
 |-------|-----------|-------|
 | `credential-received` | `saveCredentialRecord()` in `exchangeService.ts` | Single choke point for OID4VCI, `scannedCredentialSave`, `dualFormatIssuance` |
-| `presentation-success` | `app/(tabs)/scan.tsx` after successful `submitPresentationResponse` | Replaces `recordSuccessfulPresentation()`; writes to unified log only |
+| `presentation-success` (OID4VP) | `app/(tabs)/scan.tsx` after successful `submitPresentationResponse` | `channel: 'oid4vp'`; replaces `recordSuccessfulPresentation()`; writes to unified log only |
+| `presentation-success` (relay) | `submitVpToSession()` in `walletInitiatedPresentation.ts` after successful PUT | `channel: 'wallet'`; relay display name as `partyName`; per VP relay spec §11 |
 | `presentation-declined` | `scan.tsx` — `onReject` before `resetScanner` (`phase.request` has `verifier.name`) | Explicit "ไม่ยินยอม" only |
 | `credential-revoked` | `recordCredentialLifecycleAction(id, 'Revoke')` | Appends history inside lifecycle helper; `initiatedBy` defaults to `'holder'` |
 | `credential-deleted` (Holder) | P6 `recordCredentialLifecycleAction(id, 'Delete')` | Same choke point; default `initiatedBy: 'holder'` |
