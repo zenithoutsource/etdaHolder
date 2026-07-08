@@ -28,8 +28,10 @@ import {
   cancelNfcRead,
   readSingleNfcPayload,
 } from '../../src/services/nfc/nfcTagService'
-import { isCredentialOfferDeeplink, isSupportedWalletDeeplink, useDeeplinkStore } from '../../src/store/deeplinkStore'
+import { isCredentialOfferDeeplink, isPresentationRequestDeeplink, isSupportedWalletDeeplink, useDeeplinkStore } from '../../src/store/deeplinkStore'
 import { recordSuccessfulPresentation } from '../../src/services/history/presentationHistory'
+import { recordOid4vpPresentationFailure } from '../../src/services/history/walletHistoryRecording'
+import { appendWalletHistoryEvent } from '../../src/services/history/walletEventLog'
 import { describePresentationForLog, describeUriForLog } from '../../src/services/scan/scanLogDescriptors'
 import { toFriendlyError } from '../../src/services/scan/scanFriendlyErrors'
 import { confirmPresentationBiometric, createApprovedPresentationResponse } from '../../src/services/vp/presentationApproval'
@@ -91,13 +93,21 @@ export default function ScanScreen() {
   const generationRef = useRef(0)
   const handleBarcodeRef = useRef<(uri: string) => Promise<void>>(async () => undefined)
   const lastDeeplinkRef = useRef<string | null>(null)
+  const lastVpGenerationRef = useRef(0)
   const router = useRouter()
   const { renew } = useLocalSearchParams<{ renew?: string | string[] }>()
   const renewCredentialId = Array.isArray(renew) ? renew[0] : renew
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
+  const vpGeneration = useDeeplinkStore((s) => s.vpGeneration)
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
+  const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
   const resetScanner = useCallback(() => {
+    const dismissedVpUri = lastDeeplinkRef.current
+    if (dismissedVpUri && isPresentationRequestDeeplink(dismissedVpUri)) {
+      setDismissedDeeplinkUri(dismissedVpUri)
+      lastDeeplinkRef.current = null
+    }
     generationRef.current++
     setPhase((prev) => {
       if (prev.tag === 'readingNfc') {
@@ -107,7 +117,7 @@ export default function ScanScreen() {
     })
     processingRef.current = false
     logWalletStep('scan', 'scanner-reset', { generation: generationRef.current })
-  }, [])
+  }, [setDismissedDeeplinkUri])
 
   useFocusEffect(
     useCallback(() => {
@@ -213,9 +223,15 @@ export default function ScanScreen() {
   }, [])
 
   useEffect(() => {
+    if (vpGeneration === lastVpGenerationRef.current) return
+    lastVpGenerationRef.current = vpGeneration
+    lastDeeplinkRef.current = null
+  }, [vpGeneration])
+
+  useEffect(() => {
     if (!pendingDeeplinkUri) return
     handleDeeplink(pendingDeeplinkUri, 'pending')
-  }, [handleDeeplink, pendingDeeplinkUri])
+  }, [handleDeeplink, pendingDeeplinkUri, vpGeneration])
 
   useEffect(() => {
     if (incomingUrl) handleDeeplink(incomingUrl, 'incoming')
@@ -304,6 +320,7 @@ export default function ScanScreen() {
       }
     } catch (err) {
       logWalletError('scan', 'presentation-approve-failed', err, describePresentationForLog(request))
+      recordOid4vpPresentationFailure(request, err)
       const raw = err instanceof Error ? err.message : String(err)
       const diagnosticRaw = presentationDebug ? `${raw}\n\n${presentationDebug}` : raw
       setIsSubmitting(false)
@@ -341,6 +358,7 @@ export default function ScanScreen() {
       }
     } catch (err) {
       logWalletError('scan', 'presentation-biometric-failed', err, describePresentationForLog(preparePhase.request))
+      recordOid4vpPresentationFailure(preparePhase.request, err)
       const raw = err instanceof Error ? err.message : String(err)
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
     }
@@ -357,8 +375,8 @@ export default function ScanScreen() {
 
   if (!permission.granted) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-[#f4f6fa] p-6">
-        <Text className="mb-5 text-center text-[15px] text-[#374151]">
+      <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
+        <Text className="mb-5 text-center text-[15px] text-gray700">
           Camera access is required to scan QR codes.
         </Text>
         <AppButton variant="solid-block" label="Allow Camera" onPress={requestPermission} className="rounded-xl px-[18px] py-[14px]" textClassName="text-[15px] font-semibold" />
@@ -388,7 +406,18 @@ export default function ScanScreen() {
             logWalletStep('scan', 'presentation-user-accepted', describePresentationForLog(phase.request))
             void approvePresentation(phase.request)
           }}
-          onReject={resetScanner}
+          onReject={() => {
+            logWalletStep('scan', 'presentation-user-declined', describePresentationForLog(phase.request))
+            appendWalletHistoryEvent({
+              kind: 'presentation-declined',
+              credentialId: phase.request.matchedCredential.id,
+              documentType: getCardSchema(phase.request.matchedCredential.type).title,
+              partyName: phase.request.verifier.name,
+              disclosedClaims: phase.request.disclosures.map((disclosure) => disclosure.label),
+              channel: 'oid4vp',
+            })
+            resetScanner()
+          }}
           disabled={isSubmitting}
         />
       </PresentationStepScaffold>
@@ -425,7 +454,7 @@ export default function ScanScreen() {
 
   if (phase.tag === 'error') {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-[#f4f6fa] p-6">
+      <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
         <Text className="mb-5 text-center text-[14px] text-red-600">{phase.message}</Text>
         <AppButton variant="solid-block" label="Try Again" onPress={resetScanner} className="rounded-xl px-[18px] py-[14px]" textClassName="text-[15px] font-semibold" />
       </SafeAreaView>

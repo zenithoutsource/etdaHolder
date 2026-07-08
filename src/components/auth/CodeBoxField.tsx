@@ -57,13 +57,13 @@ export function CodeBoxField({
               key={index}
               className={`h-14 w-11 items-center justify-center rounded-xl border-2 bg-white ${
                 isActive
-                  ? 'border-[#1a2a42]'
+                  ? 'border-ink'
                   : isFilled
-                    ? 'border-[#8a9bb0]'
-                    : 'border-[#d1d9e6]'
+                    ? 'border-blue-gray'
+                    : 'border-slate120'
               }`}
               style={{ borderCurve: 'continuous' }}>
-              <Text className="text-[22px] font-semibold text-[#1a2a42]">{digit}</Text>
+              <Text className="text-[22px] font-semibold text-ink">{digit}</Text>
             </View>
           )
         })}

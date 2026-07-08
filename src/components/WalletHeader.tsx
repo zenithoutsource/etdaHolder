@@ -2,6 +2,8 @@ import { Text, View } from 'react-native'
 
 import { AppButton } from './AppButton'
 
+import { THEME } from '../config/themeColors'
+
 type WalletHeaderProps = {
   title?: string
   onBack?: () => void
@@ -15,7 +17,7 @@ export function WalletHeader({ title = 'Wallet', onBack }: WalletHeaderProps) {
           variant="icon-circle"
           iconName="chevron-left"
           iconSize={28}
-          iconColor="#ffffff"
+          iconColor={THEME.white}
           onPress={onBack}
           accessibilityLabel="Back"
           className="h-9 w-9 border border-white"

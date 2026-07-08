@@ -1,22 +1,18 @@
 import { confirmBiometricGate, isBiometricGateCancellation } from './biometricGate'
 
-const mockConstructorOptions: unknown[] = []
-const mockIsSensorAvailable = jest.fn()
-const mockSimplePrompt = jest.fn()
+const mockHasHardwareAsync = jest.fn()
+const mockIsEnrolledAsync = jest.fn()
+const mockAuthenticateAsync = jest.fn()
 const mockIsNativeWeakBiometricAvailable = jest.fn()
 const mockAuthenticateWeakBiometric = jest.fn()
 const mockLogWalletStep = jest.fn()
 const mockLogWalletError = jest.fn()
 
-jest.mock('react-native-biometrics', () => {
-  return jest.fn().mockImplementation((options: unknown) => {
-    mockConstructorOptions.push(options)
-    return {
-      isSensorAvailable: mockIsSensorAvailable,
-      simplePrompt: mockSimplePrompt,
-    }
-  })
-})
+jest.mock('expo-local-authentication', () => ({
+  hasHardwareAsync: (...args: unknown[]) => mockHasHardwareAsync(...args),
+  isEnrolledAsync: (...args: unknown[]) => mockIsEnrolledAsync(...args),
+  authenticateAsync: (...args: unknown[]) => mockAuthenticateAsync(...args),
+}))
 
 jest.mock('../crypto/nativeEddsaSigner', () => ({
   authenticateWeakBiometric: (...args: unknown[]) => mockAuthenticateWeakBiometric(...args),
@@ -37,15 +33,16 @@ const gateOptions = {
 
 describe('biometricGate', () => {
   beforeEach(() => {
-    mockConstructorOptions.length = 0
-    mockIsSensorAvailable.mockReset()
-    mockSimplePrompt.mockReset()
+    mockHasHardwareAsync.mockReset()
+    mockIsEnrolledAsync.mockReset()
+    mockAuthenticateAsync.mockReset()
     mockIsNativeWeakBiometricAvailable.mockReset()
     mockAuthenticateWeakBiometric.mockReset()
     mockLogWalletStep.mockReset()
     mockLogWalletError.mockReset()
-    mockIsSensorAvailable.mockResolvedValue({ available: true, biometryType: 'Biometrics' })
-    mockSimplePrompt.mockResolvedValue({ success: true })
+    mockHasHardwareAsync.mockResolvedValue(true)
+    mockIsEnrolledAsync.mockResolvedValue(true)
+    mockAuthenticateAsync.mockResolvedValue({ success: true })
     mockIsNativeWeakBiometricAvailable.mockReturnValue(false)
     mockAuthenticateWeakBiometric.mockResolvedValue(true)
   })
@@ -56,32 +53,35 @@ describe('biometricGate', () => {
     await confirmBiometricGate(gateOptions)
 
     expect(mockAuthenticateWeakBiometric).toHaveBeenCalledWith('Confirm', 'Cancel')
-    expect(mockConstructorOptions).toEqual([])
+    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
     expect(mockLogWalletStep).toHaveBeenCalledWith('test-scope', 'biometric-complete', {
       authenticator: 'android-native-biometric-weak',
     })
   })
 
-  test('falls back to react-native-biometrics when the native module is unavailable (iOS path)', async () => {
+  test('falls back to expo-local-authentication when the native module is unavailable', async () => {
     await confirmBiometricGate(gateOptions)
 
-    expect(mockConstructorOptions).toEqual([{ allowDeviceCredentials: false }])
-    expect(mockSimplePrompt).toHaveBeenCalledWith({ promptMessage: 'Confirm', cancelButtonText: 'Cancel' })
+    expect(mockAuthenticateAsync).toHaveBeenCalledWith({
+      promptMessage: 'Confirm',
+      cancelLabel: 'Cancel',
+      disableDeviceFallback: true,
+    })
     expect(mockLogWalletStep).toHaveBeenCalledWith('test-scope', 'biometric-complete', {
-      authenticator: 'react-native-biometrics',
+      authenticator: 'expo-local-authentication',
     })
   })
 
   test('skips the fallback prompt entirely when allowFallback is false', async () => {
     await confirmBiometricGate({ ...gateOptions, allowFallback: false })
 
-    expect(mockConstructorOptions).toEqual([])
-    expect(mockIsSensorAvailable).not.toHaveBeenCalled()
+    expect(mockHasHardwareAsync).not.toHaveBeenCalled()
+    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
     expect(mockLogWalletStep).toHaveBeenCalledWith('test-scope', 'biometric-native-unavailable-skip')
   })
 
   test('throws a scoped cancellation error and skips logWalletError when the fallback prompt is dismissed', async () => {
-    mockSimplePrompt.mockResolvedValueOnce({ success: false })
+    mockAuthenticateAsync.mockResolvedValueOnce({ success: false, error: 'user_cancel' })
 
     await expect(confirmBiometricGate(gateOptions)).rejects.toThrow('TestGateCancelled')
 
@@ -90,16 +90,32 @@ describe('biometricGate', () => {
     expect(mockLogWalletStep).toHaveBeenCalledWith('test-scope', 'biometric-cancelled')
   })
 
-  test('throws a scoped unavailable error when no sensor is enrolled', async () => {
-    mockIsSensorAvailable.mockResolvedValueOnce({ available: false, error: 'BIOMETRIC_ERROR_NONE_ENROLLED' })
+  test('throws a scoped unavailable error when no biometric is enrolled', async () => {
+    mockIsEnrolledAsync.mockResolvedValueOnce(false)
 
     await expect(confirmBiometricGate(gateOptions)).rejects.toThrow(
-      'TestGateUnavailable: BIOMETRIC_ERROR_NONE_ENROLLED',
+      'TestGateUnavailable: not-enrolled',
     )
   })
 
+  test('throws a scoped unavailable error when hardware is missing', async () => {
+    mockHasHardwareAsync.mockResolvedValueOnce(false)
+
+    await expect(confirmBiometricGate(gateOptions)).rejects.toThrow(
+      'TestGateUnavailable: no-hardware',
+    )
+    expect(mockIsEnrolledAsync).not.toHaveBeenCalled()
+  })
+
+  test('throws a scoped failure for non-cancellation prompt errors', async () => {
+    mockAuthenticateAsync.mockResolvedValueOnce({ success: false, error: 'lockout' })
+
+    await expect(confirmBiometricGate(gateOptions)).rejects.toThrow('TestGateFailed: lockout')
+    expect(mockLogWalletError).toHaveBeenCalled()
+  })
+
   test('logs and wraps unexpected failures with the scoped error prefix', async () => {
-    mockSimplePrompt.mockRejectedValueOnce(new Error('native biometric failed'))
+    mockAuthenticateAsync.mockRejectedValueOnce(new Error('native biometric failed'))
 
     await expect(confirmBiometricGate(gateOptions)).rejects.toThrow('TestGateFailed')
 

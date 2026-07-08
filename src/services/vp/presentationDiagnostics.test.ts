@@ -1,11 +1,11 @@
 import { getPublicKey, hashes, sign } from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha2.js'
-
-hashes.sha512 = sha512
 import { createHash } from 'react-native-quick-crypto'
 
 import { describePresentationAttempt } from './presentationDiagnostics'
 import type { ResolvedPresentationRequest } from './presentationService'
+
+hashes.sha512 = sha512
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 

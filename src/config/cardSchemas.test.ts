@@ -1,11 +1,13 @@
 import { getCardSchema, getAllCardSchemas } from './cardSchemas'
 
+import { THEME } from './themeColors'
+
 describe('getCardSchema', () => {
   test('returns ThaiNationalID schema', () => {
     const schema = getCardSchema('ThaiNationalID')
     expect(schema.type).toBe('ThaiNationalID')
     expect(schema.title).toBe('Thai National ID')
-    expect(schema.primaryColor).toBe('#002887')
+    expect(schema.primaryColor).toBe(THEME.navy)
     expect(schema.displayFields.length).toBeGreaterThan(0)
   })
 

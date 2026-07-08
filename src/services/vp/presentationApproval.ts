@@ -3,13 +3,8 @@ import {
   signPresentationVpToken as defaultSignPresentationVpToken,
   signSdJwtKbPresentationToken as defaultSignSdJwtKbPresentationToken,
 } from '../crypto/crypto'
-import {
-  buildPresentationSubmission,
-  readPresentationTokenAudience,
-  readPresentationTokenMode,
-  type PresentationSubmission,
-  type ResolvedPresentationRequest,
-} from './presentationService'
+import { buildApprovedPresentationResponse } from './presentationTokenBuilders/registry'
+import type { PresentationSubmission, ResolvedPresentationRequest } from './presentationService'
 
 type ApprovedPresentationResponse = {
   vpToken: string
@@ -20,7 +15,7 @@ type CreateApprovedPresentationResponseDependencies = {
   confirmBiometric: () => Promise<void>
   signSdJwtKbPresentationToken: typeof defaultSignSdJwtKbPresentationToken
   signPresentationVpToken: typeof defaultSignPresentationVpToken
-  readTokenMode: typeof readPresentationTokenMode
+  buildApprovedPresentationResponse: typeof buildApprovedPresentationResponse
 }
 
 const presentationBiometricPromptMessage = '\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e15\u0e31\u0e27\u0e15\u0e19\u0e14\u0e49\u0e27\u0e22 Biometric'
@@ -42,39 +37,13 @@ export async function createApprovedPresentationResponse(
   const {
     signSdJwtKbPresentationToken = defaultSignSdJwtKbPresentationToken,
     signPresentationVpToken = defaultSignPresentationVpToken,
-    readTokenMode = readPresentationTokenMode,
+    buildApprovedPresentationResponse: buildResponse = buildApprovedPresentationResponse,
   } = dependencies
 
-  const presentationTokenMode = readTokenMode(request)
-  const audience = readPresentationTokenAudience(request)
-  const presentationSubmission = request.presentationDefinition ? buildPresentationSubmission(request) : undefined
-
-  if (presentationTokenMode === 'raw-credential') {
-    return {
-      vpToken: request.matchedCredential.rawVc,
-      ...(presentationSubmission ? { presentationSubmission } : {}),
-    }
-  }
-
-  if (presentationTokenMode === 'sd-jwt-kb') {
-    const vpToken = await signSdJwtKbPresentationToken({
-      audience,
-      nonce: request.nonce,
-      sdJwt: request.matchedCredential.rawVc,
-    })
-    return {
-      vpToken,
-      ...(presentationSubmission ? { presentationSubmission } : {}),
-    }
-  }
-
-  const vpToken = await signPresentationVpToken({
-    audience,
-    nonce: request.nonce,
-    verifiableCredential: request.matchedCredential.rawVc,
+  return buildResponse(request, {
+    signSdJwtKbPresentationToken,
+    signPresentationVpToken,
   })
-  return {
-    vpToken,
-    ...(presentationSubmission ? { presentationSubmission } : {}),
-  }
 }
+
+export { buildApprovedPresentationResponse, registerPresentationTokenBuilder } from './presentationTokenBuilders/registry'

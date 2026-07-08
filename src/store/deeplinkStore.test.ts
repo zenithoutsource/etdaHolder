@@ -1,13 +1,15 @@
 import {
   isCredentialOfferDeeplink,
+  isPresentationRequestDeeplink,
   isSupportedWalletDeeplink,
   readPendingCredentialOfferRoute,
+  readPendingPresentationRoute,
   useDeeplinkStore,
 } from './deeplinkStore'
 
 describe('deeplinkStore', () => {
   beforeEach(() => {
-    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null })
+    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
   })
 
   it('recognizes OID4VCI credential offer deeplinks', () => {
@@ -65,6 +67,39 @@ describe('deeplinkStore', () => {
     })).toBeUndefined()
   })
 
+  it('detects presentation request deeplinks', () => {
+    const uri = 'openid4vp://?client_id=did%3Aweb%3Averifier.example&response_type=vp_token'
+    expect(isPresentationRequestDeeplink(uri)).toBe(true)
+    expect(isPresentationRequestDeeplink('openid-credential-offer://?credential_offer={}')).toBe(false)
+  })
+
+  it('routes pending VP deeplinks to scan when auth and PIN are ready', () => {
+    expect(readPendingPresentationRoute({
+      pendingUri: 'openid4vp://?response_type=vp_token',
+      isAuthenticated: true,
+      platform: 'android',
+      hasWalletPin: true,
+    })).toBe('/(tabs)/scan')
+  })
+
+  it('increments vpGeneration when a VP deeplink is stored', () => {
+    useDeeplinkStore.getState().setPendingDeeplinkUri('openid4vp://?response_type=vp_token&state=a')
+    expect(useDeeplinkStore.getState().vpGeneration).toBe(1)
+  })
+
+  it('does not route a dismissed VP deeplink to scan', () => {
+    const pendingUri = 'openid4vp://?response_type=vp_token'
+    useDeeplinkStore.getState().setDismissedDeeplinkUri(pendingUri)
+
+    expect(readPendingPresentationRoute({
+      pendingUri,
+      dismissedUri: useDeeplinkStore.getState().dismissedUri,
+      isAuthenticated: true,
+      platform: 'android',
+      hasWalletPin: true,
+    })).toBeUndefined()
+  })
+
   it('does not route a credential offer after the user dismisses that same URI', () => {
     const pendingUri = 'openid-credential-offer://?credential_offer={}'
 
@@ -79,20 +114,20 @@ describe('deeplinkStore', () => {
     })).toBeUndefined()
   })
 
-  it('keeps a dismissed credential offer dismissed when a stale pending write repeats the same URI', () => {
+  it('reopens a previously dismissed URI when the user scans the same offer again', () => {
     const pendingUri = 'openid-credential-offer://?credential_offer={}'
 
     useDeeplinkStore.getState().setDismissedDeeplinkUri(pendingUri)
     useDeeplinkStore.getState().setPendingDeeplinkUri(pendingUri)
 
-    expect(useDeeplinkStore.getState().dismissedUri).toBe(pendingUri)
+    expect(useDeeplinkStore.getState().dismissedUri).toBeNull()
     expect(readPendingCredentialOfferRoute({
       pendingUri: useDeeplinkStore.getState().pendingUri,
       dismissedUri: useDeeplinkStore.getState().dismissedUri,
       isAuthenticated: true,
       platform: 'android',
       hasWalletPin: true,
-    })).toBeUndefined()
+    })).toBe('/(tabs)/credential-offer')
   })
 
   it('allows a fresh deeplink event to reopen a previously dismissed URI', () => {

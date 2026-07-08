@@ -6,6 +6,8 @@ import {
 } from '@/src/services/credentials/credentialDisplay'
 import type { VerifiableCredentialRecord } from '@/src/services/vci/exchangeService'
 
+import { THEME } from '../config/themeColors'
+
 const credentialImages: Record<string, ImageSourcePropType> = {
   profile: require('../../assets/images/profile.png'),
   id: require('../../assets/images/user_profile.png'),
@@ -25,10 +27,10 @@ export function WalletCredentialSummaryCard({
 
   return (
     <View
-      className="h-[202px] justify-center overflow-hidden rounded-[18px] bg-[#003064] px-6"
+      className="h-[202px] justify-center overflow-hidden rounded-[18px] bg-navy-alt px-6"
       style={{
         elevation: 5,
-        shadowColor: '#0f2849',
+        shadowColor: THEME.navyShadow,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.13,
         shadowRadius: 10,
@@ -59,7 +61,7 @@ export function WalletEmptyCredentialCard({ message }: { message: string }) {
       className="h-[181px] justify-center rounded-[18px] bg-white px-5"
       style={{
         elevation: 5,
-        shadowColor: '#0f2849',
+        shadowColor: THEME.navyShadow,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
         shadowRadius: 10,

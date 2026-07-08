@@ -941,7 +941,7 @@ async function unsupportedFormatContract(): Promise<void> {
     credentialConfigurations: [
       {
         ...resolved.credentialConfigurations[0],
-        format: 'mso_mdoc',
+        format: 'ldp_vc',
       },
     ],
   }

@@ -4,6 +4,8 @@ import { Text, View } from 'react-native'
 import { CodeBoxField } from './auth/CodeBoxField'
 import { PinKeypad } from './PinKeypad'
 
+import { THEME } from '../config/themeColors'
+
 export const PIN_ENTRY_LENGTH = 6
 
 type PinEntrySurfaceProps = {
@@ -39,9 +41,9 @@ export function PinEntrySurface({
 }: PinEntrySurfaceProps) {
   return (
     <View className="w-full items-center">
-      <MaterialCommunityIcons name="lock" size={48} color="#f2c230" />
-      <Text className="mt-3 text-2xl font-semibold text-[#1a2a42]">{title}</Text>
-      <Text className="mt-2 text-center text-xs text-[#8a9bb0]">{subtitle}</Text>
+      <MaterialCommunityIcons name="lock" size={48} color={THEME.gold} />
+      <Text className="mt-3 text-2xl font-semibold text-ink">{title}</Text>
+      <Text className="mt-2 text-center text-xs text-blue-gray">{subtitle}</Text>
 
       {allowPaste ? (
         <View className="mt-7 w-full px-2">
@@ -58,17 +60,17 @@ export function PinEntrySurface({
           {Array.from({ length: pinLength }).map((_, index) => (
             <View
               key={index}
-              className={`h-3 w-3 rounded-full ${index < pin.length ? 'bg-black' : 'border border-[#8a9bb0]'}`}
+              className={`h-3 w-3 rounded-full ${index < pin.length ? 'bg-black' : 'border border-blue-gray'}`}
             />
           ))}
         </View>
       )}
 
       {error ? (
-        <Text className="mt-4 text-center text-sm font-medium text-[#c00000]">{error}</Text>
+        <Text className="mt-4 text-center text-sm font-medium text-danger">{error}</Text>
       ) : null}
       {status ? (
-        <Text className="mt-4 text-sm text-[#6d7a8d]">{status}</Text>
+        <Text className="mt-4 text-sm text-slate">{status}</Text>
       ) : null}
 
       {!allowPaste ? (

@@ -4,6 +4,10 @@ import { Image, StyleSheet } from 'react-native'
 import { CredentialDocumentDetailCard } from './CredentialDocumentDetailCard'
 import type { CredentialDetailDisplay } from '../services/credentials/credentialDisplay'
 
+import { THEME } from '../config/themeColors'
+
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'MaterialCommunityIcons')
+
 const ReactNativeImage = Image as unknown as {
   resolveAssetSource: (source: unknown) => unknown
 }
@@ -12,7 +16,7 @@ const display: CredentialDetailDisplay = {
   title: 'Thai National ID',
   documentTitle: 'ID CARD',
   issuerName: 'Department of Provincial Administration',
-  primaryColor: '#002887',
+  primaryColor: THEME.navy,
   imageKey: 'id',
   primaryText: 'Pitchaya Rungruangkit',
   rows: [],
@@ -48,6 +52,20 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByTestId('document-detail-primary-id')).toHaveTextContent('1-1009-000XX-XX-XX')
     expect(screen.getByTestId('document-detail-left-column')).toBeTruthy()
     expect(screen.getByTestId('document-detail-right-column')).toBeTruthy()
+    expect(screen.getByTestId('document-detail-my-qr')).toHaveTextContent('My QR')
+  })
+
+  test('renders NFC presentation action beside My QR when provided', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={display}
+        holderProfile={{ thaiName: 'เธเธฒเธเธชเธฒเธง เธเธดเธเธเธฒ เธฃเธธเนเธเน€เธฃเธทเธญเธเธเธดเธ', englishName: 'Miss Pitchaya Rungruangkit' }}
+        onOpenQr={() => undefined}
+        onPresentViaNfc={() => undefined}
+      />
+    )
+
+    expect(screen.getByTestId('document-detail-present-nfc')).toHaveTextContent('NFC')
     expect(screen.getByTestId('document-detail-my-qr')).toHaveTextContent('My QR')
   })
 
@@ -268,7 +286,7 @@ describe('CredentialDocumentDetailCard', () => {
           title: 'Driving Licence',
           documentTitle: 'DRIVING LICENSE',
           imageKey: 'car',
-          primaryColor: '#123b8c',
+          primaryColor: THEME.navyRoyal,
         }}
         onOpenQr={() => undefined}
       />
@@ -277,7 +295,7 @@ describe('CredentialDocumentDetailCard', () => {
     expect(StyleSheet.flatten(screen.getByTestId('document-detail-band-wrap').props.style)).toEqual(
       expect.objectContaining({
         alignSelf: 'stretch',
-        backgroundColor: '#123b8c',
+        backgroundColor: THEME.navyRoyal,
         minHeight: 48,
         overflow: 'hidden',
         width: '100%',

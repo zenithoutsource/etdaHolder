@@ -10,7 +10,7 @@ type StatusBadgeProps = {
 
 export function StatusBadge({
   label,
-  className = 'bg-[#18a05d]',
+  className = 'bg-success',
   textClassName = 'text-[11px] font-semibold text-white',
   backgroundColor,
   color,

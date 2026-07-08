@@ -11,6 +11,7 @@ type StartupRouteInput = {
   currentSegment?: string
   platform: PlatformOSType
   hasWalletPin: boolean
+  isResumePinCheckPending?: boolean
 }
 
 export type WalletRoute = '/(tabs)' | '/auth' | '/pin-setup' | '/pin-lock'
@@ -65,6 +66,10 @@ export function segmentToWalletRoute(segment: string | undefined): WalletRoute |
 export function readWalletAccessRedirect(input: StartupRouteInput): WalletRoute | undefined {
   const targetRoute = readStartupRoute(input)
   if (!targetRoute) return undefined
+
+  if (targetRoute === '/pin-lock' && input.isResumePinCheckPending) {
+    return undefined
+  }
 
   const currentRoute = segmentToWalletRoute(input.currentSegment)
   if (currentRoute === targetRoute) return undefined

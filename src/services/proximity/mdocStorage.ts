@@ -44,3 +44,14 @@ export async function deleteStoredMdoc(credentialId: string): Promise<void> {
     throw new Error('ProximityStorageFailed')
   }
 }
+
+export async function readStoredMdocBytes(credentialId: string): Promise<Uint8Array> {
+  const native = requireNativeProximityModule()
+  logWalletStep('proximity-storage', 'read mdoc', { credentialId })
+  try {
+    return await native.readMdoc(credentialId)
+  } catch (error) {
+    logWalletError('proximity-storage', 'read failed', error)
+    throw new Error('ProximityStorageFailed')
+  }
+}

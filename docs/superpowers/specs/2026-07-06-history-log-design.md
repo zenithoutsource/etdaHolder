@@ -42,11 +42,12 @@ type WalletHistoryEventKind =
   | 'presentation-declined'
   | 'credential-revoked'
   | 'credential-deleted'
+  | 'credential-used'
 
 type WalletHistoryEvent = {
   id: string
   kind: WalletHistoryEventKind
-  status: 'completed' | 'cancelled' | 'revoked' | 'deleted'  // denormalized; see note below
+  status: 'completed' | 'cancelled' | 'revoked' | 'deleted' | 'used'  // denormalized; see note below
   occurredAt: string            // ISO-8601
   credentialId: string
   documentType: string            // CardSchemaConfig.title
@@ -80,6 +81,7 @@ type WalletHistoryEvent = {
 | Credential revoked | `credential-revoked` | `revoked` | `recordCredentialLifecycleAction(id, 'Revoke')` | `holder` (default) |
 | Credential deleted (Holder) | `credential-deleted` | `deleted` | P6 `recordCredentialLifecycleAction(id, 'Delete')` | `holder` (default) |
 | Credential deleted (expiry) | `credential-deleted` | `deleted` | `deleteExpiredCredentialAfterReissue()` → `recordCredentialLifecycleAction(id, 'Delete', 'system')` | `system` |
+| Credential used (single-use) | `credential-used` | `used` | `recordCredentialLifecycleAction(id, 'Used')` | `holder` or `system` |
 
 ### Thai display projection
 

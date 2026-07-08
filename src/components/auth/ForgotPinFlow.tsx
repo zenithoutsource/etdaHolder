@@ -7,6 +7,8 @@ import { AUTH_PIN_LENGTH, PinEntryStep } from '@/src/components/auth/PinEntrySte
 import { isValidEmailFormat, pinValidationMessage } from '@/src/services/auth/authValidation'
 import { useAuthStore } from '@/src/store/authStore'
 
+import { THEME } from '../../config/themeColors'
+
 type ForgotPinStep = 'email' | 'otp' | 'pin-enter' | 'pin-confirm'
 
 type ForgotPinFlowProps = {
@@ -163,13 +165,13 @@ export function ForgotPinFlow({
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-[#f4f6fa]">
+    <SafeAreaView className="flex-1 bg-surface-soft">
       <KeyboardAvoidingView
         className="flex-1 justify-center p-6"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View className="mb-8">
           <Text className="text-center text-[28px] font-bold text-wallet-navy">Reset PIN</Text>
-          <Text className="mt-2 text-center text-[15px] text-[#6d7a8d]">
+          <Text className="mt-2 text-center text-[15px] text-slate">
             {step === 'email'
               ? 'We will email you a verification code'
               : step === 'otp'
@@ -177,7 +179,7 @@ export function ForgotPinFlow({
                 : 'Choose a new 6-digit PIN'}
           </Text>
           {showResetNotice && step === 'email' ? (
-            <Text className="mt-3 text-center text-[13px] text-[#6d7a8d]">
+            <Text className="mt-3 text-center text-[13px] text-slate">
               หลังรีเซ็ต PIN คุณต้องเข้าสู่ระบบใหม่ ข้อมูลในเครื่องจะถูกล้างและซิงค์จากเซิร์ฟเวอร์อีกครั้ง
             </Text>
           ) : null}
@@ -185,7 +187,7 @@ export function ForgotPinFlow({
 
         {step === 'email' && isLoading ? (
           <View className="items-center gap-3">
-            <Text className="text-sm text-[#6d7a8d]">Sending verification code…</Text>
+            <Text className="text-sm text-slate">Sending verification code…</Text>
           </View>
         ) : null}
 
@@ -194,15 +196,15 @@ export function ForgotPinFlow({
             className="gap-4 rounded-[18px] bg-white p-6"
             style={{
               elevation: 3,
-              shadowColor: '#0f2849',
+              shadowColor: THEME.navyShadow,
               shadowOffset: { width: 0, height: 3 },
               shadowOpacity: 0.1,
               shadowRadius: 10,
             }}>
             <TextInput
-              className="rounded-[10px] border border-[#e2e8f0] p-[14px] text-[15px] text-[#1a2a42]"
+              className="rounded-[10px] border border-surface-edge p-[14px] text-[15px] text-ink"
               placeholder="Email"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={THEME.gray400}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -210,7 +212,7 @@ export function ForgotPinFlow({
               onChangeText={setEmail}
               onSubmitEditing={() => void handleEmailContinue()}
             />
-            {error ? <Text className="text-center text-[13px] text-[#dc2626]">{error}</Text> : null}
+            {error ? <Text className="text-center text-[13px] text-red600">{error}</Text> : null}
             <AppButton
               variant="solid-block"
               label="Send Code"
@@ -225,7 +227,7 @@ export function ForgotPinFlow({
 
         {step === 'otp' ? (
           <View className="items-center">
-            <Text className="mb-4 text-sm text-[#6d7a8d]">{email}</Text>
+            <Text className="mb-4 text-sm text-slate">{email}</Text>
             <PinEntryStep
               title="Enter Code"
               subtitle="Tap the boxes to enter or paste the code from your email"
@@ -239,7 +241,7 @@ export function ForgotPinFlow({
               showFingerprint={false}
             />
             {isLoading && otp.length === AUTH_PIN_LENGTH ? (
-              <Text className="mt-4 text-sm text-[#6d7a8d]">Verifying code…</Text>
+              <Text className="mt-4 text-sm text-slate">Verifying code…</Text>
             ) : null}
             <Pressable className="mt-4" onPress={() => void handleEmailContinue()} disabled={isLoading}>
               <Text className="text-sm font-medium text-wallet-navy">
@@ -264,12 +266,12 @@ export function ForgotPinFlow({
               onBackspace={handlePinBackspace}
               showFingerprint={false}
             />
-            {isLoading ? <Text className="mt-4 text-sm text-[#6d7a8d]">Please wait...</Text> : null}
+            {isLoading ? <Text className="mt-4 text-sm text-slate">Please wait...</Text> : null}
           </View>
         ) : null}
 
         <Pressable className="mt-6 items-center" onPress={onBack}>
-          <Text className="text-sm text-[#6d7a8d]">Back</Text>
+          <Text className="text-sm text-slate">Back</Text>
         </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>

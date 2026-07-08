@@ -131,7 +131,7 @@ export default function PinLockScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-[#eef1f4]" edges={["top", "bottom"]}>
+    <SafeAreaView className="flex-1 bg-surface" edges={["top", "bottom"]}>
       <PinUnlockPrompt
         error={error}
         forgotPinLabel="ลืมรหัสผ่าน?"

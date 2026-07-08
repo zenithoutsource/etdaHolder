@@ -21,6 +21,7 @@ export function toFriendlyError(raw: string): string {
   if (raw.includes('PresentationRequestUnsupported')) return 'This presentation request is not supported by this wallet.'
   if (raw.includes('PresentationCredentialMissing')) return 'No active credential is available for this Verifier request.'
   if (raw.includes('PresentationBiometricUnavailable')) return 'Biometric authentication is not available on this device. Enroll biometrics in device settings and try again.'
+  if (raw.includes('WalletKeySigningCancelled')) return 'Biometric authentication was cancelled. Try again when you are ready to continue.'
   if (raw.includes('PresentationBiometricCancelled')) return 'Biometric authentication was cancelled. Try again when you are ready to continue.'
   if (raw.includes('PresentationBiometricFailed')) return 'Biometric authentication failed. Please try again.'
   if (raw.includes('PresentationSubmissionFailed')) {

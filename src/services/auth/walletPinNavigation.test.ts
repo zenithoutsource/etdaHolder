@@ -312,6 +312,17 @@ describe('walletPinNavigation', () => {
     })).toBe('/pin-lock')
   })
 
+  test('readWalletAccessRedirect waits during resume PIN session checks', () => {
+    expect(readWalletAccessRedirect({
+      isAuthenticated: true,
+      isPinVerified: false,
+      currentSegment: '(tabs)',
+      platform: 'android',
+      hasWalletPin: true,
+      isResumePinCheckPending: true,
+    })).toBeUndefined()
+  })
+
   test('readWalletAccessRedirect stays on pin-lock until verified', () => {
     expect(readWalletAccessRedirect({
       isAuthenticated: true,

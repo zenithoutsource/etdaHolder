@@ -1,8 +1,9 @@
 # NFC & ISO 18013-5 Proximity Presentation — Design Spec
 
-> **Status:** Approved
+> **Status:** Approved (amended)
 > **Date:** 2026-06-23
 > **Author:** Brainstorming session
+> **Amendment (2026-07-06):** Offline transport changed by [`2026-07-03-android-hce-dual-format-presentation-design.md`](./2026-07-03-android-hce-dual-format-presentation-design.md) — ISO 7816-4 APDUs over Android HCE replace the NFC-engagement→BLE data leg for v1. Non-transport content here remains in force.
 
 ---
 

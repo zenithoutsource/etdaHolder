@@ -1,7 +1,5 @@
 import { getPublicKey, hashes, sign } from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha2.js'
-
-hashes.sha512 = sha512
 import { createHash, randomBytes } from 'react-native-quick-crypto'
 import * as Keychain from 'react-native-keychain'
 
@@ -11,6 +9,8 @@ import { base64UrlDecodeToString, isSameJwk, isSameKid, readRecord, toErrorMessa
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getMetaStorage } from '../storage/storage'
 import { notifyWalletKeyRegistrationChanged } from './walletKeyExpiryWatch'
+
+hashes.sha512 = sha512
 
 const KEY_ID = 'etda_wallet_signing_key'
 const KEYCHAIN_SERVICE = 'etda.wallet.ed25519_seed'
@@ -97,6 +97,32 @@ function assertEd25519SeedLength(seed: Uint8Array, errorCode: string): void {
   if (seed.length !== 32) {
     throw new Error(`${errorCode}: expected 32 Ed25519 seed bytes, got ${seed.length}`)
   }
+}
+
+function readErrorField(error: unknown, field: string): unknown {
+  return typeof error === 'object' && error !== null ? (error as Record<string, unknown>)[field] : undefined
+}
+
+function isWalletKeySigningCancellation(error: unknown): boolean {
+  const code = readErrorField(error, 'code')
+  const name = String(readErrorField(error, 'name') ?? '')
+  const message = toErrorMessage(error)
+  const hasNativeCancelCode = /code:\s*(10|13)\b/i.test(message)
+  const hasCancelText = /\bCancel(?:led|ed)?\b/i.test(message) || message.includes('ยกเลิก')
+
+  if (code === 'E_USER_CANCELED' || code === 'USER_CANCELED') return true
+
+  // BiometricPrompt cancel codes: 10 = ERROR_USER_CANCELED, 13 = ERROR_NEGATIVE_BUTTON.
+  // Depending on the react-native-keychain code path these surface as a
+  // numeric/string `code` field or embedded in the message ("code: 13, msg: Cancel").
+  if (code === 10 || code === 13 || code === '10' || code === '13') return true
+  if (hasNativeCancelCode && hasCancelText) return true
+
+  return (
+    code === 'E_CRYPTO_FAILED' &&
+    name.includes('CryptoFailedException') &&
+    hasNativeCancelCode
+  )
 }
 
 async function replaceLegacyWalletKeyIfNeeded(): Promise<void> {
@@ -385,6 +411,10 @@ async function signJwtLikeObject(
     if (!seed) throw new Error('WalletKeyNotInitialized')
     signatureBytes = sign(new TextEncoder().encode(signingInput), seed)
   } catch (error) {
+    if (isWalletKeySigningCancellation(error)) {
+      logWalletStep('crypto', 'keychain-ed25519-sign-cancelled', { keyId: KEY_ID, tokenKind })
+      throw new Error('WalletKeySigningCancelled')
+    }
     logWalletError('crypto', 'keychain-ed25519-sign-failed', error, { keyId: KEY_ID, tokenKind, signingInputBytes: signingInput.length })
     throw error
   }

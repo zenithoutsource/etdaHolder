@@ -5,6 +5,8 @@ import { AppButton } from './AppButton'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import type { RenewalCleanupPendingItem } from '../services/credentials/renewalCleanupNotification'
 
+import { THEME } from '../config/themeColors'
+
 type CredentialRenewalCleanupBannerProps = {
   item: RenewalCleanupPendingItem
   onCleanup: (oldCredentialId: string, replacementCredentialId?: string) => void
@@ -19,21 +21,21 @@ export function CredentialRenewalCleanupBanner({
   return (
     <View
       testID="renewal-cleanup-banner"
-      className="rounded-[14px] border border-[#b8e6cc] bg-[#e8f8ef] px-4 py-4"
+      className="rounded-[14px] border border-success-pale bg-success-tint px-4 py-4"
       style={{
         elevation: 2,
-        shadowColor: '#0f2849',
+        shadowColor: THEME.navyShadow,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 8,
       }}>
       <View className="flex-row items-start gap-3">
-        <MaterialCommunityIcons name="check-circle-outline" size={24} color="#18a05d" />
+        <MaterialCommunityIcons name="check-circle-outline" size={24} color={THEME.success} />
         <View className="min-w-0 flex-1">
-          <Text className="text-sm font-bold text-[#1a2a42]">
+          <Text className="text-sm font-bold text-ink">
             {WALLET_HOME_COPY.renewalReceivedTitle}
           </Text>
-          <Text className="mt-1 text-xs leading-5 text-[#4b5563]">
+          <Text className="mt-1 text-xs leading-5 text-gray600">
             {WALLET_HOME_COPY.renewalReceivedMessage}
           </Text>
           <AppButton
@@ -52,7 +54,7 @@ export function CredentialRenewalCleanupBanner({
             onDismiss(item.oldCredentialId)
           }}
           className="p-1">
-          <MaterialCommunityIcons name="close" size={20} color="#6d7a8d" />
+          <MaterialCommunityIcons name="close" size={20} color={THEME.slate} />
         </Pressable>
       </View>
     </View>

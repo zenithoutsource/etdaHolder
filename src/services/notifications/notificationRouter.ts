@@ -1,4 +1,7 @@
 import { logWalletStep } from '@/src/services/debug/walletLogger'
+import { notifyCredentialsChanged , readStoredCredentials } from '@/src/services/credentials/storedCredentials'
+import { rescheduleDocumentExpiryNotifications } from '@/src/services/notifications/documentExpiryNotificationService'
+
 import { useNotificationRouteStore, type PendingNotificationRoute } from '@/src/store/notificationRouteStore'
 
 export type NotificationEvent =
@@ -35,18 +38,29 @@ export function buildNotificationRoute(data: NotificationData): PendingNotificat
 
   return {
     pathname: '/(tabs)/credential/[id]',
-    params: data.event === 'renewal-ready'
-      ? {
-          id: data.credentialId,
-          notificationEvent: 'renewal-ready',
-        }
-      : { id: data.credentialId },
+    params:
+      data.event === 'renewal-ready'
+        ? {
+            id: data.credentialId,
+            notificationEvent: 'renewal-ready',
+          }
+        : data.event === 'document-expiring-soon' || data.event === 'document-expired'
+          ? {
+              id: data.credentialId,
+              notificationEvent: data.event,
+            }
+          : { id: data.credentialId },
   }
 }
 
 export function routeNotificationTap(data: NotificationData): void {
   const route = buildNotificationRoute(data)
   if (!route) return
+
+  if (data.event === 'document-expiring-soon' || data.event === 'document-expired') {
+    notifyCredentialsChanged()
+    void rescheduleDocumentExpiryNotifications(readStoredCredentials())
+  }
 
   logWalletStep('push-notifications', 'tap-route', { event: data.event })
   useNotificationRouteStore.getState().setPendingNotificationRoute(route)

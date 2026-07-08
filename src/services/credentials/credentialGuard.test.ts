@@ -11,7 +11,32 @@ import {
   readCredentialRenewal,
   type CredentialRenewalRecord,
 } from './credentialKeyRenewal'
+import {
+  clearCredentialLifecycleStatus,
+  recordCredentialLifecycleAction,
+} from './credentialLifecycle'
+import { writeIssuerSuspension } from './issuerSuspension'
+import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+
+jest.mock('../storage/storage', () => {
+  const values = new Map<string, string>()
+  return {
+    getCredentialStorage: () => ({
+      getString: (key: string) => values.get(key),
+      set: (key: string, value: string) => {
+        values.set(key, value)
+      },
+      delete: (key: string) => {
+        values.delete(key)
+      },
+      remove: (key: string) => {
+        values.delete(key)
+        return true
+      },
+    }),
+  }
+})
 
 const thaiIdRecord: VerifiableCredentialRecord = {
   id: 'id-card-1',
@@ -90,6 +115,24 @@ describe('credentialGuard', () => {
     expect(hasUsablePidCredential([renewedThaiIdRecord], renewedStatuses)).toBe(true)
   })
 
+  test('allows other credential requests while ThaiNationalID is cleanup-pending', () => {
+    const cleanupStatuses = {
+      'id-card-1': {
+        credentialId: 'id-card-1',
+        previousHolderDid: 'did:key:old',
+        replacementCredentialId: 'id-card-2',
+        state: 'cleanup-pending',
+        updatedAt: '2026-06-26T00:00:00.000Z',
+      },
+    } satisfies Record<string, CredentialRenewalRecord>
+
+    expect(hasUsablePidCredential([thaiIdRecord], cleanupStatuses)).toBe(true)
+    expect(readPidGateStatus([thaiIdRecord], cleanupStatuses)).toBe('ready')
+    expect(
+      canRequestCredentialType('BangkokUniversityTranscript', [thaiIdRecord], cleanupStatuses),
+    ).toBe(true)
+  })
+
   test('prevents duplicate ThaiNationalID renewal after renewed-active exists', () => {
     const credentials = [thaiIdRecord, renewedThaiIdRecord]
 
@@ -137,6 +180,39 @@ describe('credentialGuard', () => {
     )
 
     expect(picked?.id).toBe('id-card-new')
+  })
+
+  test('treats issuer-suspended PID as unusable and re-requestable', () => {
+    writeIssuerSuspension({
+      credentialId: thaiIdRecord.id,
+      suspendedAt: '2026-07-01T00:00:00.000Z',
+      updatedAt: '2026-07-01T00:00:00.000Z',
+    })
+
+    try {
+      expect(hasUsablePidCredential([thaiIdRecord], {})).toBe(false)
+      expect(readPidGateStatus([thaiIdRecord], {})).toBe('renewal-required')
+      expect(canRequestCredentialType('ThaiNationalID', [thaiIdRecord], {})).toBe(true)
+      expect(
+        canRequestCredentialType('BangkokUniversityTranscript', [thaiIdRecord], {}),
+      ).toBe(false)
+    } finally {
+      getCredentialStorage().remove(`credential:suspension:${thaiIdRecord.id}`)
+    }
+  })
+
+  test('treats holder-revoked PID as unusable and re-requestable', () => {
+    recordCredentialLifecycleAction(thaiIdRecord.id, 'Revoke')
+
+    try {
+      expect(hasUsablePidCredential([thaiIdRecord], {})).toBe(false)
+      expect(canRequestCredentialType('ThaiNationalID', [thaiIdRecord], {})).toBe(true)
+      expect(
+        canRequestCredentialType('BangkokUniversityTranscript', [thaiIdRecord], {}),
+      ).toBe(false)
+    } finally {
+      clearCredentialLifecycleStatus(thaiIdRecord.id)
+    }
   })
 
   test('allows ThaiNationalID re-issue when only document-expired PID exists', () => {

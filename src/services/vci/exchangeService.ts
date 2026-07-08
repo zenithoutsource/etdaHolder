@@ -18,9 +18,13 @@ import {
   signProof as defaultSignProof,
   getHolderDid,
 } from '../crypto/crypto'
+import { getCardSchema } from '../../config/cardSchemas'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
+import { readNormalizedDocumentExpiry } from '../credentials/credentialDocumentExpiresAt'
 import { notifyCredentialsChanged } from '../credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
+import { appendWalletHistoryEvent } from '../history/walletEventLog'
+import { recordBackendSyncHistory } from '../history/walletHistoryRecording'
 import {
   importCredential as defaultImportCredential,
 } from '../../sdk/walletApi'
@@ -310,6 +314,12 @@ export async function acquireCredentialRecord(
     })
   }
   logWalletStep('oid4vci', 'credential-response-received', { issuer: resolvedOffer.issuer, credentialBytes: rawVc.length })
+
+  const configuration = resolvedOffer.credentialConfigurations[0]
+  if (configuration && isMsoMdocFormat(configuration.format)) {
+    return finalizeMdocCredentialRecord(rawVc, resolvedOffer, configuration)
+  }
+
   return finalizeCredentialRecord(rawVc, proof, resolvedOffer)
 }
 
@@ -333,6 +343,15 @@ export function saveCredentialRecord(
   },
 ): void {
   storeCredentialRecord(dependencies.getCredentialStorage(), record)
+  const schema = getCardSchema(record.type)
+  appendWalletHistoryEvent({
+    kind: 'credential-received',
+    credentialId: record.id,
+    documentType: schema.title,
+    partyName: schema.issuerName,
+    channel: 'oid4vci',
+    occurredAt: record.issuedAt,
+  })
 }
 
 /**
@@ -476,11 +495,27 @@ export async function syncCredentialToBackend(
       },
     )
   } catch (error) {
+    try {
+      recordBackendSyncHistory(record, 'failure', error)
+    } catch {
+      // best-effort history
+    }
     throw new Error(`BackendSyncFailed: ${toErrorMessage(error)}`)
   }
 
   if (response.status !== 201) {
+    try {
+      recordBackendSyncHistory(record, 'failure', new Error(`BackendSyncFailed: HTTP ${response.status}`))
+    } catch {
+      // best-effort history
+    }
     throw new Error(`BackendSyncFailed: HTTP ${response.status}`)
+  }
+
+  try {
+    recordBackendSyncHistory(record, 'success')
+  } catch {
+    // best-effort history
   }
 
   return { status: 201 }
@@ -676,6 +711,7 @@ function stripCredentialConfigurationFormatSuffix(normalizedId: string): string 
   return normalizedId
     .replace(/dcsdjwt$/, '')
     .replace(/vcsdjwt$/, '')
+    .replace(/msomdoc$/, '')
     .replace(/jwtvcjson$/, '')
     .replace(/jwtvc$/, '')
 }
@@ -683,6 +719,7 @@ function stripCredentialConfigurationFormatSuffix(normalizedId: string): string 
 function readCredentialConfigurationFormatSuffix(normalizedId: string): string | undefined {
   if (normalizedId.endsWith('dcsdjwt')) return 'dc+sd-jwt'
   if (normalizedId.endsWith('vcsdjwt')) return 'vc+sd-jwt'
+  if (normalizedId.endsWith('msomdoc')) return 'mso_mdoc'
   if (normalizedId.endsWith('jwtvcjson')) return 'jwt_vc_json'
   if (normalizedId.endsWith('jwtvc')) return 'jwt_vc'
   return undefined
@@ -790,12 +827,17 @@ function normalizeCredentialRecord(
   const vc = readRecord(claims.vc)
   const id = readString(claims.jti) ?? readString(vc?.id) ?? readString(claims.id) ?? hashCredential(rawVc)
   const issuedAt = normalizeDate(readString(vc?.issuanceDate) ?? readNumber(claims.iat) ?? readNumber(claims.nbf) ?? Date.now() / 1000)
-  const expiresAtSource = readString(vc?.expirationDate) ?? readNumber(claims.exp)
-  const expiresAt = expiresAtSource === undefined ? undefined : normalizeDate(expiresAtSource)
+  const type = readCredentialType(claims, vc, resolvedOffer)
+  const expiresAt = readNormalizedDocumentExpiry({
+    claims,
+    type,
+    ...(readString(vc?.expirationDate) ? { vcExpirationDate: readString(vc?.expirationDate) } : {}),
+    ...(readNumber(claims.exp) !== undefined ? { jwtExp: readNumber(claims.exp) } : {}),
+  })
 
   return {
     id,
-    type: readCredentialType(claims, vc, resolvedOffer),
+    type,
     rawVc,
     claims,
     issuedAt,
@@ -803,7 +845,7 @@ function normalizeCredentialRecord(
   }
 }
 
-function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies {
+export function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies {
   return {
     acquireAccessToken: async ({ resolvedOffer, tx_code }) => {
       try {
@@ -829,7 +871,7 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
         const credentialConfiguration = resolvedOffer.credentialConfigurations[0]
 
         if (!credentialConfiguration || !isSupportedCredentialFormat(credentialConfiguration.format)) {
-          throw new Error('CredentialFormatUnsupported: JWT VC or SD-JWT VC response is required')
+          throw new Error('CredentialFormatUnsupported: JWT VC, SD-JWT VC, or mso_mdoc response is required')
         }
 
         const credentialClientBuilder = CredentialRequestClientBuilder.fromCredentialIssuer({
@@ -869,6 +911,10 @@ function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies
             proof,
             resolvedOffer,
           )
+        }
+
+        if (isMsoMdocFormat(credentialConfiguration.format)) {
+          return readMdocCredentialFromResponse(response)
         }
 
         return readCompactCredentialFromResponse(response)
@@ -1029,6 +1075,18 @@ function safeJsonStringify(value: unknown): string | undefined {
   }
 }
 
+export function readMdocCredentialFromResponse(response: unknown): string {
+  const body = readCredentialResponseBody(response)
+  const format = readString(body?.format)
+  const credential = readString(body?.credential)
+
+  if (format === 'mso_mdoc' && credential) {
+    return credential
+  }
+
+  throw new Error(`CredentialResponseUnsupported: mso_mdoc credential response is required (${describeCredentialResponseShape(body)})`)
+}
+
 export function readCompactCredentialFromResponse(response: unknown): string {
   const body = readCredentialResponseBody(response)
   const credential = readCompactCredentialValue(body)
@@ -1117,8 +1175,12 @@ function isSdJwtVcFormat(format: string): boolean {
   return format === 'dc+sd-jwt' || format === 'vc+sd-jwt'
 }
 
+function isMsoMdocFormat(format: string): boolean {
+  return format === 'mso_mdoc'
+}
+
 function isSupportedCredentialFormat(format: string): boolean {
-  return isJwtVcFormat(format) || isSdJwtVcFormat(format)
+  return isJwtVcFormat(format) || isSdJwtVcFormat(format) || isMsoMdocFormat(format)
 }
 
 function assertSupportedCredentialFormat(resolvedOffer: ResolvedCredentialOffer): void {
@@ -1127,7 +1189,25 @@ function assertSupportedCredentialFormat(resolvedOffer: ResolvedCredentialOffer)
   )
 
   if (unsupportedConfiguration) {
-    throw new Error('CredentialFormatUnsupported: JWT VC or SD-JWT VC response is required')
+    throw new Error('CredentialFormatUnsupported: JWT VC, SD-JWT VC, or mso_mdoc response is required')
+  }
+}
+
+function finalizeMdocCredentialRecord(
+  rawBase64: string,
+  resolvedOffer: ResolvedCredentialOffer,
+  configuration: OfferedCredentialConfiguration,
+): VerifiableCredentialRecord {
+  const rawConfiguration = readRecord(configuration.rawConfiguration)
+  const docType = readString(rawConfiguration?.doctype) ?? readString(rawConfiguration?.docType) ?? 'unknown'
+  const type = readCredentialType({ vct: docType }, undefined, resolvedOffer)
+
+  return {
+    id: hashCredential(rawBase64),
+    type,
+    rawVc: `mdoc:${rawBase64}`,
+    claims: { doctype: docType },
+    issuedAt: new Date().toISOString(),
   }
 }
 

@@ -1,5 +1,6 @@
 import {
   shouldHideCredentialActionMenu,
+  shouldShowCredentialRenewalRibbon,
   shouldShowRenewedActiveBadge,
 } from './credentialRenewalPresentation'
 import type { CredentialRenewalRecord } from './credentialKeyRenewal'
@@ -88,6 +89,54 @@ describe('shouldShowRenewedActiveBadge', () => {
   })
 })
 
+describe('shouldShowCredentialRenewalRibbon', () => {
+  test('shows active ribbon only for renewed-active renewal state', () => {
+    expect(
+      shouldShowCredentialRenewalRibbon({ kind: 'active' }, 'renewed-active'),
+    ).toBe(true)
+    expect(shouldShowCredentialRenewalRibbon({ kind: 'active' })).toBe(false)
+    expect(
+      shouldShowCredentialRenewalRibbon({ kind: 'active' }, 'renewal-required'),
+    ).toBe(false)
+  })
+
+  test.each([
+  'renewal-required',
+  'renewal-processing',
+  'old-revoked',
+  'cleanup-pending',
+  'document-expired',
+] as const)('shows inactive ribbon for %s', (kind) => {
+    expect(
+      shouldShowCredentialRenewalRibbon({
+        kind,
+        badgeLabel: 'Inactive',
+        badgeClassName: 'bg-gray-badge',
+        panelMessage: 'message',
+      }),
+    ).toBe(true)
+  })
+
+  test('does not show ribbon for issuer-suspended or lifecycle inactive states', () => {
+    expect(
+      shouldShowCredentialRenewalRibbon({
+        kind: 'issuer-suspended',
+        badgeLabel: 'ถูกระงับ',
+        badgeClassName: 'bg-danger',
+        panelMessage: 'message',
+      }),
+    ).toBe(false)
+    expect(
+      shouldShowCredentialRenewalRibbon({
+        kind: 'revoked',
+        badgeLabel: 'ถูกระงับ',
+        badgeClassName: 'bg-danger',
+        panelMessage: 'message',
+      }),
+    ).toBe(false)
+  })
+})
+
 describe('shouldHideCredentialActionMenu', () => {
   test('hides while wallet key rotation metadata exists', () => {
     mockStorage()
@@ -116,5 +165,31 @@ describe('shouldHideCredentialActionMenu', () => {
     mockStorage()
 
     expect(shouldHideCredentialActionMenu(undefined)).toBe(false)
+  })
+
+  test('hides for document-expired ribbon even without renewal metadata', () => {
+    mockStorage()
+
+    expect(
+      shouldHideCredentialActionMenu(undefined, {
+        inactiveState: {
+          kind: 'document-expired',
+          badgeLabel: 'หมดอายุ',
+          badgeClassName: 'bg-gray-badge',
+          panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+        },
+      }),
+    ).toBe(true)
+  })
+
+  test('hides for renewed-active ribbon on replacement credential', () => {
+    mockStorage()
+
+    expect(
+      shouldHideCredentialActionMenu(undefined, {
+        inactiveState: { kind: 'active' },
+        renewalState: 'renewed-active',
+      }),
+    ).toBe(true)
   })
 })

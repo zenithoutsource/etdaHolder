@@ -126,6 +126,37 @@ describe('test app security middleware', () => {
     })
   })
 
+  test('marks development credentials as used', async () => {
+    const app = createTestApp()
+
+    const created = await request(app).post('/wallet-api/dev/wallet/mark-used').send({
+      credentialId: 'transcript-1',
+    })
+    const status = await request(app).get('/wallet-api/dev/wallet/used-status?credentialId=transcript-1')
+
+    expect(created.status).toBe(201)
+    expect(created.body).toEqual({ used: true, credentialId: 'transcript-1' })
+    expect(status.status).toBe(200)
+    expect(status.body).toEqual({ used: true, credentialId: 'transcript-1' })
+  })
+
+  test('confirms development holder revoke requests', async () => {
+    const app = createTestApp()
+
+    const created = await request(app).post('/wallet-api/dev/issuer/holder-revoke').send({
+      credentialId: 'transcript-1',
+      holderDid: 'did:key:z6Mkholder',
+    })
+    const status = await request(app).get('/wallet-api/dev/wallet/revoke-status?credentialId=transcript-1')
+
+    expect(created.status).toBe(201)
+    expect(created.body.status).toBe('revoked')
+    expect(created.body.credentialId).toBe('transcript-1')
+    expect(typeof created.body.confirmedAt).toBe('string')
+    expect(status.status).toBe(200)
+    expect(status.body.status).toBe('revoked')
+  })
+
   test('registers a push token and delivers a mapped credential-event push through Expo', async () => {
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(

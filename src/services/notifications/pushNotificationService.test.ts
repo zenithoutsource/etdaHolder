@@ -121,6 +121,25 @@ describe('pushNotificationService', () => {
     expect(addNotificationResponseReceivedListenerMock).not.toHaveBeenCalled()
   })
 
+  test('retries native push token fetch after a transient FCM SERVICE_NOT_AVAILABLE error', async () => {
+    jest.useFakeTimers()
+    const fcmError = new Error(
+      'Fetching the token failed: java.util.concurrent.ExecutionException: java.io.IOException: SERVICE_NOT_AVAILABLE',
+    ) as Error & { code: string }
+    fcmError.code = 'E_REGISTRATION_FAILED'
+    getExpoPushTokenAsyncMock
+      .mockRejectedValueOnce(fcmError)
+      .mockResolvedValueOnce({ data: 'ExponentPushToken[test-token]' })
+
+    const initPromise = initPushNotifications('did:key:zHolder')
+    await jest.advanceTimersByTimeAsync(2000)
+    await initPromise
+
+    expect(getExpoPushTokenAsyncMock).toHaveBeenCalledTimes(2)
+    expect(registerPushTokenMock).toHaveBeenCalledWith('ExponentPushToken[test-token]', 'did:key:zHolder')
+    jest.useRealTimers()
+  })
+
   test('routes to credential screen when cold-start tap response is present', async () => {
     getLastNotificationResponseAsyncMock.mockResolvedValue({
       notification: {

@@ -12,7 +12,7 @@ export function ProximityPresentButton({ onPress, disabled = false }: ProximityP
   return (
     <AppButton
       variant="solid-block"
-      label="Present via NFC"
+      label="NFC"
       iconName="nfc-variant"
       onPress={onPress}
       disabled={disabled}

@@ -1,9 +1,11 @@
-import { getCredentialStorage } from '../storage/storage'
+import { logWalletError } from '../debug/walletLogger'
+import {
+  appendWalletHistoryEvent,
+  clearSuccessfulPresentationBadge as clearWalletPresentationBadge,
+  readSuccessfullyPresentedCredentialIds as readWalletPresentedCredentialIds,
+  readWalletHistoryEvents,
+} from './walletEventLog'
 import type { SuccessfulPresentationHistoryEvent } from './walletHistory'
-
-const PRESENTATION_HISTORY_INDEX_KEY = 'presentation:history:index'
-const PRESENTATION_HISTORY_KEY_PREFIX = 'presentation:history:'
-const PRESENTATION_BADGE_CLEARED_KEY_PREFIX = 'presentation:badge-cleared:'
 
 export type RecordSuccessfulPresentationInput = {
   credentialId: string
@@ -15,90 +17,55 @@ export type RecordSuccessfulPresentationInput = {
 
 export function recordSuccessfulPresentation(
   input: RecordSuccessfulPresentationInput,
-): SuccessfulPresentationHistoryEvent {
+): SuccessfulPresentationHistoryEvent | undefined {
   const occurredAt = (input.now ?? new Date()).toISOString()
-  const event: SuccessfulPresentationHistoryEvent = {
-    id: createPresentationHistoryId(input.credentialId, occurredAt),
+  const appended = appendWalletHistoryEvent({
+    kind: 'presentation-success',
+    credentialId: input.credentialId,
+    documentType: input.documentType,
+    partyName: input.verifierName,
+    disclosedClaims: input.disclosedClaims,
+    channel: 'oid4vp',
+    occurredAt,
+  })
+
+  if (!appended) {
+    logWalletError(
+      'presentation-history',
+      'record-successful-presentation-failed',
+      new Error('appendWalletHistoryEvent returned undefined'),
+      { credentialId: input.credentialId },
+    )
+    return undefined
+  }
+
+  return {
+    id: appended.id,
     credentialId: input.credentialId,
     verifierName: input.verifierName,
     documentType: input.documentType,
     disclosedClaims: input.disclosedClaims,
     occurredAt,
   }
-
-  const storage = getCredentialStorage()
-  storage.set(`${PRESENTATION_HISTORY_KEY_PREFIX}${event.id}`, JSON.stringify(event))
-  storage.set(PRESENTATION_HISTORY_INDEX_KEY, JSON.stringify([...readPresentationIds(storage), event.id]))
-
-  return event
 }
 
 export function readSuccessfulPresentationHistory(): SuccessfulPresentationHistoryEvent[] {
-  const storage = getCredentialStorage()
-  return readPresentationIds(storage)
-    .map((id) => storage.getString(`${PRESENTATION_HISTORY_KEY_PREFIX}${id}`))
-    .filter((raw): raw is string => Boolean(raw))
-    .map(parsePresentationHistoryEvent)
-    .filter((event): event is SuccessfulPresentationHistoryEvent => Boolean(event))
-    .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt))
+  return readWalletHistoryEvents()
+    .filter((event) => event.kind === 'presentation-success' && event.channel === 'oid4vp')
+    .map((event) => ({
+      id: event.id,
+      credentialId: event.credentialId,
+      verifierName: event.partyName,
+      documentType: event.documentType,
+      disclosedClaims: event.disclosedClaims,
+      occurredAt: event.occurredAt,
+    }))
 }
 
 export function readSuccessfullyPresentedCredentialIds(): string[] {
-  const latestEvents = new Map<string, SuccessfulPresentationHistoryEvent>()
-  for (const event of readSuccessfulPresentationHistory()) {
-    if (!latestEvents.has(event.credentialId)) latestEvents.set(event.credentialId, event)
-  }
-
-  const storage = getCredentialStorage()
-  return [...latestEvents.values()]
-    .filter((event) => {
-      const clearedAt = storage.getString(`${PRESENTATION_BADGE_CLEARED_KEY_PREFIX}${event.credentialId}`)
-      return !clearedAt || Date.parse(event.occurredAt) > Date.parse(clearedAt)
-    })
-    .map((event) => event.credentialId)
+  return readWalletPresentedCredentialIds()
 }
 
 export function clearSuccessfulPresentationBadge(credentialId: string, now = new Date()): void {
-  getCredentialStorage().set(`${PRESENTATION_BADGE_CLEARED_KEY_PREFIX}${credentialId}`, now.toISOString())
-}
-
-type PresentationHistoryStorage = {
-  getString: (key: string) => string | undefined
-}
-
-function readPresentationIds(storage: PresentationHistoryStorage): string[] {
-  const raw = storage.getString(PRESENTATION_HISTORY_INDEX_KEY)
-  if (!raw) return []
-
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
-  } catch {
-    return []
-  }
-}
-
-function parsePresentationHistoryEvent(raw: string): SuccessfulPresentationHistoryEvent | undefined {
-  try {
-    const parsed = JSON.parse(raw) as Partial<SuccessfulPresentationHistoryEvent>
-    if (
-      typeof parsed.id === 'string' &&
-      typeof parsed.credentialId === 'string' &&
-      typeof parsed.verifierName === 'string' &&
-      typeof parsed.documentType === 'string' &&
-      Array.isArray(parsed.disclosedClaims) &&
-      parsed.disclosedClaims.every((claim) => typeof claim === 'string') &&
-      typeof parsed.occurredAt === 'string'
-    ) {
-      return parsed as SuccessfulPresentationHistoryEvent
-    }
-  } catch {
-    return undefined
-  }
-
-  return undefined
-}
-
-function createPresentationHistoryId(credentialId: string, occurredAt: string): string {
-  return `${credentialId}:${occurredAt}:${Math.random().toString(36).slice(2, 8)}`
+  clearWalletPresentationBadge(credentialId, now)
 }

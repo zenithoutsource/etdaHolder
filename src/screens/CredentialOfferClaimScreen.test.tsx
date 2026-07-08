@@ -3,6 +3,12 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { CredentialOfferClaimScreen } from './CredentialOfferClaimScreen'
 import { useDeeplinkStore } from '../store/deeplinkStore'
 import { resolveOffer } from '../services/vci/exchangeService'
+import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
+import { readStoredCredentials } from '../services/credentials/storedCredentials'
+
+jest.mock('../components/AppDialog', () => ({
+  useAppDialog: () => ({ showDialog: jest.fn() }),
+}))
 
 jest.mock('expo-camera', () => {
   throw new Error('CredentialOfferClaimScreen must not import expo-camera')
@@ -47,6 +53,7 @@ jest.mock('../services/vci/exchangeService', () => ({
 }))
 
 const resolveOfferMock = resolveOffer as jest.Mock
+const readStoredCredentialsMock = readStoredCredentials as jest.Mock
 const linkingMock = jest.requireMock('expo-linking') as {
   getInitialURL: jest.Mock<Promise<string | null>, []>
   useURL: jest.Mock<string | null, []>
@@ -60,6 +67,7 @@ describe('CredentialOfferClaimScreen', () => {
     linkingMock.getInitialURL.mockResolvedValue(null)
     useUrlMock.mockReturnValue(null)
     useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null })
+    readStoredCredentialsMock.mockReturnValue([])
   })
 
   it('consumes a pending credential offer deeplink and resolves it without camera permission', async () => {
@@ -135,6 +143,34 @@ describe('CredentialOfferClaimScreen', () => {
       expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
     })
     expect(screen.queryByText('No credential offer link is pending.')).toBeNull()
+  })
+
+  it('allows ThaiNationalID re-issue when only document-expired PID exists', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-offer'
+    readStoredCredentialsMock.mockReturnValue([
+      {
+        id: 'id-card-expired',
+        type: 'ThaiNationalID',
+        rawVc: 'vc',
+        claims: {},
+        issuedAt: '2026-06-09T00:00:00.000Z',
+        expiresAt: '2020-01-01T00:00:00.000Z',
+      },
+    ])
+
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID' }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
+    })
+    expect(screen.queryByText(WALLET_HOME_COPY.renewThaIdRequiredMessage)).toBeNull()
   })
 
   it('dismisses the active deeplink before navigating back to wallet', async () => {

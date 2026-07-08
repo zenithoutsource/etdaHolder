@@ -2,6 +2,26 @@
 
 Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
 
+### Session 2026-07-08
+
+- **Developer onboarding** — `yarn setup`, slim `.env.example`, optional `.env.development.local.example`, `docs/GETTING_STARTED.md`, default wallet API port 4000. Spec: `docs/superpowers/specs/2026-07-08-developer-onboarding-design.md`; plan: `docs/superpowers/plans/2026-07-08-developer-onboarding.md`.
+
+### Session 2026-07-06
+
+- **Wallet-initiated VP QR (dev relay)** — holder shows QR from credential detail; relay at `/dev/vp-session` + `/dev/vp-verify` with full SD-JWT-KB verification (§2.1). Spec: `docs/superpowers/specs/2026-06-29-vp-qr-wallet-initiated-design.md`; plan: `docs/superpowers/plans/2026-07-06-wallet-initiated-vp-qr.md`. Server: `vpSessionStore`, `sdJwtVerifier`, `vpSession` routes. Mobile: `walletInitiatedPresentation`, `VpQrModal`, credential detail button. Configure `VP_ISSUER_PUBLIC_KEY_JWK` + `VP_RELAY_BASE_URL` on server; run `yarn install` for `react-native-qrcode-svg` if package link failed (EPERM). Manual LAN golden-path validation pending.
+- **History Log v1** — unified append-only `walletEventLog` in encrypted MMKV (`wallet:history:*`): events `credential-received`, `presentation-success`, `presentation-declined`, `credential-revoked`, `credential-deleted` with `initiatedBy` for system expiry deletes. Spec: `docs/superpowers/specs/2026-07-06-history-log-design.md`; plan: `docs/superpowers/plans/2026-07-06-history-log.md`.
+- One-time backfill at storage init (`ensureWalletHistoryBackfill()` in `app/_layout.tsx`) migrates legacy `presentation:history:*` and seeds issuance/lifecycle rows; `presentation:badge-cleared:{credentialId}` keys preserved for Wallet Home badges.
+- Recording choke points: `saveCredentialRecord()`, `recordSuccessfulPresentation()` / Scan decline, `recordCredentialLifecycleAction()` (expiry cleanup passes `'system'`).
+- Thai list + detail UI: `readWalletHistoryRows()` / `projectWalletHistoryRow()`, tap-to-detail at `app/(tabs)/history-event/[id].tsx`, removed non-functional "ลบรายการ" button.
+- **History Log v2** — suspend-access button + `presentation-access-suspended`; `presentation-failed`; NFC/renewal/backend-sync events; filter chips; local hide row; retention via `EXPO_PUBLIC_WALLET_HISTORY_RETENTION_DAYS`.
+
+### Session 2026-07-03
+
+- Removed the PIN-lock flash on app resume by suppressing `/pin-lock` redirects while the root AppState handler checks whether the existing wallet PIN session is still inside the grace window.
+- Fixed Transcript QR issuance gating after P3 cleanup state: `cleanup-pending` ThaiNationalID now counts as usable PID for non-PID credential offers, matching the current active detail-state treatment while still blocking expired PID credentials.
+- Fixed P3 renewal claim cancellation retry loop: when local renewal claim/signing fails after an `offer-ready` status, the old credential renewal state is reset from `renewal-processing` to `renewal-required`, stopping the 4-second detail-screen poll from silently reopening biometric without a fresh user tap.
+- Removed the `cleanup-pending` inactive detail panel/message branch, and moved `Present via NFC` into the credential detail action row beside `My QR` using the same compact button style while keeping NFC visibility gated by proximity support.
+
 ### Session 2026-07-02
 
 - Rate-limited `POST /wallet-api/auth/pin-reset/request` with existing in-memory IP and normalized-email limiters before DB lookup and SMTP send; added a route regression proving the fourth valid request for the same email returns `429 { message: 'Too Many Requests' }` and does not send another OTP.
@@ -210,6 +230,24 @@ Remaining:
 [ ] Add broader claim sets only after trust and disclosure semantics are documented
 [ ] Add MSW Verifier handler group or integration harness for direct_post tests
 [ ] Decide whether to add a full ADR before expanding beyond the P5 age-over-20 slice
+
+## User Journey Gap Backlog (2026-07-06 audit vs docs/User_Journey)
+
+Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side buildable items first; ecosystem-blocked items recorded as external blockers.
+
+### Buildable now (wallet-side)
+
+[x] P6 Case 1 Issuer round-trip for holder revoke (v1 dev): `POST /wallet-api/dev/issuer/holder-revoke` + `holderRevokeService`; credential detail awaits Issuer `201` before `recordCredentialLifecycleAction('Revoke')`. Keeps credential record for history; no per-credential key destruction (ADR 0009). v1: no PoP JWT — Wallet PIN approve unchanged.
+[x] P6 Case 3 Single-Use credential self-cleanup (v1): `CredentialLifecycleAction` `'Used'` via `recordCredentialLifecycleAction`, parser whitelist, `credential-used` history event, inactive badge, dev `POST /wallet-api/dev/wallet/mark-used`. Presentation blocked through existing lifecycle filter. No per-credential key destruction (ADR 0009).
+[x] OID4VP same-device link intake: `openid4vp` scheme in `app.json`, `readPendingPresentationRoute` + `vpGeneration` in `deeplinkStore`, Scan dismiss/remount parity, tests in `deeplinkStore.test.ts` and `ScanScreenDeeplink.test.tsx`. Manual: `adb shell am start -a android.intent.action.VIEW -d "openid4vp://authorize?..."` after `npx expo prebuild --platform android`.
+[x] ADR: single wallet-level Ed25519 key vs journey's per-credential `did:key` (P2 step 12) — accepted for v1 in `docs/adr/0009-wallet-level-holder-signing-key.md`: one Keychain Ed25519 seed; P3 rotation marks all credentials; P6 per-document key destruction deferred (lifecycle markers gate presentation instead).
+
+### Blocked on ETDA ecosystem services (external)
+
+[ ] Trust Registry integration: wallet-side Issuer trust check on credential receive (P2 step 21) and Verifier trust check before presenting (P4 steps 6–7). Blocked: no Trust Registry service/API exists. Related to the Phase 4 issuer-signature-validation item (trusted issuer registry decision).
+[ ] DID Resolver integration: resolve Verifier public key (P4 steps 4–5) and Issuer public key for wallet-side verification. Partially overlaps the open JAR signature-verification item above; production resolution mechanism blocked on ecosystem DID method decision.
+[ ] VC Status Registry checking: wallet-side credential status refresh (suspended/revoked/used) from a central registry instead of dev polling endpoints. Blocked: no registry exists; current P6 Case 2 dev polling is the stand-in.
+[ ] P2 identity verification via real PID VC presentation to Issuer (journey steps 5–10): wallet presents stored PID VC, Issuer verifies against Trust Registry + VC Status Registry before sending the offer. Currently simulated by the ThaID interstitial. Blocked: requires Issuer-side support; document as accepted deviation if the ETDA Issuer never requests PID presentation.
 
 ## Definition of Done Per Session
 
@@ -468,3 +506,51 @@ Remaining:
 - OpenAPI/SDK: `walletApi.json` + `yarn sdk:generate`; set `orval` `clean: false` so hand-written `src/sdk/*` helpers are not deleted on regen.
 - Verification: server `yarn test` pass (36 tests); root auth tests pass (22 tests); root `yarn tsc --noEmit` pass.
 - Manual setup: run `server/src/migrations/002_pin_reset_otps.sql`; dev PIN-reset OTP logs to server console as `[pin-reset] OTP for …`.
+
+### Session 2026-07-06 (pluggable reader/verifier refactor)
+
+- Generalized ETDA-specific config into extension registries: `readerProfiles.ts`, `companionTransport/` plugins (`etda-companion-v1` reference), `presentationTokenBuilders/` for OID4VP `vp_token` assembly.
+- Renamed sharing mode `etda-dual-format` → `dual-format`; `etdaReaderProfiles.ts` is now a deprecated re-export shim; CBOR moved to `companionTransport/plugins/etdaCompanionV1/`.
+- Design spec §16 documents the prototype extension model; removed non-ETDA ecosystems from out-of-scope.
+- Verification: focused Jest + `yarn tsc --noEmit`.
+
+### Session 2026-07-06 (dual-format software continuation)
+
+- OID4VP: `buildDualFormatDcqlVpToken` assembles per-query-id `vp_token` for DCQL requests with both `dc+sd-jwt` and `mso_mdoc`; mDOC entry reads stored bytes (interim until DeviceResponse builder).
+- ETDA companion: `companionTransport/plugins/etdaCompanionV1/`, `companionPresentation.ts` (KB-JWT with `aud=urn:etda:companion:nfc:v1`).
+- Native: `EtdaCompanionHostApduService` + APDU handler (GET CAPABILITIES / BEGIN COMPANION / chaining); JS bridge via `armProximitySession`, `onCompanionSignRequested`, `supplyCompanionPresentation`.
+- Verification: focused Jest + `yarn tsc --noEmit`.
+
+### Session 2026-07-06 (ETDA companion APDU spec)
+
+- Authored [`docs/superpowers/specs/etda-nfc-companion-apdu.md`](./superpowers/specs/etda-nfc-companion-apdu.md): ETDA AID `A0000004544410100`, INS `CA/CB/C0/FF`, CBOR capabilities + BEGIN COMPANION with 32-byte nonce, SD-JWT+KB-JWT companion (`aud=urn:etda:companion:nfc:v1`), ACR1311U-N2 host sequence.
+- Added `src/config/etdaCompanionApdu.ts` (pinned constants + tests). Parent HCE spec §8 now links companion doc.
+- `proximityArmSession` dual-format gate updated to require companion payload size estimate (no longer blocked on missing spec doc).
+
+
+- Implemented spec-backed dual-format foundation: `LogicalCredential` linking layer (`logicalCredentialStorage`, grouping, consistency), `claimDualFormatCredential` / `claimCredentialWithDualFormatSupport`, `mso_mdoc` OID4VCI response path in `exchangeService`, config (`dualFormatPolicy`, `readerProfiles`), proximity consent-first UX (`PreTapConsentPanel`, `proximityStore`, `proximityArmSession`), OID4VP dual-format readiness check (`dualFormatPresentationMatch`).
+- `armProximityPresentation` derives `companionPayloadBytes` from stored SD-JWT at arm time (`companionPayloadSize.ts`). Native HCE/session crypto unchanged (ADR 0006 / stub module).
+- Verification: focused Jest suites pass; `yarn tsc --noEmit` pass.
+
+### Session 2026-07-06 (HCE dual-format spec review + approval)
+
+- Reviewed `docs/superpowers/specs/2026-07-06-android-hce-dual-format-presentation-design-review.md` (Composer 2.5) against the spec, ADR 0003/0006, the 2026-06-23 proximity spec, and current code; confirmed major findings, rejected 2 (companion-spec restatement, state merge).
+- Spec `2026-07-03-android-hce-dual-format-presentation-design.md` revised to rev 4 and marked **Approved (design-level)**: added Relationship To Prior Specs (HCE APDU supersedes BLE data leg; 2026-06-23 spec header amended), Pre-Tap Request Resolution (fixed ETDA reader profile in config, consent = ceiling), Migration From Current Model (linking layer over `VerifiableCredentialRecord` + `mdocStorage`; UI/renewal/sync stay SD-JWT-keyed in v1), same-Ed25519-seed device key decision, Multipaz as leading candidate per ADR 0006, issuer configuration grouping rule, subset test-matrix case, v1 consent-screen identity fallback.
+- **Remaining blockers before NFC dual-format on device:** (1) native HCE APDU stack + ETDA companion handler; (2) EdDSA device-authentication interop pass on ACR1311U-N2 (gates Ed25519 vs P-256 fallback in spec §5).
+- Follow-up backlog from review pass (rev 4):
+  - [x] ETDA companion APDU spec pinned: [`etda-nfc-companion-apdu.md`](./superpowers/specs/etda-nfc-companion-apdu.md) + `src/config/etdaCompanionApdu.ts`
+  - [x] Dual-format issuance slice: `mso_mdoc` claim in `exchangeService`, `LogicalCredential` linking layer, consistency validation, `claimDualFormatCredential` / `claimCredentialWithDualFormatSupport`
+  - [x] Proximity refactor to consent-first arm flow per spec §8–9 (`present.tsx` / `proximityStore`), reader profiles in `src/config/readerProfiles.ts`, policy env vars in `.env.example`
+  - [x] OID4VP dual-format `vp_token` assembly (`dualFormatVpToken.ts`, `mdocVpTokenEntry.ts`, `presentationTokenBuilders/`)
+  - [x] ETDA companion CBOR + KB-JWT builder (`companionTransport/plugins/etdaCompanionV1/`, `companionPresentation.ts`)
+  - [x] Native ETDA `HostApduService` skeleton + JS arm/companion bridge (`EtdaCompanionHostApduService.kt`, `armProximitySession`, `supplyCompanionPresentation`)
+  - [ ] After physical reader: EdDSA interop pass first (gates Ed25519 vs P-256), then follow-up ADR selecting the mDOC native module
+  - [ ] Full ISO 18013-5 mDOC session crypto + online DeviceResponse builder (native module pending ADR 0006)
+
+### Session 2026-07-08 (User Journey gap sprint — slices 1–4)
+
+- **Slice 1:** ADR 0009 (`docs/adr/0009-wallet-level-holder-signing-key.md`) — single wallet Ed25519 key accepted for v1; per-document key destruction deferred.
+- **Slice 2:** OID4VP same-device deeplink — `openid4vp` in `app.json`; `isPresentationRequestDeeplink`, `readPendingPresentationRoute`, `vpGeneration` in `deeplinkStore`; Scan dismiss/remount parity; tests pass.
+- **Slice 3:** P6 Case 3 Used — `CredentialLifecycleAction` `'Used'` through `recordCredentialLifecycleAction`; `credential-used` history kind; inactive badge; dev `POST /wallet-api/dev/wallet/mark-used`.
+- **Slice 4:** P6 Case 1 dev holder revoke — `POST /wallet-api/dev/issuer/holder-revoke`, `holderRevokeService`, credential detail `revokeSubmitting` phase; local revoke only after Issuer `201`; credential record retained (no key destruction). v1: no PoP — PIN flow unchanged.
+- Verification: `yarn test` on touched suites pass; root `yarn tsc --noEmit` still reports pre-existing `server/src/config.test.ts` `NODE_ENV` read-only assignment (unchanged by this sprint).

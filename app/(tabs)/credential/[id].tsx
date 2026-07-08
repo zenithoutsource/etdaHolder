@@ -6,7 +6,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppButton } from "../../../src/components/AppButton";
 import { useAppDialog } from "../../../src/components/AppDialog";
-import { ProximityPresentButton } from "../../../src/components/proximity/ProximityPresentButton";
 import { CredentialDocumentDetailCard } from "../../../src/components/CredentialDocumentDetailCard";
 import { CredentialActionMenu } from "../../../src/components/CredentialActionMenu";
 import { PinEntrySurface } from "../../../src/components/PinEntrySurface";
@@ -32,6 +31,7 @@ import {
   refreshAndCompleteRenewals,
   submitRenewalRequest,
 } from "../../../src/services/credentials/credentialRenewalService";
+import { submitHolderRevokeRequest } from "../../../src/services/credentials/holderRevokeService";
 import { canSubmitCredentialRenewal } from "../../../src/services/credentials/credentialGuard";
 import { isCredentialExpiringSoon } from "../../../src/services/credentials/credentialDocumentExpiry";
 import {
@@ -43,6 +43,7 @@ import {
   shouldShowRenewedActiveBadge,
 } from "../../../src/services/credentials/credentialRenewalPresentation";
 import { logWalletError } from "../../../src/services/debug/walletLogger";
+import { isStaleDocumentExpiryNotification } from "../../../src/services/notifications/notificationDocumentExpiryRoute";
 import { resolveRenewalReadyReplacementRoute } from "../../../src/services/notifications/notificationRenewalRoute";
 import { readCredentialDetailDisplay, readCredentialHolderProfile } from "../../../src/services/credentials/credentialDisplay";
 import { shouldResetCredentialDetailSession } from "../../../src/services/credentials/credentialDetailSession";
@@ -52,12 +53,20 @@ import {
 } from "../../../src/services/credentials/issuerSuspension";
 import { hasWalletPin, setWalletPin, verifyWalletPin } from "../../../src/services/auth/walletPin";
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
+import { isProximityPresentationSupported } from "../../../src/services/proximity/proximityPresentation";
+import { hasStoredMdoc } from "../../../src/services/proximity/mdocStorage";
 import { readCompactTokenSignature } from "../../../src/services/vp/presentationEvidence";
+import { VpQrModal } from "../../../src/components/VpQrModal";
+import { isCredentialPresentable } from "../../../src/services/credentials/credentialLifecycle";
+import { isSdJwtCredential } from "../../../src/services/vp/walletInitiatedPresentation";
+
+import { THEME } from '../../../src/config/themeColors'
 
 type DetailPhase =
   | { tag: "detail" }
   | { tag: "issuerAck" }
   | { tag: "renewalProcessing" }
+  | { tag: "revokeSubmitting" }
   | { tag: "security"; action: CredentialLifecycleAction; mode: "setup" | "confirm" | "verify"; initialPin?: string }
   | { tag: "approve"; action: CredentialLifecycleAction }
 
@@ -71,8 +80,28 @@ export default function CredentialDetailScreen() {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [renewalRefreshTick, setRenewalRefreshTick] = useState(0);
+  const [vpQrVisible, setVpQrVisible] = useState(false);
   const previousCredentialIdRef = useRef<string | undefined>(id);
+  const staleExpiryDialogShownRef = useRef(false);
   const credential = credentials.find((record) => record.id === id);
+  const [hasMdoc, setHasMdoc] = useState(false);
+
+  useEffect(() => {
+    if (!credential) {
+      setHasMdoc(false);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const stored = await hasStoredMdoc(credential.id);
+      if (!cancelled) setHasMdoc(stored);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [credential]);
   const display = credential
     ? readCredentialDetailDisplay(credential)
     : undefined;
@@ -114,7 +143,10 @@ export default function CredentialDetailScreen() {
   const renewalBadgeLabel = showRenewedActiveBadge
     ? readWalletHomeBadgeLabel("active")
     : undefined;
-  const hideCredentialActionMenu = shouldHideCredentialActionMenu(renewalStatus);
+  const hideCredentialActionMenu = shouldHideCredentialActionMenu(renewalStatus, {
+    inactiveState,
+    renewalState: showRenewedActiveBadge ? "renewed-active" : undefined,
+  });
   const canRequestRenewal = credential
     ? canSubmitCredentialRenewal(credential.id, credentials, renewalStatuses)
     : false;
@@ -130,6 +162,10 @@ export default function CredentialDetailScreen() {
     credential !== undefined &&
     isCredentialExpiringSoon(credential);
   const showRenewalCleanupCta = isRenewalAwaitingHolderCleanup(renewalStatus);
+  const showVpQrButton =
+    credential !== undefined &&
+    isSdJwtCredential(credential) &&
+    isCredentialPresentable(credential);
 
   useEffect(() => {
     if (hideCredentialActionMenu) {
@@ -149,6 +185,20 @@ export default function CredentialDetailScreen() {
       router.replace(replacementRoute);
     }
   }, [id, notificationEvent, renewalStatus?.replacementCredentialId, router]);
+
+  useEffect(() => {
+    if (!credential || staleExpiryDialogShownRef.current) return;
+    if (!isStaleDocumentExpiryNotification({ notificationEvent, credential })) {
+      return;
+    }
+
+    staleExpiryDialogShownRef.current = true;
+    showDialog({
+      title: WALLET_HOME_COPY.staleExpiryNotificationTitle,
+      message: WALLET_HOME_COPY.staleExpiryNotificationMessage,
+      actions: [{ label: WALLET_HOME_COPY.acknowledge, variant: "secondary" }],
+    });
+  }, [credential, notificationEvent, showDialog]);
 
   const resetDetailSession = useCallback(() => {
     setPhase({ tag: "detail" });
@@ -240,6 +290,7 @@ export default function CredentialDetailScreen() {
     }
 
     previousCredentialIdRef.current = id;
+    staleExpiryDialogShownRef.current = false;
     resetDetailSession();
   }, [id, resetDetailSession]);
 
@@ -316,19 +367,51 @@ export default function CredentialDetailScreen() {
     setPinError("Fingerprint approval is not available in this build.");
   }
 
-  function approveAction(action: CredentialLifecycleAction) {
+  async function approveAction(action: CredentialLifecycleAction) {
     if (!credential) return;
+    if (action === "Revoke") {
+      setPhase({ tag: "revokeSubmitting" });
+      try {
+        await submitHolderRevokeRequest(credential.id);
+        recordCredentialLifecycleAction(credential.id, action);
+        router.push("/(tabs)/history");
+      } catch (error) {
+        logWalletError("credential-detail", "holder-revoke-failed", error, {
+          credentialId: credential.id,
+        });
+        setPhase({ tag: "detail" });
+        showDialog({
+          title: "Unable to revoke document",
+          message: "The issuer could not confirm this revoke request. Please try again.",
+        });
+      }
+      return;
+    }
     recordCredentialLifecycleAction(credential.id, action);
     router.push("/(tabs)/history");
+  }
+
+  if (phase.tag === "revokeSubmitting") {
+    return (
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
+        <WalletHeader title="ระงับเอกสาร" onBack={() => setPhase({ tag: "detail" })} />
+        <View className="flex-1 items-center justify-center bg-surface px-6">
+          <ActivityIndicator size="large" color={THEME.navy} />
+          <Text className="mt-4 text-center text-sm text-slate">
+            กำลังส่งคำขอระงับเอกสารไปยังผู้ออกเอกสาร
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (phase.tag === "renewalProcessing") {
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
         <WalletHeader title="ขอเอกสารใหม่" onBack={() => setPhase({ tag: "detail" })} />
-        <View className="flex-1 items-center justify-center bg-[#eef1f4] px-6">
-          <ActivityIndicator size="large" color="#002887" />
-          <Text className="mt-4 text-center text-sm text-[#6d7a8d]">
+        <View className="flex-1 items-center justify-center bg-surface px-6">
+          <ActivityIndicator size="large" color={THEME.navy} />
+          <Text className="mt-4 text-center text-sm text-slate">
             กำลังส่งคำขอต่ออายุเอกสารไปยังผู้ออกเอกสาร
           </Text>
         </View>
@@ -340,19 +423,19 @@ export default function CredentialDetailScreen() {
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
         <WalletHeader title="การระงับเอกสาร" onBack={() => setPhase({ tag: "detail" })} />
-        <View className="flex-1 items-center bg-[#eef1f4] px-5 pt-10">
+        <View className="flex-1 items-center bg-surface px-5 pt-10">
           <View className="w-full rounded-[12px] bg-white px-5 py-8">
             <View className="mb-4 items-center">
-              <MaterialCommunityIcons name="alert-circle-outline" size={56} color="#c00000" />
+              <MaterialCommunityIcons name="alert-circle-outline" size={56} color={THEME.danger} />
             </View>
-            <Text className="text-center text-lg font-bold text-[#1a2a42]">
+            <Text className="text-center text-lg font-bold text-ink">
               เอกสารถูกระงับ
             </Text>
-            <Text className="mt-2 text-center text-sm text-[#6d7a8d]">
+            <Text className="mt-2 text-center text-sm text-slate">
               เอกสาร {display.documentTitle} ถูกระงับโดยผู้ออกเอกสาร
             </Text>
             {suspensionStatus?.reasonCode ? (
-              <Text className="mt-1 text-center text-xs text-[#8a9bb0]">
+              <Text className="mt-1 text-center text-xs text-blue-gray">
                 เหตุผล: {suspensionStatus.reasonCode}
               </Text>
             ) : null}
@@ -392,7 +475,7 @@ export default function CredentialDetailScreen() {
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
         <WalletHeader title="Security Access" onBack={() => setPhase({ tag: "detail" })} />
-        <View className="flex-1 items-center bg-[#eef1f4] px-5 pt-8">
+        <View className="flex-1 items-center bg-surface px-5 pt-8">
           <PinEntrySurface
             title={titleByMode}
             subtitle={messageByMode}
@@ -402,7 +485,7 @@ export default function CredentialDetailScreen() {
             onBackspace={() => setPin((value) => value.slice(0, -1))}
             onFingerprint={handleFingerprintBypass}
           />
-          <Text className="mt-8 text-xs text-[#8a9bb0]">ลืมรหัสผ่าน?</Text>
+          <Text className="mt-8 text-xs text-blue-gray">ลืมรหัสผ่าน?</Text>
         </View>
       </SafeAreaView>
     );
@@ -416,7 +499,7 @@ export default function CredentialDetailScreen() {
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
         <WalletHeader onBack={() => setPhase({ tag: "detail" })} />
-        <View className="flex-1 bg-[#eef1f4]">
+        <View className="flex-1 bg-surface">
           <ScrollView className="flex-1" contentContainerClassName="px-4 pb-8 pt-4">
             <CredentialDocumentDetailCard
               display={display}
@@ -443,7 +526,7 @@ export default function CredentialDetailScreen() {
                 variant="solid-block"
                 label="Not approve"
                 onPress={() => setPhase({ tag: "detail" })}
-                className="flex-1 border-0 bg-[#b00000] py-3"
+                className="flex-1 border-0 bg-danger-dark py-3"
                 textClassName="text-center text-sm font-bold"
               />
             </View>
@@ -457,7 +540,7 @@ export default function CredentialDetailScreen() {
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
       <WalletHeader onBack={() => router.back()} />
 
-      <View className="flex-1 bg-[#eef1f4]">
+      <View className="flex-1 bg-surface">
         <ScrollView
           className="flex-1"
           contentContainerClassName="px-4 pb-8 pt-6"
@@ -474,17 +557,27 @@ export default function CredentialDetailScreen() {
                 onOpenQr={
                   isRenewalBlocked ? undefined : () => router.push("/(tabs)/qr")
                 }
+                onPresentViaNfc={
+                  !isRenewalBlocked && credential && hasMdoc && isProximityPresentationSupported()
+                    ? () => {
+                        router.push({
+                          pathname: "/(tabs)/present",
+                          params: { credentialId: credential.id },
+                        });
+                      }
+                    : undefined
+                }
               />
               {showExpiringSoonBanner ? (
-                <View className="mt-4 rounded-xl bg-[#fff7ed] px-4 py-3">
-                  <Text className="text-center text-sm text-[#9a3412]">
+                <View className="mt-4 rounded-xl bg-amber-tint px-4 py-3">
+                  <Text className="text-center text-sm text-amber800">
                     {WALLET_HOME_COPY.documentExpiringSoonMessage}
                   </Text>
                 </View>
               ) : null}
               {inactiveState.kind !== "active" ? (
-                <View className="mt-4 rounded-xl bg-[#f3f4f6] px-4 py-3">
-                  <Text className="text-center text-sm text-[#4b5563]">
+                <View className="mt-4 rounded-xl bg-gray100 px-4 py-3">
+                  <Text className="text-center text-sm text-gray600">
                     {inactiveState.panelMessage}
                   </Text>
                 </View>
@@ -513,27 +606,27 @@ export default function CredentialDetailScreen() {
                   />
                 </View>
               ) : null}
+              {showVpQrButton ? (
+                <View className="mt-4">
+                  <AppButton
+                    variant="outline-block"
+                    label="แสดง QR สำหรับ Verifier"
+                    onPress={() => setVpQrVisible(true)}
+                    className="w-full rounded-xl py-3"
+                    textClassName="text-center text-sm font-bold"
+                  />
+                </View>
+              ) : null}
               {showRenewalCleanupCta ? (
                 <View className="mt-4">
                   <AppButton
                     variant="solid-block"
                     label={WALLET_HOME_COPY.renewalCleanupCta}
                     onPress={showOldCredentialCleanupDialog}
-                    className="w-full rounded-xl bg-[#b00000] py-3"
+                    className="w-full rounded-xl bg-danger-dark py-3"
                     textClassName="text-center text-sm font-bold"
                   />
                 </View>
-              ) : null}
-              {!isRenewalBlocked ? (
-                <ProximityPresentButton
-                  onPress={() => {
-                    if (!credential) return;
-                    router.push({
-                      pathname: "/(tabs)/present",
-                      params: { credentialId: credential.id },
-                    });
-                  }}
-                />
               ) : null}
               {!hideCredentialActionMenu ? (
                 <View className="absolute right-3 top-3 z-30">
@@ -541,7 +634,7 @@ export default function CredentialDetailScreen() {
                     variant="icon-circle"
                     iconName="dots-vertical"
                     iconSize={22}
-                    iconColor="#002887"
+                    iconColor={THEME.navy}
                     className="h-9 w-9 bg-white"
                     onPress={() => setIsActionMenuOpen((value) => !value)}
                     accessibilityLabel="Open credential actions"
@@ -569,6 +662,13 @@ export default function CredentialDetailScreen() {
           )}
         </ScrollView>
       </View>
+      {credential && showVpQrButton ? (
+        <VpQrModal
+          visible={vpQrVisible}
+          credential={credential}
+          onClose={() => setVpQrVisible(false)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

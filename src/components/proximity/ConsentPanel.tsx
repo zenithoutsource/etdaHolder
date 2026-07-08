@@ -23,10 +23,10 @@ export function ConsentPanel({
 
   return (
     <View className="rounded-[12px] bg-white px-5 py-6">
-      <Text className="text-center text-lg font-semibold text-[#1a2a42]">
+      <Text className="text-center text-lg font-semibold text-ink">
         Share credential data?
       </Text>
-      <Text className="mt-2 text-center text-sm text-[#6d7a8d]">
+      <Text className="mt-2 text-center text-sm text-slate">
         The reader requested the fields below
       </Text>
 
@@ -56,8 +56,8 @@ export function ConsentPanel({
           label="Deny"
           onPress={onDeny}
           disabled={isSubmitting}
-          className="flex-1 border-[#d0d7e2] py-3"
-          textClassName="text-center text-sm font-semibold text-[#1a2a42]"
+          className="flex-1 border-slate200 py-3"
+          textClassName="text-center text-sm font-semibold text-ink"
         />
       </View>
     </View>

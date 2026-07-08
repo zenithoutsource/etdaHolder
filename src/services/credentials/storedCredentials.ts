@@ -1,5 +1,6 @@
 import { getCredentialStorage as getDefaultCredentialStorage } from '../storage/storage'
 import { logWalletStep } from '../debug/walletLogger'
+import { cancelDocumentExpiryNotifications } from '../notifications/documentExpiryNotificationService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 const CREDENTIAL_INDEX_KEY = 'credential:index'
@@ -30,6 +31,21 @@ export function notifyCredentialsChanged(): void {
   }
 }
 
+export function readStoredCredentialById(
+  credentialId: string,
+  getCredentialStorage: () => CredentialStorageReader = getDefaultCredentialStorage,
+): VerifiableCredentialRecord | undefined {
+  const storage = getCredentialStorage()
+  const raw = storage.getString(`${CREDENTIAL_KEY_PREFIX}${credentialId}`)
+  if (!raw) return undefined
+
+  try {
+    return JSON.parse(raw) as VerifiableCredentialRecord
+  } catch {
+    return undefined
+  }
+}
+
 export function readStoredCredentials(
   getCredentialStorage: () => CredentialStorageReader = getDefaultCredentialStorage,
 ): VerifiableCredentialRecord[] {
@@ -54,9 +70,7 @@ export function removeStoredCredential(
   logWalletStep('credentials', 'remove-stored-credential-start', { credentialId, foundInIndex, indexSize: ids.length })
   storage.set?.(CREDENTIAL_INDEX_KEY, JSON.stringify(ids.filter((id) => id !== credentialId)))
   storage.remove?.(`${CREDENTIAL_KEY_PREFIX}${credentialId}`)
-  void import('../notifications/documentExpiryNotificationService').then(
-    ({ cancelDocumentExpiryNotifications }) => cancelDocumentExpiryNotifications(credentialId),
-  )
+  cancelDocumentExpiryNotifications(credentialId)
   notifyCredentialsChanged()
   logWalletStep('credentials', 'remove-stored-credential-complete', { credentialId, listenerCount: credentialsChangeListeners.size })
 }

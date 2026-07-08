@@ -11,13 +11,14 @@ import '../global.css';
 import '@/src/styles/nativewindInterop';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useColorScheme } from '@/src/hooks/use-color-scheme';
 import { AppDialogProvider } from '@/src/components/AppDialog';
 import { StoragePinMigrationStep } from '@/src/components/auth/StoragePinMigrationStep';
 import { ForgotPinFlow } from '@/src/components/auth/ForgotPinFlow';
 import { StartupStoragePinUnlock } from '@/src/components/StartupStoragePinUnlock';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
 import { hasWalletPin, setWalletPin } from '@/src/services/auth/walletPin';
+import { isWalletPinSessionActive } from '@/src/services/auth/walletPinSession';
 import { readStartupRoute, readWalletAccessRedirect } from '@/src/services/auth/walletPinNavigation';
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger';
 import {
@@ -33,12 +34,14 @@ import {
 } from '@/src/services/startup/startupState';
 import { useAuthStore } from '@/src/store/authStore';
 import {
-  isCredentialOfferDeeplink,
   isSupportedWalletDeeplink,
   readPendingCredentialOfferRoute,
+  readPendingPresentationRoute,
   useDeeplinkStore,
 } from '@/src/store/deeplinkStore';
 import { useNotificationRouteStore } from '@/src/store/notificationRouteStore';
+
+import { THEME } from '../src/config/themeColors'
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -71,6 +74,7 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const segments = useSegments();
   const [startupState, setStartupState] = useState<RootStartupState>({ status: 'loading' });
+  const [isResumePinCheckPending, setIsResumePinCheckPending] = useState(false);
   const loadSession = useAuthStore((s) => s.loadSession);
   const logout = useAuthStore((s) => s.logout);
   const setPinVerified = useAuthStore((s) => s.setPinVerified);
@@ -266,6 +270,9 @@ export default function RootLayout() {
       if (!isCurrentRun()) return;
 
       logWalletStep('startup', 'storage-init-complete');
+      const { ensureWalletHistoryBackfill } = await import('@/src/services/history/walletEventLog');
+      ensureWalletHistoryBackfill();
+      logWalletStep('startup', 'wallet-history-backfill-complete');
       await generateWalletKeyIfNeeded();
       if (!isCurrentRun()) return;
       logWalletStep('startup', 'wallet-key-ready');
@@ -363,13 +370,33 @@ export default function RootLayout() {
     if (startupState.status !== 'ready' || Platform.OS === 'web') return;
 
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') return;
-
       const authState = useAuthStore.getState();
-      if (!authState.isAuthenticated || !hasWalletPin() || !authState.isPinVerified) return;
+      if (!authState.isAuthenticated || !hasWalletPin()) {
+        if (nextState === 'active') setIsResumePinCheckPending(false);
+        return;
+      }
 
-      authState.setPinVerified(false);
-      logWalletStep('wallet-unlock', 'session-locked', { appState: nextState });
+      if (nextState !== 'active') {
+        setIsResumePinCheckPending(true);
+        return;
+      }
+
+      try {
+        if (isWalletPinSessionActive()) {
+          if (!authState.isPinVerified) {
+            authState.setPinVerified(true);
+            logWalletStep('wallet-unlock', 'session-restored');
+          }
+          return;
+        }
+
+        if (authState.isPinVerified) {
+          authState.setPinVerified(false);
+          logWalletStep('wallet-unlock', 'session-expired');
+        }
+      } finally {
+        setIsResumePinCheckPending(false);
+      }
     });
 
     return () => subscription.remove();
@@ -413,9 +440,14 @@ export default function RootLayout() {
       hasWalletPin: pinExists,
     });
     if (pendingRoute) { router.push(pendingRoute); return; }
-    if (!isCredentialOfferDeeplink(url) && isAuthenticatedRef.current && pinExists) {
-      router.push('/(tabs)/scan');
-    }
+    const presentationRoute = readPendingPresentationRoute({
+      pendingUri: url,
+      dismissedUri: dismissed,
+      isAuthenticated: isAuthenticatedRef.current,
+      platform: Platform.OS,
+      hasWalletPin: pinExists,
+    })
+    if (presentationRoute) { router.push(presentationRoute); return; }
   }, [router, setPendingDeeplinkUri]);
 
   useEffect(() => {
@@ -495,13 +527,13 @@ export default function RootLayout() {
           <View className="absolute inset-0 flex-1 items-center justify-center gap-3 bg-white p-6">
             {startupState.status === 'loading' ? (
               <>
-                <ActivityIndicator color="#002887" />
-                <Text className="text-sm text-[#6b7280]">Starting wallet...</Text>
+                <ActivityIndicator color={THEME.navy} />
+                <Text className="text-sm text-gray500">Starting wallet...</Text>
               </>
             ) : (
               <>
                 <Text className="text-center text-lg font-semibold">Wallet startup failed</Text>
-                <Text className="text-center text-[#6b7280]">{startupState.message}</Text>
+                <Text className="text-center text-gray500">{startupState.message}</Text>
               </>
             )}
           </View>
@@ -517,6 +549,7 @@ export default function RootLayout() {
     currentSegment,
     platform: Platform.OS,
     hasWalletPin: walletPinExists,
+    isResumePinCheckPending,
   });
 
   if (accessRedirect && __DEV__) {
@@ -541,9 +574,8 @@ export default function RootLayout() {
           <Stack.Screen name="forgot-pin" options={{ headerShown: false }} />
           <Stack.Screen name="pin-setup" options={{ headerShown: false }} />
           <Stack.Screen name="pin-lock" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
         </Stack>
-        <StatusBar style={isTabRoute ? 'light' : 'dark'} backgroundColor={isTabRoute ? '#002887' : '#f4f6fa'} />
+        <StatusBar style={isTabRoute ? 'light' : 'dark'} backgroundColor={isTabRoute ? THEME.navy : THEME.surfaceSoft} />
       </AppDialogProvider>
     </ThemeProvider>
   );

@@ -4,6 +4,10 @@ Must Respond in English Only!
 
 This is a production-ready playbook defining strict architectural rules, security gates, coding styles, and roadmap tracking for the OID4VCI 1.0 Mobile Wallet.
 
+## Target Hardware
+
+This project targets Samsung Galaxy A26 devices paired with the ACR1311U-N2 Secure Bluetooth NFC Reader USB. NFC reader/writer work must account for the external Bluetooth reader path, which is intended to make Android smartphone/tablet connectivity straightforward, and must be physically validated on that device/reader pairing before production behavior is treated as supported.
+
 ---
 
 ## HANDOFF STATE
@@ -100,6 +104,14 @@ When planning any new system, feature, or integration:
 3. **Name the tradeoffs explicitly** — if recommending a simpler path, state what production capability is deferred and the trigger for when it must be addressed.
 4. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before writing implementation steps.
 
+## Master Branch Hygiene
+
+`master` may contain product documentation that is part of the durable project record: architecture/security/API docs, ADRs, `docs/TASKS.md`, user journeys, approved or active specs under `docs/superpowers/specs/`, implementation plans that explain committed or actively planned work under `docs/superpowers/plans/`, and UI references under `docs/ui-reference/`.
+
+Do not add these to `master`: local AI/tool settings, personal scratch notes, temporary prompts, review scratch output, `.superpowers/`, `.cursor/`, `.claude/*.local.json`, Office lock files such as `~$*.xlsx`, logs, caches, generated build output, secrets, env files, key material, abandoned duplicate generated docs, or one-off HTML/Markdown exports that are not intentionally approved as stakeholder-facing reference.
+
+Before staging docs, verify that each file is either referenced by `docs/TASKS.md`, an ADR, an active spec/plan, implementation code, or an explicit user request. If it is only session scratch, keep it ignored or outside the repo.
+
 ## Core Principles
 
 Decoupled Architecture - Separate the public OID4VCI 1.0 protocol layer from internal wallet state storage.
@@ -143,6 +155,10 @@ The app claims credentials directly from Issuers. The company backend authentica
 - One biometric prompt per user action: a single user-initiated action (approve a presentation, claim a credential, rotate a key) must trigger exactly one authentication event. If the action requires a cryptographic sign call, that sign-time Keychain gate is the only prompt — do not add a separate app-level biometric/consent check in front of it for the same action. Only add a second, independent prompt when the action does no signing at all (so the sign-time gate never fires) and still needs its own auth.
 - NFC Presentation: ISO 18013-5 proximity channel; native mdoc module not yet selected.
 - Online Presentation: OID4VP 1.0 first slice is implemented. Production uses Keychain-protected Ed25519 EdDSA for SD-JWT KB-JWT.
+
+## Configurable Time/Duration Values
+
+Any constant that expresses a duration, TTL, or timing window for a system-wide policy (key rotation TTLs, expiry-warning windows, session grace periods, polling intervals, etc.) must be adjustable without a code change: read it from `process.env.EXPO_PUBLIC_<NAME>`, falling back to the current hardcoded value as the default (`Number(process.env.EXPO_PUBLIC_...) || <default>`). Document the new var in `.env.example` with a comment stating its unit, default, and effect. Existing examples: `EXPO_PUBLIC_WALLET_KEY_DEV_TTL_MS` / `EXPO_PUBLIC_WALLET_KEY_PROD_TTL_DAYS` (`src/config/walletKeyPolicy.ts`), `EXPO_PUBLIC_DOCUMENT_EXPIRY_WARNING_WINDOW_DAYS` (`src/config/documentExpiryPolicy.ts`), `EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`. Use whichever unit (ms vs days) is natural for how the value is tuned — short/testing values as ms, long-lived policy windows as days — matching the existing pattern rather than forcing everything to one unit.
 
 ## Coding Style
 

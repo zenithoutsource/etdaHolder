@@ -5,6 +5,8 @@ import {
   type CredentialRenewalState,
 } from './credentialKeyRenewal'
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
+import { readCredentialLifecycleStatus } from './credentialLifecycle'
+import { readIssuerSuspension } from './issuerSuspension'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 const PID_CREDENTIAL_TYPE = 'ThaiNationalID'
@@ -45,6 +47,12 @@ export function isPidCredentialOffer(offer: ResolvedOfferLike): boolean {
   })
 }
 
+function isCredentialWithdrawnFromUse(credentialId: string): boolean {
+  const lifecycle = readCredentialLifecycleStatus(credentialId)
+  if (lifecycle?.status === 'revoked' || lifecycle?.status === 'deleted') return true
+  return Boolean(readIssuerSuspension(credentialId))
+}
+
 export function hasUsablePidCredential(
   credentials: VerifiableCredentialRecord[],
   renewalStatuses?: Record<string, CredentialRenewalRecord>,
@@ -52,10 +60,11 @@ export function hasUsablePidCredential(
   return credentials.some((credential) => {
     if (credential.type !== PID_CREDENTIAL_TYPE) return false
     if (isCredentialDocumentExpired(credential)) return false
+    if (isCredentialWithdrawnFromUse(credential.id)) return false
 
     const state = readRenewalState(credential.id, renewalStatuses)
     if (!state) return true
-    return state === 'renewed-active'
+    return state === 'renewed-active' || state === 'cleanup-pending'
   })
 }
 
@@ -157,6 +166,7 @@ export function canRequestCredentialType(
 
     return credentials.some((credential) => {
       if (credential.type !== PID_CREDENTIAL_TYPE) return false
+      if (isCredentialWithdrawnFromUse(credential.id)) return true
 
       const state = readRenewalState(credential.id, statuses)
       return state === 'renewal-required' || isCredentialDocumentExpired(credential)

@@ -24,7 +24,7 @@ export function StartupStoragePinUnlock({
 
   return (
     <PinUnlockPrompt
-      className="absolute inset-0 flex-1 items-center justify-center bg-[#eef1f4] px-5"
+      className="absolute inset-0 flex-1 items-center justify-center bg-surface px-5"
       title={copy.title}
       subtitle={copy.subtitle}
       error={error}

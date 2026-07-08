@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications'
 
 import { WALLET_HOME_COPY } from '@/src/services/credentials/walletHomeCopy'
+import { readCredentialDocumentExpiresAt } from '@/src/services/credentials/credentialDocumentExpiresAt'
 import {
   isCredentialDocumentExpired,
   isCredentialExpiringSoon,
@@ -141,12 +142,14 @@ export async function scheduleDocumentExpiryNotifications(
   now = Date.now(),
 ): Promise<void> {
   for (const credential of credentials) {
-    if (!credential.expiresAt) continue
+    if (!readCredentialDocumentExpiresAt(credential)) continue
 
     if (isCredentialDocumentExpired(credential, new Date(now))) {
       await cancelScheduledNotification(credential.id, 'document-expiring-soon')
       continue
     }
+
+    await cancelScheduledNotification(credential.id, 'document-expired')
 
     const msUntilSoon = readMsUntilExpiringSoonWindow(credential, now)
     if (

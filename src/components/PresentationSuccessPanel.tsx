@@ -7,6 +7,8 @@ import {
   type PresentationDisclosureListItem,
 } from './PresentationDisclosureList'
 
+import { THEME } from '../config/themeColors'
+
 type PresentationSuccessPanelProps = {
   title: string
   message: string
@@ -33,13 +35,13 @@ export function PresentationSuccessPanel({
         <MaterialCommunityIcons
           name={fullScreen ? 'check' : 'check-circle'}
           size={fullScreen ? 72 : 56}
-          color={fullScreen ? '#ffffff' : '#0f8f4b'}
+          color={fullScreen ? THEME.white : THEME.successDark}
         />
       </View>
-      <Text className={`${fullScreen ? 'mt-7 text-[18px] font-extrabold leading-6 text-black' : 'mt-4 text-lg font-semibold text-[#1a2a42]'} text-center`}>
+      <Text className={`${fullScreen ? 'mt-7 text-[18px] font-extrabold leading-6 text-black' : 'mt-4 text-lg font-semibold text-ink'} text-center`}>
         {title}
       </Text>
-      <Text className={`${fullScreen ? 'mt-4 mb-4 text-[14px] leading-5 text-[#364152]' : 'mt-2 text-sm text-[#6d7a8d]'} text-center`}>
+      <Text className={`${fullScreen ? 'mt-4 mb-4 text-[14px] leading-5 text-slate750' : 'mt-2 text-sm text-slate'} text-center`}>
         {message}
       </Text>
 

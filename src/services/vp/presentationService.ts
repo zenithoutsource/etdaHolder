@@ -8,6 +8,8 @@ import {
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { base64UrlDecodeToString, decodeJwtPayload, isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { assertDualFormatPresentationReady, isDualFormatDcqlRequest, isSdJwtSideCompatibleWithDualFormatRequest } from './dualFormatPresentationMatch'
+import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 
 type JsonRecord = Record<string, unknown>
 
@@ -106,6 +108,7 @@ type PresentationTokenModeOptions =
     sdJwtKbDisabledForTesting?: boolean
   }
 
+
 const SUPPORTED_RESPONSE_MODE = 'direct_post'
 const THAI_ID_TYPE = 'ThaiNationalID'
 const TRANSCRIPT_TYPE = 'BangkokUniversityTranscript'
@@ -189,6 +192,10 @@ export async function resolvePresentationRequest(
       throw new Error('PresentationCredentialFormatUnsupported: stored credential format does not match the Verifier request')
     }
     throw new Error('PresentationCredentialMissing: requested credential is not available')
+  }
+
+  if (dcqlQuery && isDualFormatDcqlRequest(dcqlQuery)) {
+    await assertDualFormatPresentationReady(matchedCredential)
   }
 
   const dcqlClaimDisclosures = dcqlQuery ? readDcqlClaimDisclosures(matchedCredential, dcqlQuery) : undefined
@@ -335,6 +342,7 @@ export async function submitPresentationResponse(
 
 function formatVpTokenForResponse(request: ResolvedPresentationRequest, vpToken: string): string {
   if (!request.dcqlQuery) return vpToken
+  if (isPreformattedDualFormatVpToken(request, vpToken)) return vpToken
 
   const shape = readVerifierDcqlVpTokenShape()
   if (shape === 'raw') return vpToken
@@ -648,6 +656,10 @@ function isCredentialCompatibleWithRequest(
   if (request.presentationDefinition) return true
   if (!request.dcqlQuery) return false
 
+  if (isDualFormatDcqlRequest(request.dcqlQuery)) {
+    return isSdJwtSideCompatibleWithDualFormatRequest(record, request.dcqlQuery)
+  }
+
   return request.dcqlQuery.credentials.every((credential) =>
     isCredentialCompatibleWithDcqlFormat(record, credential.format) &&
     isCredentialCompatibleWithDcqlMetadata(record, credential),
@@ -660,6 +672,10 @@ function isCredentialCompatibleWithRequestFormatOnly(
 ): boolean {
   if (request.presentationDefinition) return true
   if (!request.dcqlQuery) return false
+
+  if (isDualFormatDcqlRequest(request.dcqlQuery)) {
+    return isSdJwtSideCompatibleWithDualFormatRequest(record, request.dcqlQuery)
+  }
 
   return request.dcqlQuery.credentials.every((credential) => isCredentialCompatibleWithDcqlFormat(record, credential.format))
 }

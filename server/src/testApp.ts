@@ -7,6 +7,7 @@ import { authRouter } from './routes/auth'
 import { credentialsRouter } from './routes/credentials'
 import { devIssuerProxyRouter, devVerifierProxyRouter } from './routes/devIssuerProxy'
 import { devWalletRouter } from './routes/devWallet'
+import { vpSessionRouter } from './routes/vpSession'
 import { pushTokensRouter } from './routes/pushTokens'
 import { walletsRouter } from './routes/wallets'
 
@@ -96,6 +97,8 @@ export function createTestApp(): express.Express {
   const app = express()
 
   app.use(createCorsMiddleware())
+
+  app.use('/dev', express.json({ limit: '1mb' }), vpSessionRouter)
 
   if (process.env.ENABLE_DEV_ISSUER_PROXY === 'true') {
     app.use('/dev-issuer-proxy', devIssuerProxyRouter)

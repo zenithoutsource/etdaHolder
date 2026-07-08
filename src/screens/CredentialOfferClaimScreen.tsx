@@ -16,7 +16,11 @@ import { WalletHeader } from '../components/WalletHeader'
 
 
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
-import { isPidCredentialOffer, readPidGateStatus } from '../services/credentials/credentialGuard'
+import {
+  canRequestCredentialType,
+  isPidCredentialOffer,
+  readPidGateStatus,
+} from '../services/credentials/credentialGuard'
 import { readCredentialRenewalStatuses } from '../services/credentials/credentialKeyRenewal'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import {
@@ -41,6 +45,8 @@ import {
 import { readCredentialPreviewDisplay } from '../services/vci/qrIssuanceFlow'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
 import { normalizeNumericCode } from '../utils/normalizeNumericCode'
+
+import { THEME } from '../config/themeColors'
 
 type ClaimPhase =
   | { tag: 'initializing' }
@@ -188,25 +194,29 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         }
         return
       }
-      if (isPidOffer && pidGateStatus === 'ready') {
-        if (generationRef.current === gen) {
-          setPhase({
-            tag: 'error',
-            message: WALLET_HOME_COPY.thaIdAlreadyActiveMessage,
-          })
-        }
-        return
-      }
-      if (isPidOffer && pidGateStatus === 'renewal-required') {
-        if (generationRef.current === gen) {
-          setPhase({
-            tag: 'error',
-            message: WALLET_HOME_COPY.renewThaIdRequiredMessage,
-          })
-        }
-        return
-      }
       if (isPidOffer) {
+        if (pidGateStatus === 'ready') {
+          if (generationRef.current === gen) {
+            setPhase({
+              tag: 'error',
+              message: WALLET_HOME_COPY.thaIdAlreadyActiveMessage,
+            })
+          }
+          return
+        }
+
+        if (
+          !canRequestCredentialType('ThaiNationalID', latestCredentials, renewalStatuses)
+        ) {
+          if (generationRef.current === gen) {
+            setPhase({
+              tag: 'error',
+              message: WALLET_HOME_COPY.renewThaIdRequiredMessage,
+            })
+          }
+          return
+        }
+
         logWalletStep('deeplink', 'offer-pid-flow', describeOfferForLog(offer))
         if (generationRef.current === gen) setPhase({ tag: 'thaIdVerify', offer })
         return
@@ -343,12 +353,12 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
         <WalletHeader onBack={resetToWalletHome} />
-        <View className="flex-1 bg-[#eef1f4] px-4 pt-6">
+        <View className="flex-1 bg-surface px-4 pt-6">
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
             <View
               className="overflow-hidden rounded-lg bg-white"
-              style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12 }}>
-              <View className="bg-[#123b8c] px-5 py-3">
+              style={{ elevation: 4, shadowColor: THEME.navyShadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12 }}>
+              <View className="bg-navy-royal px-5 py-3">
                 <Text className="text-[13px] font-extrabold text-white">{preview.documentTitle}</Text>
               </View>
               <View className="px-7 pb-6 pt-7">
@@ -356,15 +366,15 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
                   <Image source={credentialImages[preview.imageKey]} style={{ width: 92, height: 104 }} resizeMode="contain" />
                 </View>
                 <View className="mt-5">
-                  <Text className="text-[16px] font-extrabold leading-[22px] text-[#071f5f]">Information to receive</Text>
+                  <Text className="text-[16px] font-extrabold leading-[22px] text-navy-deep">Information to receive</Text>
                   {preview.rows.map((row) => (
-                    <View key={row.key} className="border-b border-[#e5e7eb] py-3">
-                      <Text className="text-[12px] leading-4 text-[#9aa1ad]">{row.label}</Text>
-                      <Text className="text-[13px] font-bold leading-5 text-[#071f5f]">{row.value}</Text>
+                    <View key={row.key} className="border-b border-gray200 py-3">
+                      <Text className="text-[12px] leading-4 text-gray-cool">{row.label}</Text>
+                      <Text className="text-[13px] font-bold leading-5 text-navy-deep">{row.value}</Text>
                     </View>
                   ))}
                 </View>
-                <AppButton variant="solid-block" label="ยอมรับ" onPress={() => handleSave(phase.record)} className="mt-4 h-9 w-28 self-start !bg-[#18a05d]" textClassName="text-[14px]" />
+                <AppButton variant="solid-block" label="ยอมรับ" onPress={() => handleSave(phase.record)} className="mt-4 h-9 w-28 self-start !bg-success" textClassName="text-[14px]" />
               </View>
             </View>
           </ScrollView>
@@ -400,10 +410,10 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
         <WalletHeader onBack={resetToWalletHome} />
-        <View className="flex-1 bg-[#eef1f4] px-4 pt-6">
+        <View className="flex-1 bg-surface px-4 pt-6">
           <View className="rounded-lg bg-white p-6">
-            <Text className="text-[16px] font-extrabold text-[#071f5f]">Transaction code</Text>
-            <Text className="mt-1 text-xs text-[#6d7a8d]">
+            <Text className="text-[16px] font-extrabold text-navy-deep">Transaction code</Text>
+            <Text className="mt-1 text-xs text-slate">
               {useCodeBoxes
                 ? 'Tap the boxes to enter or paste the code from your email'
                 : 'Enter the code from your email'}
@@ -426,8 +436,8 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
                 autoComplete={isNumericTxCode ? 'one-time-code' : 'off'}
                 maxLength={txCodeMaxLength}
                 placeholder="Enter transaction code"
-                placeholderTextColor="#9aa1ad"
-                className="mt-3 min-h-[44px] rounded-lg border border-[#d1d5db] px-3 text-[15px] font-semibold text-[#071f5f]"
+                placeholderTextColor={THEME.grayCool}
+                className="mt-3 min-h-[44px] rounded-lg border border-gray300 px-3 text-[15px] font-semibold text-navy-deep"
               />
             )}
             <AppButton
@@ -435,7 +445,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
               label="Continue"
               disabled={!canContinue}
               onPress={() => handleTxCodeSubmit(phase.offer)}
-              className={`mt-4 h-9 w-28 !bg-[#18a05d] ${!canContinue ? 'opacity-45' : ''}`}
+              className={`mt-4 h-9 w-28 !bg-success ${!canContinue ? 'opacity-45' : ''}`}
               textClassName="text-[14px]"
             />
           </View>
@@ -464,7 +474,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
   if (phase.tag === 'error') {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-[#f4f6fa] p-6">
+      <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
         <Text className="mb-5 text-center text-[14px] text-red-600">{phase.message}</Text>
         <AppButton variant="solid-block" label="Back to Wallet" onPress={resetToWalletHome} className="rounded-xl px-[18px] py-[14px]" textClassName="text-[15px] font-semibold" />
       </SafeAreaView>
@@ -483,10 +493,10 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
       <WalletHeader onBack={resetToWalletHome} />
-      <View className="flex-1 items-center justify-center bg-[#f4f6fa] p-6">
-        <ActivityIndicator color="#002887" />
-        <Text className="mt-3 text-center text-[15px] font-semibold text-[#071f5f]">{loadingLabel}</Text>
-        <Text className="mt-2 text-center text-[13px] text-[#6b7280]">Loading...</Text>
+      <View className="flex-1 items-center justify-center bg-surface-soft p-6">
+        <ActivityIndicator color={THEME.navy} />
+        <Text className="mt-3 text-center text-[15px] font-semibold text-navy-deep">{loadingLabel}</Text>
+        <Text className="mt-2 text-center text-[13px] text-gray500">Loading...</Text>
       </View>
     </SafeAreaView>
   )

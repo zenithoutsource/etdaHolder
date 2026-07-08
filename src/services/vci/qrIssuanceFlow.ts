@@ -1,4 +1,8 @@
 import {
+  claimCredentialWithDualFormatSupport,
+  isDualFormatOffer,
+} from '../credentials/dualFormatIssuance'
+import {
   claimCredential as defaultClaimCredential,
   type ClaimCredentialOptions,
   type ResolvedCredentialOffer,
@@ -41,13 +45,14 @@ type ClaimConfirmedOfferOptions = {
 
 export function readOfferConfirmationPreview(offer: ResolvedCredentialOffer): OfferConfirmationPreview {
   const configuration = offer.credentialConfigurations[0]
+  const dualFormat = isDualFormatOffer(offer.credentialConfigurations)
   const credentialName = configuration?.display?.name ?? readFriendlyCredentialName(configuration?.id)
   const informationItems = readInformationItems(configuration?.rawConfiguration)
 
   return {
     issuerName: offer.issuerDisplay?.name ?? 'Unknown Issuer',
     credentialName,
-    format: configuration?.format ?? 'Unknown format',
+    format: dualFormat ? 'dc+sd-jwt + mso_mdoc' : (configuration?.format ?? 'Unknown format'),
     informationItems: informationItems.length > 0 ? informationItems : [{ key: 'credential', label: 'Credential to receive' }],
   }
 }
@@ -57,6 +62,11 @@ export async function claimConfirmedOffer(
   options: ClaimConfirmedOfferOptions = {},
 ): Promise<VerifiableCredentialRecord> {
   const { claimCredential = defaultClaimCredential, tx_code } = options
+  if (isDualFormatOffer(offer.credentialConfigurations)) {
+    const result = await claimCredentialWithDualFormatSupport(offer, { tx_code })
+    return result
+  }
+
   return claimCredential(offer, { tx_code })
 }
 

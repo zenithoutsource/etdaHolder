@@ -1,0 +1,951 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>สรุป Android HCE Dual-Format Presentation</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5a6578;
+      --line: #d8dde8;
+      --panel: #ffffff;
+      --soft: #f5f7fb;
+      --blue: #155eef;
+      --green: #12715b;
+      --amber: #9a5b00;
+      --red: #b42318;
+      --violet: #6941c6;
+      --shadow: 0 14px 30px rgba(23, 32, 51, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #eef2f8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", Arial, sans-serif;
+      line-height: 1.65;
+    }
+
+    header {
+      color: #fff;
+      background: linear-gradient(135deg, #102a56 0%, #155eef 58%, #12715b 100%);
+      padding: 48px 20px 36px;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px 20px 56px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+    }
+
+    h1 {
+      max-width: 960px;
+      font-size: clamp(2rem, 5vw, 4.4rem);
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 16px;
+      font-size: clamp(1.35rem, 2.6vw, 2rem);
+    }
+
+    h3 {
+      margin-bottom: 8px;
+      font-size: 1.05rem;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    ul,
+    ol {
+      margin: 0;
+      padding-left: 1.3rem;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: #e9edf5;
+      color: #23304a;
+      font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .term {
+      all: unset;
+      position: relative;
+      display: inline-block !important;
+      width: auto !important;
+      height: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      color: inherit !important;
+      font: inherit !important;
+      line-height: inherit !important;
+      border-bottom: 0 !important;
+      cursor: help;
+      outline: none;
+      white-space: nowrap;
+      text-decoration-line: underline;
+      text-decoration-style: dotted;
+      text-decoration-color: rgba(21, 94, 239, 0.72);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    .term::after {
+      content: "ⓘ";
+      display: inline-block;
+      margin-left: 2px;
+      color: #155eef;
+      font-size: 0.66em;
+      font-weight: 700;
+      line-height: 1;
+      text-decoration: none;
+      transform: translateY(-0.45em);
+    }
+
+    .term-tooltip {
+      position: fixed;
+      z-index: 20;
+      top: var(--tooltip-top, 0);
+      left: var(--tooltip-left, 50%);
+      width: min(280px, calc(100vw - 32px));
+      padding: 10px 12px;
+      border: 1px solid #bfd1ff;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 12px 26px rgba(23, 32, 51, 0.18);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", Arial, sans-serif;
+      font-size: 0.9rem;
+      font-weight: 500;
+      line-height: 1.45;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, calc(-100% - 10px));
+      transition: opacity 140ms ease, transform 140ms ease;
+      white-space: normal;
+    }
+
+    .term:hover .term-tooltip,
+    .term:focus .term-tooltip,
+    .term:focus-within .term-tooltip,
+    .term.is-open .term-tooltip {
+      opacity: 1;
+      transform: translate(-50%, calc(-100% - 6px));
+    }
+
+    .term-tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      width: 10px;
+      height: 10px;
+      border-right: 1px solid #bfd1ff;
+      border-bottom: 1px solid #bfd1ff;
+      background: #ffffff;
+      transform: translate(-50%, -5px) rotate(45deg);
+    }
+
+    .hero-copy {
+      max-width: 860px;
+      margin-top: 18px;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 1.08rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 22px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 5px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.34);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 650;
+    }
+
+    .section {
+      margin-top: 22px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      min-height: 100%;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--soft);
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--ink);
+      font-size: 1.02rem;
+    }
+
+    .card p {
+      color: var(--muted);
+    }
+
+    .callout {
+      margin: 16px 0 0;
+      padding: 16px 18px;
+      border-left: 5px solid var(--blue);
+      border-radius: 10px;
+      background: #eef4ff;
+    }
+
+    .callout.warning {
+      border-left-color: var(--amber);
+      background: #fff7e6;
+    }
+
+    .callout.danger {
+      border-left-color: var(--red);
+      background: #fff1f0;
+    }
+
+    .callout.success {
+      border-left-color: var(--green);
+      background: #eaf8f3;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .step {
+      position: relative;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .step > span {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      margin-bottom: 10px;
+      border-radius: 50%;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 750;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .state {
+      display: grid;
+      grid-template-columns: minmax(130px, 210px) 1fr;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .state code {
+      align-self: start;
+      background: #f1f4fb;
+      color: var(--violet);
+      font-weight: 700;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .check {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .check b {
+      color: var(--green);
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+
+    .diagram {
+      overflow-x: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .lane {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-width: 620px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .lane h3 {
+      padding: 12px;
+      background: #eaf0ff;
+      text-align: center;
+    }
+
+    .lane .box {
+      margin: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--soft);
+      text-align: center;
+      font-weight: 650;
+    }
+
+    .arrow {
+      color: var(--muted);
+      text-align: center;
+      font-size: 1.2rem;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .tag {
+      display: inline-flex;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #edf2ff;
+      color: #223b7b;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .tag.green {
+      background: #e5f7ef;
+      color: #095c4a;
+    }
+
+    .tag.amber {
+      background: #fff2d6;
+      color: #7a4300;
+    }
+
+    .tag.red {
+      background: #ffe4e2;
+      color: #9b1c12;
+    }
+
+    footer {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 20px 34px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 720px) {
+      header {
+        padding-top: 34px;
+      }
+
+      main {
+        padding: 16px 12px 40px;
+      }
+
+      .section {
+        padding: 18px;
+      }
+
+      .state {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="meta">
+      <span class="pill">Approved rev 4</span>
+      <span class="pill">Android HCE</span>
+      <span class="pill">ETDA dual-format</span>
+      <span class="pill">อัปเดต 2026-07-06</span>
+    </div>
+    <h1>อธิบายแบบเห็นภาพ: Android HCE Dual-Format Presentation</h1>
+    <p class="hero-copy">
+      หน้านี้สรุปสเปก <code>android-hce-dual-format-presentation-design.md</code> rev 4 เป็นภาษาไทย
+      เพื่อให้เข้าใจภาพรวมของ ETDA dual-format credential: <code>dc+sd-jwt</code> สำหรับ JSON/SD-JWT VC
+      และ <code>mso_mdoc</code> สำหรับ ISO 18013-5 mDOC. Offline NFC ใช้ full ISO 18013-5 NFC retrieval ผ่าน Android HCE,
+      ไม่ใช้ BLE data leg บนมือถือ
+    </p>
+  </header>
+
+  <main>
+    <section class="section">
+      <h2>สิ่งที่เปลี่ยนจากสเปกเดิม</h2>
+      <div class="grid">
+        <article class="card">
+          <strong>เลิก BLE data leg บนมือถือ</strong>
+          <p>สเปกเดิมใช้ NFC device engagement แล้วส่งข้อมูลผ่าน BLE. Rev 4 เปลี่ยนเป็น ISO 7816-4 APDUs ผ่าน Android HCE เต็มรูปแบบ</p>
+        </article>
+        <article class="card">
+          <strong>ACR1311U-N2 ยังใช้ Bluetooth</strong>
+          <p>Bluetooth เป็นลิงก์ระหว่าง reader กับ host ของ reader เท่านั้น Wallet มองเห็นเป็น NFC/HCE ไม่ต้องเปิด BLE server ในมือถือ</p>
+        </article>
+        <article class="card">
+          <strong>โทรศัพท์ไม่ล็อกยี่ห้อ</strong>
+          <p>ข้อกำหนดคือ Android 10+ ที่รองรับ NFC และ HCE. เครื่องจริงที่มีอยู่คู่กับ ACR1311U-N2 เป็น acceptance target แรก</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>ภาพรวมในหนึ่งหน้า</h2>
+      <div class="grid">
+        <article class="card">
+          <strong>Wallet เก็บ 2 รูปแบบ</strong>
+          <p>เอกสารเดียวกันจะมี credential สอง format แยกกัน คือ SD-JWT VC และ mDOC แต่ผูกเป็นเอกสารเดียวด้วย <code>logicalCredentialId</code></p>
+        </article>
+        <article class="card">
+          <strong>Online ใช้ OpenID4VP</strong>
+          <p>Verifier สามารถขอทั้ง <code>mso_mdoc</code> และ <code>dc+sd-jwt</code> ใน transaction เดียว Wallet ต้องส่งทั้งคู่ถ้าถูกขอแบบ required</p>
+        </article>
+        <article class="card">
+          <strong>Offline NFC ใช้ Android HCE</strong>
+          <p>การแตะเครื่องอ่านใช้ full ISO 18013-5 NFC data retrieval: SELECT AID, ENVELOPE chaining, GET RESPONSE และ encrypted SessionData ผ่าน Android HCE</p>
+        </article>
+        <article class="card">
+          <strong>ยืนยันก่อนแตะ</strong>
+          <p>ผู้ใช้ต้องเห็น disclosure set จาก fixed ETDA reader profile แล้วกดอนุญาตก่อนเปิด HCE. ถ้า reader ขอเกินที่อนุญาต Wallet ต้องปฏิเสธ</p>
+        </article>
+      </div>
+      <div class="callout warning">
+        <strong>จุดสำคัญ:</strong> JSON companion ต้องเป็น SD-JWT VC presentation ที่มี KB-JWT ผูกกับ nonce จาก reader ห้ามส่งเป็น JSON ธรรมดาที่ตรวจสอบลายเซ็นไม่ได้ และต้องอยู่ใต้ ETDA proprietary AID แยกจาก mDOC AID
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>ขอบเขตมาตรฐาน</h2>
+      <div class="split">
+        <div class="card">
+          <h3>สิ่งที่เป็นมาตรฐาน</h3>
+          <ul>
+            <li>OID4VCI 1.0 สำหรับออก credential</li>
+            <li>OpenID4VP 1.0 สำหรับ online presentation</li>
+            <li>ISO 18013-5 DeviceResponse สำหรับ mDOC offline NFC</li>
+            <li>APDU ผ่าน Android HCE สำหรับ proximity exchange</li>
+            <li>ISO 7816-4 SELECT AID / ENVELOPE / GET RESPONSE สำหรับ NFC retrieval</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>สิ่งที่เป็น ETDA extension</h3>
+          <ul>
+            <li>JSON companion payload ใน reader session เดียวกัน</li>
+            <li>ETDA proprietary AID แยกจาก mDOC AID</li>
+            <li>คำสั่ง APDU เฉพาะของ ETDA เช่น capabilities และ nonce request</li>
+            <li>โหมด dual-format ที่ reader ต้อง negotiate ชัดเจน</li>
+            <li>fixed ETDA reader profile สำหรับ pre-tap consent ใน v1</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">
+        Generic ISO 18013-5 reader ต้องยังอ่าน mDOC ได้ตามปกติ แม้ไม่รู้จัก ETDA JSON companion เลย. Reader ที่ไม่เลือก ETDA AID จะได้ mDOC-only behavior
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>การออก Credential แบบ Dual-Format</h2>
+      <p>
+        Issuer ควรเสนอ credential configuration สองตัวสำหรับเอกสารเดียวกัน เช่น
+        <code>TranscriptCredential_dc+sd-jwt</code> และ <code>TranscriptCredential_mso_mdoc</code>
+        Wallet ต้องยิง Credential Endpoint แยกกัน เพราะต่าง format ถือเป็น credential request คนละรายการ.
+        QR หรือ <code>credential_offer_uri</code> ไม่มี holder claims จริง เช่น ชื่อหรือข้อมูล transcript; Issuer resolve claims จาก server-side state
+      </p>
+      <div class="flow">
+        <div class="step"><span>1</span><strong>Resolve offer</strong><br>อ่าน QR หรือ credential offer URI</div>
+        <div class="step"><span>2</span><strong>Fetch metadata</strong><br>ดึงข้อมูล Issuer และ configuration</div>
+        <div class="step"><span>3</span><strong>Group configs</strong><br>จับคู่ family suffix <code>_dc+sd-jwt</code> / <code>_mso_mdoc</code> หรือใช้ explicit grouping field</div>
+        <div class="step"><span>4</span><strong>Token exchange</strong><br>แลก pre-authorized code เป็น access token</div>
+        <div class="step"><span>5</span><strong>Request both</strong><br>ขอ <code>dc+sd-jwt</code> และ <code>mso_mdoc</code> แยก request</div>
+        <div class="step"><span>6</span><strong>Link and validate</strong><br>ผูกด้วย <code>logicalCredentialId</code> แล้วตรวจ consistency</div>
+      </div>
+      <div class="callout success">
+        การ claim dual-format เป็น user action เดียว จึงต้องมี biometric/device-auth ไม่เกินหนึ่งครั้ง แม้จะต้อง sign proof สองครั้ง. ถ้า format หนึ่ง fail ให้แสดง partial issuance และ retry เฉพาะเมื่อ token ยัง valid
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Data Model ที่ควรจำ</h2>
+      <div class="diagram">
+        <div class="lane">
+          <div>
+            <h3>Logical Credential</h3>
+            <div class="box">logicalCredentialId</div>
+            <div class="arrow">ผูกเอกสารเดียวกัน</div>
+            <div class="box">documentType / issuer / subjectId / documentId</div>
+          </div>
+          <div>
+            <h3>Physical Format Records</h3>
+            <div class="box">dc+sd-jwt record</div>
+            <div class="arrow">+</div>
+            <div class="box">mso_mdoc record</div>
+          </div>
+        </div>
+      </div>
+      <div class="grid" style="margin-top: 14px;">
+        <article class="card">
+          <strong>ใช้ key อะไรผูกกัน</strong>
+          <p>ดีที่สุดคือ Issuer ส่ง stable logical ID เดียวกันในทั้งสอง format ถ้าไม่มี ให้ derive จาก issuer, document type, subject ID และ document ID</p>
+        </article>
+        <article class="card">
+          <strong>ห้ามใช้ full claim hash</strong>
+          <p>เพราะ SD-JWT selective disclosure, mDOC namespace, encoding และชื่อ claim อาจต่างกัน ทำให้ hash ไม่เสถียร</p>
+        </article>
+        <article class="card">
+          <strong>สถานะ consistency</strong>
+          <p><code>verified</code>, <code>warning</code>, หรือ <code>mismatch</code> เพื่อบอกว่า credential สองรูปแบบอ้างถึงเอกสารเดียวกันได้มั่นใจแค่ไหน</p>
+        </article>
+        <article class="card">
+          <strong>Migration v1</strong>
+          <p><code>LogicalCredential</code> เป็น linking layer ทับ <code>VerifiableCredentialRecord</code> เดิม. Home, expiry, renewal, lifecycle และ backend sync ยัง key off SD-JWT record id</p>
+        </article>
+        <article class="card">
+          <strong>Renewal v1 ยัง SD-JWT-only</strong>
+          <p>การ renew mDOC และ paired-refresh policy เป็น slice ถัดไป ตอนนี้ renewal ใช้ flow เดิมของ SD-JWT credential</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Online Presentation: OpenID4VP</h2>
+      <p>
+        ถ้า DCQL request ขอทั้ง <code>mso_mdoc</code> และ <code>dc+sd-jwt</code>
+        Wallet ต้อง match credential ที่มี format ครบและใช้ <code>logicalCredentialId</code> เดียวกัน
+      </p>
+      <div class="flow">
+        <div class="step"><span>1</span><strong>Resolve request</strong><br>อ่าน Verifier request</div>
+        <div class="step"><span>2</span><strong>Match formats</strong><br>หาเอกสารที่มี format ตามที่ขอ</div>
+        <div class="step"><span>3</span><strong>One consent screen</strong><br>แสดง mDOC fields และ JSON fields รวมในหน้าขออนุญาตเดียว</div>
+        <div class="step"><span>4</span><strong>Sign and submit</strong><br>ส่งทั้งสอง presentation ใน <code>vp_token</code></div>
+      </div>
+      <div class="callout danger">
+        ถ้า Verifier ระบุว่าทั้งสอง format เป็น required แต่ Wallet มีไม่ครบ ต้อง fail request ห้ามส่งแค่ format ที่มีแบบเงียบๆ
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Holder Binding และ Key Decision</h2>
+      <div class="grid">
+        <article class="card">
+          <strong>ใช้ EdDSA/Ed25519 เป็นค่าเริ่มต้น</strong>
+          <p>mDOC device key ใช้ Keychain-protected Ed25519 seed เดียวกับ Holder identity key เพื่อให้ SD-JWT และ mDOC มี key lifecycle เดียวกัน</p>
+        </article>
+        <article class="card">
+          <strong>ต้องผ่าน interop ก่อน production</strong>
+          <p>Issuer และ ACR1311U-N2 verifier stack ต้องยืนยันว่า Ed25519 <code>deviceSignature</code> ใน <code>DeviceResponse</code> ตรวจสอบได้จริง</p>
+        </article>
+        <article class="card">
+          <strong>Fallback ถ้า EdDSA ไม่ผ่าน</strong>
+          <p>ถ้า reader หรือ Issuer ไม่รับ EdDSA device authentication ให้เปลี่ยนเฉพาะ mDOC device key เป็น P-256 AndroidKeyStore และบันทึกใน <code>holderBindingRef</code></p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Offline NFC/HCE: ลำดับที่ถูกต้อง</h2>
+      <p>
+        NFC reader timeout เร็วมาก จึงไม่ควรให้ผู้ใช้อ่านรายละเอียดและกดอนุญาตระหว่าง APDU session
+        การออกแบบนี้กำหนดให้ consent เกิดก่อนแตะ reader โดย v1 ใช้ fixed ETDA reader profile เป็น disclosure set ที่ผู้ใช้เห็นก่อนแตะ
+      </p>
+      <div class="flow">
+        <div class="step"><span>1</span><strong>Review profile</strong><br>ผู้ใช้เปิด presentation screen ดู mDOC-only หรือ ETDA dual-format และ fixed profile field list</div>
+        <div class="step"><span>2</span><strong>Approve</strong><br>อนุญาตหนึ่งครั้ง และทำ signing/authentication ที่จำเป็น</div>
+        <div class="step"><span>3</span><strong>Arm HCE</strong><br>เปิด HCE ในกรอบเวลา เช่น 60 วินาที</div>
+        <div class="step"><span>4</span><strong>Tap reader</strong><br>reader เลือก mDOC AID แล้วส่ง SessionEstablishment</div>
+        <div class="step"><span>5</span><strong>Check request</strong><br>decrypt DeviceRequest แล้วตรวจว่าไม่เกิน approved profile</div>
+        <div class="step"><span>6</span><strong>Send payloads</strong><br>ส่ง encrypted DeviceResponse และถ้า reader เลือก ETDA AID จึงส่ง SD-JWT companion</div>
+      </div>
+      <div class="legend">
+        <span class="tag green">mDOC-only: จบหลัง DeviceResponse</span>
+        <span class="tag">ETDA dual-format: mDOC + SD-JWT companion</span>
+        <span class="tag red">unarmed tap: ไม่ตอบ AID และไม่แชร์ข้อมูล</span>
+      </div>
+      <div class="callout warning">
+        Approval เป็นเพดาน ไม่ใช่ขั้นต่ำ: ถ้า reader ขอ subset ของ profile ให้ส่งเฉพาะที่ขอได้ แต่ถ้าขอ field นอก profile ต้องคืน ISO 18013-5 error status และจบ session
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>ISO 18013-5 Session Layer</h2>
+      <div class="grid">
+        <article class="card">
+          <strong>Device engagement</strong>
+          <p>เริ่มจาก QR engagement หรือ NFC negotiated handover พร้อม ephemeral public key ของ Wallet (<code>EDeviceKey</code>)</p>
+        </article>
+        <article class="card">
+          <strong>Session establishment</strong>
+          <p>reader ส่ง <code>SessionEstablishment</code> พร้อม <code>EReaderKey</code> จากนั้นทั้งสองฝั่ง derive session keys ด้วย ECDH P-256 + HKDF</p>
+        </article>
+        <article class="card">
+          <strong>Encrypted SessionData</strong>
+          <p>request และ response หลังจากนั้นต้องเข้ารหัสทั้งหมด ไม่ส่ง DeviceRequest หรือ DeviceResponse แบบ plaintext</p>
+        </article>
+        <article class="card">
+          <strong>APDU transport</strong>
+          <p>ใช้ SELECT AID, ENVELOPE chaining และ GET RESPONSE ตาม ISO 7816-4 บน Android HCE</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>ETDA JSON Companion</h2>
+      <div class="split">
+        <div class="card">
+          <h3>วิธีส่ง</h3>
+          <ul>
+            <li>reader ต้อง select ETDA proprietary AID หลัง mDOC session</li>
+            <li>reader ต้องส่ง GET CAPABILITIES เพื่อ negotiate dual-format mode</li>
+            <li>payload ใช้ APDU chaining เช่นเดียวกับ mDOC</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>payload คืออะไร</h3>
+          <ul>
+            <li>SD-JWT VC presentation</li>
+            <li>selected disclosures เฉพาะที่อนุมัติ</li>
+            <li>KB-JWT ที่ bind กับ nonce จาก reader</li>
+            <li>ไม่ใช่ unsigned JSON และไม่ใช่ส่วนหนึ่งของ ISO 18013-5</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout warning">
+        ก่อน implement ต้องมี ETDA-extension spec ที่ pin CLA/INS, capability format และ nonce format ให้ชัดเจน. Companion ต้องไม่ alter mDOC exchange; reader ต้องเลือก ETDA AID หลัง ISO 18013-5 session จบ
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>HCE State Machine</h2>
+      <div class="timeline">
+        <div class="state"><code>idle</code><div>ยังไม่เริ่ม session</div></div>
+        <div class="state"><code>awaiting-consent</code><div>ผู้ใช้เปิดหน้าพresentation และกำลังตรวจ disclosure set</div></div>
+        <div class="state"><code>approved</code><div>ผู้ใช้อนุญาตแล้ว ทำ signing/authentication ที่จำเป็นในจุดนี้</div></div>
+        <div class="state"><code>hce-armed</code><div>เปิด HCE service พร้อม arm-window timer และข้อมูลที่อนุมัติไว้</div></div>
+        <div class="state"><code>reader-selected</code><div>reader เลือก Wallet mDOC AID</div></div>
+        <div class="state"><code>session-established</code><div>derive session keys และตรวจ session encryption สำเร็จ</div></div>
+        <div class="state"><code>request-received</code><div>ถอดรหัส DeviceRequest ตรวจว่าไม่เกิน disclosure set ที่อนุมัติ; subset ส่งได้, out-of-profile ต้อง error</div></div>
+        <div class="state"><code>transmitting-mdoc</code><div>สร้างและส่ง encrypted mDOC DeviceResponse</div></div>
+        <div class="state"><code>transmitting-json-companion</code><div>reader เลือก ETDA AID แล้วรับ SD-JWT companion</div></div>
+        <div class="state"><code>complete / cancelled / error</code><div>จบสำเร็จ ยกเลิก หรือเกิด protocol/reader/signing failure แล้วล้าง buffers</div></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Security และ Privacy Gates</h2>
+      <div class="grid">
+        <article class="card">
+          <strong>Screen-on required</strong>
+          <p>Android HCE service ต้องตั้ง <code>android:requireDeviceScreenOn="true"</code> และไม่ตอบเมื่อหน้าจอดับ</p>
+        </article>
+        <article class="card">
+          <strong>One-prompt rule</strong>
+          <p>หนึ่ง user action ต้องมี biometric/device-auth ไม่เกินหนึ่งครั้ง ถ้า signing gate ทำ auth แล้ว ห้ามซ้อน prompt แยก</p>
+        </article>
+        <article class="card">
+          <strong>Ed25519 holder/device key</strong>
+          <p>ใช้ EdDSA/Ed25519 seed เดียวกับ holder identity ปัจจุบัน แต่ต้อง validate กับ Issuer และ ACR1311U-N2 ก่อน; fallback คือ P-256 AndroidKeyStore เฉพาะ mDOC</p>
+        </article>
+        <article class="card">
+          <strong>Payload size cap</strong>
+          <p>ถ้ารวม mDOC และ companion ใหญ่เกิน <code>EXPO_PUBLIC_NFC_PAYLOAD_MAX_BYTES</code> ต้อง fail ก่อนแตะ ไม่ใช่ล้มกลาง transfer</p>
+        </article>
+      </div>
+      <div class="callout danger">
+        Logs ห้ามมี raw VC, VP, SD-JWT, mDOC CBOR, DeviceResponse, APDU payload, tokens, private keys, seeds, holder claims หรือ PII
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>ค่าที่ต้อง configurable</h2>
+      <div class="matrix">
+        <div class="check"><b>EXPO_PUBLIC_DUAL_FORMAT_ISSUE_SKEW_MS</b><br>default 300000 ms: ความต่าง issued-at สูงสุดระหว่างสอง format ก่อนขึ้น warning</div>
+        <div class="check"><b>EXPO_PUBLIC_HCE_ARM_WINDOW_MS</b><br>default 60000 ms: เวลาที่ HCE ถูก arm หลังผู้ใช้ approve</div>
+        <div class="check"><b>EXPO_PUBLIC_NFC_PAYLOAD_MAX_BYTES</b><br>default 65536 bytes: hard cap ของ payload ที่ส่งผ่าน NFC; target รวม mDOC + companion ไม่เกิน 32 KB</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Implementation Stack</h2>
+      <div class="grid">
+        <article class="card">
+          <strong>Native HCE service</strong>
+          <p>ต้องใช้ Kotlin <code>HostApduService</code> ผ่าน Expo config plugin/local module. ไม่มี pure-JS HCE ที่พอสำหรับ production</p>
+        </article>
+        <article class="card">
+          <strong>mDOC engine</strong>
+          <p>ควรใช้ audited library. Multipaz เป็น leading candidate แต่ยังไม่ final จนกว่าจะผ่าน physical-device interop และ ADR ถัดไป</p>
+        </article>
+        <article class="card">
+          <strong>JS ↔ native boundary</strong>
+          <p>JS ดูแล consent, credential selection, state display. Native ดูแล APDU, session crypto, buffers และ clear payload หลัง complete/cancel/error</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Acceptance Criteria แบบเข้าใจง่าย</h2>
+      <div class="matrix">
+        <div class="check"><b>Issuance</b><br>Wallet claim ได้ทั้ง SD-JWT VC และ mDOC จาก offer เดียว แล้วผูกเป็น logical credential เดียว</div>
+        <div class="check"><b>EdDSA interop</b><br>reader/verifier stack ตรวจ Ed25519 deviceSignature ใน DeviceResponse ได้จริงก่อน lock key decision</div>
+        <div class="check"><b>Consistency</b><br>Wallet ตรวจ mismatch/warning ได้ เช่น issuer, subject, document ID, issued-at หรือ expiry ไม่ตรงกัน</div>
+        <div class="check"><b>Online VP</b><br>OpenID4VP ส่งทั้งสอง format ใน <code>vp_token</code> ได้เมื่อ Verifier ขอ; current path ต้องเพิ่ม multi-format assembly</div>
+        <div class="check"><b>Offline HCE</b><br>ACR1311U-N2 ทำ full ISO 18013-5 session สำเร็จ: engagement, session encryption, encrypted DeviceResponse และ ETDA companion</div>
+        <div class="check"><b>Consent</b><br>ผู้ใช้เห็น consent screen เดียวก่อนแตะ และ unarmed tap ต้องไม่แชร์ข้อมูล</div>
+        <div class="check"><b>Failure safety</b><br>disconnect, timeout, screen off, over-size payload และ unsupported request ต้องไม่ทำให้แชร์ข้อมูลเงียบๆ</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>สิ่งที่ยังอยู่นอก scope</h2>
+      <ul>
+        <li>iOS HCE</li>
+        <li>Generic BLE verifier app ที่ไม่เกี่ยวกับ ACR1311U-N2</li>
+        <li>NFC NDEF issuance หรือ tag reading</li>
+        <li>ระบบ reader proprietary ที่ไม่ใช่ ETDA</li>
+        <li>การ redesign UI ราย claim ที่ไม่เกี่ยวกับ dual-format consent</li>
+        <li>Variable reader templates และ reader-engagement QR pre-tap request flow</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    สร้างจากสเปก: <code>docs/superpowers/specs/2026-07-03-android-hce-dual-format-presentation-design.md</code>
+    เพื่อใช้เป็นเอกสารช่วยทำความเข้าใจ ไม่ใช่ตัวแทนของสเปกต้นฉบับ
+  </footer>
+  <script>
+    const glossary = new Map([
+      ["ACR1311U-N2", "เครื่องอ่าน/เขียน NFC ภายนอกของ ACS รุ่นที่เชื่อมกับ Android ผ่าน Bluetooth ได้"],
+      ["access token", "โทเคนชั่วคราวที่ Wallet ใช้เรียก Issuer เพื่อขอรับ credential"],
+      ["AID", "รหัสแอปบนการ์ด/NFC ที่ reader ใช้เลือกว่าจะคุยกับบริการไหนในมือถือ"],
+      ["Android HCE", "ความสามารถของ Android ที่ให้มือถือจำลองตัวเองเป็นบัตร NFC เพื่อให้ reader แตะอ่านได้"],
+      ["APDU", "ข้อความคำสั่งสั้นๆ ที่ reader กับบัตรหรือ HCE ใช้คุยกันผ่าน NFC"],
+      ["APDUs", "ชุดข้อความคำสั่ง APDU หลายรายการที่ใช้รับส่งข้อมูลผ่าน NFC"],
+      ["Bluetooth", "การเชื่อมต่อไร้สายระยะใกล้ที่ใช้จับคู่มือถือกับเครื่องอ่าน ACR1311U-N2"],
+      ["CBOR", "รูปแบบเข้ารหัสข้อมูลแบบไบนารีที่ mDOC ใช้บ่อย ขนาดเล็กกว่า JSON"],
+      ["CLA/INS", "ช่องรหัสคำสั่งใน APDU ที่บอกประเภทและคำสั่งที่ reader ต้องการ"],
+      ["credential", "เอกสารรับรองดิจิทัล เช่น บัตรประชาชน ใบขับขี่ หรือ transcript"],
+      ["Credential Endpoint", "API ของ Issuer ที่ Wallet เรียกเพื่อรับ credential หลังได้ token แล้ว"],
+      ["credential offer URI", "ลิงก์หรือ QR ที่บอก Wallet ว่าจะไปรับ credential จาก Issuer ได้อย่างไร"],
+      ["DCQL", "ภาษาระบุเงื่อนไขว่า Verifier ต้องการ credential หรือข้อมูลช่องไหนบ้าง"],
+      ["Device engagement", "ขั้นแรกของ ISO 18013-5 ที่สองฝั่งแลกข้อมูลเริ่มต้นเพื่อเปิด session"],
+      ["DeviceRequest", "คำขอจาก reader ที่บอกว่าต้องการข้อมูล mDOC ช่องใด"],
+      ["DeviceResponse", "คำตอบ mDOC จาก Wallet ที่ส่งข้อมูลตามที่อนุญาตแล้วกลับไปให้ reader"],
+      ["deviceSignature", "ลายเซ็นใน mDOC ที่พิสูจน์ว่าเอกสารถูกนำเสนอโดย device key ที่ผูกกับ credential"],
+      ["disclosure set", "ชุดข้อมูลที่ผู้ใช้อนุญาตให้เปิดเผยในรอบ presentation นั้น"],
+      ["dual-format", "การเก็บหรือส่งเอกสารเดียวกันสองรูปแบบ คือ SD-JWT VC และ mDOC"],
+      ["ECDH", "วิธีแลกกุญแจลับร่วมกันโดยไม่ส่งกุญแจลับออกไปตรงๆ"],
+      ["Ed25519", "ชนิดกุญแจเข้ารหัสสำหรับลายเซ็นดิจิทัลที่โปรเจกต์นี้ใช้กับ Holder DID"],
+      ["EdDSA", "อัลกอริทึมลายเซ็นดิจิทัลที่ใช้กับกุญแจ Ed25519"],
+      ["encrypted", "เข้ารหัสแล้ว คนกลางอ่านข้อมูลจริงไม่ได้ถ้าไม่มีกุญแจ session"],
+      ["ephemeral key", "กุญแจชั่วคราวที่สร้างใช้เฉพาะ session เดียวแล้วทิ้ง"],
+      ["ETDA extension", "ส่วนเพิ่มเฉพาะ ETDA ที่อยู่นอกมาตรฐาน ISO หลัก"],
+      ["EDeviceKey", "กุญแจ session ชั่วคราวฝั่ง Wallet ที่ใช้เริ่ม ISO 18013-5 session"],
+      ["EReaderKey", "กุญแจ session ชั่วคราวฝั่ง reader ที่ใช้สร้าง session keys ร่วมกับ Wallet"],
+      ["EXPO_PUBLIC_DUAL_FORMAT_ISSUE_SKEW_MS", "ตัวแปรตั้งค่าความต่างเวลาออกเอกสารสอง format ได้สูงสุด ค่าเป็นมิลลิวินาที default 300000 ms"],
+      ["EXPO_PUBLIC_HCE_ARM_WINDOW_MS", "ตัวแปรตั้งเวลาว่า HCE เปิดรอแตะ reader ได้นานแค่ไหนหลังผู้ใช้กดอนุญาต ค่าเป็นมิลลิวินาที default 60000 ms"],
+      ["EXPO_PUBLIC_NFC_PAYLOAD_MAX_BYTES", "ตัวแปรกำหนดขนาดข้อมูล NFC สูงสุดที่ยอมส่ง ถ้าเกินต้องหยุดก่อนแตะ default 65536 bytes"],
+      ["fail request", "ปฏิเสธคำขอและไม่ส่งข้อมูล เพราะเงื่อนไขไม่ครบหรือไม่ปลอดภัย"],
+      ["format", "รูปแบบข้อมูลของ credential เช่น SD-JWT VC หรือ mDOC"],
+      ["HCE", "Host Card Emulation: ให้มือถือ Android ทำตัวเหมือนบัตร NFC ตอน reader แตะ"],
+      ["HostApduService", "Android native service ที่รับและตอบ APDU เมื่อมือถือทำงานเป็น HCE"],
+      ["HKDF", "วิธีแปลงความลับร่วมให้เป็นกุญแจ session สำหรับเข้ารหัสจริง"],
+      ["ISO 18013-5", "มาตรฐาน mobile driving licence/mDOC สำหรับการนำเสนอเอกสารผ่าน proximity เช่น NFC"],
+      ["Issuer", "หน่วยงานที่ออก credential ให้ Wallet เช่น กรมหรือมหาวิทยาลัย"],
+      ["JSON", "รูปแบบข้อมูลตัวหนังสือที่อ่านง่าย ใช้บ่อยใน API และ SD-JWT companion"],
+      ["KB-JWT", "JWT ยืนยันว่า Holder ถือกุญแจจริง และผูก presentation กับ nonce ของ reader"],
+      ["logicalCredentialId", "รหัสกลางที่ผูก credential สอง format ให้รู้ว่าเป็นเอกสารเดียวกัน"],
+      ["mDOC", "mobile Document ตาม ISO 18013-5 ใช้กับการนำเสนอแบบแตะหรือ proximity"],
+      ["Multipaz", "ไลบรารีจาก Google สำหรับ identity credential/mDOC ที่เป็น candidate แต่ยังต้อง validate ก่อนเลือกจริง"],
+      ["metadata", "ข้อมูลรายละเอียดของ Issuer หรือ credential configuration ที่ Wallet ต้องอ่านก่อนขอเอกสาร"],
+      ["mismatch", "สถานะที่ข้อมูลสอง format ไม่ตรงกันพอที่จะถือว่าเป็นเอกสารเดียวกันอย่างมั่นใจ"],
+      ["nonce", "เลขสุ่มใช้ครั้งเดียว ป้องกันการ replay presentation เก่า"],
+      ["NFC", "Near Field Communication: การสื่อสารระยะใกล้มาก ใช้แตะมือถือกับ reader"],
+      ["NDEF", "รูปแบบข้อมูลมาตรฐานสำหรับ NFC tag เช่น อ่านลิงก์จากแท็ก"],
+      ["OpenID4VP", "มาตรฐานให้ Wallet นำเสนอ credential ให้ Verifier ผ่านออนไลน์"],
+      ["OID4VCI", "มาตรฐานให้ Wallet ขอรับ credential จาก Issuer"],
+      ["payload", "ข้อมูลหลักที่ถูกส่งในข้อความหรือ request"],
+      ["PII", "ข้อมูลส่วนบุคคลที่ระบุตัวคนได้ เช่น ชื่อ เลขบัตร วันเกิด"],
+      ["plaintext", "ข้อมูลที่ยังไม่เข้ารหัส อ่านได้ตรงๆ"],
+      ["presentation", "การนำ credential ไปแสดงให้ Verifier หรือ reader ตรวจสอบ"],
+      ["proprietary", "รูปแบบเฉพาะของผู้กำหนดรายหนึ่ง ไม่ใช่มาตรฐานกลางทั่วไป"],
+      ["proximity exchange", "การแลกข้อมูลเมื่ออุปกรณ์อยู่ใกล้กันมาก เช่น แตะ NFC"],
+      ["QR engagement", "การเริ่ม session โดยให้ reader หรือ Wallet อ่าน QR ก่อน แล้วค่อยแลกกุญแจ"],
+      ["reader", "เครื่องอ่าน NFC หรือระบบ Verifier ที่ขอดู credential"],
+      ["required", "Verifier ระบุว่าต้องมีข้อมูลนี้ ถ้า Wallet ไม่มีครบต้องปฏิเสธ"],
+      ["SD-JWT", "JWT ที่เลือกเปิดเผยเฉพาะบาง claim ได้ โดยยังตรวจลายเซ็นได้"],
+      ["SD-JWT VC", "Verifiable Credential รูปแบบ SD-JWT ที่เลือกเปิดเผยข้อมูลบางส่วนได้"],
+      ["selective disclosure", "การเปิดเผยเฉพาะข้อมูลที่จำเป็น ไม่ส่ง claim ทั้งหมด"],
+      ["session", "รอบการสื่อสารหนึ่งครั้งระหว่าง Wallet กับ reader หรือ Verifier"],
+      ["SessionEstablishment", "ข้อความจาก reader ใน ISO 18013-5 ที่ใช้ตั้ง session และส่ง EReaderKey"],
+      ["SessionData", "ข้อมูล request/response ภายใน session ของ ISO 18013-5"],
+      ["sign proof", "ลงลายเซ็นพิสูจน์ว่า Wallet ถือกุญแจของ Holder จริง"],
+      ["signing", "การลงลายเซ็นดิจิทัลเพื่อให้ตรวจสอบแหล่งที่มาและความถูกต้องได้"],
+      ["token exchange", "ขั้นตอนแลก code เป็น access token"],
+      ["transaction", "รอบงานหนึ่งครั้ง เช่น คำขอ presentation หนึ่งครั้ง"],
+      ["Verifier", "ฝ่ายที่ขอตรวจ credential เช่น จุดบริการ เครื่องอ่าน หรือระบบออนไลน์"],
+      ["vp_token", "ค่าที่ Wallet ส่งกลับใน OpenID4VP โดยบรรจุ presentation ที่ Verifier ขอ"]
+    ]);
+
+    const sortedTerms = Array.from(glossary.keys()).sort((a, b) => b.length - a.length);
+    const termPattern = new RegExp(sortedTerms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+    const excludedTags = new Set(["SCRIPT", "STYLE", "TEXTAREA", "PRE", "H1", "H2", "H3"]);
+    const excludedSelector = ".term, .pill, .tag, .state code";
+
+    function attachTooltips(root) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue.trim() || !termPattern.test(node.nodeValue)) {
+            termPattern.lastIndex = 0;
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          termPattern.lastIndex = 0;
+          const parent = node.parentElement;
+          if (!parent || excludedTags.has(parent.tagName) || parent.closest(excludedSelector)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          if (parent.tagName === "CODE" && !glossary.has(node.nodeValue.trim())) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+
+      const nodes = [];
+      while (walker.nextNode()) {
+        nodes.push(walker.currentNode);
+      }
+
+      nodes.forEach((node) => {
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+        node.nodeValue.replace(termPattern, (match, index) => {
+          if (index > lastIndex) {
+            fragment.append(document.createTextNode(node.nodeValue.slice(lastIndex, index)));
+          }
+
+          const term = document.createElement("button");
+          term.className = "term";
+          term.type = "button";
+          term.append(document.createTextNode(match));
+
+          const tooltip = document.createElement("span");
+          tooltip.className = "term-tooltip";
+          tooltip.setAttribute("role", "tooltip");
+          tooltip.textContent = glossary.get(match);
+          term.append(tooltip);
+
+          fragment.append(term);
+          lastIndex = index + match.length;
+          return match;
+        });
+
+        if (lastIndex < node.nodeValue.length) {
+          fragment.append(document.createTextNode(node.nodeValue.slice(lastIndex)));
+        }
+
+        node.parentNode.replaceChild(fragment, node);
+      });
+    }
+
+    attachTooltips(document.body);
+
+    function positionTooltip(term) {
+      const tooltip = term.querySelector(".term-tooltip");
+      if (!tooltip) {
+        return;
+      }
+
+      const rect = term.getBoundingClientRect();
+      const left = Math.min(Math.max(rect.left + rect.width / 2, 148), window.innerWidth - 148);
+      const top = Math.max(rect.top, 72);
+      tooltip.style.setProperty("--tooltip-left", `${left}px`);
+      tooltip.style.setProperty("--tooltip-top", `${top}px`);
+    }
+
+    document.querySelectorAll(".term").forEach((term) => {
+      term.addEventListener("mouseenter", () => positionTooltip(term));
+      term.addEventListener("focus", () => positionTooltip(term));
+      term.addEventListener("click", () => {
+        positionTooltip(term);
+        term.classList.toggle("is-open");
+      });
+      term.addEventListener("blur", () => term.classList.remove("is-open"));
+    });
+  </script>
+</body>
+</html>

@@ -4,6 +4,8 @@ import { ActivityIndicator, Animated, Text, View } from 'react-native'
 
 import { AppButton } from './AppButton'
 
+import { THEME } from '../config/themeColors'
+
 type ScanCaptureSurfaceProps = {
   isLoading: boolean
   loadingLabel: string
@@ -81,7 +83,7 @@ export function ScanCaptureSurface({
 
         {isLoading ? (
           <View className="absolute inset-0 items-center justify-center bg-black/25">
-            <ActivityIndicator size="large" color="#fff" />
+            <ActivityIndicator size="large" color={THEME.white} />
           </View>
         ) : null}
       </View>

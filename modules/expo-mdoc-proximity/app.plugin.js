@@ -64,7 +64,47 @@ const withMdocProximity = (config) =>
     }
 
     ensureNfcFeature(manifest)
+    ensureHostApduService(manifest)
     return config
   })
+
+function ensureHostApduService(manifest) {
+  const application = manifest.manifest.application?.[0]
+  if (!application) return
+
+  const services = application.service ?? []
+  const serviceList = Array.isArray(services) ? services : services ? [services] : []
+  const exists = serviceList.some(
+    (entry) => entry.$?.['android:name'] === 'com.etdawallet.mdocproximity.EtdaCompanionHostApduService',
+  )
+  if (exists) return
+
+  serviceList.push({
+    $: {
+      'android:name': 'com.etdawallet.mdocproximity.EtdaCompanionHostApduService',
+      'android:exported': 'true',
+      'android:permission': 'android.permission.BIND_NFC_SERVICE',
+    },
+    'intent-filter': [
+      {
+        $: {
+          'android:priority': '100',
+        },
+        action: [{ $: { 'android:name': 'android.nfc.cardemulation.action.HOST_APDU_SERVICE' } }],
+        category: [{ $: { 'android:name': 'android.intent.category.DEFAULT' } }],
+      },
+    ],
+    'meta-data': [
+      {
+        $: {
+          'android:name': 'android.nfc.cardemulation.host_apdu_service',
+          'android:resource': '@xml/etda_companion_apdu_service',
+        },
+      },
+    ],
+  })
+
+  application.service = serviceList
+}
 
 module.exports = withMdocProximity

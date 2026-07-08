@@ -46,6 +46,7 @@
 | `src/components/HistoryItem.tsx` | **Modify** — projected row, `onPress`, remove delete btn |
 | `src/components/HistoryEmptyState.tsx` | **Modify** — copy mentions declines |
 | `src/components/HistoryEventDetailPanel.tsx` | **Create** — detail body |
+| `src/services/vp/walletInitiatedPresentation.ts` | **Modify (if exists)** — relay `presentation-success` append after PUT |
 
 ---
 
@@ -354,9 +355,74 @@ export function ensureWalletHistoryBackfill(): void {
   logWalletStep('history', 'backfill-complete', { eventCount: readHistoryIds(storage).length })
 }
 
-function migratePresentationHistory(storage: MMKVLike): void {
-  // read presentation:history:index, for each id append presentation-success with input.id = legacy id
-  // skip if wallet:history:event:{legacyId} already exists
+function migratePresentationHistory(
+  storage: { getString: (key: string) => string | undefined },
+): void {
+  const raw = storage.getString(PRESENTATION_HISTORY_INDEX_KEY)
+  if (!raw) return
+
+  let legacyIds: string[] = []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    legacyIds = Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : []
+  } catch {
+    return
+  }
+
+  for (const legacyId of legacyIds) {
+    if (storage.getString(`${HISTORY_EVENT_PREFIX}${legacyId}`)) continue
+
+    const legacyRaw = storage.getString(`${PRESENTATION_HISTORY_KEY_PREFIX}${legacyId}`)
+    if (!legacyRaw) continue
+
+    try {
+      const legacy = JSON.parse(legacyRaw) as {
+        id: string
+        credentialId: string
+        verifierName: string
+        documentType: string
+        disclosedClaims: string[]
+        occurredAt: string
+      }
+      if (
+        typeof legacy.id !== 'string' ||
+        typeof legacy.credentialId !== 'string' ||
+        typeof legacy.verifierName !== 'string' ||
+        typeof legacy.documentType !== 'string' ||
+        !Array.isArray(legacy.disclosedClaims) ||
+        typeof legacy.occurredAt !== 'string'
+      ) {
+        logWalletStep('history', 'event-parse-failed', {})
+        continue
+      }
+
+      appendWalletHistoryEvent({
+        id: legacy.id,
+        kind: 'presentation-success',
+        credentialId: legacy.credentialId,
+        documentType: legacy.documentType,
+        partyName: legacy.verifierName,
+        disclosedClaims: legacy.disclosedClaims,
+        channel: 'oid4vp',
+        occurredAt: legacy.occurredAt,
+      })
+    } catch {
+      logWalletStep('history', 'event-parse-failed', {})
+    }
+  }
+
+  logWalletStep('history', 'presentation-history-migrated', { count: legacyIds.length })
+}
+
+function hasCredentialKindInLog(
+  credentialId: string,
+  kind: WalletHistoryEventKind,
+): boolean {
+  return readWalletHistoryEvents().some(
+    (event) => event.credentialId === credentialId && event.kind === kind,
+  )
 }
 
 function backfillCredentialReceivedEvents(credentials: VerifiableCredentialRecord[]): void {
@@ -472,7 +538,18 @@ Remove `readWalletHistory(credentials, lifecycle, presentations)` derivation. Ke
 
 Implement `projectWalletHistoryRow` per spec Thai table including `initiatedBy` branch for system delete.
 
-Export helper `readWalletHistoryRows(): WalletHistoryRow[]` = `readWalletHistoryEvents().map(projectWalletHistoryRow)`.
+**`partyName` display rule:** use `event.partyName` as-is (already verifier, relay name, or issuer at write time).
+
+**`channelCaption` helper** (for detail screen):
+
+| `channel` | `kind` | Caption |
+|-----------|--------|---------|
+| `oid4vp` | `presentation-*` | ผ่าน QR Verifier |
+| `wallet` | `presentation-success` | ผ่าน VP Relay (dev) |
+| `oid4vci` | `credential-received` | รับเอกสารจาก Issuer |
+| `wallet` | lifecycle kinds | ดำเนินการใน Wallet |
+
+Export `readWalletHistoryRows(): WalletHistoryRow[]` = `readWalletHistoryEvents().map(projectWalletHistoryRow)`.
 
 - [ ] **Step 4: Update/delete old tests expecting English derive-on-read**
 
@@ -498,14 +575,47 @@ git commit -m "feat(history): add Thai projection for wallet history rows"
 
 **Interfaces:**
 - Consumes: `appendWalletHistoryEvent`, `readStoredCredentialById`, `getCardSchema`
-- Produces: `recordCredentialLifecycleAction(credentialId, action, initiatedBy = 'holder', now?)`
+- Produces: `recordCredentialLifecycleAction(credentialId, action, initiatedBy = 'holder', now = new Date())`
+
+**Breaking signature change:** today the 3rd parameter is `now: Date`. After this task it is `initiatedBy`, 4th is `now`. Update `credentialLifecycle.test.ts` call `recordCredentialLifecycleAction('transcript-1', 'Revoke', new Date(...))` → pass `'holder'` as 3rd arg.
 
 - [ ] **Step 1: Write failing lifecycle history test**
 
 ```typescript
+jest.mock('./storedCredentials', () => ({
+  readStoredCredentialById: jest.fn(),
+}))
+
+jest.mock('../history/walletEventLog', () => ({
+  appendWalletHistoryEvent: jest.fn(),
+}))
+
+import { readStoredCredentialById } from './storedCredentials'
+import { appendWalletHistoryEvent } from '../history/walletEventLog'
+
+const readStoredCredentialByIdMock = readStoredCredentialById as jest.Mock
+const appendWalletHistoryEventMock = appendWalletHistoryEvent as jest.Mock
+
 test('recordCredentialLifecycleAction appends revoked history event', () => {
-  // seed credential in mock storage, call recordCredentialLifecycleAction(id, 'Revoke')
-  // expect readWalletHistoryEvents() has credential-revoked
+  mockStorage()
+  readStoredCredentialByIdMock.mockReturnValue(transcriptRecord)
+
+  recordCredentialLifecycleAction(
+    'transcript-1',
+    'Revoke',
+    'holder',
+    new Date('2026-06-08T10:00:00.000Z'),
+  )
+
+  expect(appendWalletHistoryEventMock).toHaveBeenCalledWith(
+    expect.objectContaining({
+      kind: 'credential-revoked',
+      credentialId: 'transcript-1',
+      channel: 'wallet',
+      initiatedBy: 'holder',
+      occurredAt: '2026-06-08T10:00:00.000Z',
+    }),
+  )
 })
 ```
 
@@ -583,15 +693,15 @@ appendWalletHistoryEvent({
 
 - [ ] **Step 2: Replace `recordSuccessfulPresentation` body**
 
-Delegate to `appendWalletHistoryEvent({ kind: 'presentation-success', ... channel: 'oid4vp' })` — stop writing `presentation:history:*` keys for new events.
+Delegate to `appendWalletHistoryEvent({ kind: 'presentation-success', channel: 'oid4vp', partyName: input.verifierName, ... })` — **stop writing** `presentation:history:*` keys for new events.
 
-Re-export `readSuccessfullyPresentedCredentialIds` and `clearSuccessfulPresentationBadge` from `walletEventLog.ts` (or thin forwarders).
+Keep `readSuccessfulPresentationHistory()` as a thin adapter over `readWalletHistoryEvents().filter(kind === 'presentation-success')` mapping `partyName` → `verifierName` for any legacy callers, or remove if unused after grep.
+
+Re-export `readSuccessfullyPresentedCredentialIds` and `clearSuccessfulPresentationBadge` from `walletEventLog.ts` via forwarders in `presentationHistory.ts` so `app/(tabs)/index.tsx` imports stay stable.
 
 - [ ] **Step 3: Wire `scan.tsx`**
 
 Success path — replace `recordSuccessfulPresentation({...})` with `appendWalletHistoryEvent` (or keep wrapper).
-
-**VP relay (when `walletInitiatedPresentation.ts` exists):** after successful `submitVpToSession()` PUT, append `presentation-success` with `channel: 'wallet'` and relay display name as `partyName` (history spec § Recording points).
 
 Decline path:
 
@@ -609,17 +719,63 @@ onReject={() => {
 }}
 ```
 
-- [ ] **Step 4: Update `presentationHistory.test.ts` and `ScanScreenDeeplink.test.tsx` mocks if needed**
+- [ ] **Step 4: Update `presentationHistory.test.ts`**
 
-- [ ] **Step 5: Run tests**
+Change `records successful presentation events` to assert `wallet:history:event:*` and `wallet:history:index` writes (not `presentation:history:*`). Badge/cleared tests should seed `wallet:history:*` events instead of legacy keys.
+
+- [ ] **Step 5: Update `ScanScreenDeeplink.test.tsx` mocks if needed**
+
+- [ ] **Step 6: Run tests**
 
 Run: `yarn test src/services/history/presentationHistory.test.ts src/screens/ScanScreenDeeplink.test.tsx --runInBand`
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/services/vci/exchangeService.ts src/services/history/presentationHistory.ts src/services/history/presentationHistory.test.ts app/(tabs)/scan.tsx
 git commit -m "feat(history): record issuance, presentation success and decline"
+```
+
+---
+
+### Task 5b: VP relay presentation history (skip if file absent)
+
+**Files:**
+- Modify: `src/services/vp/walletInitiatedPresentation.ts` (only when VP relay slice is present)
+
+**Interfaces:**
+- Consumes: `appendWalletHistoryEvent`, `getCardSchema`, relay display name constant
+- Produces: history row on successful `submitVpToSession()` PUT
+
+**Skip condition:** if `walletInitiatedPresentation.ts` does not exist yet, skip this task entirely — relay history is documented in spec for when VP relay lands.
+
+- [ ] **Step 1: After successful PUT in `submitVpToSession`, append event**
+
+```typescript
+import { appendWalletHistoryEvent } from '../history/walletEventLog'
+import { getCardSchema } from '../../config/cardSchemas'
+
+const VP_RELAY_DISPLAY_NAME = 'VP Relay (dev)'
+
+// inside submitVpToSession after res.ok:
+const schema = getCardSchema(credentialType)
+appendWalletHistoryEvent({
+  kind: 'presentation-success',
+  credentialId,
+  documentType: schema.title,
+  partyName: VP_RELAY_DISPLAY_NAME,
+  disclosedClaims: schema.detailFields?.map((field) => field.label) ?? [],
+  channel: 'wallet',
+})
+```
+
+- [ ] **Step 2: Add unit test in `walletInitiatedPresentation.test.ts` (or walletEventLog integration test) asserting append called on 200 PUT**
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/services/vp/walletInitiatedPresentation.ts
+git commit -m "feat(history): record VP relay presentation-success in wallet event log"
 ```
 
 ---
@@ -697,7 +853,9 @@ git commit -m "feat(history): Thai list UI driven by event log"
 
 - [ ] **Step 1: Create detail panel component**
 
-Shows party + role ("ผู้ตรวจสอบ" / "ผู้ออกเอกสาร"), document, datetime, status badge, `PresentationDisclosureList` when `disclosedClaims.length > 0`, channel caption.
+Shows party + role ("ผู้ตรวจสอบ" for `presentation-*`, "ผู้ออกเอกสาร" otherwise), document, datetime, status badge, `PresentationDisclosureList` when `disclosedClaims.length > 0`, `channelCaption` from projection helper. No action buttons.
+
+List row info-box label: `ประเภทข้อมูลที่เข้าถึง` for `presentation-*`; `เอกสาร` for issuance/lifecycle.
 
 - [ ] **Step 2: Create route**
 
@@ -771,7 +929,9 @@ git commit -m "docs: record History Log v1 implementation complete"
 | Lifecycle single choke point | Task 4 |
 | Issuance on saveCredentialRecord | Task 5 |
 | Presentation success + decline | Task 5 |
-| VP relay presentation-success | Task 5 (when relay service ships) |
+| VP relay presentation-success | Task 5b (skip if relay service absent) |
+| Lifecycle backfill `initiatedBy` defaults holder | Task 2 (accepted legacy limitation per spec) |
+| Channel captions in detail | Task 3, 8 |
 | Thai UI + detail screen | Task 7, 8 |
 | Remove delete button | Task 7 |
 | Best-effort append | Task 1 (try/catch) |

@@ -1,7 +1,8 @@
 import {
   DOCUMENT_EXPIRY_TIMEZONE,
-  readDocumentExpiryWarningWindowMs,
+  DOCUMENT_EXPIRY_WARNING_WINDOW_DAYS,
 } from '@/src/config/documentExpiryPolicy'
+import { readCredentialDocumentExpiresAt } from '@/src/services/credentials/credentialDocumentExpiresAt'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 export type CredentialExpiryPhase =
@@ -32,64 +33,88 @@ function readExpiryEndInstant(expiresAt: string): Date | undefined {
   return endInstant
 }
 
-function readExpirySoonStartInstant(expiresAt: string): Date | undefined {
-  const endInstant = readExpiryEndInstant(expiresAt)
-  if (!endInstant) return undefined
+function subtractCalendarDays(calendarDate: string, days: number): string | undefined {
+  const [year, month, day] = calendarDate.split('-').map(Number)
+  if (!year || !month || !day) return undefined
 
-  return new Date(endInstant.getTime() - readDocumentExpiryWarningWindowMs())
+  const date = new Date(Date.UTC(year, month - 1, day))
+  date.setUTCDate(date.getUTCDate() - days)
+
+  const normalizedYear = date.getUTCFullYear()
+  const normalizedMonth = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const normalizedDay = String(date.getUTCDate()).padStart(2, '0')
+  return `${normalizedYear}-${normalizedMonth}-${normalizedDay}`
+}
+
+function readExpirySoonStartInstant(expiresAt: string): Date | undefined {
+  const calendarDate = readBangkokCalendarDate(expiresAt)
+  if (!calendarDate) return undefined
+
+  const soonCalendarDate = subtractCalendarDays(
+    calendarDate,
+    DOCUMENT_EXPIRY_WARNING_WINDOW_DAYS,
+  )
+  if (!soonCalendarDate) return undefined
+
+  const soonStart = new Date(`${soonCalendarDate}T00:00:00.000+07:00`)
+  if (Number.isNaN(soonStart.getTime())) return undefined
+  return soonStart
 }
 
 export function readCredentialExpiryPhase(
-  record: Pick<VerifiableCredentialRecord, 'expiresAt'>,
+  record: Pick<VerifiableCredentialRecord, 'expiresAt' | 'claims' | 'type'>,
   now = new Date(),
 ): CredentialExpiryPhase {
-  if (!record.expiresAt) return 'no-expiry'
+  const expiresAt = readCredentialDocumentExpiresAt(record)
+  if (!expiresAt) return 'no-expiry'
 
-  const endInstant = readExpiryEndInstant(record.expiresAt)
+  const endInstant = readExpiryEndInstant(expiresAt)
   if (!endInstant) return 'no-expiry'
 
   const nowMs = now.getTime()
   if (nowMs > endInstant.getTime()) return 'expired'
 
-  const soonStart = readExpirySoonStartInstant(record.expiresAt)
+  const soonStart = readExpirySoonStartInstant(expiresAt)
   if (soonStart && nowMs >= soonStart.getTime()) return 'expiring-soon'
 
   return 'active'
 }
 
 export function isCredentialDocumentExpired(
-  record: Pick<VerifiableCredentialRecord, 'expiresAt'>,
+  record: Pick<VerifiableCredentialRecord, 'expiresAt' | 'claims' | 'type'>,
   now = new Date(),
 ): boolean {
   return readCredentialExpiryPhase(record, now) === 'expired'
 }
 
 export function isCredentialExpiringSoon(
-  record: Pick<VerifiableCredentialRecord, 'expiresAt'>,
+  record: Pick<VerifiableCredentialRecord, 'expiresAt' | 'claims' | 'type'>,
   now = new Date(),
 ): boolean {
   return readCredentialExpiryPhase(record, now) === 'expiring-soon'
 }
 
 export function readMsUntilDocumentExpiry(
-  record: Pick<VerifiableCredentialRecord, 'expiresAt'>,
+  record: Pick<VerifiableCredentialRecord, 'expiresAt' | 'claims' | 'type'>,
   now = Date.now(),
 ): number | undefined {
-  if (!record.expiresAt) return undefined
+  const expiresAt = readCredentialDocumentExpiresAt(record)
+  if (!expiresAt) return undefined
 
-  const endInstant = readExpiryEndInstant(record.expiresAt)
+  const endInstant = readExpiryEndInstant(expiresAt)
   if (!endInstant) return undefined
 
   return endInstant.getTime() - now
 }
 
 export function readMsUntilExpiringSoonWindow(
-  record: Pick<VerifiableCredentialRecord, 'expiresAt'>,
+  record: Pick<VerifiableCredentialRecord, 'expiresAt' | 'claims' | 'type'>,
   now = Date.now(),
 ): number | undefined {
-  if (!record.expiresAt) return undefined
+  const expiresAt = readCredentialDocumentExpiresAt(record)
+  if (!expiresAt) return undefined
 
-  const soonStart = readExpirySoonStartInstant(record.expiresAt)
+  const soonStart = readExpirySoonStartInstant(expiresAt)
   if (!soonStart) return undefined
 
   return soonStart.getTime() - now
@@ -102,7 +127,8 @@ export function readNearestCredentialExpiryBoundaryMs(
   const boundaries: number[] = []
 
   for (const credential of credentials) {
-    if (!credential.expiresAt) continue
+    const expiresAt = readCredentialDocumentExpiresAt(credential)
+    if (!expiresAt) continue
 
     const msUntilSoon = readMsUntilExpiringSoonWindow(credential, now)
     if (msUntilSoon !== undefined && msUntilSoon > 0) {

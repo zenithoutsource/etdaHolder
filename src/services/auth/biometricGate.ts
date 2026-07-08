@@ -1,4 +1,4 @@
-import ReactNativeBiometrics from 'react-native-biometrics'
+import * as LocalAuthentication from 'expo-local-authentication'
 
 import { authenticateWeakBiometric, isNativeWeakBiometricAvailable } from '../crypto/nativeEddsaSigner'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
@@ -10,8 +10,9 @@ export type BiometricGateOptions = {
   errorPrefix: string
   /**
    * When the Android native weak-biometric module is unavailable, fall back to
-   * `react-native-biometrics` (BIOMETRIC_STRONG-only on Android). Set false for
-   * callers that must not prompt at all when the native module is absent.
+   * `expo-local-authentication` (BIOMETRIC_WEAK on Android, so Class 2 face
+   * unlock stays usable; Face ID/Touch ID on iOS). Set false for callers that
+   * must not prompt at all when the native module is absent.
    */
   allowFallback?: boolean
 }
@@ -44,27 +45,37 @@ export async function confirmBiometricGate(options: BiometricGateOptions): Promi
       return
     }
 
-    logWalletStep(logScope, 'biometric-rn-fallback-start')
-    const biometrics = new ReactNativeBiometrics({ allowDeviceCredentials: false })
-    const sensor = await biometrics.isSensorAvailable()
-    logWalletStep(logScope, 'biometric-sensor-available', {
-      biometryType: sensor.biometryType,
-    })
-    if (!sensor.available) {
-      throw new Error(`${errorPrefix}Unavailable${sensor.error ? `: ${sensor.error}` : ''}`)
+    logWalletStep(logScope, 'biometric-expo-fallback-start')
+    const hasHardware = await LocalAuthentication.hasHardwareAsync()
+    const isEnrolled = hasHardware && (await LocalAuthentication.isEnrolledAsync())
+    logWalletStep(logScope, 'biometric-sensor-available', { hasHardware, isEnrolled })
+    if (!hasHardware || !isEnrolled) {
+      throw new Error(
+        `${errorPrefix}Unavailable: ${hasHardware ? 'not-enrolled' : 'no-hardware'}`,
+      )
     }
 
-    const { success } = await biometrics.simplePrompt({
+    const result = await LocalAuthentication.authenticateAsync({
       promptMessage,
-      cancelButtonText,
+      cancelLabel: cancelButtonText,
+      // Biometrics only — no device PIN/pattern fallback. On Android this keeps
+      // the prompt at BIOMETRIC_WEAK, so Class 2 face unlock is accepted.
+      disableDeviceFallback: true,
     })
 
-    if (!success) {
-      throw new Error(`${errorPrefix}Cancelled`)
+    if (!result.success) {
+      if (
+        result.error === 'user_cancel' ||
+        result.error === 'system_cancel' ||
+        result.error === 'app_cancel'
+      ) {
+        throw new Error(`${errorPrefix}Cancelled`)
+      }
+      throw new Error(`${errorPrefix}Failed: ${result.error}`)
     }
 
     logWalletStep(logScope, 'biometric-complete', {
-      authenticator: 'react-native-biometrics',
+      authenticator: 'expo-local-authentication',
     })
   } catch (error) {
     if (isBiometricGateCancellation(error, errorPrefix)) {

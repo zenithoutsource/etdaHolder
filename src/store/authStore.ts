@@ -11,6 +11,7 @@ import {
   verifyPinResetOtp as authVerifyPinResetOtp,
   type SessionData,
 } from '../services/auth/authService'
+import { clearWalletPinSession, recordWalletPinUnlock } from '../services/auth/walletPinSession'
 
 type AuthState = {
   token: string | null
@@ -73,6 +74,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
     set({ isLoading: true })
     try {
       const session = await authLogin(email, pin)
+      recordWalletPinUnlock()
       set({ ...applySession(session), isLoading: false, isPinVerified: true })
     } catch (error) {
       set({ isLoading: false })
@@ -84,6 +86,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
     set({ isLoading: true })
     try {
       const session = await authRegister(name, email, pin)
+      recordWalletPinUnlock()
       set({ ...applySession(session), isLoading: false, isPinVerified: true })
     } catch (error) {
       set({ isLoading: false })
@@ -126,8 +129,14 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
 
   logout: async () => {
     await authLogout()
+    clearWalletPinSession()
     set({ token: null, walletId: null, accountId: null, isAuthenticated: false, isPinVerified: false })
   },
 
-  setPinVerified: (verified) => set({ isPinVerified: verified }),
+  setPinVerified: (verified) => {
+    if (verified) {
+      recordWalletPinUnlock()
+    }
+    set({ isPinVerified: verified })
+  },
 }))

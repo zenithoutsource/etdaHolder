@@ -2,6 +2,7 @@ import { Image, Text, View } from "react-native";
 
 import type { CredentialRenewalState } from "../services/credentials/credentialKeyRenewal";
 import type { CredentialInactiveState } from "../services/credentials/credentialInactiveState";
+import { shouldShowCredentialRenewalRibbon } from "../services/credentials/credentialRenewalPresentation";
 import { readWalletHomeBadgeLabel } from "../services/credentials/walletHomeCopy";
 
 const ribbonBadgeActiveImage = require("../../assets/images/ribbon_badge.png");
@@ -22,9 +23,11 @@ export function CredentialRenewalOverlay({
   badgeLabel,
   renewalState,
 }: CredentialRenewalOverlayProps) {
-  if (inactiveState.kind === "active") {
-    if (renewalState !== "renewed-active") return null;
+  if (!shouldShowCredentialRenewalRibbon(inactiveState, renewalState)) {
+    return null;
+  }
 
+  if (inactiveState.kind === "active") {
     const label = badgeLabel ?? readWalletHomeBadgeLabel("active");
 
     return (
@@ -49,16 +52,6 @@ export function CredentialRenewalOverlay({
       </>
     );
   }
-
-  const isRenewalState =
-    inactiveState.kind === "renewal-required" ||
-    inactiveState.kind === "renewal-processing" ||
-    inactiveState.kind === "old-revoked" ||
-    inactiveState.kind === "cleanup-pending";
-
-  const isDocumentExpiredState = inactiveState.kind === "document-expired";
-
-  if (!isRenewalState && !isDocumentExpiredState) return null;
 
   return (
     <>

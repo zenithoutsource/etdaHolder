@@ -15,6 +15,7 @@ import {
   type VerifiableCredentialRecord,
 } from '../vci/exchangeService'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
+import { recordCredentialRenewalCompleted } from '../history/walletHistoryRecording'
 import { clearWalletKeyRotationRecord } from '../crypto/walletKeyRotation'
 import { clearRenewalCleanupBannerDismissal, isRenewalAwaitingHolderCleanup } from './renewalCleanupNotification'
 import { clearCredentialLifecycleStatus } from './credentialLifecycle'
@@ -240,8 +241,20 @@ async function completeRenewalClaim(
       credentialId,
       replacementCredentialId: replacement.id,
     })
+    recordCredentialRenewalCompleted(replacement)
   } catch (error) {
     logWalletError('renewal', 'claim-failed', error, { credentialId })
+    const latest = readCredentialRenewal(credentialId)
+    if (latest?.state === 'renewal-processing') {
+      upsertCredentialRenewal(
+        credentialId,
+        {
+          previousHolderDid: latest.previousHolderDid,
+          state: 'renewal-required',
+        },
+        new Date(),
+      )
+    }
     throw error
   } finally {
     renewalClaimsInFlight.delete(credentialId)

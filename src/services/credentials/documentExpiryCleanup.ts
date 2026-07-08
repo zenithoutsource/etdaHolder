@@ -12,6 +12,6 @@ export function readExpiredCredentialsForCleanupAfterClaim(
 }
 
 export function deleteExpiredCredentialAfterReissue(credentialId: string): void {
-  recordCredentialLifecycleAction(credentialId, 'Delete')
+  recordCredentialLifecycleAction(credentialId, 'Delete', 'system')
   removeStoredCredential(credentialId)
 }

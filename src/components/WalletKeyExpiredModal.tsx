@@ -4,6 +4,8 @@ import { Modal, Pressable, Text, View } from "react-native";
 import { AppButton } from "./AppButton";
 import { WALLET_HOME_COPY } from "../services/credentials/walletHomeCopy";
 
+import { THEME } from '../config/themeColors'
+
 type WalletKeyExpiredModalProps = {
   visible: boolean;
   isRotating?: boolean;
@@ -36,7 +38,7 @@ export function WalletKeyExpiredModal({
         >
           <View className="mb-4 items-center">
             <View className="h-18 w-18 items-center justify-center">
-              <MaterialCommunityIcons name="alert" size={64} color="#d09a00" />
+              <MaterialCommunityIcons name="alert" size={64} color={THEME.goldDark} />
             </View>
           </View>
           <Text className="text-center text-xl font-bold text-black">

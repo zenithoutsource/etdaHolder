@@ -1,9 +1,11 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { Text, View, type ImageSourcePropType } from "react-native";
+import { Pressable, Text, View, type ImageSourcePropType } from "react-native";
 
 import { AppButton } from "./AppButton";
 import { StatusBadge } from "./StatusBadge";
-import type { WalletHistoryEvent } from "../services/history/walletHistory";
+import type { WalletHistoryRow } from "../services/history/walletHistory";
+
+import { THEME } from '../config/themeColors'
 
 const trashCanImage =
   require("../../assets/images/trash_can.png") as ImageSourcePropType;
@@ -15,7 +17,7 @@ function formatDateParts(value: string): { date: string; time: string } {
   if (Number.isNaN(date.getTime())) return { date: value, time: "" };
 
   return {
-    date: new Intl.DateTimeFormat("th-TH", {
+    date: new Intl.DateTimeFormat("th-TH-u-ca-buddhist", {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -35,20 +37,38 @@ function readIssuerIcon(documentType: string): MaterialIconName {
   return "file-document-outline";
 }
 
-export function HistoryItem({ item }: { item: WalletHistoryEvent }) {
+function readStatusConfig(status: WalletHistoryRow["status"]) {
+  switch (status) {
+    case "cancelled":
+      return { label: "ปฏิเสธแล้ว", color: THEME.slate, bg: THEME.gray200 };
+    case "failed":
+      return { label: "ไม่สำเร็จ", color: THEME.danger, bg: THEME.dangerTint };
+    case "revoked":
+      return { label: "ถูกระงับ", color: THEME.danger, bg: THEME.dangerTint };
+    case "deleted":
+      return { label: "ถูกลบ", color: THEME.danger, bg: THEME.dangerTint };
+    default:
+      return { label: "สำเร็จ", color: THEME.successDeep, bg: THEME.successTint };
+  }
+}
+
+type HistoryItemProps = {
+  item: WalletHistoryRow;
+  onPress: () => void;
+  onSuspendAccess?: () => void;
+};
+
+export function HistoryItem({ item, onPress, onSuspendAccess }: HistoryItemProps) {
   const dateParts = formatDateParts(item.occurredAt);
-  const statusConfig = {
-    completed: { label: "สำเร็จ", color: "#118f4b", bg: "#e8f8ef" },
-    revoked: { label: "ถูกระงับ", color: "#c00000", bg: "#fff0f0" },
-    deleted: { label: "ถูกลบ", color: "#c00000", bg: "#fff0f0" },
-  }[item.status];
+  const statusConfig = readStatusConfig(item.status);
 
   return (
-    <View
+    <Pressable
+      onPress={onPress}
       className="overflow-hidden rounded-[12px] bg-white"
       style={{
         elevation: 2,
-        shadowColor: "#0f2849",
+        shadowColor: THEME.navyShadow,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 10,
@@ -58,26 +78,26 @@ export function HistoryItem({ item }: { item: WalletHistoryEvent }) {
         <View className="w-1.5 bg-wallet-navy" />
         <View className="min-w-0 flex-1 px-3.5 py-3.5">
           <View className="flex-row items-start gap-3">
-            <View className="h-11 w-11 items-center justify-center rounded-full bg-[#eef4ff]">
+            <View className="h-11 w-11 items-center justify-center rounded-full bg-blue-tint">
               <MaterialCommunityIcons
                 name={readIssuerIcon(item.documentType)}
                 size={24}
-                color="#002887"
+                color={THEME.navy}
               />
             </View>
             <View className="min-w-0 flex-1">
               <Text
-                className="text-[13px] font-semibold text-[#002887]"
+                className="text-[13px] font-semibold text-navy"
                 numberOfLines={1}
               >
-                {item.issuerName}
+                {item.partyName}
               </Text>
               <View className="mt-2 flex-row flex-wrap items-center gap-x-2 gap-y-1">
-                <Text className="text-[11px] text-[#6b7280]">
+                <Text className="text-[11px] text-gray500">
                   {dateParts.date}
                 </Text>
                 {dateParts.time ? (
-                  <Text className="text-[11px] text-[#6b7280]">
+                  <Text className="text-[11px] text-gray500">
                     {dateParts.time} น.
                   </Text>
                 ) : null}
@@ -93,26 +113,34 @@ export function HistoryItem({ item }: { item: WalletHistoryEvent }) {
           </View>
 
           <View className="mt-3 rounded-lg bg-gray-300/50 px-3 py-2.5">
+            <Text className="text-[11px] font-semibold text-gray500">
+              {item.infoBoxLabel}
+            </Text>
             <Text
-              className="text-[12px] font-bold text-gray-500"
+              className="mt-1 text-[12px] font-bold text-gray-700"
               numberOfLines={2}
             >
-              {item.actionLabel}
+              {item.infoBoxValue}
             </Text>
-            <Text className="mt-1 text-[11px] text-black" numberOfLines={1}>
-              {item.subtitle}
+            <Text className="mt-2 text-[11px] text-black" numberOfLines={2}>
+              {item.actionLabel} — {item.subtitle}
             </Text>
           </View>
-          <View className="flex-row justify-center items-center">
-            <AppButton
-              label="ลบรายการ"
-              variant="outline-danger"
-              icon={trashCanImage}
-              className="mt-3 px-20 py-4"
-            />
-          </View>
+
+          {onSuspendAccess ? (
+            <View className="flex-row justify-center items-center">
+              <AppButton
+                label="ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที"
+                variant="outline-danger"
+                icon={trashCanImage}
+                onPress={onSuspendAccess}
+                className="mt-3 px-4 py-3"
+                textClassName="text-[11px] font-semibold text-center"
+              />
+            </View>
+          ) : null}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }

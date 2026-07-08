@@ -7,6 +7,8 @@ import { PIN_ENTRY_LENGTH, PinEntrySurface } from '@/src/components/PinEntrySurf
 import { setWalletPin, verifyWalletPin } from '@/src/services/auth/walletPin'
 import { logWalletStep } from '@/src/services/debug/walletLogger'
 
+import { THEME } from '../../config/themeColors'
+
 export type StoragePinMigrationStepProps = {
   step: 'biometric' | 'pin'
   error?: string
@@ -59,31 +61,31 @@ export function StoragePinMigrationStep({
   const displayError = localError ?? error
 
   return (
-    <SafeAreaView className="flex-1 bg-[#eef1f4]" edges={['top', 'bottom']}>
+    <SafeAreaView className="flex-1 bg-surface" edges={['top', 'bottom']}>
       <View className="flex-1 items-center justify-center px-5">
         {step === 'biometric' ? (
           <View className="w-full items-center">
-            <Text className="text-sm font-medium text-[#002887]">ขั้นที่ 1/2</Text>
+            <Text className="text-sm font-medium text-navy">ขั้นที่ 1/2</Text>
             <View className="mt-3">
-              <MaterialCommunityIcons name="lock" size={48} color="#f2c230" />
+              <MaterialCommunityIcons name="lock" size={48} color={THEME.gold} />
             </View>
-            <Text className="mt-3 text-2xl font-semibold text-[#1a2a42]">อัปเดตความปลอดภัย</Text>
-            <Text className="mt-2 text-center text-xs text-[#8a9bb0]">
+            <Text className="mt-3 text-2xl font-semibold text-ink">อัปเดตความปลอดภัย</Text>
+            <Text className="mt-2 text-center text-xs text-blue-gray">
               หลังอัปเดตแอป ครั้งแรกให้สแกนลายนิ้วมือหรือใบหน้าเพื่อเปิดข้อมูลบนเครื่อง
               {'\n'}
               ครั้งถัดไปใช้ PIN เปิดแอปได้เลย (รวมโหมด offline)
             </Text>
             {displayError ? (
-              <Text className="mt-4 text-center text-sm font-medium text-[#c00000]">{displayError}</Text>
+              <Text className="mt-4 text-center text-sm font-medium text-danger">{displayError}</Text>
             ) : null}
             <Pressable
               testID="migration-biometric-button"
-              className={`mt-8 w-full rounded-xl bg-[#002887] px-4 py-4 ${isSubmitting ? 'opacity-60' : ''}`}
+              className={`mt-8 w-full rounded-xl bg-navy px-4 py-4 ${isSubmitting ? 'opacity-60' : ''}`}
               disabled={isSubmitting}
               onPress={onBeginBiometric}
             >
               {isSubmitting ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color={THEME.white} />
               ) : (
                 <Text className="text-center text-base font-semibold text-white">สแกนลายนิ้วมือ / ใบหน้า</Text>
               )}
@@ -91,7 +93,7 @@ export function StoragePinMigrationStep({
           </View>
         ) : (
           <View className="w-full items-center">
-            <Text className="text-sm font-medium text-[#002887]">ขั้นที่ 2/2</Text>
+            <Text className="text-sm font-medium text-navy">ขั้นที่ 2/2</Text>
             <PinEntrySurface
               title="ยืนยันรหัส PIN"
               subtitle="ใส่รหัส PIN 6 หลักเดิมของคุณเพื่อเปิดใช้การปลดล็อกด้วย PIN"

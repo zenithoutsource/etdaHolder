@@ -1,6 +1,14 @@
+import { readFileSync } from 'node:fs'
+
 import dotenv from 'dotenv'
 
 dotenv.config()
+
+export type Ed25519PublicJwk = {
+  kty: 'OKP'
+  crv: 'Ed25519'
+  x: string
+}
 
 export type ServerConfig = {
   port: number
@@ -24,6 +32,9 @@ export type ServerConfig = {
     fromAddress: string
     fromName: string
   }
+  vpSessionTtlMs: number
+  vpRelayBaseUrl: string
+  vpIssuerPublicKeyJwk?: Ed25519PublicJwk
 }
 
 function readString(name: string, fallback?: string): string {
@@ -94,5 +105,35 @@ export function readConfig(): ServerConfig {
       fromAddress: readString('MAIL_FROM', 'wallet-noreply@localhost'),
       fromName: readString('MAIL_FROM_NAME', 'ETDA Wallet'),
     },
+    vpSessionTtlMs: readIntegerInRange('VP_SESSION_TTL_MS', '300000', 30_000, 3_600_000),
+    vpRelayBaseUrl: normalizeBaseUrl(readString('VP_RELAY_BASE_URL', 'http://localhost:4000')),
+    vpIssuerPublicKeyJwk: readIssuerPublicKeyJwk(),
   }
+}
+
+function normalizeBaseUrl(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value
+}
+
+function readIssuerPublicKeyJwk(): Ed25519PublicJwk | undefined {
+  const raw = readOptionalString('VP_ISSUER_PUBLIC_KEY_JWK')
+  const path = readOptionalString('VP_ISSUER_PUBLIC_KEY_PATH')
+  const json = raw ?? (path ? readFileSync(path, 'utf8') : undefined)
+  if (!json) {
+    if (process.env.NODE_ENV === 'test') {
+      return {
+        kty: 'OKP',
+        crv: 'Ed25519',
+        x: 'apUzt87kDqiT9GpHtFV8oCSzdAe5CFqnu-XE9_DAW_k',
+      }
+    }
+    return undefined
+  }
+
+  const parsed = JSON.parse(json) as Ed25519PublicJwk
+  if (parsed.kty !== 'OKP' || parsed.crv !== 'Ed25519' || typeof parsed.x !== 'string') {
+    throw new Error('ConfigInvalid: VP_ISSUER_PUBLIC_KEY_JWK')
+  }
+
+  return parsed
 }

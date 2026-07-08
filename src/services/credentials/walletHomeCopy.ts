@@ -41,6 +41,17 @@ export const WALLET_HOME_COPY = {
   documentExpiredNotificationTitle: 'เอกสารหมดอายุ',
   documentExpiredNotificationBody:
     'เอกสารใน Wallet ของคุณหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+  portalMisconfiguredTitle: 'ไม่สามารถเปิดหน้าขอเอกสารได้',
+  portalMisconfiguredMessage: 'ยังไม่ได้ตั้งค่า Issuer portal สำหรับเอกสารประเภทนี้',
+  portalDismissedTitle: 'รอรับเอกสาร',
+  portalDismissedMessage:
+    'เมื่อ Issuer อนุมัติแล้ว คุณจะได้รับเอกสารใน Wallet หรือสแกน QR จาก Issuer',
+  portalDismissedScanAction: 'ไป Scan',
+  portalErrorTitle: 'ไม่สามารถเปิดหน้าขอเอกสารได้',
+  portalErrorMessage: 'กรุณาลองใหม่อีกครั้ง',
+  staleExpiryNotificationTitle: 'สถานะเอกสารอัปเดตแล้ว',
+  staleExpiryNotificationMessage:
+    'การแจ้งเตือนนี้ไม่ตรงกับสถานะปัจจุบันของเอกสาร กรุณาตรวจสอบวันหมดอายุอีกครั้ง',
 } as const
 
 export function readWalletHomeBadgeLabel(

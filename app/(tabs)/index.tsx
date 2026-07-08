@@ -31,6 +31,12 @@ import {
   readCredentialInactiveState,
   type CredentialInactiveState,
 } from "../../src/services/credentials/credentialInactiveState";
+import {
+  shouldNavigateInactiveCredentialToDetail,
+  shouldShowInactivePortalRequestCta,
+} from "../../src/services/credentials/credentialHomeNavigation";
+import { isIssuerPortalCredentialType } from "../../src/config/issuerPortalUrls";
+import { openCredentialRequestPortal } from "../../src/services/credentials/openCredentialRequestPortal";
 import { isCredentialExpiringSoon } from "../../src/services/credentials/credentialDocumentExpiry";
 import {
   readCredentialLifecycleStatuses,
@@ -48,6 +54,7 @@ import { shouldShowRenewedActiveBadge } from "../../src/services/credentials/cre
 import { findCleanupPendingForCredentialType } from "../../src/services/credentials/renewalCleanupNotification";
 import { showPidGateDialog } from "../../src/services/credentials/pidGateDialog";
 import {
+  hasPendingIssuerSuspensionAck,
   readIssuerSuspensionStatuses,
   refreshIssuerSuspensionsFromServer,
   type IssuerSuspensionRecord,
@@ -125,28 +132,28 @@ function readCredentialBadge({
   if (credential && isCredentialExpiringSoon(credential)) {
     return {
       label: WALLET_HOME_COPY.expiringSoonBadge,
-      className: "bg-[#d97706]",
+      className: "bg-warning",
     };
   }
 
   if (isRenewedActive) {
     return {
       label: readWalletHomeBadgeLabel("active"),
-      className: "bg-[#18a05d]",
+      className: "bg-success",
     };
   }
 
   if (isVerifiedCredential) {
     return {
       label: readWalletHomeBadgeLabel("verified"),
-      className: "bg-[#18a05d]",
+      className: "bg-success",
     };
   }
 
   if (isNewCredential) {
     return {
       label: readWalletHomeBadgeLabel("new"),
-      className: "bg-[#18a05d]",
+      className: "bg-success",
     };
   }
 
@@ -273,6 +280,54 @@ export default function WalletHomeScreen() {
     });
   }
 
+  async function handleRequestCredentialViaPortal(credentialType?: string) {
+    if (!isIssuerPortalCredentialType(credentialType)) {
+      showDialog({
+        title: WALLET_HOME_COPY.portalMisconfiguredTitle,
+        message: WALLET_HOME_COPY.portalMisconfiguredMessage,
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+      return;
+    }
+
+    const result = await openCredentialRequestPortal(credentialType);
+    if (result.status === "claimed") {
+      router.push("/(tabs)/credential-offer");
+      return;
+    }
+    if (result.status === "misconfigured") {
+      showDialog({
+        title: WALLET_HOME_COPY.portalMisconfiguredTitle,
+        message: WALLET_HOME_COPY.portalMisconfiguredMessage,
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+      return;
+    }
+    if (result.status === "error") {
+      showDialog({
+        title: WALLET_HOME_COPY.portalErrorTitle,
+        message: WALLET_HOME_COPY.portalErrorMessage,
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+      return;
+    }
+    showDialog({
+      title: WALLET_HOME_COPY.portalDismissedTitle,
+      message: WALLET_HOME_COPY.portalDismissedMessage,
+      icon: "info",
+      actions: [
+        { label: WALLET_HOME_COPY.cancel, variant: "secondary" },
+        {
+          label: WALLET_HOME_COPY.portalDismissedScanAction,
+          onPress: () => router.push("/(tabs)/scan"),
+        },
+      ],
+    });
+  }
+
   async function handleRenewalRequest(credentialId: string) {
     try {
       await submitRenewalRequest(credentialId);
@@ -381,7 +436,9 @@ export default function WalletHomeScreen() {
                             renewalStatuses,
                           )
                         ) {
-                          router.push("/(tabs)/scan");
+                          void handleRequestCredentialViaPortal(
+                            item.credentialType,
+                          );
                           return;
                         }
                         showPidGateDialog(
@@ -419,7 +476,17 @@ export default function WalletHomeScreen() {
                           );
                           return;
                         }
-                        if (inactiveState.kind === "renewal-processing") {
+                        if (
+                          shouldNavigateInactiveCredentialToDetail(
+                            inactiveState,
+                            {
+                              hasPendingSuspensionAck:
+                                hasPendingIssuerSuspensionAck(
+                                  issuerSuspensionStatuses[credential.id],
+                                ),
+                            },
+                          )
+                        ) {
                           router.push({
                             pathname: "/(tabs)/credential/[id]",
                             params: { id: credential.id },
@@ -489,6 +556,20 @@ export default function WalletHomeScreen() {
                         }
                       : undefined
                   }
+                  showDocumentReissueCta={
+                    isExpanded &&
+                    (inactiveState.kind === "document-expired" ||
+                      (shouldShowInactivePortalRequestCta(inactiveState) &&
+                        isIssuerPortalCredentialType(item.credentialType)))
+                  }
+                  documentReissueCtaLabel={WALLET_HOME_COPY.requestNewCredential}
+                  onDocumentReissue={() => {
+                    if (inactiveState.kind === "document-expired") {
+                      router.push("/(tabs)/scan");
+                      return;
+                    }
+                    void handleRequestCredentialViaPortal(item.credentialType);
+                  }}
                 />
               );
             })}

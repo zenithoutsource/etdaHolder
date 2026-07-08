@@ -69,7 +69,7 @@ export default function PinSetupScreen() {
       : 'กรุณากรอกรหัส PIN 6 หลักเดิมอีกครั้งเพื่อยืนยัน'
 
   return (
-    <SafeAreaView className="flex-1 bg-[#eef1f4]" edges={['top', 'bottom']}>
+    <SafeAreaView className="flex-1 bg-surface" edges={['top', 'bottom']}>
       <View className="flex-1 items-center px-5 pt-8 mt-28">
         <PinEntrySurface
           title={title}

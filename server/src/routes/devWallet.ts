@@ -4,6 +4,12 @@ import { readPushToken } from './pushTokens'
 import { requestIssuerRenewalOffer } from '../services/devRenewalOffer'
 import { sendExpoPush, type ExpoPushEvent, type ExpoPushPayload } from '../services/expoPushClient'
 
+type DevHolderRevocationRecord = {
+  credentialId: string
+  holderDid: string
+  confirmedAt: string
+}
+
 type DevIssuerSuspensionRecord = {
   credentialId: string
   suspendedAt: string
@@ -35,6 +41,8 @@ function readDevRenewalDelayMs(): number {
 
 const suspensions = new Map<string, DevIssuerSuspensionRecord>()
 const renewals = new Map<string, DevWalletRenewalRecord>()
+const usedCredentials = new Set<string>()
+const holderRevocations = new Map<string, DevHolderRevocationRecord>()
 const renewalReadyTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 async function sendCredentialEventPush(
@@ -164,6 +172,8 @@ export function readNotificationCopy(
 export function resetDevWalletState(): void {
   suspensions.clear()
   renewals.clear()
+  usedCredentials.clear()
+  holderRevocations.clear()
   for (const timer of renewalReadyTimers.values()) {
     clearTimeout(timer)
   }
@@ -208,6 +218,28 @@ devWalletRouter.get('/wallet/renewal-status', (_req, res) => {
   res.json({ renewals: output })
 })
 
+const presentationAccessSuspensions: { eventId: string; credentialId: string; partyName: string; requestedAt: string }[] = []
+
+devWalletRouter.post('/presentation/suspend-access', (req, res) => {
+  const eventId = typeof req.body?.eventId === 'string' ? req.body.eventId.trim() : ''
+  const credentialId = typeof req.body?.credentialId === 'string' ? req.body.credentialId.trim() : ''
+  const partyName = typeof req.body?.partyName === 'string' ? req.body.partyName.trim() : ''
+
+  if (!eventId || !credentialId || !partyName) {
+    res.status(400).json({ message: 'eventId, credentialId, and partyName are required' })
+    return
+  }
+
+  const record = {
+    eventId,
+    credentialId,
+    partyName,
+    requestedAt: new Date().toISOString(),
+  }
+  presentationAccessSuspensions.push(record)
+  res.status(201).json(record)
+})
+
 devWalletRouter.post('/issuer/suspend', (req, res) => {
   const credentialId =
     typeof req.body?.credentialId === 'string' ? req.body.credentialId.trim() : ''
@@ -238,6 +270,74 @@ devWalletRouter.post('/issuer/suspend', (req, res) => {
   }
   suspensions.set(credentialId, record)
   res.status(201).json(record)
+})
+
+devWalletRouter.post('/wallet/mark-used', (req, res) => {
+  const credentialId =
+    typeof req.body?.credentialId === 'string' ? req.body.credentialId.trim() : ''
+
+  if (!credentialId) {
+    res.status(400).json({ message: 'credentialId is required' })
+    return
+  }
+
+  usedCredentials.add(credentialId)
+  res.status(201).json({ used: true, credentialId })
+})
+
+devWalletRouter.get('/wallet/used-status', (req, res) => {
+  const credentialId = typeof req.query.credentialId === 'string' ? req.query.credentialId.trim() : ''
+  if (!credentialId) {
+    res.status(400).json({ message: 'credentialId is required' })
+    return
+  }
+
+  res.json({ used: usedCredentials.has(credentialId), credentialId })
+})
+
+devWalletRouter.post('/issuer/holder-revoke', (req, res) => {
+  const credentialId =
+    typeof req.body?.credentialId === 'string' ? req.body.credentialId.trim() : ''
+  const holderDid =
+    typeof req.body?.holderDid === 'string' ? req.body.holderDid.trim() : ''
+
+  if (!credentialId || !holderDid) {
+    res.status(400).json({ message: 'credentialId and holderDid are required' })
+    return
+  }
+
+  const confirmedAt = new Date().toISOString()
+  const record: DevHolderRevocationRecord = {
+    credentialId,
+    holderDid,
+    confirmedAt,
+  }
+  holderRevocations.set(credentialId, record)
+  res.status(201).json({
+    status: 'revoked',
+    credentialId,
+    confirmedAt,
+  })
+})
+
+devWalletRouter.get('/wallet/revoke-status', (req, res) => {
+  const credentialId = typeof req.query.credentialId === 'string' ? req.query.credentialId.trim() : ''
+  if (!credentialId) {
+    res.status(400).json({ message: 'credentialId is required' })
+    return
+  }
+
+  const record = holderRevocations.get(credentialId)
+  if (!record) {
+    res.json({ status: 'none', credentialId })
+    return
+  }
+
+  res.json({
+    status: 'revoked',
+    credentialId,
+    confirmedAt: record.confirmedAt,
+  })
 })
 
 devWalletRouter.post('/webhook/credential-event', async (req, res) => {

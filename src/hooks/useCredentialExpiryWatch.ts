@@ -4,6 +4,7 @@ import { AppState, type AppStateStatus } from 'react-native'
 import { readNearestCredentialExpiryBoundaryMs } from '@/src/services/credentials/credentialDocumentExpiry'
 import { rescheduleDocumentExpiryNotifications } from '@/src/services/notifications/documentExpiryNotificationService'
 import {
+  notifyCredentialsChanged,
   readStoredCredentials,
   subscribeCredentialsChange,
 } from '@/src/services/credentials/storedCredentials'
@@ -19,6 +20,10 @@ export function useCredentialExpiryWatch(): UseCredentialExpiryWatchResult {
 
   const refreshExpiryWatch = useCallback(() => {
     setRefreshTick((tick) => tick + 1)
+  }, [])
+
+  const publishExpiryRevision = useCallback(() => {
+    notifyCredentialsChanged()
   }, [])
 
   useEffect(() => {
@@ -43,6 +48,7 @@ export function useCredentialExpiryWatch(): UseCredentialExpiryWatchResult {
       }
 
       timeoutId = setTimeout(() => {
+        publishExpiryRevision()
         refreshExpiryWatch()
         scheduleBoundaryCheck()
       }, Math.min(delayMs + 50, MAX_TIMEOUT_MS))
@@ -52,6 +58,7 @@ export function useCredentialExpiryWatch(): UseCredentialExpiryWatchResult {
 
     const onAppStateChange = (nextState: AppStateStatus) => {
       if (nextState !== 'active') return
+      publishExpiryRevision()
       refreshExpiryWatch()
       scheduleBoundaryCheck()
     }
@@ -67,7 +74,7 @@ export function useCredentialExpiryWatch(): UseCredentialExpiryWatchResult {
       appStateSubscription.remove()
       unsubscribeCredentials()
     }
-  }, [refreshExpiryWatch])
+  }, [publishExpiryRevision, refreshExpiryWatch])
 
   return { refreshExpiryWatch }
 }

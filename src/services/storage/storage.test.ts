@@ -1,17 +1,6 @@
 import { Platform } from 'react-native'
 import * as Keychain from 'react-native-keychain'
 
-const mockIsNativeWeakBiometricAvailable = jest.fn(() => false)
-const mockAuthenticateWeakBiometric = jest.fn(
-  async (_promptMessage: string, _cancelButtonText: string) => true,
-)
-
-jest.mock('@/src/services/crypto/nativeEddsaSigner', () => ({
-  isNativeWeakBiometricAvailable: () => mockIsNativeWeakBiometricAvailable(),
-  authenticateWeakBiometric: (promptMessage: string, cancelButtonText: string) =>
-    mockAuthenticateWeakBiometric(promptMessage, cancelButtonText),
-}))
-
 import { createHash } from 'react-native-quick-crypto'
 
 import {
@@ -25,6 +14,17 @@ import {
   provisionStoragePinFallback,
   resetStorage,
 } from './storage'
+
+const mockIsNativeWeakBiometricAvailable = jest.fn(() => false)
+const mockAuthenticateWeakBiometric = jest.fn(
+  async (_promptMessage: string, _cancelButtonText: string) => true,
+)
+
+jest.mock('@/src/services/crypto/nativeEddsaSigner', () => ({
+  isNativeWeakBiometricAvailable: () => mockIsNativeWeakBiometricAvailable(),
+  authenticateWeakBiometric: (promptMessage: string, cancelButtonText: string) =>
+    mockAuthenticateWeakBiometric(promptMessage, cancelButtonText),
+}))
 
 function hashWalletPinForTest(pin: string, salt: string): string {
   return createHash('sha256').update(`${salt}:${pin}`).digest('hex')

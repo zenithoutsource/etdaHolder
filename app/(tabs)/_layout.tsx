@@ -2,9 +2,10 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { Image, type ImageSourcePropType } from 'react-native';
 
-import { HapticTab } from '@/components/haptic-tab';
 import { WalletKeyExpiryHost } from '@/src/components/WalletKeyExpiryHost';
 import { CredentialExpiryHost } from '@/src/components/CredentialExpiryHost';
+
+import { THEME } from '../../src/config/themeColors'
 
 type TabIconProps = {
   color: string;
@@ -34,11 +35,11 @@ export default function TabLayout() {
       <CredentialExpiryHost />
       <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#002887',
-        tabBarInactiveTintColor: '#6d7a8d',
+        tabBarActiveTintColor: THEME.navy,
+        tabBarInactiveTintColor: THEME.slate,
         tabBarStyle: {
-          backgroundColor: '#ffffff',
-          borderTopColor: '#e5e7eb',
+          backgroundColor: THEME.white,
+          borderTopColor: THEME.gray200,
           borderTopWidth: 1,
           elevation: 8,
           height: 66,
@@ -50,7 +51,6 @@ export default function TabLayout() {
           fontWeight: '600',
         },
         headerShown: false,
-        tabBarButton: HapticTab,
       }}>
       <Tabs.Screen
         name="index"
@@ -86,6 +86,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <TabAssetIcon color={color} focused={focused} source={require('../../assets/images/history_log.png')} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="history-event/[id]"
+        options={{
+          href: null,
+          title: 'History Log',
         }}
       />
       <Tabs.Screen

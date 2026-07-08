@@ -39,6 +39,24 @@ describe('credentialInactiveState', () => {
     ).toBe('holder-revoke')
   })
 
+  test('shows used inactive state for consumed credentials', () => {
+    expect(
+      readCredentialInactiveState({
+        lifecycleStatus: {
+          credentialId: 'credential-1',
+          action: 'Used',
+          status: 'used',
+          occurredAt: '2026-06-25T10:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'used',
+      badgeLabel: 'ใช้งานแล้ว',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารถูกใช้สิทธิ์แล้ว — ไม่สามารถแสดงซ้ำได้',
+    })
+  })
+
   test('prefers deleted lifecycle state over issuer suspension for inactive rendering', () => {
     expect(
       readCredentialInactiveState({
@@ -48,7 +66,7 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'deleted',
       badgeLabel: 'ถูกลบ',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารถูกยกเลิกการใช้งาน',
     })
   })
@@ -62,7 +80,7 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'revoked',
       badgeLabel: 'ถูกระงับ',
-      badgeClassName: 'bg-[#c00000]',
+      badgeClassName: 'bg-danger',
       panelMessage: 'เอกสารถูกยกเลิกการใช้งาน',
     })
   })
@@ -75,7 +93,7 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'issuer-suspended',
       badgeLabel: 'ถูกระงับ',
-      badgeClassName: 'bg-[#c00000]',
+      badgeClassName: 'bg-danger',
       panelMessage: 'เอกสารถูกระงับโดยผู้ออกเอกสาร',
     })
   })
@@ -99,7 +117,7 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'renewal-required',
       badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารผูกกับกุญแจ Wallet ที่หมดอายุแล้ว กรุณาขอเอกสารใหม่',
     })
   })
@@ -135,6 +153,32 @@ describe('credentialInactiveState', () => {
     })
   })
 
+  test('marks renewed-active credentials as document-expired when expiresAt has passed', () => {
+    expect(
+      readCredentialInactiveState({
+        renewalStatus: {
+          credentialId: 'credential-2',
+          state: 'renewed-active',
+          previousHolderDid: 'did:key:old',
+          updatedAt: '2026-06-25T11:00:00.000Z',
+        },
+        credential: {
+          id: 'credential-2',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-06-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'document-expired',
+      badgeLabel: 'หมดอายุ',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+    })
+  })
+
   test('marks renewal-processing credentials as inactive', () => {
     expect(
       readCredentialInactiveState({
@@ -148,7 +192,7 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'renewal-processing',
       badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'ส่งคำขอต่ออายุเอกสารแล้ว กำลังรอผู้ออกเอกสารตรวจสอบ',
     })
   })
@@ -166,12 +210,12 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'old-revoked',
       badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารเดิมถูกเพิกถอนแล้ว กรุณาตรวจสอบเอกสารใหม่และลบเอกสารเดิม',
     })
   })
 
-  test('marks cleanup-pending credentials as inactive', () => {
+  test('does not render cleanup-pending through the inactive panel branch', () => {
     expect(
       readCredentialInactiveState({
         renewalStatus: {
@@ -182,10 +226,7 @@ describe('credentialInactiveState', () => {
         },
       }),
     ).toEqual({
-      kind: 'cleanup-pending',
-      badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
-      panelMessage: 'เอกสารใหม่พร้อมใช้งานแล้ว กรุณาลบเอกสารเดิมเพื่อดำเนินการต่อ',
+      kind: 'active',
     })
   })
 
@@ -203,7 +244,7 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'issuer-suspended',
       badgeLabel: 'ถูกระงับ',
-      badgeClassName: 'bg-[#c00000]',
+      badgeClassName: 'bg-danger',
       panelMessage: 'เอกสารถูกระงับโดยผู้ออกเอกสาร',
     })
   })
@@ -223,7 +264,7 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'document-expired',
       badgeLabel: 'หมดอายุ',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
     })
   })
@@ -249,7 +290,7 @@ describe('credentialInactiveState', () => {
     ).toEqual({
       kind: 'renewal-required',
       badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารผูกกับกุญแจ Wallet ที่หมดอายุแล้ว กรุณาขอเอกสารใหม่',
     })
   })

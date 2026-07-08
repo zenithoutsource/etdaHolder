@@ -1,6 +1,8 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ActivityIndicator, Image, Pressable, Text, type ImageSourcePropType } from 'react-native';
 
+import { THEME } from '../config/themeColors'
+
 type MaterialIconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
 /**
@@ -21,7 +23,7 @@ type MaterialIconName = keyof typeof MaterialCommunityIcons.glyphMap;
  * <AppButton variant="solid-primary" label="ลบ" iconName="trash-can-outline" onPress={onDelete} />
  * <AppButton variant="solid-block" label="Sign In" loading={isLoading} disabled={isLoading}
  *   className="rounded-xl bg-wallet-navy py-[14px]" textClassName="text-[15px] font-semibold" onPress={handleLogin} />
- * <AppButton variant="icon-circle" iconName="chevron-left" iconColor="#ffffff"
+ * <AppButton variant="icon-circle" iconName="chevron-left" iconColor={THEME.white}
  *   className="h-9 w-9 border border-white" onPress={onBack} accessibilityLabel="Back" />
  * ```
  */
@@ -30,34 +32,34 @@ type AppButtonVariant = 'outline-danger' | 'outline-primary' | 'solid-primary' |
 
 const variantStyles: Record<AppButtonVariant, { container: string; text: string; iconColor: string }> = {
   'outline-danger': {
-    container: 'self-start rounded-full border border-[#d12d2d] px-3 py-1.5',
-    text: 'text-[11px] font-semibold text-[#c00000]',
-    iconColor: '#c00000',
+    container: 'self-start rounded-full border border-danger-soft px-3 py-1.5',
+    text: 'text-[11px] font-semibold text-danger',
+    iconColor: THEME.danger,
   },
   'outline-primary': {
     container: 'self-start rounded-full border border-wallet-navy px-3 py-1.5',
     text: 'text-[11px] font-semibold text-wallet-navy',
-    iconColor: '#002887',
+    iconColor: THEME.navy,
   },
   'solid-primary': {
     container: 'self-start rounded-full bg-wallet-navy px-3 py-1.5',
     text: 'text-[11px] font-semibold text-white',
-    iconColor: '#ffffff',
+    iconColor: THEME.white,
   },
   'solid-block': {
     container: 'items-center justify-center rounded-full bg-wallet-navy',
     text: 'text-[15px] font-extrabold text-white',
-    iconColor: '#ffffff',
+    iconColor: THEME.white,
   },
   'outline-block': {
     container: 'items-center justify-center rounded-full border border-wallet-navy bg-white',
     text: 'text-[15px] font-extrabold text-wallet-navy',
-    iconColor: '#002887',
+    iconColor: THEME.navy,
   },
   'icon-circle': {
     container: 'items-center justify-center rounded-full',
     text: '',
-    iconColor: '#002887',
+    iconColor: THEME.navy,
   },
 };
 
@@ -106,7 +108,7 @@ export function AppButton({
       accessibilityRole={accessibilityRole}
       className={`flex-row items-center gap-1.5 ${styles.container}${fullWidth ? ' w-full' : ''}${className ? ` ${className}` : ''}${disabled && !hasOpacityOverride ? ' opacity-50' : ''}`}>
       {loading ? (
-        <ActivityIndicator color={variant === 'outline-primary' || variant === 'outline-block' ? resolvedIconColor : '#fff'} />
+        <ActivityIndicator color={variant === 'outline-primary' || variant === 'outline-block' ? resolvedIconColor : THEME.white} />
       ) : (
         <>
           {icon ? <Image source={icon} className="h-5 w-5" resizeMode="contain" /> : null}

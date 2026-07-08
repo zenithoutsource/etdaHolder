@@ -7,12 +7,12 @@ import {
 } from './credentialDocumentExpiry'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
-function buildRecord(expiresAt?: string): VerifiableCredentialRecord {
+function buildRecord(expiresAt?: string, claims: Record<string, unknown> = {}): VerifiableCredentialRecord {
   return {
     id: 'credential-1',
     type: 'ThaiNationalID',
     rawVc: 'vc',
-    claims: {},
+    claims,
     issuedAt: '2026-01-01T00:00:00.000Z',
     ...(expiresAt ? { expiresAt } : {}),
   }
@@ -81,5 +81,17 @@ describe('credentialDocumentExpiry', () => {
   test('P3 renewal-required precedence is handled by inactive state, not expiry phase', () => {
     const record = buildRecord('2020-01-01T00:00:00.000Z')
     expect(isCredentialDocumentExpired(record, new Date('2026-06-01T00:00:00.000Z'))).toBe(true)
+  })
+
+  test('starts expiring-soon at the Bangkok calendar day 30 days before expiry', () => {
+    const record = buildRecord('2032-06-11T00:00:00.000Z', {
+      expiryDate: '11 มิถุนายน 2575',
+    })
+    const firstDayOfWarningWindow = new Date('2032-05-12T00:00:00.000+07:00')
+    const dayBeforeWarningWindow = new Date('2032-05-11T23:59:59.999+07:00')
+
+    expect(readCredentialExpiryPhase(record, dayBeforeWarningWindow)).toBe('active')
+    expect(readCredentialExpiryPhase(record, firstDayOfWarningWindow)).toBe('expiring-soon')
+    expect(isCredentialExpiringSoon(record, new Date('2032-05-12T12:00:00+07:00'))).toBe(true)
   })
 })

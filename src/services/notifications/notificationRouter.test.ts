@@ -1,9 +1,31 @@
 import { buildNotificationRoute, routeNotificationTap } from './notificationRouter'
 import { useNotificationRouteStore } from '@/src/store/notificationRouteStore'
+import {
+  notifyCredentialsChanged,
+  readStoredCredentials,
+} from '@/src/services/credentials/storedCredentials'
+import { rescheduleDocumentExpiryNotifications } from './documentExpiryNotificationService'
+
+jest.mock('@/src/services/credentials/storedCredentials', () => ({
+  notifyCredentialsChanged: jest.fn(),
+  readStoredCredentials: jest.fn(() => []),
+}))
+
+jest.mock('./documentExpiryNotificationService', () => ({
+  rescheduleDocumentExpiryNotifications: jest.fn(),
+}))
+
+const notifyCredentialsChangedMock = notifyCredentialsChanged as jest.Mock
+const readStoredCredentialsMock = readStoredCredentials as jest.Mock
+const rescheduleDocumentExpiryNotificationsMock =
+  rescheduleDocumentExpiryNotifications as jest.Mock
 
 describe('notificationRouter', () => {
   beforeEach(() => {
     useNotificationRouteStore.setState({ pendingRoute: null })
+    notifyCredentialsChangedMock.mockClear()
+    readStoredCredentialsMock.mockReturnValue([])
+    rescheduleDocumentExpiryNotificationsMock.mockClear()
   })
 
   describe('buildNotificationRoute', () => {
@@ -32,14 +54,29 @@ describe('notificationRouter', () => {
       })
     })
 
-    test('builds document expiry routes to credential detail', () => {
+    test('builds document expiry routes with notification context', () => {
       expect(buildNotificationRoute({
         event: 'document-expiring-soon',
         credentialId: 'cred-123',
         credentialType: 'ThaiNationalID',
       })).toEqual({
         pathname: '/(tabs)/credential/[id]',
-        params: { id: 'cred-123' },
+        params: {
+          id: 'cred-123',
+          notificationEvent: 'document-expiring-soon',
+        },
+      })
+
+      expect(buildNotificationRoute({
+        event: 'document-expired',
+        credentialId: 'cred-123',
+        credentialType: 'ThaiNationalID',
+      })).toEqual({
+        pathname: '/(tabs)/credential/[id]',
+        params: {
+          id: 'cred-123',
+          notificationEvent: 'document-expired',
+        },
       })
     })
 
@@ -75,6 +112,18 @@ describe('notificationRouter', () => {
       })
 
       expect(useNotificationRouteStore.getState().pendingRoute).toBeNull()
+    })
+
+    test('publishes an expiry revision when a document expiry notification is tapped', () => {
+      routeNotificationTap({
+        event: 'document-expired',
+        credentialId: 'cred-123',
+        credentialType: 'ThaiNationalID',
+      })
+
+      expect(notifyCredentialsChangedMock).toHaveBeenCalledTimes(1)
+      expect(readStoredCredentialsMock).toHaveBeenCalledTimes(1)
+      expect(rescheduleDocumentExpiryNotificationsMock).toHaveBeenCalledWith([])
     })
   })
 })

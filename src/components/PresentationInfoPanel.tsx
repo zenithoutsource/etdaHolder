@@ -17,7 +17,7 @@ export function PresentationInfoPanel({ request, onConfirm }: Props) {
   const credentialSignature = readCompactTokenSignature(request.matchedCredential.rawVc) ?? 'Signature unavailable'
 
   return (
-    <View className="flex-1 bg-[#eef1f4] px-4 pt-6">
+    <View className="flex-1 bg-surface px-4 pt-6">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32, gap: 16 }}>
         <PresentationCredentialSummaryCard record={request.matchedCredential} />
         <PresentationApprovalDeviceCard registeredAt={getWalletKeyRegisteredAt()} />

@@ -1,21 +1,52 @@
+import { useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAppDialog } from '../../src/components/AppDialog';
 import { HistoryEmptyState } from '../../src/components/HistoryEmptyState';
+import { HistoryFilterChips } from '../../src/components/HistoryFilterChips';
 import { HistoryItem } from '../../src/components/HistoryItem';
 import { WalletHeader } from '../../src/components/WalletHeader';
 import { useStoredCredentials } from '../../src/hooks/useStoredCredentials';
-import { readCredentialLifecycleStatuses } from '../../src/services/credentials/credentialLifecycle';
-import { readSuccessfulPresentationHistory } from '../../src/services/history/presentationHistory';
-import { readWalletHistory } from '../../src/services/history/walletHistory';
+import { requestPresentationAccessSuspension } from '../../src/services/history/requestPresentationAccessSuspension';
+import { readWalletHistoryEvent } from '../../src/services/history/walletEventLog';
+import { readWalletHistoryRows } from '../../src/services/history/walletHistory';
+import type { WalletHistoryFilter } from '../../src/services/history/walletHistoryFilters';
 
 export default function HistoryLogScreen() {
-  const { credentials, error } = useStoredCredentials();
-  const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
-  const presentationEvents = readSuccessfulPresentationHistory();
-  const history = readWalletHistory(credentials, lifecycleStatuses, presentationEvents);
-  const items = [...history.transactions, ...history.presentations].sort(
-    (left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt),
+  const router = useRouter();
+  const { showDialog } = useAppDialog();
+  const { error } = useStoredCredentials();
+  const [filter, setFilter] = useState<WalletHistoryFilter>('all');
+  const [refreshTick, setRefreshTick] = useState(0);
+  const items = readWalletHistoryRows({ filter });
+
+  const bumpList = useCallback(() => {
+    setRefreshTick((value) => value + 1);
+  }, []);
+
+  const handleSuspendAccess = useCallback(
+    (eventId: string) => {
+      const event = readWalletHistoryEvent(eventId);
+      if (!event) return;
+
+      showDialog({
+        title: 'ขอระงับการเข้าถึง',
+        message: `ส่งคำขอให้ ${event.partyName} หยุดใช้ข้อมูลที่แชร์จากรายการนี้หรือไม่?`,
+        actions: [
+          { label: 'ยกเลิก', variant: 'secondary' },
+          {
+            label: 'ยืนยัน',
+            variant: 'primary',
+            onPress: () => {
+              void requestPresentationAccessSuspension(event).then(() => bumpList());
+            },
+          },
+        ],
+      });
+    },
+    [bumpList, showDialog],
   );
 
   return (
@@ -30,13 +61,35 @@ export default function HistoryLogScreen() {
             <Text className="mb-1 ml-1.5 text-sm text-black">รายการ</Text>
           </View>
 
+          <HistoryFilterChips value={filter} onChange={setFilter} />
+
           {error ? (
             <View className="rounded-[12px] bg-red-50 px-5 py-4">
               <Text className="text-sm text-red-600">{error}</Text>
             </View>
           ) : null}
 
-          {items.length > 0 ? items.map((item) => <HistoryItem key={item.id} item={item} />) : <HistoryEmptyState />}
+          {items.length > 0 ? (
+            items.map((item) => (
+              <HistoryItem
+                key={`${item.id}:${refreshTick}`}
+                item={item}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/history-event/[id]',
+                    params: { id: item.id },
+                  })
+                }
+                onSuspendAccess={
+                  item.showSuspendAccessButton
+                    ? () => handleSuspendAccess(item.id)
+                    : undefined
+                }
+              />
+            ))
+          ) : (
+            <HistoryEmptyState />
+          )}
         </ScrollView>
       </View>
     </SafeAreaView>

@@ -39,7 +39,7 @@ For unified PIN auth (`refactor/auth`), also run:
 Get-Content server\src\migrations\002_pin_reset_otps.sql | C:\xampp\mysql\bin\mysql.exe -u root
 ```
 
-3. Create `server/.env` from `server/.env.example`.
+3. Run `yarn setup` from the **repo root** (writes `server/.env`), or create `server/.env` manually from `server/.env.example`.
 4. Replace `JWT_SECRET=local-dev-change-me` with a local secret before testing real accounts.
 5. Configure SMTP for PIN reset emails (optional in dev). Example for Gmail with an app password:
 

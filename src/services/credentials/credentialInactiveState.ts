@@ -16,6 +16,7 @@ type InactiveCredentialState = {
   kind:
     | 'revoked'
     | 'deleted'
+    | 'used'
     | 'issuer-suspended'
     | 'renewal-required'
     | 'renewal-processing'
@@ -67,7 +68,7 @@ export function readCredentialInactiveState({
     return {
       kind: 'deleted',
       badgeLabel: 'ถูกลบ',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารถูกยกเลิกการใช้งาน',
     }
   }
@@ -76,8 +77,17 @@ export function readCredentialInactiveState({
     return {
       kind: 'revoked',
       badgeLabel: 'ถูกระงับ',
-      badgeClassName: 'bg-[#c00000]',
+      badgeClassName: 'bg-danger',
       panelMessage: 'เอกสารถูกยกเลิกการใช้งาน',
+    }
+  }
+
+  if (lifecycleStatus?.status === 'used') {
+    return {
+      kind: 'used',
+      badgeLabel: 'ใช้งานแล้ว',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารถูกใช้สิทธิ์แล้ว — ไม่สามารถแสดงซ้ำได้',
     }
   }
 
@@ -85,7 +95,7 @@ export function readCredentialInactiveState({
     return {
       kind: 'issuer-suspended',
       badgeLabel: 'ถูกระงับ',
-      badgeClassName: 'bg-[#c00000]',
+      badgeClassName: 'bg-danger',
       panelMessage: 'เอกสารถูกระงับโดยผู้ออกเอกสาร',
     }
   }
@@ -94,7 +104,7 @@ export function readCredentialInactiveState({
     return {
       kind: 'renewal-processing',
       badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'ส่งคำขอต่ออายุเอกสารแล้ว กำลังรอผู้ออกเอกสารตรวจสอบ',
     }
   }
@@ -103,17 +113,8 @@ export function readCredentialInactiveState({
     return {
       kind: 'old-revoked',
       badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารเดิมถูกเพิกถอนแล้ว กรุณาตรวจสอบเอกสารใหม่และลบเอกสารเดิม',
-    }
-  }
-
-  if (renewalStatus?.state === 'cleanup-pending') {
-    return {
-      kind: 'cleanup-pending',
-      badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
-      panelMessage: 'เอกสารใหม่พร้อมใช้งานแล้ว กรุณาลบเอกสารเดิมเพื่อดำเนินการต่อ',
     }
   }
 
@@ -121,12 +122,21 @@ export function readCredentialInactiveState({
     return {
       kind: 'renewal-required',
       badgeLabel: 'Inactive',
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารผูกกับกุญแจ Wallet ที่หมดอายุแล้ว กรุณาขอเอกสารใหม่',
     }
   }
 
-  if (renewalStatus?.state === 'renewed-active') {
+  if (renewalStatus?.state === 'cleanup-pending') {
+    if (credential && isCredentialDocumentExpired(credential)) {
+      return {
+        kind: 'document-expired',
+        badgeLabel: WALLET_HOME_COPY.documentExpiredBadge,
+        badgeClassName: 'bg-gray-badge',
+        panelMessage: WALLET_HOME_COPY.documentExpiredMessage,
+      }
+    }
+
     return {
       kind: 'active',
     }
@@ -136,8 +146,14 @@ export function readCredentialInactiveState({
     return {
       kind: 'document-expired',
       badgeLabel: WALLET_HOME_COPY.documentExpiredBadge,
-      badgeClassName: 'bg-[#7a7a7a]',
+      badgeClassName: 'bg-gray-badge',
       panelMessage: WALLET_HOME_COPY.documentExpiredMessage,
+    }
+  }
+
+  if (renewalStatus?.state === 'renewed-active') {
+    return {
+      kind: 'active',
     }
   }
 

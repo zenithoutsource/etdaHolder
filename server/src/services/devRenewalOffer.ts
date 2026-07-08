@@ -2,6 +2,7 @@ export const CREDENTIAL_TYPE_TO_ISSUER_DOCUMENT_TYPE: Record<string, string> = {
   ThaiNationalID: 'IdCard',
   DLTDrivingLicence: 'DriverLicense',
   UniversityTranscript: 'Transcript',
+  BangkokUniversityTranscript: 'Transcript',
 }
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {

@@ -8,7 +8,7 @@ type FetchFn = typeof fetch
 type FetchInput = Parameters<FetchFn>[0]
 type FetchInit = Parameters<FetchFn>[1]
 
-const DEFAULT_WALLET_API_BASE_URL = 'http://localhost:3001'
+const DEFAULT_WALLET_API_BASE_URL = 'http://localhost:4000'
 const WALLET_API_PREFIX = '/wallet-api/'
 
 let originalFetch: FetchFn | null = null

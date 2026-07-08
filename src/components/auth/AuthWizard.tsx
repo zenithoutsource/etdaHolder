@@ -25,6 +25,8 @@ import {
   useDeeplinkStore,
 } from "../../store/deeplinkStore";
 
+import { THEME } from '../../config/themeColors'
+
 type AuthStep = "email" | "name" | "pin-enter" | "pin-confirm" | "login-pin";
 
 export function AuthWizard() {
@@ -169,7 +171,7 @@ export function AuthWizard() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-[#f4f6fa]">
+    <SafeAreaView className="flex-1 bg-surface-soft">
       <KeyboardAvoidingView
         className="flex-1 justify-center p-6"
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -178,7 +180,7 @@ export function AuthWizard() {
           <Text className="text-center text-[28px] font-bold text-wallet-navy">
             ETDA Wallet
           </Text>
-          <Text className="mt-2 text-center text-[15px] text-[#6d7a8d]">
+          <Text className="mt-2 text-center text-[15px] text-slate">
             {step === "login-pin"
               ? "Welcome back"
               : "Create or access your wallet"}
@@ -190,16 +192,16 @@ export function AuthWizard() {
             className="gap-4 rounded-[18px] bg-white p-6"
             style={{
               elevation: 3,
-              shadowColor: "#0f2849",
+              shadowColor: THEME.navyShadow,
               shadowOffset: { width: 0, height: 3 },
               shadowOpacity: 0.1,
               shadowRadius: 10,
             }}
           >
             <TextInput
-              className="rounded-[10px] border border-[#e2e8f0] p-[14px] text-[15px] text-[#1a2a42]"
+              className="rounded-[10px] border border-surface-edge p-[14px] text-[15px] text-ink"
               placeholder="Email"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={THEME.gray400}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -208,7 +210,7 @@ export function AuthWizard() {
               onSubmitEditing={() => void handleEmailContinue()}
             />
             {error ? (
-              <Text className="text-center text-[13px] text-[#dc2626]">
+              <Text className="text-center text-[13px] text-red600">
                 {error}
               </Text>
             ) : null}
@@ -229,27 +231,27 @@ export function AuthWizard() {
             className="gap-4 rounded-[18px] bg-white p-6"
             style={{
               elevation: 3,
-              shadowColor: "#0f2849",
+              shadowColor: THEME.navyShadow,
               shadowOffset: { width: 0, height: 3 },
               shadowOpacity: 0.1,
               shadowRadius: 10,
             }}
           >
-            <Text className="text-sm text-[#6d7a8d]">{email}</Text>
+            <Text className="text-sm text-slate">{email}</Text>
             <TextInput
-              className="rounded-[10px] border border-[#e2e8f0] p-[14px] text-[15px] text-[#1a2a42]"
+              className="rounded-[10px] border border-surface-edge p-[14px] text-[15px] text-ink"
               placeholder="Display name (English only)"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={THEME.gray400}
               autoCapitalize="words"
               value={name}
               onChangeText={setName}
               onSubmitEditing={() => void handleNameContinue()}
             />
-            <Text className="-mt-2 text-xs text-[#9ca3af]">
+            <Text className="-mt-2 text-xs text-gray400">
               Use English letters only (e.g. John Smith)
             </Text>
             {error ? (
-              <Text className="text-center text-[13px] text-[#dc2626]">
+              <Text className="text-center text-[13px] text-red600">
                 {error}
               </Text>
             ) : null}
@@ -263,7 +265,7 @@ export function AuthWizard() {
               textClassName="text-[15px] font-semibold"
             />
             <Pressable className="items-center" onPress={goToEmailStep}>
-              <Text className="text-sm text-[#6d7a8d]">
+              <Text className="text-sm text-slate">
                 Use a different email
               </Text>
             </Pressable>
@@ -275,9 +277,9 @@ export function AuthWizard() {
         step === "login-pin" ? (
           <View className="items-center">
             {step !== "login-pin" ? (
-              <Text className="mb-4 text-sm text-[#6d7a8d]">{email}</Text>
+              <Text className="mb-4 text-sm text-slate">{email}</Text>
             ) : (
-              <Text className="mb-4 text-sm text-[#6d7a8d]">{email}</Text>
+              <Text className="mb-4 text-sm text-slate">{email}</Text>
             )}
             <PinEntryStep
               title={
@@ -301,7 +303,7 @@ export function AuthWizard() {
               showFingerprint={false}
             />
             {isLoading ? (
-              <Text className="mt-4 text-sm text-[#6d7a8d]">
+              <Text className="mt-4 text-sm text-slate">
                 Please wait...
               </Text>
             ) : null}
@@ -321,7 +323,7 @@ export function AuthWizard() {
               className={step === "login-pin" ? "mt-3" : "mt-6"}
               onPress={goToEmailStep}
             >
-              <Text className="text-sm text-[#6d7a8d]">
+              <Text className="text-sm text-slate">
                 Use a different email
               </Text>
             </Pressable>

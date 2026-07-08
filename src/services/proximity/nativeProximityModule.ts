@@ -1,6 +1,8 @@
 import { requireNativeModule } from 'expo'
 import { Platform } from 'react-native'
 
+import type { ReaderSharingMode } from '@/src/config/readerProfiles'
+
 export type ProximityAvailability = {
   platform: string
   sdkInt?: number
@@ -13,14 +15,28 @@ export type ProximityNativeEvents = {
   onDeviceEngaged: { sessionId?: string }
   onRequestReceived: { requestedFields: string[] }
   onPresentationComplete: { sharedFields: string[] }
+  onCompanionSignRequested: { nonceBase64Url: string }
   onError: { code: string; message: string }
+}
+
+export type ProximityArmConfig = {
+  credentialId: string
+  sharingMode: ReaderSharingMode
+  profileId: string
+  approvedMdocFields: string[]
+  companionTransportPluginId?: string
+  companionSdJwt?: string
+  armWindowMs: number
 }
 
 type NativeProximityModule = {
   getAvailability: () => ProximityAvailability
   storeMdoc: (credentialId: string, docType: string, mdocBytes: Uint8Array) => Promise<void>
   hasMdoc: (credentialId: string) => Promise<boolean>
+  readMdoc: (credentialId: string) => Promise<Uint8Array>
   deleteMdoc: (credentialId: string) => Promise<void>
+  armProximitySession: (config: ProximityArmConfig) => Promise<void>
+  supplyCompanionPresentation: (presentation: string) => Promise<void>
   startProximityPresentation: (credentialId: string, deviceKeyId: string) => Promise<void>
   stopProximityPresentation: () => Promise<void>
   approvePresentation: (requestedFields: string[]) => Promise<void>
@@ -67,6 +83,7 @@ export function subscribeToProximityEvents(
     onDeviceEngaged?: (event: ProximityNativeEvents['onDeviceEngaged']) => void
     onRequestReceived?: (event: ProximityNativeEvents['onRequestReceived']) => void
     onPresentationComplete?: (event: ProximityNativeEvents['onPresentationComplete']) => void
+    onCompanionSignRequested?: (event: ProximityNativeEvents['onCompanionSignRequested']) => void
     onError?: (event: ProximityNativeEvents['onError']) => void
   },
 ): () => void {
@@ -78,6 +95,9 @@ export function subscribeToProximityEvents(
     handlers.onRequestReceived ? module.addListener('onRequestReceived', handlers.onRequestReceived) : null,
     handlers.onPresentationComplete
       ? module.addListener('onPresentationComplete', handlers.onPresentationComplete)
+      : null,
+    handlers.onCompanionSignRequested
+      ? module.addListener('onCompanionSignRequested', handlers.onCompanionSignRequested)
       : null,
     handlers.onError ? module.addListener('onError', handlers.onError) : null,
   ].filter((subscription): subscription is { remove: () => void } => subscription !== null)

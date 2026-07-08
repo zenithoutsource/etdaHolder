@@ -33,13 +33,22 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+env
 server/.env
+server/env
 
 # session scratch
 .codex-expo*.log
 server/.codex-server.log
 .claude/reviews/
+.claude/*.local.json
 .superpowers/
+.cursor/
+~$*
+**/~$*
+*.tmp
+*.bak
+*.backup
 
 # typescript
 *.tsbuildinfo

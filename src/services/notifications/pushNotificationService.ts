@@ -36,10 +36,16 @@ function readExpoProjectId(): string | undefined {
     : undefined
 }
 
+type RetryOptions = {
+  retryEvent: string
+  shouldRetry?: (error: unknown, attempt: number) => boolean
+}
+
 async function retryable<T>(
   fn: () => Promise<T>,
   maxAttempts: number,
   baseDelayMs: number,
+  options?: RetryOptions,
 ): Promise<T> {
   let lastError: unknown
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -47,13 +53,43 @@ async function retryable<T>(
       return await fn()
     } catch (error) {
       lastError = error
-      if (attempt < maxAttempts) {
-        logWalletStep('startup', 'push-token-server-register-retry', { attempt })
-        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt))
+      const hasMoreAttempts = attempt < maxAttempts
+      const shouldRetry = options?.shouldRetry ? options.shouldRetry(error, attempt) : true
+      if (!hasMoreAttempts || !shouldRetry) {
+        throw error
       }
+
+      logWalletStep('startup', options?.retryEvent ?? 'push-token-retry', { attempt })
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt))
     }
   }
   throw lastError
+}
+
+function isTransientPushTokenError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const message = error.message.toUpperCase()
+  if (message.includes('SERVICE_NOT_AVAILABLE')) {
+    return true
+  }
+
+  const code = (error as Error & { code?: unknown }).code
+  return code === 'E_REGISTRATION_FAILED' && message.includes('UNAVAILABLE')
+}
+
+async function fetchExpoPushToken(projectId: string): Promise<Notifications.ExpoPushToken> {
+  return retryable(
+    () => Notifications.getExpoPushTokenAsync({ projectId }),
+    3,
+    2000,
+    {
+      retryEvent: 'push-token-native-fetch-retry',
+      shouldRetry: (error) => isTransientPushTokenError(error),
+    },
+  )
 }
 
 async function ensureNotificationPermission(): Promise<boolean> {
@@ -137,11 +173,13 @@ export async function syncPushTokenRegistration(holderDid: string): Promise<bool
   const projectId = assertExpoProjectId(readExpoProjectId())
 
   logWalletStep('startup', 'push-token-native-fetch-start')
-  const pushToken = await Notifications.getExpoPushTokenAsync({ projectId })
+  const pushToken = await fetchExpoPushToken(projectId)
   logWalletStep('startup', 'push-token-native-fetch-complete', { tokenLength: pushToken.data.length })
 
   logWalletStep('startup', 'push-token-server-register-start')
-  await retryable(() => registerPushToken(pushToken.data, holderDid), 3, 2000)
+  await retryable(() => registerPushToken(pushToken.data, holderDid), 3, 2000, {
+    retryEvent: 'push-token-server-register-retry',
+  })
   logWalletStep('startup', 'push-notifications-token-registered', {
     holderDidLength: holderDid.length,
     tokenLength: pushToken.data.length,
@@ -174,6 +212,11 @@ export async function initPushNotifications(holderDid: string): Promise<void> {
   } catch (error) {
     logWalletError('startup', 'push-notifications-init-failed', error, {
       holderDid,
+      ...(isTransientPushTokenError(error)
+        ? {
+            hint: 'Google Play services or network to FCM may be unavailable. Update Play services, check connectivity, or rebuild the native app after google-services.json changes.',
+          }
+        : {}),
     })
   }
 }

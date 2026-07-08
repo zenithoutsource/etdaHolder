@@ -226,6 +226,36 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     }))
   })
 
+  test('maps Android Keychain negative-button signing cancellation to scoped cancellation', async () => {
+    await generateWalletKeyIfNeeded()
+    const cancellationError = Object.assign(new Error('code: 13, msg: Cancel'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(cancellationError)
+
+    await expect(signProof('nonce-123', 'https://issuer.example.com')).rejects.toThrow('WalletKeySigningCancelled')
+  })
+
+  test('maps Android Keychain user-cancel signing cancellation to scoped cancellation', async () => {
+    await generateWalletKeyIfNeeded()
+    const cancellationError = Object.assign(new Error('code: 10, msg: User cancelled'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(cancellationError)
+
+    await expect(signProof('nonce-123', 'https://issuer.example.com')).rejects.toThrow('WalletKeySigningCancelled')
+  })
+
+  test('maps bare code-13 cancellation without keychain wrapper metadata to scoped cancellation', async () => {
+    await generateWalletKeyIfNeeded()
+    const cancellationError = Object.assign(new Error('Cancel'), { code: 13 })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(cancellationError)
+
+    await expect(signProof('nonce-123', 'https://issuer.example.com')).rejects.toThrow('WalletKeySigningCancelled')
+  })
+
   test('resetWalletKey deletes the Keychain Ed25519 seed and cached public key', async () => {
     await generateWalletKeyIfNeeded()
     await resetWalletKey()

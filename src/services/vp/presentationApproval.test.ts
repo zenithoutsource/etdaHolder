@@ -4,9 +4,9 @@ import {
 } from './presentationService'
 import { confirmPresentationBiometric, createApprovedPresentationResponse } from './presentationApproval'
 
-const mockConstructorOptions: unknown[] = []
-const mockIsSensorAvailable = jest.fn()
-const mockSimplePrompt = jest.fn()
+const mockHasHardwareAsync = jest.fn()
+const mockIsEnrolledAsync = jest.fn()
+const mockAuthenticateAsync = jest.fn()
 const mockIsNativeWeakBiometricAvailable = jest.fn()
 const mockAuthenticateWeakBiometric = jest.fn()
 const mockLogWalletStep = jest.fn()
@@ -16,15 +16,11 @@ const biometricPromptMessage =
   '\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e15\u0e31\u0e27\u0e15\u0e19\u0e14\u0e49\u0e27\u0e22 Biometric'
 const biometricCancelText = '\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01'
 
-jest.mock('react-native-biometrics', () => {
-  return jest.fn().mockImplementation((options: unknown) => {
-    mockConstructorOptions.push(options)
-    return {
-      isSensorAvailable: mockIsSensorAvailable,
-      simplePrompt: mockSimplePrompt,
-    }
-  })
-})
+jest.mock('expo-local-authentication', () => ({
+  hasHardwareAsync: (...args: unknown[]) => mockHasHardwareAsync(...args),
+  isEnrolledAsync: (...args: unknown[]) => mockIsEnrolledAsync(...args),
+  authenticateAsync: (...args: unknown[]) => mockAuthenticateAsync(...args),
+}))
 
 jest.mock('../crypto/nativeEddsaSigner', () => ({
   authenticateWeakBiometric: (...args: unknown[]) => mockAuthenticateWeakBiometric(...args),
@@ -77,15 +73,16 @@ function requestWithDcql(requireHolderBinding: boolean): ResolvedPresentationReq
 
 describe('presentationApproval', () => {
   beforeEach(() => {
-    mockConstructorOptions.length = 0
-    mockIsSensorAvailable.mockReset()
-    mockSimplePrompt.mockReset()
+    mockHasHardwareAsync.mockReset()
+    mockIsEnrolledAsync.mockReset()
+    mockAuthenticateAsync.mockReset()
     mockIsNativeWeakBiometricAvailable.mockReset()
     mockAuthenticateWeakBiometric.mockReset()
     mockLogWalletStep.mockReset()
     mockLogWalletError.mockReset()
-    mockIsSensorAvailable.mockResolvedValue({ available: true, biometryType: 'Biometrics' })
-    mockSimplePrompt.mockResolvedValue({ success: true })
+    mockHasHardwareAsync.mockResolvedValue(true)
+    mockIsEnrolledAsync.mockResolvedValue(true)
+    mockAuthenticateAsync.mockResolvedValue({ success: true })
     mockIsNativeWeakBiometricAvailable.mockReturnValue(false)
     mockAuthenticateWeakBiometric.mockResolvedValue(true)
   })
@@ -96,9 +93,7 @@ describe('presentationApproval', () => {
     await confirmPresentationBiometric()
 
     expect(mockAuthenticateWeakBiometric).toHaveBeenCalledWith(biometricPromptMessage, biometricCancelText)
-    expect(mockConstructorOptions).toEqual([])
-    expect(mockIsSensorAvailable).not.toHaveBeenCalled()
-    expect(mockSimplePrompt).not.toHaveBeenCalled()
+    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
     expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-native-weak-start')
     expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-complete', {
       authenticator: 'android-native-biometric-weak',
@@ -111,37 +106,37 @@ describe('presentationApproval', () => {
 
     await expect(confirmPresentationBiometric()).rejects.toThrow('PresentationBiometricCancelled')
 
-    expect(mockConstructorOptions).toEqual([])
+    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
   })
 
   test('uses biometric-only OS prompt without device credential fallback', async () => {
     await confirmPresentationBiometric()
 
-    expect(mockConstructorOptions).toEqual([{ allowDeviceCredentials: false }])
-    expect(mockIsSensorAvailable).toHaveBeenCalledTimes(1)
-    expect(mockSimplePrompt).toHaveBeenCalledWith({
+    expect(mockAuthenticateAsync).toHaveBeenCalledWith({
       promptMessage: 'ยืนยันตัวตนด้วย Biometric',
-      cancelButtonText: 'ยกเลิก',
+      cancelLabel: 'ยกเลิก',
+      disableDeviceFallback: true,
     })
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-rn-fallback-start')
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-expo-fallback-start')
     expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-sensor-available', {
-      biometryType: 'Biometrics',
+      hasHardware: true,
+      isEnrolled: true,
     })
     expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-complete', {
-      authenticator: 'react-native-biometrics',
+      authenticator: 'expo-local-authentication',
     })
   })
 
   test('rejects when biometric sensor is unavailable', async () => {
-    mockIsSensorAvailable.mockResolvedValueOnce({ available: false, error: 'BIOMETRIC_ERROR_NONE_ENROLLED' })
+    mockIsEnrolledAsync.mockResolvedValueOnce(false)
 
     await expect(confirmPresentationBiometric()).rejects.toThrow('PresentationBiometricUnavailable')
 
-    expect(mockSimplePrompt).not.toHaveBeenCalled()
+    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
   })
 
   test('rejects when the OS biometric prompt is cancelled', async () => {
-    mockSimplePrompt.mockResolvedValueOnce({ success: false })
+    mockAuthenticateAsync.mockResolvedValueOnce({ success: false, error: 'user_cancel' })
 
     await expect(confirmPresentationBiometric()).rejects.toThrow('PresentationBiometricCancelled')
   })
@@ -173,6 +168,31 @@ describe('presentationApproval', () => {
       sdJwt: rawCredential,
     })
     expect(response).toEqual({ vpToken: 'sd-jwt~kb.jwt', presentationSubmission: undefined })
+  })
+
+  test('builds dual-format DCQL vp_token envelopes without presentation_submission', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...baseRequest,
+      dcqlQuery: {
+        credentials: [
+          { id: 'transcript_sd_jwt', format: 'dc+sd-jwt', require_cryptographic_holder_binding: true },
+          { id: 'transcript_mdoc', format: 'mso_mdoc' },
+        ],
+      },
+    }
+
+    const buildApprovedPresentationResponse = jest
+      .fn()
+      .mockResolvedValue({
+        vpToken: '{"transcript_sd_jwt":["sd-jwt~kb.jwt"],"transcript_mdoc":["mdoc"]}',
+      })
+
+    const response = await createApprovedPresentationResponse(request, {
+      buildApprovedPresentationResponse,
+    })
+
+    expect(buildApprovedPresentationResponse).toHaveBeenCalled()
+    expect(response.vpToken).toContain('transcript_sd_jwt')
   })
 
   test('signs Presentation Exchange VP JWT tokens and returns presentation_submission', async () => {

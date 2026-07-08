@@ -1,3 +1,4 @@
+import { THEME } from './themeColors'
 export type DisplayField = {
   key: string;
   label: string;
@@ -40,7 +41,7 @@ const FALLBACK_SCHEMA: CardSchemaConfig = {
   title: "Credential",
   documentTitle: "DIGITAL DOCUMENT",
   issuerName: "Unknown Issuer",
-  primaryColor: "#374151",
+  primaryColor: THEME.gray700,
   imageKey: "profile",
   displayFields: [],
 };
@@ -51,7 +52,7 @@ const SCHEMAS: CardSchemaConfig[] = [
     title: "Thai National ID",
     documentTitle: "ID CARD",
     issuerName: "Department of Provincial Administration",
-    primaryColor: "#002887",
+    primaryColor: THEME.navy,
     imageKey: "id",
     displayFields: [
       { key: "givenName", label: "Given Name" },
@@ -137,7 +138,7 @@ const SCHEMAS: CardSchemaConfig[] = [
     title: "Driving Licence",
     documentTitle: "DRIVING LICENSE",
     issuerName: "Department of Land Transport",
-    primaryColor: "#123b8c",
+    primaryColor: THEME.navyRoyal,
     imageKey: "car",
     displayFields: [
       { key: "givenName", label: "Given Name" },
@@ -214,7 +215,7 @@ const SCHEMAS: CardSchemaConfig[] = [
     title: "Academic Transcript",
     documentTitle: "TRANSCRIPT",
     issuerName: "Bangkok University",
-    primaryColor: "#123b8c",
+    primaryColor: THEME.navyRoyal,
     imageKey: "transcript",
     displayFields: [
       { key: "givenName", label: "Given Name" },

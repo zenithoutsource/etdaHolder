@@ -245,6 +245,36 @@ describe('refreshAndCompleteRenewals', () => {
     expect(replacementRecord?.replacementCredentialId).toBeUndefined()
   })
 
+  test('resets to renewal-required when local renewal claim fails', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      state: 'renewal-processing',
+      updatedAt: new Date().toISOString(),
+    })
+
+    await refreshAndCompleteRenewals({
+      fetchImpl: jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          renewals: [
+            {
+              credentialId: mockCredential.id,
+              state: 'offer-ready',
+              offerUri: 'openid-credential-offer://test',
+            },
+          ],
+        }),
+      }),
+      resolveOffer: jest.fn().mockResolvedValue({ offer: 'resolved' }),
+      claimCredential: jest.fn().mockRejectedValue(new Error('E_CRYPTO_FAILED')),
+    })
+
+    expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-required')
+  })
+
   test('transitions cleanup-pending to old-revoked when server confirms revocation', async () => {
     const { values } = mockStorage()
     seedCredential(values, mockCredential)

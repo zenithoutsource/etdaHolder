@@ -39,13 +39,15 @@ npx expo install <package-name>
 
 ## Environment
 
-For local backend testing, create root `.env`:
+For first-time setup, run:
 
-```env
-EXPO_PUBLIC_WALLET_API_BASE_URL=http://<windows-lan-ip>:4000
+```bash
+yarn setup
 ```
 
-Use the Windows LAN IP when testing on a physical phone. `localhost` points to the phone itself.
+See **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** for the full 30-minute guide (XAMPP, backend, physical Android).
+
+Optional development overrides: `.env.development.local.example` → `.env.development.local`.
 
 ## Key Paths
 

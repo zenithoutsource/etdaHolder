@@ -106,7 +106,7 @@ describe('ScanScreen deeplink handling', () => {
     mockRouterReplace.mockClear()
     mockRouterPush.mockClear()
     cameraMock.useCameraPermissions.mockReturnValue([{ granted: false }, jest.fn()])
-    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null })
+    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
     readSingleNfcPayloadMock.mockReset()
     presentationServiceMock.isOid4VpAuthorizationRequest.mockReturnValue(false)
     presentationServiceMock.resolvePresentationRequest.mockResolvedValue({
@@ -144,6 +144,22 @@ describe('ScanScreen deeplink handling', () => {
     expect(useDeeplinkStore.getState().pendingUri).toBe(offerUri)
     expect(mockRouterPush).not.toHaveBeenCalled()
     expect(screen.queryByText('Scan Success')).toBeNull()
+  })
+
+  it('processes pending OID4VP deeplink into resolvePresentationRequest', async () => {
+    const requestUri = 'openid4vp://?client_id=did%3Aweb%3Averifier.example&response_type=vp_token'
+    presentationServiceMock.isOid4VpAuthorizationRequest.mockImplementation((uri: string) => uri === requestUri)
+    cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
+
+    render(<ScanScreen />)
+
+    await act(async () => {
+      useDeeplinkStore.getState().setPendingDeeplinkUri(requestUri)
+    })
+
+    await waitFor(() => {
+      expect(presentationServiceMock.resolvePresentationRequest).toHaveBeenCalled()
+    })
   })
 
   it('stores NFC credential-offer payloads in the deeplink store', async () => {

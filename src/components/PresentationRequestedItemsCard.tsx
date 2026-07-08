@@ -12,7 +12,7 @@ type Props = {
 export function PresentationRequestedItemsCard({ disclosures, onAccept }: Props) {
   return (
     <View>
-      <Text className="text-[13px] font-extrabold text-[#071f5f]">รายการที่ร้องขอ</Text>
+      <Text className="text-[13px] font-extrabold text-navy-deep">รายการที่ร้องขอ</Text>
       <View className="mt-2">
         <PresentationDisclosureList items={disclosures} variant="review" />
       </View>

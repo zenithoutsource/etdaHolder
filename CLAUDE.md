@@ -8,6 +8,8 @@ This file provides strict guidance when working with code in this OID4VCI Wallet
 
 Decentralized Digital Wallet in the Holder role. Credential issuance uses OpenID for Verifiable Credential Issuance (OID4VCI 1.0). Proximity presentation uses ISO 18013-5 per ADR 0003. OID4VP 1.0 online presentation is planned post-v1.
 
+Target hardware: Samsung Galaxy A26 paired with the ACR1311U-N2 Secure Bluetooth NFC Reader USB. NFC reader/writer work must account for this external Bluetooth reader path for Android smartphone/tablet connectivity, and production support must be confirmed on that device/reader pairing before NFC behavior is considered validated.
+
 Primary references:
 
 | Document | Contents |
@@ -35,6 +37,18 @@ When planning any new system, feature, or integration:
 - Dynamic credential UI must use `src/config/cardSchemas.ts` and generic components, not issuer-specific card screens.
 - Production signing uses a Keychain-protected Ed25519 seed with `@noble/ed25519` EdDSA signing because target AndroidKeyStore hardware generated EC keys for Ed25519 requests. This satisfies protocol-level EdDSA but is not hardware non-extractable.
 - One biometric prompt per user action: a single user-initiated action (approve a presentation, claim a credential, rotate a key) must trigger exactly one authentication event. If the action requires a cryptographic sign call, that sign-time Keychain gate is the only prompt — do not add a separate app-level biometric/consent check in front of it for the same action. Only add a second, independent prompt when the action does no signing at all (so the sign-time gate never fires) and still needs its own auth.
+
+## Master Branch Hygiene
+
+Keep durable project docs in `master`: architecture/security/API docs, ADRs, `docs/TASKS.md`, user journeys, approved or active specs under `docs/superpowers/specs/`, implementation plans that explain committed or actively planned work under `docs/superpowers/plans/`, and UI references under `docs/ui-reference/`.
+
+Never add local AI/tool settings, personal scratch notes, temporary prompts, review scratch output, `.superpowers/`, `.cursor/`, `.claude/*.local.json`, Office lock files such as `~$*.xlsx`, logs, caches, generated build output, secrets, env files, key material, abandoned duplicate generated docs, or one-off HTML/Markdown exports that are not intentionally approved as stakeholder-facing reference.
+
+Before staging docs, confirm each file is referenced by `docs/TASKS.md`, an ADR, an active spec/plan, implementation code, or an explicit user request. Session scratch stays ignored or outside the repo.
+
+## Configurable Time/Duration Values
+
+Any constant that expresses a duration, TTL, or timing window for a system-wide policy (key rotation TTLs, expiry-warning windows, session grace periods, polling intervals, etc.) must be adjustable without a code change: read it from `process.env.EXPO_PUBLIC_<NAME>`, falling back to the current hardcoded value as the default (`Number(process.env.EXPO_PUBLIC_...) || <default>`). Document the new var in `.env.example` with a comment stating its unit, default, and effect. Existing examples: `EXPO_PUBLIC_WALLET_KEY_DEV_TTL_MS` / `EXPO_PUBLIC_WALLET_KEY_PROD_TTL_DAYS` (`src/config/walletKeyPolicy.ts`), `EXPO_PUBLIC_DOCUMENT_EXPIRY_WARNING_WINDOW_DAYS` (`src/config/documentExpiryPolicy.ts`), `EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`. Use whichever unit (ms vs days) is natural for how the value is tuned — short/testing values as ms, long-lived policy windows as days — matching the existing pattern rather than forcing everything to one unit.
 
 ## Expo SDK 54
 

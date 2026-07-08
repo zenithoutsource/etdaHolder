@@ -5,8 +5,21 @@ import {
   recordCredentialLifecycleAction,
 } from './credentialLifecycle'
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
+import { appendWalletHistoryEvent } from '../history/walletEventLog'
 import { getCredentialStorage } from '../storage/storage'
+import { readStoredCredentialById } from './storedCredentials'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+
+jest.mock('./storedCredentials', () => ({
+  readStoredCredentialById: jest.fn(),
+}))
+
+jest.mock('../history/walletEventLog', () => ({
+  appendWalletHistoryEvent: jest.fn(),
+}))
+
+const readStoredCredentialByIdMock = readStoredCredentialById as jest.Mock
+const appendWalletHistoryEventMock = appendWalletHistoryEvent as jest.Mock
 
 jest.mock('./credentialDocumentExpiry', () => {
   const actual = jest.requireActual('./credentialDocumentExpiry') as typeof import('./credentialDocumentExpiry')
@@ -53,6 +66,8 @@ const transcriptRecord: VerifiableCredentialRecord = {
 describe('credentialLifecycle', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    mockStorage()
+    readStoredCredentialByIdMock.mockReturnValue(undefined)
     isCredentialDocumentExpiredMock.mockImplementation(
       jest.requireActual('./credentialDocumentExpiry').isCredentialDocumentExpired,
     )
@@ -64,6 +79,7 @@ describe('credentialLifecycle', () => {
     const status = recordCredentialLifecycleAction(
       'transcript-1',
       'Revoke',
+      'holder',
       new Date('2026-06-08T10:00:00.000Z'),
     )
 
@@ -76,6 +92,41 @@ describe('credentialLifecycle', () => {
     expect(storage.set).toHaveBeenCalledWith(
       'credential:lifecycle:transcript-1',
       JSON.stringify(status),
+    )
+  })
+
+  test('recordCredentialLifecycleAction appends revoked history event', () => {
+    mockStorage()
+    readStoredCredentialByIdMock.mockReturnValue(transcriptRecord)
+
+    recordCredentialLifecycleAction(
+      'transcript-1',
+      'Revoke',
+      'holder',
+      new Date('2026-06-08T10:00:00.000Z'),
+    )
+
+    expect(appendWalletHistoryEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'credential-revoked',
+        credentialId: 'transcript-1',
+        channel: 'wallet',
+        initiatedBy: 'holder',
+        occurredAt: '2026-06-08T10:00:00.000Z',
+      }),
+    )
+  })
+
+  test('recordCredentialLifecycleAction Used marks credential and blocks presentation', () => {
+    mockStorage()
+    readStoredCredentialByIdMock.mockReturnValue(transcriptRecord)
+
+    recordCredentialLifecycleAction('transcript-1', 'Used', 'system')
+
+    expect(readCredentialLifecycleStatus('transcript-1')?.status).toBe('used')
+    expect(filterPresentableCredentials([transcriptRecord])).toEqual([])
+    expect(appendWalletHistoryEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'credential-used', initiatedBy: 'system' }),
     )
   })
 
