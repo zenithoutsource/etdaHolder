@@ -18,6 +18,19 @@ export function isDualFormatDcqlRequest(dcqlQuery: DcqlQuery): boolean {
   return formats.includes('dc+sd-jwt') && formats.includes('mso_mdoc')
 }
 
+const SD_JWT_DCQL_FORMATS = new Set(['dc+sd-jwt', 'vc+sd-jwt'])
+
+export function isExactDualFormatPair(dcqlQuery: DcqlQuery): boolean {
+  if (dcqlQuery.credentials.length !== 2) return false
+
+  const formats = readRequestedDcqlFormats(dcqlQuery)
+  if (formats.length !== 2) return false
+
+  const hasSdJwtFormat = formats.some((format) => SD_JWT_DCQL_FORMATS.has(format))
+  const hasMdocFormat = formats.includes('mso_mdoc')
+  return hasSdJwtFormat && hasMdocFormat
+}
+
 export function readDcqlCredentialQueryByFormat(
   dcqlQuery: DcqlQuery,
   format: string,

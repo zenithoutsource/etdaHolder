@@ -32,6 +32,31 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> | undefin
   }
 }
 
+export function decodeJwtHeader(jwt: string): Record<string, unknown> | undefined {
+  const parts = jwt.split('.')
+  if (!parts[0]) return undefined
+
+  try {
+    const parsed = JSON.parse(base64UrlDecodeToString(parts[0])) as unknown
+    return isRecord(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function decodeJsonBase64Url<T = unknown>(segment: string): T | undefined {
+  try {
+    return JSON.parse(base64UrlDecodeToString(segment)) as T
+  } catch {
+    return undefined
+  }
+}
+
+export function looksLikeCompactJwt(value: string): boolean {
+  const parts = value.split('.')
+  return parts.length === 3 && Boolean(parts[0] && parts[1])
+}
+
 export function decodeJwtPayloadStrict(jwt: string): Record<string, unknown> {
   const parts = jwt.split('.')
 

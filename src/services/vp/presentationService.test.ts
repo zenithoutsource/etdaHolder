@@ -150,6 +150,94 @@ describe('presentationService', () => {
     expect(request.disclosures).toEqual([{ key: 'age', label: 'อายุ', value: '25' }])
   })
 
+  test('resolves presentation_definition_uri after trusting the verifier', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-15T00:00:00.000Z'))
+    const fetchMock = jest.fn(async (input: RequestInfo) => {
+      const url = String(input)
+      if (url.includes('/pd/age-over-20.json')) {
+        return new Response(JSON.stringify(presentationDefinition), { status: 200 })
+      }
+      return new Response('not found', { status: 404 })
+    })
+
+    const params = new URLSearchParams({
+      client_id: 'did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      state: 'state-123',
+      presentation_definition_uri: 'https://verifier.example.com/pd/age-over-20.json',
+    })
+
+    const request = await resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'did:web:verifier.example.com',
+          name: 'Entertainment Venue',
+          allowedOrigins: ['https://verifier.example.com'],
+        },
+      ],
+    })
+
+    expect(request.matchedCredential.id).toBe('thai-id-1')
+    expect(request.disclosures).toEqual([{ key: 'age', label: 'อายุ', value: '25' }])
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://verifier.example.com/pd/age-over-20.json',
+      expect.objectContaining({ headers: { Accept: 'application/json' } }),
+    )
+  })
+
+  test('rejects presentation_definition combined with dcql_query', async () => {
+    const params = new URLSearchParams({
+      client_id: 'did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      presentation_definition: JSON.stringify(presentationDefinition),
+      dcql_query: JSON.stringify({
+        credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+      }),
+    })
+
+    await expect(
+      resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+        trustedVerifiers: [
+          {
+            clientId: 'did:web:verifier.example.com',
+            name: 'Entertainment Venue',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+      }),
+    ).rejects.toThrow('PresentationRequestInvalid: Presentation Exchange and dcql_query are mutually exclusive')
+  })
+
+  test('rejects presentation_definition_uri combined with dcql_query', async () => {
+    const params = new URLSearchParams({
+      client_id: 'did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      presentation_definition_uri: 'https://verifier.example.com/pd/age-over-20.json',
+      dcql_query: JSON.stringify({
+        credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+      }),
+    })
+
+    await expect(
+      resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+        trustedVerifiers: [
+          {
+            clientId: 'did:web:verifier.example.com',
+            name: 'Entertainment Venue',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+      }),
+    ).rejects.toThrow('PresentationRequestInvalid: Presentation Exchange and dcql_query are mutually exclusive')
+  })
+
   test('resolves request_uri JWT using Verifier API redirect_uri client_id and DCQL', async () => {
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
       async () =>
@@ -194,6 +282,93 @@ describe('presentationService', () => {
     expect(request.responseUri).toBe('http://192.100.10.48/openid4vc/verify/request-123')
     expect(request.matchedCredential.id).toBe('thai-id-1')
     expect(request.disclosures).toEqual([{ key: 'credential', label: 'Credential', value: 'Thai National ID' }])
+  })
+
+  test('resolves DCQL credential_sets OR when wallet holds only the first alternative', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'thai_id',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['IDCardCredential'] },
+                },
+                {
+                  id: 'driving_licence',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['DrivingLicenceCredential'] },
+                },
+              ],
+              credential_sets: [{ options: [['thai_id'], ['driving_licence']] }],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://192.100.10.48'],
+        },
+      ],
+    })
+
+    expect(request.dcqlQuery?.credentials).toHaveLength(1)
+    expect(request.dcqlQuery?.credentials[0]?.id).toBe('thai_id')
+    expect(request.matchedCredential.id).toBe('thai-id-1')
+  })
+
+  test('rejects no-set DCQL request when explicit claims are missing on stored credential', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'idcard_credential',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['IDCardCredential'] },
+                  claims: [{ path: ['religion'] }],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    await expect(
+      resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://192.100.10.48'],
+          },
+        ],
+      }),
+    ).rejects.toThrow('PresentationCredentialMissing: requested credential is not available')
   })
 
   test('uses schema presentation labels for DCQL ThaiNationalID requested claim paths', async () => {

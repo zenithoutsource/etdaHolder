@@ -2,6 +2,12 @@
 
 Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
 
+### Session 2026-07-08 (OID4VP trust + JAR)
+
+- OID4VP hardware-free hardening: `clientIdScheme.ts` (scheme parsing + `response_uri` binding), `authorizationRequestJar.ts` (JAR `typ` enforcement + EdDSA verify), `didWebResolver.ts` (`did:web` document → `publicKeyJwk`), scheme-aware `findTrustedVerifier()` in `presentationService.ts`.
+- Production-style verifier allowlist: optional `EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN`, `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK` via `buildTrustedVerifiersFromEnv()`; dev `redirect_uri` verifier unchanged.
+- Verification: focused OID4VP/JAR tests pass; root `yarn tsc --noEmit` pass.
+
 ### Session 2026-07-08
 
 - **Developer onboarding** — `yarn setup`, slim `.env.example`, optional `.env.development.local.example`, `docs/GETTING_STARTED.md`, default wallet API port 4000. Spec: `docs/superpowers/specs/2026-07-08-developer-onboarding-design.md`; plan: `docs/superpowers/plans/2026-07-08-developer-onboarding.md`.
@@ -222,11 +228,11 @@ Implemented:
 
 Remaining:
 
-[ ] Replace development `redirect_uri:` Verifier with registered production `did:web` Verifier entries
-[ ] Signed Request Object (JAR) signature verification — currently decoded but not verified (`presentationService.ts:344-351`). Must close before onboarding additional Verifiers. Do together with `did:web` migration since both touch `findTrustedVerifier`/`readAuthorizationRequest`.
-[ ] `client_id_scheme` enforcement — `findTrustedVerifier()` does literal-prefix match only, does not branch on scheme (`did`, `x509_san_dns`, `verifier_attestation`, `redirect_uri`). Do together with `did:web` migration.
-[ ] `presentation_definition_uri` fetch support — currently throws `PresentationRequestUnsupported` (`presentationService.ts:393`). Implement if a Verifier requires it.
-[ ] DCQL `credential_sets` grouping — `readOptionalDcqlQuery()` reads `credentials` only, ignores `credential_sets` (DCQL §6.1). Needed for "present one of credential A or B" requests.
+[x] Signed Request Object (JAR) signature verification — `authorizationRequestJar.ts` verifies `typ: oauth-authz-req+jwt`; `decentralized_identifier` requires EdDSA signature (pinned JWK or `did:web` document fetch); `redirect_uri` stays unsigned per OID4VP §5.9.3.
+[x] `client_id_scheme` enforcement — `clientIdScheme.ts` + scheme-aware `findTrustedVerifier()` for `redirect_uri`, `decentralized_identifier`, and legacy pre-registered `did:web` allowlist entries.
+[ ] Replace development `redirect_uri:` Verifier with registered production `did:web` Verifier entries — spec: `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md` (gate dev `redirect_uri` to `__DEV__`; require `EXPO_PUBLIC_VERIFIER_DID_WEB_*` in production; DID fetch timeout/size).
+[x] `presentation_definition_uri` fetch support — `presentationDefinitionResolver.ts`; fetch after trust gate; AbortController timeout + max-bytes cap; PE/DCQL mutually exclusive in v1; P5 birth-date scope unchanged.
+[x] DCQL `credential_sets` grouping — `dcqlCredentialSetResolver.ts` + `dcqlCredentialMatch.ts`; single-credential OR v1; first satisfiable option; unified DCQL claim validation; exact dual-format short-circuit unchanged.
 [ ] Add broader claim sets only after trust and disclosure semantics are documented
 [ ] Add MSW Verifier handler group or integration harness for direct_post tests
 [ ] Decide whether to add a full ADR before expanding beyond the P5 age-over-20 slice
