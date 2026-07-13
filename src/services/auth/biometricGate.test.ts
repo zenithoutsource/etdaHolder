@@ -3,8 +3,6 @@ import { confirmBiometricGate, isBiometricGateCancellation } from './biometricGa
 const mockHasHardwareAsync = jest.fn()
 const mockIsEnrolledAsync = jest.fn()
 const mockAuthenticateAsync = jest.fn()
-const mockIsNativeWeakBiometricAvailable = jest.fn()
-const mockAuthenticateWeakBiometric = jest.fn()
 const mockLogWalletStep = jest.fn()
 const mockLogWalletError = jest.fn()
 
@@ -12,11 +10,6 @@ jest.mock('expo-local-authentication', () => ({
   hasHardwareAsync: (...args: unknown[]) => mockHasHardwareAsync(...args),
   isEnrolledAsync: (...args: unknown[]) => mockIsEnrolledAsync(...args),
   authenticateAsync: (...args: unknown[]) => mockAuthenticateAsync(...args),
-}))
-
-jest.mock('../crypto/nativeEddsaSigner', () => ({
-  authenticateWeakBiometric: (...args: unknown[]) => mockAuthenticateWeakBiometric(...args),
-  isNativeWeakBiometricAvailable: () => mockIsNativeWeakBiometricAvailable(),
 }))
 
 jest.mock('../debug/walletLogger', () => ({
@@ -36,30 +29,14 @@ describe('biometricGate', () => {
     mockHasHardwareAsync.mockReset()
     mockIsEnrolledAsync.mockReset()
     mockAuthenticateAsync.mockReset()
-    mockIsNativeWeakBiometricAvailable.mockReset()
-    mockAuthenticateWeakBiometric.mockReset()
     mockLogWalletStep.mockReset()
     mockLogWalletError.mockReset()
     mockHasHardwareAsync.mockResolvedValue(true)
     mockIsEnrolledAsync.mockResolvedValue(true)
     mockAuthenticateAsync.mockResolvedValue({ success: true })
-    mockIsNativeWeakBiometricAvailable.mockReturnValue(false)
-    mockAuthenticateWeakBiometric.mockResolvedValue(true)
   })
 
-  test('uses the Android native weak biometric prompt when available', async () => {
-    mockIsNativeWeakBiometricAvailable.mockReturnValueOnce(true)
-
-    await confirmBiometricGate(gateOptions)
-
-    expect(mockAuthenticateWeakBiometric).toHaveBeenCalledWith('Confirm', 'Cancel')
-    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
-    expect(mockLogWalletStep).toHaveBeenCalledWith('test-scope', 'biometric-complete', {
-      authenticator: 'android-native-biometric-weak',
-    })
-  })
-
-  test('falls back to expo-local-authentication when the native module is unavailable', async () => {
+  test('uses expo-local-authentication for biometric approval', async () => {
     await confirmBiometricGate(gateOptions)
 
     expect(mockAuthenticateAsync).toHaveBeenCalledWith({
@@ -77,7 +54,7 @@ describe('biometricGate', () => {
 
     expect(mockHasHardwareAsync).not.toHaveBeenCalled()
     expect(mockAuthenticateAsync).not.toHaveBeenCalled()
-    expect(mockLogWalletStep).toHaveBeenCalledWith('test-scope', 'biometric-native-unavailable-skip')
+    expect(mockLogWalletStep).toHaveBeenCalledWith('test-scope', 'biometric-skipped')
   })
 
   test('throws a scoped cancellation error and skips logWalletError when the fallback prompt is dismissed', async () => {

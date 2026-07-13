@@ -3,8 +3,6 @@ import { confirmWalletUnlockBiometric, isWalletUnlockBiometricCancellation } fro
 const mockHasHardwareAsync = jest.fn()
 const mockIsEnrolledAsync = jest.fn()
 const mockAuthenticateAsync = jest.fn()
-const mockIsNativeWeakBiometricAvailable = jest.fn()
-const mockAuthenticateWeakBiometric = jest.fn()
 const mockLogWalletStep = jest.fn()
 const mockLogWalletError = jest.fn()
 
@@ -12,11 +10,6 @@ jest.mock('expo-local-authentication', () => ({
   hasHardwareAsync: (...args: unknown[]) => mockHasHardwareAsync(...args),
   isEnrolledAsync: (...args: unknown[]) => mockIsEnrolledAsync(...args),
   authenticateAsync: (...args: unknown[]) => mockAuthenticateAsync(...args),
-}))
-
-jest.mock('../crypto/nativeEddsaSigner', () => ({
-  authenticateWeakBiometric: (...args: unknown[]) => mockAuthenticateWeakBiometric(...args),
-  isNativeWeakBiometricAvailable: () => mockIsNativeWeakBiometricAvailable(),
 }))
 
 jest.mock('../debug/walletLogger', () => ({
@@ -29,15 +22,11 @@ describe('wallet unlock biometric approval', () => {
     mockHasHardwareAsync.mockReset()
     mockIsEnrolledAsync.mockReset()
     mockAuthenticateAsync.mockReset()
-    mockIsNativeWeakBiometricAvailable.mockReset()
-    mockAuthenticateWeakBiometric.mockReset()
     mockLogWalletStep.mockReset()
     mockLogWalletError.mockReset()
     mockHasHardwareAsync.mockResolvedValue(true)
     mockIsEnrolledAsync.mockResolvedValue(true)
     mockAuthenticateAsync.mockResolvedValue({ success: true })
-    mockIsNativeWeakBiometricAvailable.mockReturnValue(false)
-    mockAuthenticateWeakBiometric.mockResolvedValue(true)
   })
 
   test('treats OS prompt cancellation as a normal cancelled unlock', async () => {

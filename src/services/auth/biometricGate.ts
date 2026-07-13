@@ -1,6 +1,5 @@
 import * as LocalAuthentication from 'expo-local-authentication'
 
-import { authenticateWeakBiometric, isNativeWeakBiometricAvailable } from '../crypto/nativeEddsaSigner'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 
 export type BiometricGateOptions = {
@@ -9,10 +8,8 @@ export type BiometricGateOptions = {
   logScope: string
   errorPrefix: string
   /**
-   * When the Android native weak-biometric module is unavailable, fall back to
-   * `expo-local-authentication` (BIOMETRIC_WEAK on Android, so Class 2 face
-   * unlock stays usable; Face ID/Touch ID on iOS). Set false for callers that
-   * must not prompt at all when the native module is absent.
+   * Use `expo-local-authentication` for app-level biometric gates. Set false
+   * for callers that must skip a non-signing app-level prompt.
    */
   allowFallback?: boolean
 }
@@ -27,25 +24,12 @@ export async function confirmBiometricGate(options: BiometricGateOptions): Promi
   try {
     logWalletStep(logScope, 'biometric-start')
 
-    if (isNativeWeakBiometricAvailable()) {
-      logWalletStep(logScope, 'biometric-native-weak-start')
-      const success = await authenticateWeakBiometric(promptMessage, cancelButtonText)
-      if (!success) {
-        throw new Error(`${errorPrefix}Cancelled`)
-      }
-
-      logWalletStep(logScope, 'biometric-complete', {
-        authenticator: 'android-native-biometric-weak',
-      })
-      return
-    }
-
     if (!allowFallback) {
-      logWalletStep(logScope, 'biometric-native-unavailable-skip')
+      logWalletStep(logScope, 'biometric-skipped')
       return
     }
 
-    logWalletStep(logScope, 'biometric-expo-fallback-start')
+    logWalletStep(logScope, 'biometric-expo-start')
     const hasHardware = await LocalAuthentication.hasHardwareAsync()
     const isEnrolled = hasHardware && (await LocalAuthentication.isEnrolledAsync())
     logWalletStep(logScope, 'biometric-sensor-available', { hasHardware, isEnrolled })

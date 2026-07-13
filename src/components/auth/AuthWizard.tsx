@@ -178,7 +178,7 @@ export function AuthWizard() {
       >
         <View className="mb-8">
           <Text className="text-center text-[28px] font-bold text-wallet-navy">
-            ETDA Wallet
+            Digital Wallet
           </Text>
           <Text className="mt-2 text-center text-[15px] text-slate">
             {step === "login-pin"
