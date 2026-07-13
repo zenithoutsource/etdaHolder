@@ -6,7 +6,7 @@ Date: 2026-06-16
 
 ## Context
 
-ETDA requires `alg: EdDSA` with Ed25519 for OID4VCI Proof of Possession JWTs and OID4VP SD-JWT Key Binding JWTs.
+The customer requires `alg: EdDSA` with Ed25519 for OID4VCI Proof of Possession JWTs and OID4VP SD-JWT Key Binding JWTs.
 
 ADR 0007 attempted an Android-first hardware-backed Ed25519 signer through AndroidKeyStore. On the target Galaxy S24 Ultra, the native diagnostics showed AndroidKeyStore generated `EC` keys when requested to generate `Ed25519` keys. That means the target hardware cannot satisfy the hardware-backed Ed25519 plan in practice.
 
@@ -21,7 +21,7 @@ Use a production Keychain-protected software Ed25519 signer:
 - Protect seed retrieval with biometric/device-passcode access control.
 - Derive the Holder DID from the Ed25519 public key using the `did:key` Ed25519 multicodec prefix `[0xed, 0x01]`.
 - Sign OID4VCI PoP JWTs, OID4VP JWT VP tokens, and OID4VP SD-JWT KB-JWTs with `@noble/curves` Ed25519, emitting `alg: EdDSA`.
-- Keep the local Android `EtdaWalletEddsa` module as diagnostic/experimental code only.
+- Remove the local Android `EtdaWalletEddsa` diagnostic module once ADR 0008 is accepted; production signing and app-level biometric gates do not depend on it.
 
 ## Consequences
 

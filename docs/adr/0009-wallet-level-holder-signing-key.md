@@ -31,7 +31,7 @@ Accept a **single wallet-level Holder signing key** for v1:
 
 ## Alternatives considered
 
-1. **Per-credential Ed25519 seeds** — aligns with journey text; requires new storage, issuance, renewal, presentation, and UI keyed by per-document identities. Deferred to v2 unless ETDA mandates it.
+1. **Per-credential Ed25519 seeds** — aligns with journey text; requires new storage, issuance, renewal, presentation, and UI keyed by per-document identities. Deferred to v2 unless the customer mandates it.
 2. **Hybrid (wallet PID key + per-document keys for non-PID credentials)** — partial journey match; highest operational and testing complexity. Not chosen for v1.
 
 ## Consequences
@@ -40,7 +40,7 @@ Accept a **single wallet-level Holder signing key** for v1:
 - **P6 Case 1 (holder revoke):** After Issuer confirmation, the wallet updates local lifecycle state and history. It does **not** destroy a document-specific private key because none exists separately from the wallet seed.
 - **P6 Case 3 (single-use / Used):** The wallet marks the credential `used` and blocks further presentation. It does **not** destroy a per-document key; replay prevention is local lifecycle gating in v1.
 - **Journey deviation is explicit.** Stakeholders reviewing P2/P6 diagrams should treat per-document key destruction as deferred or permanently out of scope unless a future ADR adopts per-credential keys.
-- **v2 trigger:** Adopt per-credential keys only if ETDA Issuer/Verifier interop or audit requirements mandate distinct holder DIDs or hardware-isolated keys per document, and accept the storage, renewal, and presentation refactors that follow.
+- **v2 trigger:** Adopt per-credential keys only if customer Issuer/Verifier interop or audit requirements mandate distinct holder DIDs or hardware-isolated keys per document, and accept the storage, renewal, and presentation refactors that follow.
 
 ## Related decisions
 
