@@ -12,8 +12,8 @@ data class ProximityArmState(
   val armedUntilMs: Long,
 )
 
-object EtdaCompanionSession {
-  private const val TAG = "EtdaCompanionSession"
+object CompanionSession {
+  private const val TAG = "CompanionSession"
   private val armState = AtomicReference<ProximityArmState?>(null)
   private val pendingCompanionResponse = AtomicReference<ByteArray?>(null)
   var onCompanionSignRequested: ((ByteArray) -> Unit)? = null

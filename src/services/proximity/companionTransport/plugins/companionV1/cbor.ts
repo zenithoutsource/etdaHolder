@@ -1,8 +1,8 @@
 import {
-  ETDA_COMPANION_CBOR_KEY,
-  ETDA_COMPANION_MODES,
-  ETDA_COMPANION_PROTOCOL_VERSION,
-  type EtdaCompanionMode,
+  COMPANION_CBOR_KEY,
+  COMPANION_MODES,
+  COMPANION_PROTOCOL_VERSION,
+  type CompanionMode,
 } from './constants'
 import type { CompanionBeginRequest, CompanionCapabilities, CompanionSharingMode } from '../../types'
 
@@ -10,66 +10,66 @@ const CBOR_TEXT_STRING_BASE = 0x60
 const CBOR_BYTE_STRING_BASE = 0x40
 const CBOR_UNSIGNED_BASE = 0x00
 
-export function encodeEtdaCompanionCapabilities(input: CompanionCapabilities): Uint8Array {
+export function encodeCompanionCapabilities(input: CompanionCapabilities): Uint8Array {
   const modeStrings = input.supportedModes.map((mode) => encodeTextString(mode))
   const arrayHeader = encodeDefiniteArray(modeStrings.length)
   const entries = [
-    encodeMapEntry(ETDA_COMPANION_CBOR_KEY.version, encodeUnsigned(input.version)),
-    encodeMapEntry(ETDA_COMPANION_CBOR_KEY.supportedModes, concatBytes(arrayHeader, ...modeStrings)),
-    encodeMapEntry(ETDA_COMPANION_CBOR_KEY.activeProfileId, encodeTextString(input.activeProfileId)),
-    encodeMapEntry(ETDA_COMPANION_CBOR_KEY.maxCompanionBytes, encodeUnsigned(input.maxCompanionBytes)),
+    encodeMapEntry(COMPANION_CBOR_KEY.version, encodeUnsigned(input.version)),
+    encodeMapEntry(COMPANION_CBOR_KEY.supportedModes, concatBytes(arrayHeader, ...modeStrings)),
+    encodeMapEntry(COMPANION_CBOR_KEY.activeProfileId, encodeTextString(input.activeProfileId)),
+    encodeMapEntry(COMPANION_CBOR_KEY.maxCompanionBytes, encodeUnsigned(input.maxCompanionBytes)),
   ]
 
   return encodeDefiniteMap(entries.length, entries)
 }
 
-export function encodeEtdaCompanionBeginRequest(input: CompanionBeginRequest): Uint8Array {
+export function encodeCompanionBeginRequest(input: CompanionBeginRequest): Uint8Array {
   if (input.nonce.length !== 32) {
-    throw new Error('EtdaCompanionCborInvalid: nonce must be exactly 32 bytes')
+    throw new Error('CompanionCborInvalid: nonce must be exactly 32 bytes')
   }
 
   const entries = [
-    encodeMapEntry(ETDA_COMPANION_CBOR_KEY.mode, encodeTextString(input.mode)),
-    encodeMapEntry(ETDA_COMPANION_CBOR_KEY.nonce, encodeByteString(input.nonce)),
-    encodeMapEntry(ETDA_COMPANION_CBOR_KEY.profileId, encodeTextString(input.profileId)),
+    encodeMapEntry(COMPANION_CBOR_KEY.mode, encodeTextString(input.mode)),
+    encodeMapEntry(COMPANION_CBOR_KEY.nonce, encodeByteString(input.nonce)),
+    encodeMapEntry(COMPANION_CBOR_KEY.profileId, encodeTextString(input.profileId)),
   ]
 
   return encodeDefiniteMap(entries.length, entries)
 }
 
-export function decodeEtdaCompanionCapabilities(bytes: Uint8Array): CompanionCapabilities {
+export function decodeCompanionCapabilities(bytes: Uint8Array): CompanionCapabilities {
   const reader = new CborReader(bytes)
   const map = reader.readMap()
-  const supportedModes = readTextStringArray(map.get(ETDA_COMPANION_CBOR_KEY.supportedModes))
+  const supportedModes = readTextStringArray(map.get(COMPANION_CBOR_KEY.supportedModes))
   const filteredModes = supportedModes.filter((mode): mode is CompanionSharingMode =>
-    (ETDA_COMPANION_MODES as readonly string[]).includes(mode),
+    (COMPANION_MODES as readonly string[]).includes(mode),
   )
 
   return {
-    version: readUnsigned(map.get(ETDA_COMPANION_CBOR_KEY.version), 'version'),
+    version: readUnsigned(map.get(COMPANION_CBOR_KEY.version), 'version'),
     supportedModes: filteredModes.length > 0 ? filteredModes : ['mdoc-only'],
-    activeProfileId: readTextString(map.get(ETDA_COMPANION_CBOR_KEY.activeProfileId), 'activeProfileId'),
-    maxCompanionBytes: readUnsigned(map.get(ETDA_COMPANION_CBOR_KEY.maxCompanionBytes), 'maxCompanionBytes'),
+    activeProfileId: readTextString(map.get(COMPANION_CBOR_KEY.activeProfileId), 'activeProfileId'),
+    maxCompanionBytes: readUnsigned(map.get(COMPANION_CBOR_KEY.maxCompanionBytes), 'maxCompanionBytes'),
   }
 }
 
-export function decodeEtdaCompanionBeginRequest(bytes: Uint8Array): CompanionBeginRequest {
+export function decodeCompanionBeginRequest(bytes: Uint8Array): CompanionBeginRequest {
   const reader = new CborReader(bytes)
   const map = reader.readMap()
-  const mode = readTextString(map.get(ETDA_COMPANION_CBOR_KEY.mode), 'mode')
-  if (!(ETDA_COMPANION_MODES as readonly string[]).includes(mode)) {
-    throw new Error(`EtdaCompanionCborInvalid: unsupported mode ${mode}`)
+  const mode = readTextString(map.get(COMPANION_CBOR_KEY.mode), 'mode')
+  if (!(COMPANION_MODES as readonly string[]).includes(mode)) {
+    throw new Error(`CompanionCborInvalid: unsupported mode ${mode}`)
   }
 
-  const nonce = readByteString(map.get(ETDA_COMPANION_CBOR_KEY.nonce), 'nonce')
+  const nonce = readByteString(map.get(COMPANION_CBOR_KEY.nonce), 'nonce')
   if (nonce.length !== 32) {
-    throw new Error('EtdaCompanionCborInvalid: nonce must be exactly 32 bytes')
+    throw new Error('CompanionCborInvalid: nonce must be exactly 32 bytes')
   }
 
   return {
     mode: mode as CompanionSharingMode,
     nonce,
-    profileId: readTextString(map.get(ETDA_COMPANION_CBOR_KEY.profileId), 'profileId'),
+    profileId: readTextString(map.get(COMPANION_CBOR_KEY.profileId), 'profileId'),
   }
 }
 
@@ -87,7 +87,7 @@ function encodeDefiniteArray(length: number): Uint8Array {
 
 function encodeUnsigned(value: number): Uint8Array {
   if (!Number.isInteger(value) || value < 0) {
-    throw new Error('EtdaCompanionCborInvalid: unsigned integer required')
+    throw new Error('CompanionCborInvalid: unsigned integer required')
   }
   if (value < 24) return new Uint8Array([CBOR_UNSIGNED_BASE + value])
   if (value < 256) return new Uint8Array([0x18, value])
@@ -95,7 +95,7 @@ function encodeUnsigned(value: number): Uint8Array {
   if (value <= 0xffffffff) {
     return new Uint8Array([0x1a, (value >> 24) & 0xff, (value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff])
   }
-  throw new Error('EtdaCompanionCborInvalid: unsigned integer too large')
+  throw new Error('CompanionCborInvalid: unsigned integer too large')
 }
 
 function encodeTextString(value: string): Uint8Array {
@@ -111,7 +111,7 @@ function encodeLength(major: number, length: number): Uint8Array {
   if (length < 24) return new Uint8Array([major + length])
   if (length < 256) return new Uint8Array([major + 24, length])
   if (length < 65_536) return new Uint8Array([major + 25, length >> 8, length & 0xff])
-  throw new Error('EtdaCompanionCborInvalid: string too large')
+  throw new Error('CompanionCborInvalid: string too large')
 }
 
 function concatBytes(...parts: Uint8Array[]): Uint8Array {
@@ -127,21 +127,21 @@ function concatBytes(...parts: Uint8Array[]): Uint8Array {
 
 function readUnsigned(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    throw new Error(`EtdaCompanionCborInvalid: ${field} must be an unsigned integer`)
+    throw new Error(`CompanionCborInvalid: ${field} must be an unsigned integer`)
   }
   return value
 }
 
 function readTextString(value: unknown, field: string): string {
   if (typeof value !== 'string') {
-    throw new Error(`EtdaCompanionCborInvalid: ${field} must be a text string`)
+    throw new Error(`CompanionCborInvalid: ${field} must be a text string`)
   }
   return value
 }
 
 function readByteString(value: unknown, field: string): Uint8Array {
   if (!(value instanceof Uint8Array)) {
-    throw new Error(`EtdaCompanionCborInvalid: ${field} must be a byte string`)
+    throw new Error(`CompanionCborInvalid: ${field} must be a byte string`)
   }
   return value
 }
@@ -158,7 +158,7 @@ class CborReader {
 
   readMap(): Map<number, unknown> {
     const initial = this.readInitialByte()
-    if (initial.major !== 5) throw new Error('EtdaCompanionCborInvalid: expected map')
+    if (initial.major !== 5) throw new Error('CompanionCborInvalid: expected map')
     const map = new Map<number, unknown>()
     for (let i = 0; i < initial.length; i += 1) {
       const key = this.readUnsignedValue()
@@ -178,18 +178,18 @@ class CborReader {
       for (let i = 0; i < length; i += 1) items.push(this.readValue())
       return items
     }
-    throw new Error('EtdaCompanionCborInvalid: unsupported CBOR type')
+    throw new Error('CompanionCborInvalid: unsupported CBOR type')
   }
 
   private readUnsignedValue(): number {
     const initial = this.readInitialByte()
-    if (initial.major !== 0) throw new Error('EtdaCompanionCborInvalid: expected unsigned integer key')
+    if (initial.major !== 0) throw new Error('CompanionCborInvalid: expected unsigned integer key')
     return initial.length
   }
 
   private readInitialByte(): { major: number; length: number } {
     const initial = this.bytes[this.offset]
-    if (initial === undefined) throw new Error('EtdaCompanionCborInvalid: unexpected end of input')
+    if (initial === undefined) throw new Error('CompanionCborInvalid: unexpected end of input')
     this.offset += 1
     const major = initial >> 5
     const additional = initial & 0x1f
@@ -203,7 +203,7 @@ class CborReader {
       const b3 = this.readByte()
       return { major, length: ((b0 << 24) | (b1 << 16) | (b2 << 8) | b3) >>> 0 }
     }
-    throw new Error('EtdaCompanionCborInvalid: unsupported length encoding')
+    throw new Error('CompanionCborInvalid: unsupported length encoding')
   }
 
   private readBytes(length: number): Uint8Array {
@@ -214,12 +214,12 @@ class CborReader {
 
   private readByte(): number {
     const value = this.bytes[this.offset]
-    if (value === undefined) throw new Error('EtdaCompanionCborInvalid: unexpected end of input')
+    if (value === undefined) throw new Error('CompanionCborInvalid: unexpected end of input')
     this.offset += 1
     return value
   }
 }
 
-export function readEtdaCompanionProtocolVersionFromCapabilities(bytes: Uint8Array): number {
-  return decodeEtdaCompanionCapabilities(bytes).version
+export function readCompanionProtocolVersionFromCapabilities(bytes: Uint8Array): number {
+  return decodeCompanionCapabilities(bytes).version
 }

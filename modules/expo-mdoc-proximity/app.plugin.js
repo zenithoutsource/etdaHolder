@@ -75,13 +75,13 @@ function ensureHostApduService(manifest) {
   const services = application.service ?? []
   const serviceList = Array.isArray(services) ? services : services ? [services] : []
   const exists = serviceList.some(
-    (entry) => entry.$?.['android:name'] === 'com.etdawallet.mdocproximity.EtdaCompanionHostApduService',
+    (entry) => entry.$?.['android:name'] === 'com.etdawallet.mdocproximity.CompanionHostApduService',
   )
   if (exists) return
 
   serviceList.push({
     $: {
-      'android:name': 'com.etdawallet.mdocproximity.EtdaCompanionHostApduService',
+      'android:name': 'com.etdawallet.mdocproximity.CompanionHostApduService',
       'android:exported': 'true',
       'android:permission': 'android.permission.BIND_NFC_SERVICE',
     },
@@ -98,7 +98,7 @@ function ensureHostApduService(manifest) {
       {
         $: {
           'android:name': 'android.nfc.cardemulation.host_apdu_service',
-          'android:resource': '@xml/etda_companion_apdu_service',
+          'android:resource': '@xml/companion_apdu_service',
         },
       },
     ],

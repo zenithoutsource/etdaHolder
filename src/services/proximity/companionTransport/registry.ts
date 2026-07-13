@@ -1,7 +1,7 @@
 import type { CompanionTransportPlugin } from './types'
-import { etdaCompanionV1Plugin } from './plugins/etdaCompanionV1'
+import { companionV1Plugin } from './plugins/companionV1'
 
-const plugins: CompanionTransportPlugin[] = [etdaCompanionV1Plugin]
+const plugins: CompanionTransportPlugin[] = [companionV1Plugin]
 
 const pluginById = new Map(plugins.map((plugin) => [plugin.id, plugin]))
 

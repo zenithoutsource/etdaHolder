@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <string name="etda_companion_hce_description">ETDA companion credential transport</string>
+  <string name="companion_hce_description">Companion credential transport</string>
 </resources>

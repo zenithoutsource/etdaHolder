@@ -3,32 +3,32 @@ import { base64UrlEncodeBytes } from '@/src/utils/base64Url'
 
 import type { CompanionTransportPlugin } from '../../types'
 import {
-  decodeEtdaCompanionBeginRequest,
-  encodeEtdaCompanionCapabilities,
+  decodeCompanionBeginRequest,
+  encodeCompanionCapabilities,
 } from './cbor'
 import {
-  ETDA_COMPANION_AID_HEX,
-  ETDA_COMPANION_AUD,
-  ETDA_COMPANION_NONCE_BYTES,
-  ETDA_COMPANION_PLUGIN_ID,
+  COMPANION_AID_HEX,
+  COMPANION_AUD,
+  COMPANION_NONCE_BYTES,
+  COMPANION_PLUGIN_ID,
 } from './constants'
 
-export const etdaCompanionV1Plugin: CompanionTransportPlugin = {
-  id: ETDA_COMPANION_PLUGIN_ID,
-  vendorId: 'etda',
-  displayName: 'ETDA Companion Transport v1',
-  aids: [ETDA_COMPANION_AID_HEX],
-  nonceBytes: ETDA_COMPANION_NONCE_BYTES,
-  encodeCapabilities: encodeEtdaCompanionCapabilities,
-  decodeBeginRequest: decodeEtdaCompanionBeginRequest,
+export const companionV1Plugin: CompanionTransportPlugin = {
+  id: COMPANION_PLUGIN_ID,
+  vendorId: 'reference',
+  displayName: 'Companion Transport v1',
+  aids: [COMPANION_AID_HEX],
+  nonceBytes: COMPANION_NONCE_BYTES,
+  encodeCapabilities: encodeCompanionCapabilities,
+  decodeBeginRequest: decodeCompanionBeginRequest,
   buildPresentation: async ({ sdJwt, nonceBytes }) => {
-    if (nonceBytes.length !== ETDA_COMPANION_NONCE_BYTES) {
-      throw new Error(`CompanionInvalid: nonce must be ${ETDA_COMPANION_NONCE_BYTES} bytes`)
+    if (nonceBytes.length !== COMPANION_NONCE_BYTES) {
+      throw new Error(`CompanionInvalid: nonce must be ${COMPANION_NONCE_BYTES} bytes`)
     }
 
     return signSdJwtKbPresentationToken({
       sdJwt,
-      audience: ETDA_COMPANION_AUD,
+      audience: COMPANION_AUD,
       nonce: base64UrlEncodeBytes(nonceBytes),
     })
   },

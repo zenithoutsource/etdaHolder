@@ -2,8 +2,8 @@ package com.etdawallet.mdocproximity
 
 import android.util.Log
 
-object EtdaCompanionApduHandler {
-  private const val TAG = "EtdaCompanionApdu"
+object CompanionApduHandler {
+  private const val TAG = "CompanionApdu"
   private const val CLA_PROPRIETARY = 0x80.toByte()
   private const val INS_GET_CAPABILITIES = 0xCA.toByte()
   private const val INS_BEGIN_COMPANION = 0xCB.toByte()
@@ -23,7 +23,7 @@ object EtdaCompanionApduHandler {
       INS_BEGIN_COMPANION -> handleBeginCompanion(commandApdu)
       INS_GET_RESPONSE -> handleGetResponse()
       INS_ABORT -> {
-        EtdaCompanionSession.disarm()
+        CompanionSession.disarm()
         sw(0x90, 0x00)
       }
       else -> sw(0x6D, 0x00)
@@ -31,7 +31,7 @@ object EtdaCompanionApduHandler {
   }
 
   private fun handleGetCapabilities(): ByteArray {
-    val state = EtdaCompanionSession.readArmState()
+    val state = CompanionSession.readArmState()
       ?: return sw(0x6A, 0x82)
 
     val modes = if (state.sharingMode == "dual-format") {
@@ -40,7 +40,7 @@ object EtdaCompanionApduHandler {
       listOf("mdoc-only")
     }
 
-    val body = EtdaCompanionCbor.encodeCapabilities(
+    val body = CompanionCbor.encodeCapabilities(
       version = 1,
       supportedModes = modes,
       activeProfileId = state.profileId,
@@ -51,7 +51,7 @@ object EtdaCompanionApduHandler {
   }
 
   private fun handleBeginCompanion(commandApdu: ByteArray): ByteArray {
-    val state = EtdaCompanionSession.readArmState()
+    val state = CompanionSession.readArmState()
       ?: return sw(0x6A, 0x82)
 
     if (commandApdu.size < 5) return sw(0x6F, 0x00)
@@ -60,7 +60,7 @@ object EtdaCompanionApduHandler {
 
     val payload = commandApdu.copyOfRange(5, 5 + lc)
     val request = try {
-      EtdaCompanionCbor.decodeBeginRequest(payload)
+      CompanionCbor.decodeBeginRequest(payload)
     } catch (error: Exception) {
       Log.e(TAG, "[begin-companion] invalid CBOR", error)
       return sw(0x6F, 0x00)
@@ -74,9 +74,9 @@ object EtdaCompanionApduHandler {
       return success(ByteArray(0))
     }
 
-    val response = EtdaCompanionSession.consumeCompanionResponse()
+    val response = CompanionSession.consumeCompanionResponse()
     if (response == null) {
-      EtdaCompanionSession.onCompanionSignRequested?.invoke(request.nonce)
+      CompanionSession.onCompanionSignRequested?.invoke(request.nonce)
       Log.w(TAG, "[begin-companion] companion KB signing pending JS bridge")
       return sw(0x69, 0x85)
     }
@@ -85,7 +85,7 @@ object EtdaCompanionApduHandler {
   }
 
   private fun handleGetResponse(): ByteArray {
-    val response = EtdaCompanionSession.consumeCompanionResponse() ?: return sw(0x6F, 0x00)
+    val response = CompanionSession.consumeCompanionResponse() ?: return sw(0x6F, 0x00)
     return success(response)
   }
 
@@ -95,7 +95,7 @@ object EtdaCompanionApduHandler {
     }
     val chunk = body.copyOfRange(0, 255)
     val remaining = body.copyOfRange(255, body.size)
-    EtdaCompanionSession.storeCompanionResponse(remaining)
+    CompanionSession.storeCompanionResponse(remaining)
     return chunk + sw(0x61, remaining.size.coerceAtMost(255))
   }
 

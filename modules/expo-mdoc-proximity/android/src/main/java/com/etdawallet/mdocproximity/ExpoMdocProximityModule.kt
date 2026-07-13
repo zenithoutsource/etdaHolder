@@ -63,7 +63,7 @@ class ExpoMdocProximityModule : Module() {
         val companionSdJwt = config["companionSdJwt"] as? String
         val armWindowMs = (config["armWindowMs"] as? Number)?.toLong() ?: 60_000L
 
-        EtdaCompanionSession.arm(
+        CompanionSession.arm(
           ProximityArmState(
             credentialId = credentialId,
             sharingMode = sharingMode,
@@ -74,7 +74,7 @@ class ExpoMdocProximityModule : Module() {
           ),
         )
 
-        EtdaCompanionSession.onCompanionSignRequested = { nonce ->
+        CompanionSession.onCompanionSignRequested = { nonce ->
           sendEvent(
             "onCompanionSignRequested",
             mapOf("nonceBase64Url" to android.util.Base64.encodeToString(nonce, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)),
@@ -92,7 +92,7 @@ class ExpoMdocProximityModule : Module() {
     AsyncFunction("supplyCompanionPresentation") { presentation: String, promise: Promise ->
       try {
         val bytes = presentation.toByteArray(StandardCharsets.UTF_8)
-        EtdaCompanionSession.storeCompanionResponse(bytes)
+        CompanionSession.storeCompanionResponse(bytes)
         promise.resolve(null)
       } catch (error: Exception) {
         promise.reject(MdocProximityErrors.PROXIMITY_NOT_READY, error.message, error)
@@ -112,7 +112,7 @@ class ExpoMdocProximityModule : Module() {
 
     AsyncFunction("stopProximityPresentation") {
       MdocProximityEngine.stopProximityPresentation()
-      EtdaCompanionSession.disarm()
+      CompanionSession.disarm()
     }
 
     AsyncFunction("approvePresentation") { requestedFields: List<String>, promise: Promise ->
@@ -125,7 +125,7 @@ class ExpoMdocProximityModule : Module() {
 
     AsyncFunction("denyPresentation") {
       MdocProximityEngine.stopProximityPresentation()
-      EtdaCompanionSession.disarm()
+      CompanionSession.disarm()
     }
   }
 

@@ -16,7 +16,7 @@ export type ReaderProfileCompanion = {
 
 export type ReaderProfile = {
   profileId: string
-  /** Stable vendor key for grouping profiles (e.g. `etda`, `acme-corp`). */
+  /** Stable vendor key for grouping profiles (e.g. `reference`, `acme-corp`). */
   vendorId: string
   vendorDisplayName: string
   documentType: CardSchemaConfig['type']
@@ -46,10 +46,10 @@ const TRANSCRIPT_COMPANION_CLAIMS = [
 export const READER_PROFILES: ReaderProfile[] = [
   {
     profileId: 'etda-transcript-acr1311u-n2',
-    vendorId: 'etda',
-    vendorDisplayName: 'ETDA',
+    vendorId: 'reference',
+    vendorDisplayName: 'Reference Verifier',
     documentType: 'BangkokUniversityTranscript',
-    profileDisplayName: 'ETDA Transcript (ACR1311U-N2)',
+    profileDisplayName: 'Transcript (ACR1311U-N2)',
     sharingMode: 'dual-format',
     mdocFields: TRANSCRIPT_MDOC_FIELDS,
     companion: {
@@ -59,10 +59,10 @@ export const READER_PROFILES: ReaderProfile[] = [
   },
   {
     profileId: 'etda-transcript-mdoc-only',
-    vendorId: 'etda',
-    vendorDisplayName: 'ETDA',
+    vendorId: 'reference',
+    vendorDisplayName: 'Reference Verifier',
     documentType: 'BangkokUniversityTranscript',
-    profileDisplayName: 'ETDA Transcript mDOC-only',
+    profileDisplayName: 'Transcript mDOC-only',
     sharingMode: 'mdoc-only',
     mdocFields: TRANSCRIPT_MDOC_FIELDS,
   },

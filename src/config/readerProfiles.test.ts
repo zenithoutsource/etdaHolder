@@ -5,9 +5,9 @@ import {
   readerProfileUsesCompanion,
 } from './readerProfiles'
 
-test('resolves ETDA reference profiles from the generic registry', () => {
+test('resolves reference profiles from the generic registry', () => {
   const dual = getReaderProfileForDocumentType('BangkokUniversityTranscript', 'dual-format')
-  expect(dual?.vendorId).toBe('etda')
+  expect(dual?.vendorId).toBe('reference')
   expect(dual?.companion?.transportPluginId).toBe('etda-companion-v1')
   expect(readerProfileUsesCompanion(dual!)).toBe(true)
 
@@ -17,6 +17,6 @@ test('resolves ETDA reference profiles from the generic registry', () => {
 })
 
 test('looks up profiles by id and vendor', () => {
-  expect(getReaderProfileById('etda-transcript-acr1311u-n2')?.vendorDisplayName).toBe('ETDA')
-  expect(listReaderProfilesForVendor('etda')).toHaveLength(2)
+  expect(getReaderProfileById('etda-transcript-acr1311u-n2')?.vendorDisplayName).toBe('Reference Verifier')
+  expect(listReaderProfilesForVendor('reference')).toHaveLength(2)
 })

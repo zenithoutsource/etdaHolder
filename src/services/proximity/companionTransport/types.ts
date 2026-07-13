@@ -20,7 +20,7 @@ export type CompanionPresentationInput = {
 
 /**
  * Proprietary NFC companion transport (second AID leg after mDOC session).
- * Each vendor/protocol ships as a registered plugin; ETDA v1 is the reference plugin.
+ * Each vendor/protocol ships as a registered plugin; companionV1 is the reference plugin.
  */
 export type CompanionTransportPlugin = {
   id: string

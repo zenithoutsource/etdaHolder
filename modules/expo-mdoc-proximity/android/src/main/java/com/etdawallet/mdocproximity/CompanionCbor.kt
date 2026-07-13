@@ -3,13 +3,13 @@ package com.etdawallet.mdocproximity
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 
-data class EtdaBeginCompanionRequest(
+data class BeginCompanionRequest(
   val mode: String,
   val nonce: ByteArray,
   val profileId: String,
 )
 
-object EtdaCompanionCbor {
+object CompanionCbor {
   fun encodeCapabilities(
     version: Int,
     supportedModes: List<String>,
@@ -30,14 +30,14 @@ object EtdaCompanionCbor {
     return output.toByteArray()
   }
 
-  fun decodeBeginRequest(bytes: ByteArray): EtdaBeginCompanionRequest {
+  fun decodeBeginRequest(bytes: ByteArray): BeginCompanionRequest {
     val reader = CborReader(bytes)
     val map = reader.readMap()
     val mode = map[1] as? String ?: throw IllegalArgumentException("mode required")
     val nonce = map[2] as? ByteArray ?: throw IllegalArgumentException("nonce required")
     val profileId = map[3] as? String ?: throw IllegalArgumentException("profileId required")
     if (nonce.size != 32) throw IllegalArgumentException("nonce must be 32 bytes")
-    return EtdaBeginCompanionRequest(mode, nonce, profileId)
+    return BeginCompanionRequest(mode, nonce, profileId)
   }
 
   private fun writeMapHeader(output: ByteArrayOutputStream, pairCount: Int) {
@@ -60,7 +60,13 @@ object EtdaCompanionCbor {
         output.write(value shr 8)
         output.write(value and 0xFF)
       }
-      else -> throw IllegalArgumentException("unsigned integer too large")
+      else -> {
+        output.write(0x1A)
+        output.write(value shr 24)
+        output.write(value shr 16)
+        output.write(value shr 8)
+        output.write(value and 0xFF)
+      }
     }
   }
 
