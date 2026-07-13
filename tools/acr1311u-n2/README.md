@@ -19,10 +19,32 @@ Host-side reference for exercising the companion companion APDU profile defined 
 
 Pinned constants: `src/services/proximity/companionTransport/plugins/companionV1/constants.ts`.
 
-## Script
+## Scripts
 
-`companion_probe.ts` is a **stub** until the ACS SDK is wired for this repo.
-Implement using the sequence in spec §11 when a physical reader is available.
+### `probe_companion.py` (runnable smoke test)
+
+Validates the SELECT + GET CAPABILITIES round-trip against an armed wallet HCE
+session — no stored mDOC required. Use with the dev-only **"Test NFC (arm HCE)"**
+button in the credential detail screen.
+
+```bash
+pip install pyscard cbor2   # cbor2 optional, decodes the capabilities map
+py -3.12 tools/acr1311u-n2/probe_companion.py
+```
+
+Steps: open a credential's detail in a `__DEV__` build, tap **Test NFC (arm HCE)**
+(arms ~120s, tunable via `EXPO_PUBLIC_NFC_TEST_ARM_WINDOW_MS`), then tap the phone
+to the reader while the script runs. Expect `SELECT → 9000` (not `6A82`) and
+`GET_CAPABILITIES → 9000` with `supportedModes: ["mdoc-only"]`.
+
+> Note: `approvePresentation` / full mDOC engagement is still a native stub, so
+> this proves transport + arm-state + companion capabilities only, not a full
+> credential exchange.
+
+### `companion_probe.ts` (stub)
+
+A **stub** until the ACS SDK is wired for TypeScript in this repo. Implement using
+the sequence in spec §11 when a physical reader is available.
 
 ```bash
 # Future (after SDK binding):

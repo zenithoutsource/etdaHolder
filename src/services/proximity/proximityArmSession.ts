@@ -84,3 +84,28 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
 export async function disarmProximityPresentation(): Promise<void> {
   await stopProximityPresentation()
 }
+
+const NFC_TEST_ARM_WINDOW_MS =
+  Number(process.env.EXPO_PUBLIC_NFC_TEST_ARM_WINDOW_MS) || 120_000
+
+/**
+ * DEV-ONLY: arm the companion HCE session with a dummy id (no stored mDOC) so
+ * the ACR1311U-N2 reader path can be validated end-to-end. Bypasses the mDOC
+ * guard in `startProximityPresentation` on purpose and calls the native module
+ * directly. Never callable in production.
+ */
+export async function armProximityTestSession(): Promise<void> {
+  if (!__DEV__) {
+    throw new Error('armProximityTestSession is dev-only')
+  }
+
+  await requireNativeProximityModule().armProximitySession({
+    credentialId: 'nfc-test',
+    sharingMode: 'mdoc-only',
+    profileId: 'nfc-test-profile',
+    approvedMdocFields: [],
+    armWindowMs: NFC_TEST_ARM_WINDOW_MS,
+  })
+}
+
+export const NFC_TEST_ARM_WINDOW_SECONDS = Math.round(NFC_TEST_ARM_WINDOW_MS / 1000)

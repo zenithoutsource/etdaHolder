@@ -6,30 +6,30 @@
  */
 
 import {
-  ETDA_COMPANION_AID_HEX,
-  ETDA_COMPANION_AUD,
-  ETDA_COMPANION_INS,
-  ETDA_COMPANION_NONCE_BYTES,
-} from '../../src/services/proximity/companionTransport/plugins/etdaCompanionV1/constants'
+  COMPANION_AID_HEX,
+  COMPANION_AUD,
+  COMPANION_INS,
+  COMPANION_NONCE_BYTES,
+} from '../../src/services/proximity/companionTransport/plugins/companionV1/constants'
 
-export const ETDA_COMPANION_PROBE_APDU = {
-  selectAid: hexToBytes(ETDA_COMPANION_AID_HEX),
-  getCapabilities: [0x80, ETDA_COMPANION_INS.GET_CAPABILITIES, 0x00, 0x00, 0x00],
-  getResponse: [0x80, ETDA_COMPANION_INS.GET_RESPONSE, 0x00, 0x00, 0x00],
-  abort: [0x80, ETDA_COMPANION_INS.ABORT, 0x00, 0x00, 0x00],
+export const COMPANION_PROBE_APDU = {
+  selectAid: hexToBytes(COMPANION_AID_HEX),
+  getCapabilities: [0x80, COMPANION_INS.GET_CAPABILITIES, 0x00, 0x00, 0x00],
+  getResponse: [0x80, COMPANION_INS.GET_RESPONSE, 0x00, 0x00, 0x00],
+  abort: [0x80, COMPANION_INS.ABORT, 0x00, 0x00, 0x00],
 } as const
 
 export function buildBeginCompanionApdu(mode: string, nonce: Uint8Array, profileId: string): Uint8Array {
-  if (nonce.length !== ETDA_COMPANION_NONCE_BYTES) {
-    throw new Error(`nonce must be ${ETDA_COMPANION_NONCE_BYTES} bytes`)
+  if (nonce.length !== COMPANION_NONCE_BYTES) {
+    throw new Error(`nonce must be ${COMPANION_NONCE_BYTES} bytes`)
   }
 
   const body = encodeBeginCompanionCbor({ mode, nonce, profileId })
-  return new Uint8Array([0x80, ETDA_COMPANION_INS.BEGIN_COMPANION, 0x00, 0x00, body.length, ...body])
+  return new Uint8Array([0x80, COMPANION_INS.BEGIN_COMPANION, 0x00, 0x00, body.length, ...body])
 }
 
 export function companionAudUrn(): string {
-  return ETDA_COMPANION_AUD
+  return COMPANION_AUD
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -65,6 +65,6 @@ function encodeBeginCompanionCbor(input: {
 
 if (require.main === module) {
   console.info(
-    'etda_companion_probe: stub only — wire ACS SDK and run against armed Wallet HCE. See tools/acr1311u-n2/README.md',
+    'companion_probe: stub only — wire ACS SDK and run against armed Wallet HCE. See tools/acr1311u-n2/README.md',
   )
 }
