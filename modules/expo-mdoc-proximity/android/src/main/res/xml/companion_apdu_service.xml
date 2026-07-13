@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
-  android:description="@string/etda_companion_hce_description"
+  android:description="@string/companion_hce_description"
   android:requireDeviceUnlock="false"
   android:requireDeviceScreenOn="true">
   <aid-group
-    android:description="@string/etda_companion_hce_description"
+    android:description="@string/companion_hce_description"
     android:category="other">
-    <aid-filter android:name="A0000004544410100" />
+    <aid-filter android:name="A00000045444410100" />
   </aid-group>
 </host-apdu-service>

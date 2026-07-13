@@ -9,7 +9,6 @@ import { readStoredCredentialById } from '@/src/services/credentials/storedCrede
 import { estimateCompanionPayloadBytes } from './companionPayloadSize'
 import { validateProximityArmPayload } from './proximityArmPolicy'
 import {
-  approveProximityPresentation,
   ProximityPresentationError,
   startProximityPresentation,
   stopProximityPresentation,
@@ -80,8 +79,6 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
       : {}),
     armWindowMs: HCE_ARM_WINDOW_MS,
   })
-
-  await approveProximityPresentation(input.approvedMdocFields)
 }
 
 export async function disarmProximityPresentation(): Promise<void> {

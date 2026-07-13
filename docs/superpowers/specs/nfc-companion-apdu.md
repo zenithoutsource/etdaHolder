@@ -1,14 +1,14 @@
-# ETDA NFC Companion APDU Extension
+# NFC Companion APDU Extension
 
 Status: Draft v1 (2026-07-06) — dev/interop profile for Wallet + ACR1311U-N2 host
 Date: 2026-07-06
 
 ## Relationship To Parent Spec
 
-This document pins the byte-level protocol referenced by [Android HCE Dual-Format Presentation Design](./2026-07-03-android-hce-dual-format-presentation-design.md) §8 **ETDA JSON Companion Transport**.
+This document pins the byte-level protocol referenced by [Android HCE Dual-Format Presentation Design](./2026-07-03-android-hce-dual-format-presentation-design.md) §8 **JSON Companion Transport**.
 
 - **Parent spec** defines architecture, consent, and payload semantics (signed SD-JWT companion, separate AID, no change to ISO 18013-5 mDOC exchange).
-- **This spec** defines the proprietary APDU command set under the ETDA AID for Wallet HCE and ACR1311U-N2 host tooling.
+- **This spec** defines the proprietary APDU command set under the companion AID for Wallet HCE and ACR1311U-N2 host tooling.
 
 Normative ISO 18013-5 mDOC exchange (AID `A0000002480400`, session encryption, `DeviceResponse`) is **not** defined here — see parent spec §8 **ISO 18013-5 Session Layer**.
 
@@ -16,28 +16,28 @@ Normative ISO 18013-5 mDOC exchange (AID `A0000002480400`, session encryption, `
 
 | In scope | Out of scope |
 |---|---|
-| ETDA proprietary AID selection | iOS |
+| proprietary companion AID selection | iOS |
 | `GET CAPABILITIES`, `BEGIN COMPANION`, response chaining | mDOC session crypto (clause 9) |
 | Nonce format for KB-JWT binding | Online OID4VP |
 | SD-JWT companion payload on the wire | Issuer OID4VCI |
-| ACR1311U-N2 host reader sequence | Production ETDA registry of RID (dev RID below) |
+| ACR1311U-N2 host reader sequence | Production registry of RID (dev RID below) |
 
 ## 2. Application Identifier (AID)
 
-### 2.1 ETDA Companion AID (v1)
+### 2.1 Companion AID (v1)
 
 | Field | Value |
 |---|---|
-| Name | `ETDA_COMPANION_V1` |
+| Name | `COMPANION_V1` |
 | Hex | `A0 00 00 04 54 44 41 01 00` |
-| String form | `A0000004544410100` |
+| String form | `A00000045444410100` |
 | Length | 9 bytes |
 
 - `A0 00 00` — ISO 7816-5 registered application format
-- `04 54 44 41` — RID slot labelled **ETDA** for development (`'ETDA'` ASCII with prefix byte `04`)
+- `04 54 44 41` — development RID slot (legacy RID bytes `04 54 44 41` — deployed wire value, keep until protocol version bump)
 - `01 00` — PIX: companion service v1
 
-Wallet HCE `HostApduService` must declare **both** the ISO mDOC AID (`A0000002480400`) and this ETDA AID. The reader selects mDOC AID first; ETDA AID is selected only after mDOC session completes successfully.
+Wallet HCE `HostApduService` must declare **both** the ISO mDOC AID (`A0000002480400`) and this companion AID. The reader selects mDOC AID first; companion AID is selected only after mDOC session completes successfully.
 
 ### 2.2 SELECT
 
@@ -53,7 +53,7 @@ CLA  INS  P1   P2   Lc   Data
 
 ## 3. Command Set Overview
 
-All ETDA-proprietary commands use **CLA=`80`** (proprietary, no secure messaging in v1).
+All proprietary companion commands use **CLA=`80`** (proprietary, no secure messaging in v1).
 
 | INS | Name | Direction | Purpose |
 |---|---|---|---|
@@ -94,7 +94,7 @@ CBOR keys are unsigned integers for compactness:
 
 ### 4.3 Reader rules
 
-- Reader must call GET CAPABILITIES after SELECT ETDA AID before BEGIN COMPANION.
+- Reader must call GET CAPABILITIES after SELECT companion AID before BEGIN COMPANION.
 - If `dual-format` is not listed, reader must not request dual-format mode.
 
 ## 5. BEGIN COMPANION (`80 CB 00 00 Lc [payload]`)
@@ -167,7 +167,7 @@ Reader aborts companion session. Wallet clears companion buffers and returns `SW
 
 ```
 1. [ISO 18013-5 mDOC session on AID A0000002480400 — parent spec]
-2. SELECT ETDA AID A0000004544410100
+2. SELECT companion AID A00000045444410100
 3. GET CAPABILITIES → read supported_modes
 4. BEGIN COMPANION { mode, nonce, profile_id }
 5. If SW=61XX → loop GET RESPONSE until SW=9000
@@ -191,7 +191,7 @@ Bluetooth (ACR1311U-N2 ↔ host) is invisible to the Wallet; host sends NFC APDU
 ## 10. Wallet Implementation Notes
 
 - Constants live in `src/config/etdaCompanionApdu.ts` (AID, INS, CBOR keys, `aud` urn).
-- Native `HostApduService` owns ETDA AID dispatch; JS layer supplies armed profile, approved disclosures, and SD-JWT bytes at arm time.
+- Native `HostApduService` owns companion AID dispatch; JS layer supplies armed profile, approved disclosures, and SD-JWT bytes at arm time.
 - `proximityArmSession` passes `companionPayloadBytes` estimate for dual-format arm-time size check.
 - Logs may include INS, SW, payload **lengths** only — never SD-JWT body, nonce, or claims (parent spec §12).
 
@@ -201,7 +201,7 @@ Reference sequence for a PC host using the ACS SDK (pseudocode):
 
 ```text
 nfc.connect()
-nfc.sendApdu(SELECT_ETDA_AID)
+nfc.sendApdu(SELECT_COMPANION_AID)
 caps = cbor_decode(nfc.sendApdu(GET_CAPABILITIES))
 assert "dual-format" in caps[2]
 nonce = random_bytes(32)
@@ -213,11 +213,11 @@ presentation = concat(resp.data)
 verify_sd_jwt_kb(presentation, nonce, aud="urn:etda:companion:nfc:v1")
 ```
 
-Physical script location (to be added): `tools/acr1311u-n2/etda_companion_probe.ts`
+Physical script location (to be added): `tools/acr1311u-n2/companion_probe.ts`
 
 ## 12. Acceptance Criteria
 
-- [ ] Wallet HCE responds to SELECT ETDA AID only when armed with screen on
+- [ ] Wallet HCE responds to SELECT companion AID only when armed with screen on
 - [ ] GET CAPABILITIES returns CBOR map with version 1 and both modes
 - [ ] BEGIN COMPANION with wrong `profile_id` returns `6985`
 - [ ] BEGIN COMPANION `dual-format` returns valid SD-JWT presentation with KB-JWT bound to nonce

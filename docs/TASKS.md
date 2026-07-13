@@ -2,6 +2,62 @@
 
 Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
 
+### Session 2026-07-13 (holder credential delete removal)
+
+- Fixed holder-initiated credential Delete from the detail action menu so it records the lifecycle/history deletion event and physically removes the credential from encrypted MMKV/index via the shared stored-credential removal path.
+- Root cause: ordinary Delete only wrote `credential:lifecycle:* = deleted`, while renewal cleanup and expiry cleanup called `removeStoredCredential()`. The stale credential could therefore remain visible and require repeated delete attempts depending on the next screen refresh.
+- Added focused regression coverage for holder-approved delete removing the credential while preserving the deleted lifecycle marker.
+
+### Session 2026-07-13 (Android document-expiry alarm cap)
+
+- Fixed repeated document-expiry notification scheduling that could churn Android alarms until `ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE` / concurrent alarm limit 500 after wallet key actions triggered credential refreshes.
+- `scheduleDocumentExpiryNotifications()` no longer cancels a valid future `document-expired` alarm on every unchanged credential pass; `useCredentialExpiryWatch()` uses the idempotent scheduler for normal mount/app-active/credential-change refreshes instead of full reschedule.
+- Added Android alarm-cap recovery: when Expo reports the 500 concurrent alarm limit, the Wallet cancels stale app scheduled notifications, clears document-expiry schedule markers, retries the current schedule once, and logs recoverable cap detection as an info diagnostic instead of a red schedule failure.
+- After alarm-cap recovery, the scheduler runs one clean idempotent rebuild pass so marker-skipped notifications are recreated after native alarms are cleared.
+- The scheduler now reconciles MMKV document-expiry notification markers against Expo's native scheduled notification list; if Android has no matching native alarm, stale markers are cleared and the notification is rebuilt in the same pass.
+- Local scheduled notification permission/tap routing now initializes even when `EXPO_PUBLIC_SKIP_PUSH_REGISTRATION=true`; the flag skips only Expo push-token/backend registration, not local OS notification setup.
+- Added focused regression coverage proving repeated scheduling for an unchanged credential creates one `document-expiring-soon` and one `document-expired` notification, proving stale markers are rebuilt when native alarms are missing, proving alarm-cap recovery clears stale state before retrying, and proving dev push-registration skip still requests local notification permission.
+
+### Session 2026-07-10 (P2 Issuer did:web verify on receive)
+
+- On OID4VCI credential finalize, when VC `iss` is `did:web:…`, Wallet resolves the Issuer DID document (`resolveDidWebVerificationJwk`) and verifies the Issuer JWT EdDSA signature (`assertIssuerDidWebCredentialSignature`).
+- Shared helper: `src/services/crypto/eddsaJwtVerify.ts` (also used by JAR verify). HTTPS/`iss` missing/`mdoc` skip DID resolve; Trust Registry accreditation still blocked.
+- Files: `src/services/vci/issuerDidWebVerify.ts`, wired from `finalizeCredentialRecord` in `exchangeService.ts`.
+
+### Session 2026-07-10 (P2 Issuer OID4VP PID auth handler)
+
+- Wallet handler for Issuer-initiated OID4VP PID auth reuses the existing Scan OID4VP path: `openid4vp` intake, `resolvePresentationRequest()`, Holder consent, VP creation, and `submitPresentationResponse()` direct_post.
+- Added issuer OID4VP did:web relying-party allowlist env: `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_RESPONSE_ORIGIN`, optional `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_NAME`, and optional `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_JWK`.
+- Spec: `docs/superpowers/specs/2026-07-10-p2-issuer-oid4vp-pid-auth-design.md`; plan: `docs/superpowers/plans/2026-07-10-p2-issuer-oid4vp-pid-auth.md`.
+- E2E remains blocked on the real Issuer Authorization Request and live `response_uri`. No Issuer mock server is added for this slice.
+
+### Session 2026-07-09 (Verifier-owned My QR — Option A)
+
+- Production authority model: **Verifier presentation service** owns session create, VP upload, §2.1 verify, and HTML outcome — wallet company backend is not in the My QR path.
+- Mobile: `resolveVerifierPresentationBaseUrl()` + `createVerifierPresentationAdapter()`; KB-JWT `aud` and QR fallback use verifier base URL; history `partyName: 'Verifier'`. Legacy gateway env names remain as deprecated fallbacks.
+- Server: `VERIFIER_PRESENTATION_BASE_URL` config; `presentationGateway.ts` documented as reference verifier presentation service (LAN co-location ok for dev).
+- Spec: `docs/superpowers/specs/2026-07-09-verifier-owned-wallet-initiated-presentation-design.md` supersedes wallet-as-authority framing in `2026-07-09-production-my-qr-presentation-gateway-design.md`.
+- Golden path env: `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL` (mobile) + `VERIFIER_PRESENTATION_BASE_URL` (server). External Verifier API (`192.100.10.48`) needs `/v1/*` deployed OR use local reference service on LAN until then.
+- Verification: focused VP/verifier tests + `yarn tsc --noEmit` + `yarn lint`.
+
+### Session 2026-07-09 (Production My QR Presentation Gateway)
+
+- Production My QR: hardened VP-by-reference relay into `/v1/presentation-sessions` + `/v1/present/verify` with shared `presentationGatewayService`, ThaID-only upload policy, and async issuer JWKS resolution when `VP_ISSUER_PUBLIC_KEY_JWK` is absent.
+- Mobile decoupled from `/dev/*` via `PresentationGatewayClient` + `RelayPresentationGatewayAdapter`; `useWalletInitiatedVpQrSession` uses server-provided `verifyUrl`.
+- Dev `/dev/vp-session` + `/dev/vp-verify` retained unchanged for LAN golden path.
+- Spec: `docs/superpowers/specs/2026-07-09-production-my-qr-presentation-gateway-design.md`; plan: `docs/superpowers/plans/2026-07-09-production-my-qr-presentation-gateway.md`.
+- Configure `EXPO_PUBLIC_PRESENTATION_GATEWAY_BASE_URL` (mobile) and `PRESENTATION_GATEWAY_BASE_URL` (server) for `/v1` path; manual LAN golden-path validation (task 9) pending on Galaxy A36 + Honeywell.
+
+### Session 2026-07-09 (OID4VP production did:web verifier trust)
+
+- Production OID4VP trust gate: dev `redirect_uri` Verifier API entries are emitted only in development builds; release builds use env-configured `decentralized_identifier:did:web:` trust only.
+- JAR verification now reuses the shared scheme-aware trusted-verifier matcher and rejects untrusted `did:web` Request Objects before any unpinned DID document fetch.
+- Added `did:web` DID document fetch timeout/UTF-8 byte-cap policy via `EXPO_PUBLIC_DID_WEB_FETCH_TIMEOUT_MS` and `EXPO_PUBLIC_DID_WEB_MAX_BYTES`; standard HTTPS DID document URLs remain the only v1 resolution path.
+- Removed the superseded `modules/etda-wallet-eddsa` native diagnostic/weak-biometric module and its JS bridge. Production Ed25519 signing remains the Keychain-protected software seed path in `src/services/crypto/crypto.ts`; app-level biometric gates now use `expo-local-authentication`.
+- Renamed visible project/app branding from `etdaWallet` / `ETDA Wallet` to `Wallet` in Expo metadata, package metadata, Android app label, and PIN reset email content. Android package id and app scheme remain `com.thanaboon.chan.etdaWallet` / `etdawallet` to preserve Firebase and deep-link compatibility.
+- Spec: `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md`; plan: `docs/superpowers/plans/2026-07-09-oid4vp-production-did-web-verifier-trust.md`.
+- Verification: focused trusted-verifier/JAR/did-web/presentation tests pass; `yarn lint` pass with pre-existing warnings.
+
 ### Session 2026-07-08 (OID4VP trust + JAR)
 
 - OID4VP hardware-free hardening: `clientIdScheme.ts` (scheme parsing + `response_uri` binding), `authorizationRequestJar.ts` (JAR `typ` enforcement + EdDSA verify), `didWebResolver.ts` (`did:web` document → `publicKeyJwk`), scheme-aware `findTrustedVerifier()` in `presentationService.ts`.
@@ -79,7 +135,7 @@ Status: Complete (core flow). Spec compliance gaps tracked below.
 [x] HTTP 201-only backend sync success
 [x] Token endpoint discovery via `authorization_servers` metadata (OID4VCI §11)
 [x] `c_nonce` refresh retry on `invalid_proof` (OID4VCI §8.3.3)
-[x] Drop `user_pin` dual-send in token request after ETDA Issuer confirms `tx_code`-only acceptance (`exchangeService.ts:760`). OID4VCI 1.0 final token requests now send `tx_code` only.
+[x] Drop `user_pin` dual-send in token request after the customer Issuer confirms `tx_code`-only acceptance (`exchangeService.ts:760`). OID4VCI 1.0 final token requests now send `tx_code` only.
 [x] Deferred Credential Issuance (`transaction_id`, OID4VCI §8.4) — `DeferredIssuancePending` typed error, `readDeferredTransactionId()`, `pollDeferredCredential()` — landed `feat/transaction-id` PR #7
 
 ## Phase 3: Config-Driven UI
@@ -248,12 +304,12 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 [x] OID4VP same-device link intake: `openid4vp` scheme in `app.json`, `readPendingPresentationRoute` + `vpGeneration` in `deeplinkStore`, Scan dismiss/remount parity, tests in `deeplinkStore.test.ts` and `ScanScreenDeeplink.test.tsx`. Manual: `adb shell am start -a android.intent.action.VIEW -d "openid4vp://authorize?..."` after `npx expo prebuild --platform android`.
 [x] ADR: single wallet-level Ed25519 key vs journey's per-credential `did:key` (P2 step 12) — accepted for v1 in `docs/adr/0009-wallet-level-holder-signing-key.md`: one Keychain Ed25519 seed; P3 rotation marks all credentials; P6 per-document key destruction deferred (lifecycle markers gate presentation instead).
 
-### Blocked on ETDA ecosystem services (external)
+### Blocked on the customer ecosystem services (external)
 
-[ ] Trust Registry integration: wallet-side Issuer trust check on credential receive (P2 step 21) and Verifier trust check before presenting (P4 steps 6–7). Blocked: no Trust Registry service/API exists. Related to the Phase 4 issuer-signature-validation item (trusted issuer registry decision).
+[ ] Trust Registry integration: wallet-side Issuer accreditation check on credential receive (P2 journey step 21) and Verifier trust check before presenting (P4 steps 6–7). Blocked: no Trust Registry service/API exists. Note: Issuer `did:web` document resolve + EdDSA signature verify on receive is implemented (`issuerDidWebVerify.ts`) when VC `iss` is `did:web:` — that is crypto verify, not Trust Registry accreditation.
 [ ] DID Resolver integration: resolve Verifier public key (P4 steps 4–5) and Issuer public key for wallet-side verification. Partially overlaps the open JAR signature-verification item above; production resolution mechanism blocked on ecosystem DID method decision.
 [ ] VC Status Registry checking: wallet-side credential status refresh (suspended/revoked/used) from a central registry instead of dev polling endpoints. Blocked: no registry exists; current P6 Case 2 dev polling is the stand-in.
-[ ] P2 identity verification via real PID VC presentation to Issuer (journey steps 5–10): wallet presents stored PID VC, Issuer verifies against Trust Registry + VC Status Registry before sending the offer. Currently simulated by the ThaID interstitial. Blocked: requires Issuer-side support; document as accepted deviation if the ETDA Issuer never requests PID presentation.
+[ ] P2 identity verification via real PID VC presentation to Issuer (journey steps 5–10): wallet presents stored PID VC, Issuer verifies against Trust Registry + VC Status Registry before sending the offer. Currently simulated by the ThaID interstitial. Blocked: requires Issuer-side support; document as accepted deviation if the customer Issuer never requests PID presentation.
 
 ## Definition of Done Per Session
 
@@ -316,7 +372,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Multi-perspective review of `5bd028e` (no PR exists; reviewed locally) via `code-reviewer` + `security-reviewer` + `silent-failure-hunter`: 0 Critical findings (parameterized queries, no IDOR, no leaked secrets, software-signing fallback already removed, hardware Keychain policy hardened). 1 Important UI-correctness bug, 5 Important hardening/robustness gaps, and several Advisory items recorded as new Phase 4.1 backlog checkboxes above — see those for the full list with file:line references. Worth calling out: `useStoredCredentials.refresh()` still silently swallows `StorageNotInitialized` into an empty list (same shape as the cold-launch bug just fixed this session — currently masked by the new startup gate, but a latent regression risk if init ordering changes again).
 - Grill-with-docs pass resolved Phase 4.1 documentation decisions: `docs/SECURITY_FINDINGS.md` restored as security review history; Phase 4.1 release gate narrowed to Important items; Wallet home release fix should use `cardSchemas.ts`; storage-not-ready must be a visible hook/UI state, not an empty wallet; non-development native runtimes must hard-block empty Wallet Backend pins or plain HTTP; `server/` remains development-only but local auth hardening still blocks release confidence; ADR 0006 added for mdoc native module selection criteria while final module choice stays blocked on physical iOS/Android validation; release validation blockers now explicitly include user-held EAS credentials, physical iOS/Android devices, and a real or test Issuer QR issuance source.
 - Phase 4.1 release-blocking fixes completed: storage hook exposes explicit storage-not-ready state; Wallet Backend startup policy hard-blocks non-development native builds with plain HTTP or empty pins; local backend now requires non-default `JWT_SECRET` outside tests, restricts CORS to configured development origins, rate-limits auth routes, pins JWT verification to HS256, distinguishes token failures from session lookup infrastructure failures, and runs dummy bcrypt comparison for unknown login users. Verified root `yarn tsc --noEmit`, root `yarn test --runInBand` (12 suites / 49 tests), root `yarn lint`, server `yarn tsc`, and server `yarn test` (5 suites / 13 tests) all pass.
-- ETDA Wallet HTML reference applied to v1 UI scope: Wallet Home, Credential Detail, Scan Holder Confirmation, My QR placeholder, and History Log now follow the new visual baseline without enabling post-v1 Verifier presentation behavior.
+- the wallet HTML reference applied to v1 UI scope: Wallet Home, Credential Detail, Scan Holder Confirmation, My QR placeholder, and History Log now follow the new visual baseline without enabling post-v1 Verifier presentation behavior.
 - Phase 4.1 UI/storage fixes completed in code: Wallet Home summary and Credential Detail read schema-driven metadata/fields from `cardSchemas.ts`, and `useStoredCredentials.refresh()` now surfaces `Wallet storage is not ready.` instead of silently presenting an empty wallet when storage is not initialized.
 - Scan QR flow now follows documented Holder Confirmation timing: resolve offer, show resolved-offer metadata, collect `tx_code` when required, then acquire and save through `claimConfirmedOffer()` only after confirmation.
 - Scan QR Holder Confirmation was switched back to the data-preview behavior requested for the UI reference: after scan/`tx_code`, the app acquires an unsaved credential record and shows the actual credential values the Holder will receive; `saveCredentialRecord()` still runs only after the Holder taps Confirm.
@@ -328,7 +384,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Added `docs/User_Journey/transcript/P6-Case1.md` as the focused English-only Holder-initiated Transcript cancellation/suspension journey and future contract note. It preserves the device-scoped Wallet Signing Key model and scopes cleanup to the affected Transcript credential state after Issuer confirmation.
 - P6 Case 1 design pass started from `docs/ui-reference/P6Case1`: Transcript detail now exposes design-labeled `Revoke` and `Delete this document` actions, drives a PIN-style security screen and Wallet approval screen, records a local inactive status/event for tester visibility, and shows lifecycle badges/history without deleting the credential record or Wallet Signing Key.
 - P6 Case 1 tester revision planned/implemented: `Delete this document` remains visible but disabled; first protected Revoke action sets/confirms a 6-digit Wallet PIN, later actions verify it, and the fingerprint button is a development-only bypass. Approval now uses selected credential/local metadata instead of mock device/date values, and revoked Wallet home rows expand into the design-style unavailable panel with a button that opens Scan.
-- Credential Detail now uses a direct React Native translation of `docs/ui-reference/ETDA Wallet.html` `IDCardScreen`: navy Wallet header, white rounded document card, blue document band, photo/name/primary identifier hero row, two-column detail grid, and bottom-right My QR action, while keeping values schema-driven through `readCredentialDetailDisplay()`.
+- Credential Detail now uses a direct React Native translation of `docs/ui-reference/the wallet.html` `IDCardScreen`: navy Wallet header, white rounded document card, blue document band, photo/name/primary identifier hero row, two-column detail grid, and bottom-right My QR action, while keeping values schema-driven through `readCredentialDetailDisplay()`.
 - Fixed Credential Detail artwork sizing regression: only ID portrait artwork fills the hero photo frame; transcript, driving licence, and fallback artwork now render contained so they do not visually cover the card header/hero area.
 - Fixed Credential Detail card header band regression: the blue document band now stretches to the full card width, clips its gradient background inside the rounded card, and uses explicit line height so the document title text is not cut off.
 - Fixed Transcript detail card header rendering on the Wallet -> Transcript path: replaced the fragile absolute SVG gradient with a native full-width blue band and increased the band/text height so `TRANSCRIPT` does not clip.
@@ -394,7 +450,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 - Fixed local Verifier trust configuration for physical-device testing: `.env` now sets `EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://192.100.10.48` and `EXPO_PUBLIC_VERIFIER_NAME=Verifier API`, so the Scan tab builds a non-empty development Verifier allowlist instead of rejecting ID-card Verifier QR codes as untrusted. Restarted Metro on port 8081 after the env change; focused verifier/presentation tests pass.
 - Added temporary development-only SD-JWT KB bypass for the current Verifier API, which omits `require_cryptographic_holder_binding` while test credentials lack `cnf.jwk`: `EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING=true` makes omitted holder-binding requirements behave like `false` in dev only, so the wallet submits raw compact SD-JWT. This is now superseded locally by the software EdDSA test path below; production/release behavior remains SD-JWT+KB by default.
-- Added temporary development-only software Ed25519/EdDSA KB-JWT signing through `@noble/curves` for the ETDA Verifier test path. `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true` makes OID4VP SD-JWT presentation use `alg: EdDSA` while preserving the existing hardware-backed P-256 `ES256` OID4VCI issuance path. This stores software key material in JS-accessible local metadata storage and is explicitly not release-safe.
+- Added temporary development-only software Ed25519/EdDSA KB-JWT signing through `@noble/curves` for the the production verifier test path. `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true` makes OID4VP SD-JWT presentation use `alg: EdDSA` while preserving the existing hardware-backed P-256 `ES256` OID4VCI issuance path. This stores software key material in JS-accessible local metadata storage and is explicitly not release-safe.
 - Extended the same development-only software Ed25519 key to OID4VCI PoP JWTs when `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true`: `signProof()` now emits `alg: EdDSA`, an Ed25519 `did:key` `kid`, and an OKP public JWK for issuer interoperability testing. Existing credentials issued before this change must be reissued before the Verifier can validate EdDSA holder binding.
 - Tightened the development-only software EdDSA OID4VP path so it now rejects SD-JWT credentials whose issuer JWT lacks `cnf.jwk` or is bound to a different Ed25519 key before posting to the Verifier. A remaining `Present VP is invalid` after this point means the credential likely needs to be reissued with the current wallet Ed25519 PoP, or the Issuer is not embedding the PoP public key as credential holder binding.
 - Added issuance-time holder-binding validation for SD-JWT credentials when the Wallet sends a PoP JWT with a public JWK/kid: the Wallet now accepts matching `cnf.jwk` or `cnf.kid`, rejects responses that omit both or bind to a different key before the credential is saved, and Scan surfaces the Issuer-side binding problem directly.
@@ -438,7 +494,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Enforced EdDSA-only issuer credential headers before local storage: `acquireCredentialRecord()` now rejects compact JWT VC and SD-JWT issuer JWT responses unless the protected JOSE header has `alg: EdDSA`, raising `CredentialSignatureAlgUnsupported` for `ES256`, `none`, or missing `alg`. Existing credentials issued before this enforcement may still contain older algorithms and must be deleted/reissued.
 - Documented every `[wallet:native-eddsa] diagnostics` field in `docs/NATIVE_EDDSA_DIAGNOSTICS.md`, including top-level device capability flags, per-recipe AndroidKeyStore fields, compact Logcat aliases, and pass/fail interpretation.
 - Replaced the custom presentation face-scan camera screen with an OS biometric gate: `FaceScanPanel` and its ML Kit face-detection type shim were removed, the Scan tab now opens `react-native-biometrics` from the existing presentation preparation step, and raw-credential presentation token creation no longer triggers a second biometric prompt. Android still cannot be forced to face-only through `react-native-biometrics`; the app requests biometric-only auth with no device credential fallback.
-- Hardened the ETDA OID4VP presentation approval flow without changing screen order: the first face-scan step no longer auto-completes on timeout or biometric errors, signed VP/SD-JWT+KB modes still use the Keychain Ed25519 sign-time gate, and `raw-credential` presentation mode now requires an explicit OS biometric/device approval before `direct_post` submission.
+- Hardened the customer OID4VP presentation approval flow without changing screen order: the first face-scan step no longer auto-completes on timeout or biometric errors, signed VP/SD-JWT+KB modes still use the Keychain Ed25519 sign-time gate, and `raw-credential` presentation mode now requires an explicit OS biometric/device approval before `direct_post` submission.
 
 ### Session 2026-06-18
 
@@ -515,22 +571,22 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 ### Session 2026-07-06 (pluggable reader/verifier refactor)
 
-- Generalized ETDA-specific config into extension registries: `readerProfiles.ts`, `companionTransport/` plugins (`etda-companion-v1` reference), `presentationTokenBuilders/` for OID4VP `vp_token` assembly.
-- Renamed sharing mode `etda-dual-format` → `dual-format`; `etdaReaderProfiles.ts` is now a deprecated re-export shim; CBOR moved to `companionTransport/plugins/etdaCompanionV1/`.
-- Design spec §16 documents the prototype extension model; removed non-ETDA ecosystems from out-of-scope.
+- Generalized the customer-specific config into extension registries: `readerProfiles.ts`, `companionTransport/` plugins (`etda-companion-v1` reference), `presentationTokenBuilders/` for OID4VP `vp_token` assembly.
+- Renamed sharing mode `etda-dual-format` → `dual-format`; `etdaReaderProfiles.ts` is now a deprecated re-export shim; CBOR moved to `companionTransport/plugins/companionV1/`.
+- Design spec §16 documents the prototype extension model; removed non-the customer ecosystems from out-of-scope.
 - Verification: focused Jest + `yarn tsc --noEmit`.
 
 ### Session 2026-07-06 (dual-format software continuation)
 
 - OID4VP: `buildDualFormatDcqlVpToken` assembles per-query-id `vp_token` for DCQL requests with both `dc+sd-jwt` and `mso_mdoc`; mDOC entry reads stored bytes (interim until DeviceResponse builder).
-- ETDA companion: `companionTransport/plugins/etdaCompanionV1/`, `companionPresentation.ts` (KB-JWT with `aud=urn:etda:companion:nfc:v1`).
+- the customer companion: `companionTransport/plugins/companionV1/`, `companionPresentation.ts` (KB-JWT with `aud=urn:etda:companion:nfc:v1`).
 - Native: `EtdaCompanionHostApduService` + APDU handler (GET CAPABILITIES / BEGIN COMPANION / chaining); JS bridge via `armProximitySession`, `onCompanionSignRequested`, `supplyCompanionPresentation`.
 - Verification: focused Jest + `yarn tsc --noEmit`.
 
-### Session 2026-07-06 (ETDA companion APDU spec)
+### Session 2026-07-06 (the customer companion APDU spec)
 
-- Authored [`docs/superpowers/specs/etda-nfc-companion-apdu.md`](./superpowers/specs/etda-nfc-companion-apdu.md): ETDA AID `A0000004544410100`, INS `CA/CB/C0/FF`, CBOR capabilities + BEGIN COMPANION with 32-byte nonce, SD-JWT+KB-JWT companion (`aud=urn:etda:companion:nfc:v1`), ACR1311U-N2 host sequence.
-- Added `src/config/etdaCompanionApdu.ts` (pinned constants + tests). Parent HCE spec §8 now links companion doc.
+- Authored [`docs/superpowers/specs/nfc-companion-apdu.md`](./superpowers/specs/nfc-companion-apdu.md): the customer AID `A00000045444410100`, INS `CA/CB/C0/FF`, CBOR capabilities + BEGIN COMPANION with 32-byte nonce, SD-JWT+KB-JWT companion (`aud=urn:etda:companion:nfc:v1`), ACR1311U-N2 host sequence.
+- Added `src/services/proximity/companionTransport/plugins/companionV1/constants.ts` (pinned constants + tests). Parent HCE spec §8 now links companion doc.
 - `proximityArmSession` dual-format gate updated to require companion payload size estimate (no longer blocked on missing spec doc).
 
 
@@ -541,15 +597,15 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 ### Session 2026-07-06 (HCE dual-format spec review + approval)
 
 - Reviewed `docs/superpowers/specs/2026-07-06-android-hce-dual-format-presentation-design-review.md` (Composer 2.5) against the spec, ADR 0003/0006, the 2026-06-23 proximity spec, and current code; confirmed major findings, rejected 2 (companion-spec restatement, state merge).
-- Spec `2026-07-03-android-hce-dual-format-presentation-design.md` revised to rev 4 and marked **Approved (design-level)**: added Relationship To Prior Specs (HCE APDU supersedes BLE data leg; 2026-06-23 spec header amended), Pre-Tap Request Resolution (fixed ETDA reader profile in config, consent = ceiling), Migration From Current Model (linking layer over `VerifiableCredentialRecord` + `mdocStorage`; UI/renewal/sync stay SD-JWT-keyed in v1), same-Ed25519-seed device key decision, Multipaz as leading candidate per ADR 0006, issuer configuration grouping rule, subset test-matrix case, v1 consent-screen identity fallback.
-- **Remaining blockers before NFC dual-format on device:** (1) native HCE APDU stack + ETDA companion handler; (2) EdDSA device-authentication interop pass on ACR1311U-N2 (gates Ed25519 vs P-256 fallback in spec §5).
+- Spec `2026-07-03-android-hce-dual-format-presentation-design.md` revised to rev 4 and marked **Approved (design-level)**: added Relationship To Prior Specs (HCE APDU supersedes BLE data leg; 2026-06-23 spec header amended), Pre-Tap Request Resolution (fixed the customer reader profile in config, consent = ceiling), Migration From Current Model (linking layer over `VerifiableCredentialRecord` + `mdocStorage`; UI/renewal/sync stay SD-JWT-keyed in v1), same-Ed25519-seed device key decision, Multipaz as leading candidate per ADR 0006, issuer configuration grouping rule, subset test-matrix case, v1 consent-screen identity fallback.
+- **Remaining blockers before NFC dual-format on device:** (1) native HCE APDU stack + the customer companion handler; (2) EdDSA device-authentication interop pass on ACR1311U-N2 (gates Ed25519 vs P-256 fallback in spec §5).
 - Follow-up backlog from review pass (rev 4):
-  - [x] ETDA companion APDU spec pinned: [`etda-nfc-companion-apdu.md`](./superpowers/specs/etda-nfc-companion-apdu.md) + `src/config/etdaCompanionApdu.ts`
+  - [x] the customer companion APDU spec pinned: [`nfc-companion-apdu.md`](./superpowers/specs/nfc-companion-apdu.md) + `src/services/proximity/companionTransport/plugins/companionV1/constants.ts`
   - [x] Dual-format issuance slice: `mso_mdoc` claim in `exchangeService`, `LogicalCredential` linking layer, consistency validation, `claimDualFormatCredential` / `claimCredentialWithDualFormatSupport`
   - [x] Proximity refactor to consent-first arm flow per spec §8–9 (`present.tsx` / `proximityStore`), reader profiles in `src/config/readerProfiles.ts`, policy env vars in `.env.example`
   - [x] OID4VP dual-format `vp_token` assembly (`dualFormatVpToken.ts`, `mdocVpTokenEntry.ts`, `presentationTokenBuilders/`)
-  - [x] ETDA companion CBOR + KB-JWT builder (`companionTransport/plugins/etdaCompanionV1/`, `companionPresentation.ts`)
-  - [x] Native ETDA `HostApduService` skeleton + JS arm/companion bridge (`EtdaCompanionHostApduService.kt`, `armProximitySession`, `supplyCompanionPresentation`)
+  - [x] the customer companion CBOR + KB-JWT builder (`companionTransport/plugins/companionV1/`, `companionPresentation.ts`)
+  - [x] Native the customer `HostApduService` skeleton + JS arm/companion bridge (`EtdaCompanionHostApduService.kt`, `armProximitySession`, `supplyCompanionPresentation`)
   - [ ] After physical reader: EdDSA interop pass first (gates Ed25519 vs P-256), then follow-up ADR selecting the mDOC native module
   - [ ] Full ISO 18013-5 mDOC session crypto + online DeviceResponse builder (native module pending ADR 0006)
 
