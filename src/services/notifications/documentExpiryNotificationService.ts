@@ -24,6 +24,17 @@ type ScheduledNotificationRecord = {
   event: DocumentExpiryNotificationEvent
 }
 
+type ExpiryNotificationStorage = ReturnType<typeof getCredentialStorage> & {
+  getAllKeys?: () => string[]
+}
+
+type NativeScheduledNotification = {
+  identifier?: string
+}
+
+let alarmCapRecoveryPromise: Promise<void> | undefined
+let alarmCapRecoveryRevision = 0
+
 function readScheduledNotificationKey(
   credentialId: string,
   event: DocumentExpiryNotificationEvent,
@@ -58,6 +69,137 @@ function markScheduledNotification(
     JSON.stringify({ notificationId, event } satisfies ScheduledNotificationRecord),
   )
   storage.set(readNotificationIdKey(credentialId, event), notificationId)
+}
+
+function isAndroidAlarmCapError(error: unknown): boolean {
+  const code =
+    typeof error === 'object' && error !== null
+      ? (error as { code?: unknown }).code
+      : undefined
+  const message = error instanceof Error ? error.message : String(error)
+
+  return (
+    code === 'ERR_NOTIFICATIONS_FAILED_TO_SCHEDULE' &&
+    /Maximum limit of concurrent alarms/i.test(message)
+  )
+}
+
+function clearExpiryNotificationScheduleState(): number {
+  const storage = getCredentialStorage() as ExpiryNotificationStorage
+  const keys = storage.getAllKeys?.() ?? []
+  const scheduleKeys = keys.filter(
+    (key) =>
+      key.startsWith(EXPIRY_NOTIFICATION_SCHEDULED_PREFIX) ||
+      key.startsWith(EXPIRY_NOTIFICATION_ID_PREFIX),
+  )
+
+  for (const key of scheduleKeys) {
+    storage.remove(key)
+  }
+
+  return scheduleKeys.length
+}
+
+async function reconcileScheduledNotificationState(): Promise<void> {
+  let scheduledNotifications: NativeScheduledNotification[]
+  try {
+    scheduledNotifications =
+      (await Notifications.getAllScheduledNotificationsAsync()) as NativeScheduledNotification[]
+  } catch (error) {
+    logWalletError('document-expiry-notifications', 'native-schedule-read-failed', error)
+    return
+  }
+
+  const nativeNotificationIds = new Set(
+    scheduledNotifications
+      .map((notification) => notification.identifier)
+      .filter((identifier): identifier is string => typeof identifier === 'string'),
+  )
+  const storage = getCredentialStorage() as ExpiryNotificationStorage
+  const keys = storage.getAllKeys?.() ?? []
+  let removedMarkerCount = 0
+
+  for (const key of keys) {
+    if (!key.startsWith(EXPIRY_NOTIFICATION_ID_PREFIX)) continue
+
+    const notificationId = storage.getString(key)
+    if (!notificationId || nativeNotificationIds.has(notificationId)) continue
+
+    storage.remove(key)
+    const scheduledKey = `${EXPIRY_NOTIFICATION_SCHEDULED_PREFIX}${key.slice(
+      EXPIRY_NOTIFICATION_ID_PREFIX.length,
+    )}`
+    storage.remove(scheduledKey)
+    removedMarkerCount += 1
+  }
+
+  if (removedMarkerCount > 0) {
+    logWalletStep('document-expiry-notifications', 'stale-markers-cleared', {
+      removedMarkerCount,
+      nativeScheduledCount: nativeNotificationIds.size,
+    })
+  }
+}
+
+async function recoverFromAndroidAlarmCap(): Promise<void> {
+  if (!alarmCapRecoveryPromise) {
+    alarmCapRecoveryPromise = (async () => {
+      await Notifications.cancelAllScheduledNotificationsAsync()
+      const clearedStorageKeyCount = clearExpiryNotificationScheduleState()
+      alarmCapRecoveryRevision += 1
+      logWalletStep('document-expiry-notifications', 'alarm-cap-recovered', {
+        clearedStorageKeyCount,
+      })
+    })()
+
+    try {
+      await alarmCapRecoveryPromise
+    } finally {
+      alarmCapRecoveryPromise = undefined
+    }
+    return
+  }
+
+  await alarmCapRecoveryPromise
+}
+
+async function scheduleNotificationRequest(
+  credential: VerifiableCredentialRecord,
+  event: DocumentExpiryNotificationEvent,
+  fireAtMs: number,
+): Promise<void> {
+  const content =
+    event === 'document-expiring-soon'
+      ? {
+          title: WALLET_HOME_COPY.documentExpiringSoonNotificationTitle,
+          body: WALLET_HOME_COPY.documentExpiringSoonNotificationBody,
+        }
+      : {
+          title: WALLET_HOME_COPY.documentExpiredNotificationTitle,
+          body: WALLET_HOME_COPY.documentExpiredNotificationBody,
+        }
+
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      ...content,
+      data: {
+        event,
+        credentialId: credential.id,
+        credentialType: credential.type,
+      },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: new Date(fireAtMs),
+    },
+  })
+
+  markScheduledNotification(credential.id, event, notificationId)
+  logWalletStep('document-expiry-notifications', 'scheduled', {
+    credentialId: credential.id,
+    event,
+    fireAtMs,
+  })
 }
 
 async function cancelScheduledNotification(
@@ -96,40 +238,34 @@ async function scheduleNotificationAt(
     return
   }
 
-  const content =
-    event === 'document-expiring-soon'
-      ? {
-          title: WALLET_HOME_COPY.documentExpiringSoonNotificationTitle,
-          body: WALLET_HOME_COPY.documentExpiringSoonNotificationBody,
-        }
-      : {
-          title: WALLET_HOME_COPY.documentExpiredNotificationTitle,
-          body: WALLET_HOME_COPY.documentExpiredNotificationBody,
-        }
-
   try {
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        ...content,
-        data: {
-          event,
-          credentialId: credential.id,
-          credentialType: credential.type,
-        },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(fireAtMs),
-      },
-    })
-
-    markScheduledNotification(credential.id, event, notificationId)
-    logWalletStep('document-expiry-notifications', 'scheduled', {
-      credentialId: credential.id,
-      event,
-      fireAtMs,
-    })
+    await scheduleNotificationRequest(credential, event, fireAtMs)
   } catch (error) {
+    if (isAndroidAlarmCapError(error)) {
+      logWalletStep('document-expiry-notifications', 'alarm-cap-detected', {
+        credentialId: credential.id,
+        event,
+        error,
+      })
+
+      try {
+        await recoverFromAndroidAlarmCap()
+        await scheduleNotificationRequest(credential, event, fireAtMs)
+      } catch (recoveryError) {
+        logWalletError(
+          'document-expiry-notifications',
+          'alarm-cap-recovery-failed',
+          recoveryError,
+          {
+            credentialId: credential.id,
+            event,
+            scheduleError: error,
+          },
+        )
+      }
+      return
+    }
+
     logWalletError('document-expiry-notifications', 'schedule-failed', error, {
       credentialId: credential.id,
       event,
@@ -141,6 +277,9 @@ export async function scheduleDocumentExpiryNotifications(
   credentials: VerifiableCredentialRecord[],
   now = Date.now(),
 ): Promise<void> {
+  const recoveryRevisionAtStart = alarmCapRecoveryRevision
+  await reconcileScheduledNotificationState()
+
   for (const credential of credentials) {
     if (!readCredentialDocumentExpiresAt(credential)) continue
 
@@ -148,8 +287,6 @@ export async function scheduleDocumentExpiryNotifications(
       await cancelScheduledNotification(credential.id, 'document-expiring-soon')
       continue
     }
-
-    await cancelScheduledNotification(credential.id, 'document-expired')
 
     const msUntilSoon = readMsUntilExpiringSoonWindow(credential, now)
     if (
@@ -181,6 +318,10 @@ export async function scheduleDocumentExpiryNotifications(
         now,
       )
     }
+  }
+
+  if (alarmCapRecoveryRevision !== recoveryRevisionAtStart) {
+    await scheduleDocumentExpiryNotifications(credentials, now)
   }
 }
 

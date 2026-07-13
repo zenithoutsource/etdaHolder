@@ -6,7 +6,11 @@ import Constants from 'expo-constants'
 import { registerPushToken } from '@/src/sdk/pushTokenApi'
 
 import { routeNotificationTap } from './notificationRouter'
-import { initPushNotifications, _resetPushNotificationStateForTesting } from './pushNotificationService'
+import {
+  initPushNotifications,
+  launchPushNotificationsInBackground,
+  _resetPushNotificationStateForTesting,
+} from './pushNotificationService'
 
 jest.mock('expo-device', () => ({
   isDevice: true,
@@ -74,6 +78,7 @@ describe('pushNotificationService', () => {
     _resetPushNotificationStateForTesting()
     ;(Device.isDevice as boolean) = true
     delete process.env.EXPO_PUBLIC_EAS_PROJECT_ID
+    delete process.env.EXPO_PUBLIC_SKIP_PUSH_REGISTRATION
     constantsMock.easConfig = undefined
     constantsMock.expoConfig = {
       extra: {
@@ -111,6 +116,50 @@ describe('pushNotificationService', () => {
   })
 
   test('skips registration when notification permission is denied', async () => {
+    getPermissionsAsyncMock.mockResolvedValue({ status: 'denied', granted: false })
+    requestPermissionsAsyncMock.mockResolvedValue({ status: 'denied', granted: false })
+
+    await initPushNotifications('did:key:zHolder')
+
+    expect(getExpoPushTokenAsyncMock).not.toHaveBeenCalled()
+    expect(registerPushTokenMock).not.toHaveBeenCalled()
+    expect(addNotificationResponseReceivedListenerMock).not.toHaveBeenCalled()
+  })
+
+  test('skip push registration still initializes local notification permission and tap routing', async () => {
+    process.env.EXPO_PUBLIC_SKIP_PUSH_REGISTRATION = 'true'
+    getPermissionsAsyncMock.mockResolvedValue({ status: 'undetermined', granted: false })
+    requestPermissionsAsyncMock.mockResolvedValue({ status: 'granted', granted: true })
+
+    await initPushNotifications('did:key:zHolder')
+
+    expect(requestPermissionsAsyncMock).toHaveBeenCalledTimes(1)
+    expect(getExpoPushTokenAsyncMock).not.toHaveBeenCalled()
+    expect(registerPushTokenMock).not.toHaveBeenCalled()
+    expect(addNotificationResponseReceivedListenerMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('shares concurrent initialization for the same holder DID', async () => {
+    await Promise.all([
+      initPushNotifications('did:key:zHolder'),
+      initPushNotifications('did:key:zHolder'),
+    ])
+
+    expect(getExpoPushTokenAsyncMock).toHaveBeenCalledTimes(1)
+    expect(registerPushTokenMock).toHaveBeenCalledTimes(1)
+    expect(setNotificationHandlerMock).toHaveBeenCalledTimes(1)
+    expect(addNotificationResponseReceivedListenerMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('launches push initialization without blocking wallet startup', () => {
+    const neverSettles = jest.fn(() => new Promise<void>(() => undefined))
+
+    expect(() => launchPushNotificationsInBackground('did:key:zHolder', neverSettles)).not.toThrow()
+    expect(neverSettles).toHaveBeenCalledWith('did:key:zHolder')
+  })
+
+  test('does not install notification tap routing when local notification permission is denied', async () => {
+    process.env.EXPO_PUBLIC_SKIP_PUSH_REGISTRATION = 'true'
     getPermissionsAsyncMock.mockResolvedValue({ status: 'denied', granted: false })
     requestPermissionsAsyncMock.mockResolvedValue({ status: 'denied', granted: false })
 

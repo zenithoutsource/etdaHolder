@@ -12,11 +12,15 @@ let notificationResponseSubscription:
   | { remove: () => void }
   | undefined
 let notificationHandlerInstalled = false
+let pushInitialization:
+  | { holderDid: string; promise: Promise<void> }
+  | undefined
 
 export function _resetPushNotificationStateForTesting(): void {
   notificationResponseSubscription?.remove()
   notificationResponseSubscription = undefined
   notificationHandlerInstalled = false
+  pushInitialization = undefined
 }
 
 function readExpoProjectId(): string | undefined {
@@ -158,15 +162,9 @@ function assertExpoProjectId(projectId: string | undefined): string {
   )
 }
 
-export async function syncPushTokenRegistration(holderDid: string): Promise<boolean> {
+async function registerPushTokenWithBackend(holderDid: string): Promise<boolean> {
   if (__DEV__ && process.env.EXPO_PUBLIC_SKIP_PUSH_REGISTRATION === 'true') {
     logWalletStep('startup', 'push-notifications-skip-dev-flag')
-    return false
-  }
-
-  const permissionGranted = await ensureNotificationPermission()
-  if (!permissionGranted) {
-    logWalletStep('startup', 'push-notifications-permission-denied')
     return false
   }
 
@@ -187,7 +185,17 @@ export async function syncPushTokenRegistration(holderDid: string): Promise<bool
   return true
 }
 
-export async function initPushNotifications(holderDid: string): Promise<void> {
+export async function syncPushTokenRegistration(holderDid: string): Promise<boolean> {
+  const permissionGranted = await ensureNotificationPermission()
+  if (!permissionGranted) {
+    logWalletStep('startup', 'push-notifications-permission-denied')
+    return false
+  }
+
+  return registerPushTokenWithBackend(holderDid)
+}
+
+async function initializePushNotifications(holderDid: string): Promise<void> {
   if (!Device.isDevice) {
     logWalletStep('startup', 'push-notifications-skip-simulator')
     return
@@ -203,10 +211,12 @@ export async function initPushNotifications(holderDid: string): Promise<void> {
       })
     }
 
-    const registered = await syncPushTokenRegistration(holderDid)
-    if (!registered) {
+    const permissionGranted = await ensureNotificationPermission()
+    if (!permissionGranted) {
+      logWalletStep('startup', 'push-notifications-permission-denied')
       return
     }
+    await registerPushTokenWithBackend(holderDid)
     installNotificationTapListener()
     await routeLastNotificationResponseIfPresent()
   } catch (error) {
@@ -219,4 +229,29 @@ export async function initPushNotifications(holderDid: string): Promise<void> {
         : {}),
     })
   }
+}
+
+export function initPushNotifications(holderDid: string): Promise<void> {
+  if (pushInitialization?.holderDid === holderDid) {
+    return pushInitialization.promise
+  }
+
+  const promise = initializePushNotifications(holderDid)
+  const state = { holderDid, promise }
+  pushInitialization = state
+  void promise.catch(() => {
+    if (pushInitialization === state) {
+      pushInitialization = undefined
+    }
+  })
+  return promise
+}
+
+export function launchPushNotificationsInBackground(
+  holderDid: string,
+  initializer: (did: string) => Promise<void> = initPushNotifications,
+): void {
+  void initializer(holderDid).catch((error: unknown) => {
+    logWalletError('startup', 'push-notifications-background-init-failed', error)
+  })
 }

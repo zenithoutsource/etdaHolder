@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AppState, type AppStateStatus } from 'react-native'
 
 import { readNearestCredentialExpiryBoundaryMs } from '@/src/services/credentials/credentialDocumentExpiry'
-import { rescheduleDocumentExpiryNotifications } from '@/src/services/notifications/documentExpiryNotificationService'
+import { scheduleDocumentExpiryNotifications } from '@/src/services/notifications/documentExpiryNotificationService'
 import {
   notifyCredentialsChanged,
   readStoredCredentials,
@@ -40,7 +40,7 @@ export function useCredentialExpiryWatch(): UseCredentialExpiryWatchResult {
       clearScheduledCheck()
 
       const credentials = readStoredCredentials()
-      void rescheduleDocumentExpiryNotifications(credentials)
+      void scheduleDocumentExpiryNotifications(credentials)
 
       const delayMs = readNearestCredentialExpiryBoundaryMs(credentials)
       if (delayMs === undefined || delayMs <= 0) {
