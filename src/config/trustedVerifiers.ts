@@ -3,8 +3,8 @@ import { parseClientId } from '../services/vp/clientIdScheme'
 
 type Env = Record<string, string | undefined>
 
-function readVerificationJwk(env: Env): Record<string, unknown> | undefined {
-  const raw = env.EXPO_PUBLIC_VERIFIER_DID_WEB_JWK?.trim()
+function readVerificationJwk(env: Env, key: string): Record<string, unknown> | undefined {
+  const raw = env[key]?.trim()
   if (!raw) return undefined
 
   try {
@@ -17,10 +17,41 @@ function readVerificationJwk(env: Env): Record<string, unknown> | undefined {
   }
 }
 
-export function buildTrustedVerifiersFromEnv(env: Env = process.env): TrustedVerifier[] {
+function buildDidWebTrustedPartyFromEnv(input: {
+  env: Env
+  clientIdKey: string
+  responseOriginKey: string
+  nameKey: string
+  fallbackName?: string
+  jwkKey: string
+}): TrustedVerifier | undefined {
+  const didWebClientId = input.env[input.clientIdKey]?.trim()
+  const didWebResponseOrigin = readOrigin(input.env[input.responseOriginKey])
+  if (!didWebClientId || !didWebResponseOrigin) return undefined
+
+  const parsed = parseClientId(didWebClientId)
+  const normalizedClientId =
+    parsed.scheme === 'decentralized_identifier'
+      ? didWebClientId
+      : `decentralized_identifier:${didWebClientId}`
+
+  const verificationJwk = readVerificationJwk(input.env, input.jwkKey)
+
+  return {
+    clientId: normalizedClientId,
+    name: input.env[input.nameKey]?.trim() || input.fallbackName || 'Trusted Party',
+    allowedOrigins: [didWebResponseOrigin],
+    ...(verificationJwk ? { verificationJwk } : {}),
+  }
+}
+
+export function buildTrustedVerifiersFromEnv(
+  env: Env = process.env,
+  isDevelopment = __DEV__,
+): TrustedVerifier[] {
   const verifiers: TrustedVerifier[] = []
   const verifierApiBaseUrl = normalizeBaseUrl(env.EXPO_PUBLIC_VERIFIER_API_BASE_URL)
-  if (verifierApiBaseUrl) {
+  if (isDevelopment && verifierApiBaseUrl) {
     verifiers.push({
       clientId: `redirect_uri:${verifierApiBaseUrl}/openid4vc/verify`,
       name: env.EXPO_PUBLIC_VERIFIER_NAME?.trim() || 'Verifier API',
@@ -28,24 +59,51 @@ export function buildTrustedVerifiersFromEnv(env: Env = process.env): TrustedVer
     })
   }
 
-  const didWebClientId = env.EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID?.trim()
-  const didWebResponseOrigin = readOrigin(env.EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN)
-  if (didWebClientId && didWebResponseOrigin) {
-    const parsed = parseClientId(didWebClientId)
-    const normalizedClientId =
-      parsed.scheme === 'decentralized_identifier'
-        ? didWebClientId
-        : `decentralized_identifier:${didWebClientId}`
+  const verifierDidWeb = buildDidWebTrustedPartyFromEnv({
+    env,
+    clientIdKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID',
+    responseOriginKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN',
+    nameKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_NAME',
+    fallbackName: env.EXPO_PUBLIC_VERIFIER_NAME?.trim() || 'Trusted Verifier',
+    jwkKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_JWK',
+  })
+  if (verifierDidWeb) verifiers.push(verifierDidWeb)
 
+  const issuerDidWeb = buildDidWebTrustedPartyFromEnv({
+    env,
+    clientIdKey: 'EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID',
+    responseOriginKey: 'EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_RESPONSE_ORIGIN',
+    nameKey: 'EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_NAME',
+    fallbackName: 'Trusted Issuer',
+    jwkKey: 'EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_JWK',
+  })
+  if (issuerDidWeb) verifiers.push(issuerDidWeb)
+
+  const walletApiBaseUrl = normalizeBaseUrl(env.EXPO_PUBLIC_WALLET_API_BASE_URL)
+  if (isDevelopment && walletApiBaseUrl) {
+    const renewalResponseUri = `${walletApiBaseUrl}/wallet-api/dev/wallet/renewal-vp/response`
     verifiers.push({
-      clientId: normalizedClientId,
-      name: env.EXPO_PUBLIC_VERIFIER_DID_WEB_NAME?.trim() || env.EXPO_PUBLIC_VERIFIER_NAME?.trim() || 'Trusted Verifier',
-      allowedOrigins: [didWebResponseOrigin],
-      verificationJwk: readVerificationJwk(env),
+      clientId: `redirect_uri:${renewalResponseUri}`,
+      name: 'Dev Renewal Issuer',
+      allowedOrigins: [new URL(walletApiBaseUrl).origin],
     })
   }
 
   return verifiers
+}
+
+export function readTrustedVerifierBuildPolicy(
+  env: Env = process.env,
+  isDevelopment = __DEV__,
+): { includesRedirectUri: boolean; includesDidWeb: boolean } {
+  const verifiers = buildTrustedVerifiersFromEnv(env, isDevelopment)
+
+  return {
+    includesRedirectUri: verifiers.some((verifier) => verifier.clientId.startsWith('redirect_uri:')),
+    includesDidWeb: verifiers.some((verifier) =>
+      verifier.clientId.startsWith('decentralized_identifier:did:web:'),
+    ),
+  }
 }
 
 export const TRUSTED_VERIFIERS: TrustedVerifier[] = buildTrustedVerifiersFromEnv()

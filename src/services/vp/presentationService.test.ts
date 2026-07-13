@@ -114,6 +114,29 @@ function verifierRequestUri(id = 'request-123'): string {
   return `openid4vp://authorize?client_id=redirect_uri:http://192.100.10.48/openid4vc/verify/${id}&request_uri=http://192.100.10.48/openid4vc/request/${id}`
 }
 
+function issuerPidRequestUri(): string {
+  const params = new URLSearchParams({
+    response_type: 'vp_token',
+    client_id: 'decentralized_identifier:did:web:issuer.example.com',
+    response_mode: 'direct_post',
+    state: 'issuer-state-123',
+    nonce: 'issuer-nonce-123',
+    response_uri: 'https://issuer.example.com/oid4vp/direct-post',
+    dcql_query: JSON.stringify({
+      credentials: [
+        {
+          id: 'pid_credential',
+          format: 'jwt_vc_json',
+          meta: { type_values: ['IDCardCredential'] },
+          claims: [{ path: ['birthDate'] }],
+        },
+      ],
+    }),
+  })
+
+  return `openid4vp://authorize?${params.toString()}`
+}
+
 describe('presentationService', () => {
   const originalSdJwtKbFlag = process.env.EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING
   let infoSpy: jest.SpyInstance
@@ -952,6 +975,42 @@ describe('presentationService', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     expect(result).toEqual({ status: 'verified', message: 'Verification succeeded' })
+  })
+
+  test('resolves issuer OID4VP PID DCQL request and posts VP body to issuer response_uri', async () => {
+    const submitFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify({ status: 'accepted' }), { status: 200 }),
+    )
+    const request = await resolvePresentationRequest(issuerPidRequestUri(), [thaiIdRecord], {
+      trustedVerifiers: [
+        {
+          clientId: 'decentralized_identifier:did:web:issuer.example.com',
+          name: 'PID Issuer',
+          allowedOrigins: ['https://issuer.example.com'],
+        },
+      ],
+    })
+
+    expect(request.verifier.name).toBe('PID Issuer')
+    expect(request.matchedCredential.id).toBe('thai-id-1')
+    expect(request.disclosures).toEqual([
+      expect.objectContaining({ key: 'birthDate', value: '2001-05-15' }),
+    ])
+
+    const result = await submitPresentationResponse(request, {
+      vpToken: 'issuer.vp.jwt',
+      fetchImpl: submitFetchMock as unknown as typeof fetch,
+    })
+
+    expect(submitFetchMock).toHaveBeenCalledWith(
+      'https://issuer.example.com/oid4vp/direct-post',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    const [, init] = submitFetchMock.mock.calls[0]
+    const body = new URLSearchParams(String(init?.body))
+    expect(JSON.parse(body.get('vp_token') ?? '')).toEqual({ pid_credential: ['issuer.vp.jwt'] })
+    expect(body.get('state')).toBe('issuer-state-123')
+    expect(result).toEqual({ status: 'accepted' })
   })
 
   test('submits DCQL vp_token as a query-id response object', async () => {

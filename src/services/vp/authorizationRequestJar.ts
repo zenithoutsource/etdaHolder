@@ -1,6 +1,3 @@
-import { hashes, verify } from '@noble/ed25519'
-import { sha512 } from '@noble/hashes/sha2.js'
-
 import {
   decodeJsonBase64Url,
   isRecord,
@@ -8,6 +5,7 @@ import {
   readString,
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
+import { verifyEdDsaCompactJwt } from '../crypto/eddsaJwtVerify'
 import {
   clientIdAllowsUnsignedRequestObject,
   clientIdRequiresSignedRequestObject,
@@ -15,9 +13,7 @@ import {
   type SupportedClientIdScheme,
 } from './clientIdScheme'
 import { resolveDidWebVerificationJwk } from './didWebResolver'
-import type { TrustedVerifier } from './presentationService'
-
-if (!hashes.sha512) hashes.sha512 = sha512
+import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
 
 export type ParseAuthorizationRequestBodyOptions = {
   trustedVerifiers: TrustedVerifier[]
@@ -95,6 +91,7 @@ async function parseVerifiedAuthorizationRequestJwt(
 
     const verificationJwk = await resolveRequestObjectVerificationJwk({
       clientId,
+      responseUri: readString(payload.response_uri),
       header,
       trustedVerifiers: options.trustedVerifiers,
       fetchImpl: options.fetchImpl ?? fetch,
@@ -110,6 +107,7 @@ async function parseVerifiedAuthorizationRequestJwt(
   if (hasSignature && alg && alg !== 'none') {
     const verificationJwk = await resolveRequestObjectVerificationJwk({
       clientId,
+      responseUri: readString(payload.response_uri),
       header,
       trustedVerifiers: options.trustedVerifiers,
       fetchImpl: options.fetchImpl ?? fetch,
@@ -144,18 +142,29 @@ function parseUnsignedAuthorizationRequestJson(text: string): Record<string, unk
 
 async function resolveRequestObjectVerificationJwk(input: {
   clientId: string
+  responseUri: string | undefined
   header: Record<string, unknown>
   trustedVerifiers: TrustedVerifier[]
   fetchImpl: typeof fetch
 }): Promise<Record<string, unknown>> {
-  const pinnedJwk = readPinnedVerificationJwk(input.clientId, input.trustedVerifiers)
-  if (pinnedJwk) return pinnedJwk
-
   const parsedClientId = parseClientId(input.clientId)
+  const trustedVerifier = input.responseUri
+    ? findTrustedVerifier(input.clientId, input.responseUri, input.trustedVerifiers)
+    : undefined
+
+  if (trustedVerifier?.verificationJwk) return trustedVerifier.verificationJwk
+
   if (
     parsedClientId.scheme === 'decentralized_identifier' &&
     parsedClientId.originalClientId.startsWith('did:web:')
   ) {
+    if (!input.responseUri) {
+      throw new Error('PresentationRequestInvalid: response_uri is required')
+    }
+    if (!trustedVerifier) {
+      throw new Error('PresentationRequestInvalid: verifier is not trusted')
+    }
+
     return resolveDidWebVerificationJwk(
       parsedClientId.originalClientId,
       readString(input.header.kid),
@@ -169,63 +178,11 @@ async function resolveRequestObjectVerificationJwk(input: {
   throw new Error('PresentationRequestInvalid: verifier signing key is not available')
 }
 
-function readPinnedVerificationJwk(
-  clientId: string,
-  trustedVerifiers: TrustedVerifier[],
-): Record<string, unknown> | undefined {
-  const parsedClientId = parseClientId(clientId)
-
-  for (const verifier of trustedVerifiers) {
-    if (!verifier.verificationJwk) continue
-
-    const verifierClientId = parseClientId(verifier.clientId)
-    if (parsedClientId.scheme !== verifierClientId.scheme) continue
-
-    if (parsedClientId.scheme === 'decentralized_identifier') {
-      if (parsedClientId.originalClientId === verifierClientId.originalClientId) {
-        return verifier.verificationJwk
-      }
-      continue
-    }
-
-    if (verifier.clientId === clientId || clientId.startsWith(`${verifier.clientId}/`)) {
-      return verifier.verificationJwk
-    }
-  }
-
-  return undefined
-}
-
 function verifyAuthorizationRequestSignature(
   jwt: string,
   publicJwk: Record<string, unknown>,
   alg: string,
 ): boolean {
   if (alg !== 'EdDSA') return false
-  if (publicJwk.kty !== 'OKP' || publicJwk.crv !== 'Ed25519') return false
-
-  const x = readString(publicJwk.x)
-  if (!x) return false
-
-  const parts = jwt.split('.')
-  if (parts.length !== 3 || !parts[2]) return false
-
-  try {
-    return verify(
-      base64UrlDecodeToBytes(parts[2]),
-      new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
-      base64UrlDecodeToBytes(x),
-    )
-  } catch {
-    return false
-  }
-}
-
-function base64UrlDecodeToBytes(value: string): Uint8Array {
-  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
-  const binary = atob(padded)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return bytes
+  return verifyEdDsaCompactJwt(jwt, publicJwk)
 }

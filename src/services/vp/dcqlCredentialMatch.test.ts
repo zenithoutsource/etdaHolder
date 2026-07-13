@@ -4,6 +4,7 @@ import {
   assertSupportedDcqlCredentialQuery,
   assertSupportedDcqlRequest,
   canWalletSatisfyDcqlCredentialQuery,
+  describeDcqlMatchFailure,
 } from './dcqlCredentialMatch'
 import type { DcqlCredentialQuery, DcqlQuery } from './presentationService'
 
@@ -140,5 +141,89 @@ describe('canWalletSatisfyDcqlCredentialQuery', () => {
     }
 
     expect(canWalletSatisfyDcqlCredentialQuery(thaiIdRecord, credential)).toBe(true)
+  })
+
+  test('satisfies claim_sets when one option group is fully available even if another needs a missing claim', () => {
+    const credential: DcqlCredentialQuery = {
+      id: 'thai_id',
+      format: 'jwt_vc_json',
+      meta: { type_values: ['IDCardCredential'] },
+      claims: [
+        { id: 'id_number', path: ['id_number'] },
+        { id: 'photo', path: ['photo'] },
+      ],
+      claimSets: [['id_number', 'photo'], ['id_number']],
+    }
+
+    expect(canWalletSatisfyDcqlCredentialQuery(thaiIdRecord, credential)).toBe(true)
+  })
+
+  test('fails claim_sets when every option group needs a missing claim', () => {
+    const credential: DcqlCredentialQuery = {
+      id: 'thai_id',
+      format: 'jwt_vc_json',
+      meta: { type_values: ['IDCardCredential'] },
+      claims: [{ id: 'photo', path: ['photo'] }],
+      claimSets: [['photo']],
+    }
+
+    expect(canWalletSatisfyDcqlCredentialQuery(thaiIdRecord, credential)).toBe(false)
+  })
+})
+
+describe('describeDcqlMatchFailure', () => {
+  test('reports type gate for unrecognized type_values', () => {
+    const failure = describeDcqlMatchFailure(thaiIdRecord, {
+      id: 'thai_id',
+      format: 'jwt_vc_json',
+      meta: { type_values: ['VerifierSpecificCredential'] },
+    })
+
+    expect(failure.failedGate).toBe('type')
+    expect(failure.recordType).toBe('ThaiNationalID')
+  })
+
+  test('reports vct gate when requested vct_values do not contain the stored vct', () => {
+    const sdJwtRecord: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      rawVc: 'eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJ1cm46ZXhhbXBsZTppZGNhcmQifQ.signature~ZGlzY2xvc3VyZQ',
+      claims: { vct: 'urn:example:idcard' },
+    }
+
+    const failure = describeDcqlMatchFailure(sdJwtRecord, {
+      id: 'thai_id',
+      format: 'dc+sd-jwt',
+      meta: { vct_values: ['urn:other:idcard'] },
+    })
+
+    expect(failure.failedGate).toBe('vct')
+    expect(failure.recordVct).toBe('urn:example:idcard')
+    expect(failure.requestedVctValues).toEqual(['urn:other:idcard'])
+  })
+
+  test('reports format gate for sd-jwt record against jwt_vc_json request', () => {
+    const sdJwtRecord: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      rawVc: 'eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJ1cm46ZXhhbXBsZTppZGNhcmQifQ.signature~ZGlzY2xvc3VyZQ',
+    }
+
+    const failure = describeDcqlMatchFailure(sdJwtRecord, {
+      id: 'thai_id',
+      format: 'jwt_vc_json',
+      meta: { type_values: ['IDCardCredential'] },
+    })
+
+    expect(failure.failedGate).toBe('format')
+    expect(failure.recordFormat).toBe('sd-jwt')
+  })
+
+  test('reports none when the credential satisfies the query', () => {
+    const failure = describeDcqlMatchFailure(thaiIdRecord, {
+      id: 'thai_id',
+      format: 'jwt_vc_json',
+      meta: { type_values: ['IDCardCredential'] },
+    })
+
+    expect(failure.failedGate).toBe('none')
   })
 })

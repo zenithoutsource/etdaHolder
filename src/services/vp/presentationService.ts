@@ -9,11 +9,11 @@ import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { decodeJwtPayload, isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { parseAuthorizationRequestBody } from './authorizationRequestJar'
-import { parseClientId, readResponseUriMatchesClientId } from './clientIdScheme'
 import {
   assertNoSetDcqlCardinality,
   assertSupportedDcqlRequest,
   canWalletSatisfyDcqlCredentialQuery,
+  describeDcqlMatchFailure,
   isCredentialCompatibleWithDcqlFormat,
   isCredentialCompatibleWithDcqlMetadata,
   readCredentialTypeFromDcqlTypeValue,
@@ -22,15 +22,11 @@ import { parseDcqlCredentialSets, resolveDcqlCredentialSelection } from './dcqlC
 import { assertDualFormatPresentationReady, isDualFormatDcqlRequest, isSdJwtSideCompatibleWithDualFormatRequest } from './dualFormatPresentationMatch'
 import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
+import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
 
 type JsonRecord = Record<string, unknown>
 
-export type TrustedVerifier = {
-  clientId: string
-  name: string
-  allowedOrigins: string[]
-  verificationJwk?: Record<string, unknown>
-}
+export type { TrustedVerifier } from './trustedVerifierMatcher'
 
 export type PresentationDisclosure = {
   key: string
@@ -56,6 +52,7 @@ export type PresentationDefinition = {
 
 export type DcqlClaimsQuery = {
   path: string[]
+  id?: string
 }
 
 export type DcqlCredentialQuery = {
@@ -67,6 +64,7 @@ export type DcqlCredentialQuery = {
     vct_values?: string[]
   }
   claims?: DcqlClaimsQuery[]
+  claimSets?: string[][]
 }
 
 export type DcqlCredentialSetQuery = {
@@ -232,6 +230,35 @@ export async function resolvePresentationRequest(
     )
   })
   if (!matchedCredential) {
+    const matchDiagnostics = (() => {
+      if (credentials.length === 0) return 'wallet has no presentable credentials'
+      if (effectiveDcqlQuery && !isDualFormatDcqlRequest(effectiveDcqlQuery)) {
+        const dcqlQueryCredentials = effectiveDcqlQuery.credentials
+        return credentials
+          .flatMap((record) => dcqlQueryCredentials.map((credentialQuery) => describeDcqlMatchFailure(record, credentialQuery)))
+          .map((failure) => {
+            if (__DEV__) logWalletStep('oid4vp', 'dcql-match-failed', failure)
+            const missing = failure.unsatisfiedClaimKeys?.length
+              ? ` [missing claims: ${failure.unsatisfiedClaimKeys.join(', ')}]`
+              : ''
+            const has = __DEV__ && failure.unsatisfiedClaimKeys?.length
+              ? ` [has: ${failure.recordClaimKeys.join(', ')}]`
+              : ''
+            return `${failure.recordType}(${failure.recordFormat}) failed ${failure.failedGate} gate${missing}${has}`
+          })
+          .join('; ')
+      }
+      if (presentationDefinition) {
+        return credentials
+          .map((record) =>
+            requestedTypes.includes(record.type)
+              ? `${record.type} is missing a required claim for this request`
+              : `${record.type} is not in requested types [${requestedTypes.join(', ')}]`,
+          )
+          .join('; ')
+      }
+      return 'no matching rule applied'
+    })()
     const candidateCredentials = credentials.filter((record) => {
       if (presentationDefinition) {
         return (
@@ -279,12 +306,12 @@ export async function resolvePresentationRequest(
       if (metadataCompatibleCredentials.length === 0) {
         throw new Error(`PresentationCredentialMetadataMismatch: ${describeCredentialMetadataMismatch(effectiveDcqlQuery, formatCompatibleCredentials)}`)
       }
-      throw new Error('PresentationCredentialMissing: requested credential is not available')
+      throw new Error(`PresentationCredentialMissing: requested credential is not available (${matchDiagnostics})`)
     }
     if (candidateCredentials.length > 0) {
       throw new Error('PresentationCredentialFormatUnsupported: stored credential format does not match the Verifier request')
     }
-    throw new Error('PresentationCredentialMissing: requested credential is not available')
+    throw new Error(`PresentationCredentialMissing: requested credential is not available (${matchDiagnostics})`)
   }
 
   if (effectiveDcqlQuery && isDualFormatDcqlRequest(effectiveDcqlQuery)) {
@@ -564,10 +591,11 @@ export function parsePresentationDefinitionJson(text: string): PresentationDefin
 }
 
 function readOptionalDcqlQuery(request: JsonRecord): DcqlQuery | undefined {
-  if (!isRecord(request.dcql_query)) return undefined
+  const rawDcqlQuery = readDcqlQueryValue(request.dcql_query)
+  if (!rawDcqlQuery) return undefined
 
-  const credentials = Array.isArray(request.dcql_query.credentials)
-    ? request.dcql_query.credentials
+  const credentials = Array.isArray(rawDcqlQuery.credentials)
+    ? rawDcqlQuery.credentials
       .map(readDcqlCredentialQuery)
       .filter((query): query is DcqlCredentialQuery => Boolean(query))
     : []
@@ -576,11 +604,23 @@ function readOptionalDcqlQuery(request: JsonRecord): DcqlQuery | undefined {
     throw new Error('PresentationRequestInvalid: dcql_query.credentials is required')
   }
 
-  const credentialSets = parseDcqlCredentialSets(request.dcql_query.credential_sets)
+  const credentialSets = parseDcqlCredentialSets(rawDcqlQuery.credential_sets)
 
   return {
     credentials,
     ...(credentialSets ? { credentialSets } : {}),
+  }
+}
+
+function readDcqlQueryValue(value: unknown): JsonRecord | undefined {
+  if (isRecord(value)) return value
+  if (typeof value !== 'string' || value.trim().length === 0) return undefined
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return isRecord(parsed) ? parsed : undefined
+  } catch (error) {
+    throw new Error(`PresentationRequestInvalid: dcql_query must be valid JSON (${toErrorMessage(error)})`)
   }
 }
 
@@ -598,6 +638,12 @@ function readDcqlCredentialQuery(value: unknown): DcqlCredentialQuery | undefine
     ? value.claims.map(readDcqlClaimsQuery).filter((claim): claim is DcqlClaimsQuery => Boolean(claim))
     : undefined
 
+  const claimSets = Array.isArray(value.claim_sets)
+    ? value.claim_sets
+      .map((option) => (Array.isArray(option) ? option.filter((id): id is string => typeof id === 'string') : []))
+      .filter((option) => option.length > 0)
+    : undefined
+
   return {
     id: value.id,
     ...(readString(value.format) ? { format: readString(value.format) } : {}),
@@ -606,13 +652,15 @@ function readDcqlCredentialQuery(value: unknown): DcqlCredentialQuery | undefine
       : {}),
     ...(typeValues || vctValues ? { meta: { ...(typeValues ? { type_values: typeValues } : {}), ...(vctValues ? { vct_values: vctValues } : {}) } } : {}),
     ...(claims && claims.length > 0 ? { claims } : {}),
+    ...(claimSets && claimSets.length > 0 ? { claimSets } : {}),
   }
 }
 
 function readDcqlClaimsQuery(value: unknown): DcqlClaimsQuery | undefined {
   if (!isRecord(value) || !Array.isArray(value.path)) return undefined
   const path = value.path.filter((item): item is string => typeof item === 'string')
-  return path.length > 0 ? { path } : undefined
+  if (path.length === 0) return undefined
+  return { path, ...(typeof value.id === 'string' ? { id: value.id } : {}) }
 }
 
 function readInputDescriptor(value: unknown): PresentationDefinitionInputDescriptor | undefined {
@@ -795,51 +843,6 @@ function isCompactSdJwt(rawVc: string): boolean {
   return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
 }
 
-function findTrustedVerifier(
-  clientId: string,
-  responseUri: string,
-  trustedVerifiers: TrustedVerifier[],
-): TrustedVerifier | undefined {
-  const responseOrigin = readUrlOrigin(responseUri)
-  if (!responseOrigin) return undefined
-
-  const parsedClientId = parseClientId(clientId)
-  if (
-    parsedClientId.scheme === 'unknown' ||
-    parsedClientId.scheme === 'openid_federation' ||
-    parsedClientId.scheme === 'verifier_attestation' ||
-    parsedClientId.scheme === 'x509_san_dns' ||
-    parsedClientId.scheme === 'x509_hash' ||
-    parsedClientId.scheme === 'origin'
-  ) {
-    return undefined
-  }
-
-  if (!readResponseUriMatchesClientId(clientId, responseUri)) {
-    return undefined
-  }
-
-  return trustedVerifiers.find((verifier) => {
-    if (!verifier.allowedOrigins.includes(responseOrigin)) return false
-
-    const verifierClientId = parseClientId(verifier.clientId)
-    if (parsedClientId.scheme !== verifierClientId.scheme) return false
-
-    if (parsedClientId.scheme === 'redirect_uri') {
-      return (
-        verifier.clientId === clientId ||
-        clientId.startsWith(`${verifier.clientId}/`)
-      )
-    }
-
-    if (parsedClientId.scheme === 'decentralized_identifier') {
-      return parsedClientId.originalClientId === verifierClientId.originalClientId
-    }
-
-    return verifier.clientId === clientId || clientId.startsWith(`${verifier.clientId}/`)
-  })
-}
-
 function readBirthDateDisclosures(record: VerifiableCredentialRecord): PresentationDisclosure[] {
   const birthDate = readBirthDateClaim(record)
   if (!birthDate) {
@@ -884,14 +887,6 @@ function parseUrl(raw: string): URL {
     return new URL(raw)
   } catch (error) {
     throw new Error(`PresentationRequestInvalid: ${toErrorMessage(error)}`)
-  }
-}
-
-function readUrlOrigin(raw: string): string | undefined {
-  try {
-    return new URL(raw).origin
-  } catch {
-    return undefined
   }
 }
 

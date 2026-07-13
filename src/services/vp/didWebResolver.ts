@@ -1,3 +1,7 @@
+import {
+  DID_WEB_FETCH_TIMEOUT_MS,
+  DID_WEB_MAX_BYTES,
+} from '@/src/config/didWebFetchPolicy'
 import { isRecord, readRecord, readString } from '@/src/utils/jwtUtils'
 
 export type VerificationJwk = Record<string, unknown>
@@ -12,7 +16,12 @@ export function readDidWebDocumentUrl(did: string): string {
     throw new Error('DidWebInvalid: did:web method-specific id is required')
   }
 
-  const segments = methodSpecificId.split(':').map((segment) => decodeURIComponent(segment))
+  let segments: string[]
+  try {
+    segments = methodSpecificId.split(':').map((segment) => decodeURIComponent(segment))
+  } catch {
+    throw new Error('DidWebInvalid: malformed did:web identifier')
+  }
   const host = segments[0]
   if (!host) {
     throw new Error('DidWebInvalid: did:web host is required')
@@ -30,17 +39,50 @@ export async function resolveDidWebVerificationJwk(
   did: string,
   kid: string | undefined,
   fetchImpl: typeof fetch = fetch,
+  options: { timeoutMs?: number; maxBytes?: number } = {},
 ): Promise<VerificationJwk> {
   const documentUrl = readDidWebDocumentUrl(did)
-  const response = await fetchImpl(documentUrl, {
-    headers: { Accept: 'application/did+json, application/json' },
-  })
+  const timeoutMs = options.timeoutMs ?? DID_WEB_FETCH_TIMEOUT_MS
+  const maxBytes = options.maxBytes ?? DID_WEB_MAX_BYTES
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-  if (!response.ok) {
-    throw new Error(`DidWebResolveFailed: HTTP ${response.status}`)
+  let response: Response
+  let bodyBytes: ArrayBuffer
+  try {
+    response = await fetchImpl(documentUrl, {
+      headers: { Accept: 'application/did+json, application/json' },
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`DidWebResolveFailed: HTTP ${response.status}`)
+    }
+
+    bodyBytes = await response.arrayBuffer()
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('DidWebResolveFailed:')) {
+      throw error
+    }
+    if (isAbortError(error)) {
+      throw new Error('DidWebResolveFailed: fetch timed out')
+    }
+    throw new Error('DidWebResolveFailed: network error')
+  } finally {
+    clearTimeout(timeoutId)
   }
 
-  const document = (await response.json()) as unknown
+  if (bodyBytes.byteLength > maxBytes) {
+    throw new Error('DidWebResolveFailed: response exceeds max bytes')
+  }
+
+  let document: unknown
+  try {
+    document = JSON.parse(new TextDecoder().decode(bodyBytes)) as unknown
+  } catch {
+    throw new Error('DidWebResolveFailed: DID document must be valid JSON')
+  }
+
   if (!isRecord(document)) {
     throw new Error('DidWebResolveFailed: DID document must be a JSON object')
   }
@@ -56,6 +98,10 @@ export async function resolveDidWebVerificationJwk(
   }
 
   return publicKeyJwk
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
 }
 
 function readVerificationMethod(

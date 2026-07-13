@@ -82,6 +82,46 @@ describe('resolveDcqlCredentialSelection', () => {
     )
   })
 
+  test('throws PresentationCredentialMetadataMismatch when only the vct gate fails', () => {
+    const sdJwtRecord: VerifiableCredentialRecord = {
+      id: 'thai-id-sd',
+      type: 'ThaiNationalID',
+      rawVc: 'eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJ1cm46ZXhhbXBsZTppZGNhcmQifQ.signature~ZGlzY2xvc3VyZQ',
+      claims: { vct: 'urn:example:idcard' },
+      issuedAt: '2026-06-01T10:00:00.000Z',
+    }
+
+    const query: DcqlQuery = {
+      credentials: [
+        { id: 'thai_id', format: 'dc+sd-jwt', meta: { vct_values: ['urn:other:idcard'] } },
+      ],
+      credentialSets: [{ options: [['thai_id']] }],
+    }
+
+    expect(() => resolveDcqlCredentialSelection(query, [sdJwtRecord])).toThrow(
+      'PresentationCredentialMetadataMismatch: stored ThaiNationalID vct "urn:example:idcard" is not in requested vct_values [urn:other:idcard]',
+    )
+  })
+
+  test('throws PresentationCredentialFormatUnsupported when only the format gate fails', () => {
+    const sdJwtRecord: VerifiableCredentialRecord = {
+      id: 'thai-id-sd',
+      type: 'ThaiNationalID',
+      rawVc: 'eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJ1cm46ZXhhbXBsZTppZGNhcmQifQ.signature~ZGlzY2xvc3VyZQ',
+      claims: { id_number: '1234567890123' },
+      issuedAt: '2026-06-01T10:00:00.000Z',
+    }
+
+    const query: DcqlQuery = {
+      credentials: [{ id: 'thai_id', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+      credentialSets: [{ options: [['thai_id']] }],
+    }
+
+    expect(() => resolveDcqlCredentialSelection(query, [sdJwtRecord])).toThrow(
+      'PresentationCredentialFormatUnsupported: stored credential format does not match the Verifier request',
+    )
+  })
+
   test('succeeds via supported alternative when another option is unsupported', () => {
     const query: DcqlQuery = {
       credentials: [

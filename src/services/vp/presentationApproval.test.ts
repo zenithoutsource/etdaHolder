@@ -7,24 +7,13 @@ import { confirmPresentationBiometric, createApprovedPresentationResponse } from
 const mockHasHardwareAsync = jest.fn()
 const mockIsEnrolledAsync = jest.fn()
 const mockAuthenticateAsync = jest.fn()
-const mockIsNativeWeakBiometricAvailable = jest.fn()
-const mockAuthenticateWeakBiometric = jest.fn()
 const mockLogWalletStep = jest.fn()
 const mockLogWalletError = jest.fn()
-
-const biometricPromptMessage =
-  '\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e15\u0e31\u0e27\u0e15\u0e19\u0e14\u0e49\u0e27\u0e22 Biometric'
-const biometricCancelText = '\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01'
 
 jest.mock('expo-local-authentication', () => ({
   hasHardwareAsync: (...args: unknown[]) => mockHasHardwareAsync(...args),
   isEnrolledAsync: (...args: unknown[]) => mockIsEnrolledAsync(...args),
   authenticateAsync: (...args: unknown[]) => mockAuthenticateAsync(...args),
-}))
-
-jest.mock('../crypto/nativeEddsaSigner', () => ({
-  authenticateWeakBiometric: (...args: unknown[]) => mockAuthenticateWeakBiometric(...args),
-  isNativeWeakBiometricAvailable: () => mockIsNativeWeakBiometricAvailable(),
 }))
 
 jest.mock('../debug/walletLogger', () => ({
@@ -76,37 +65,11 @@ describe('presentationApproval', () => {
     mockHasHardwareAsync.mockReset()
     mockIsEnrolledAsync.mockReset()
     mockAuthenticateAsync.mockReset()
-    mockIsNativeWeakBiometricAvailable.mockReset()
-    mockAuthenticateWeakBiometric.mockReset()
     mockLogWalletStep.mockReset()
     mockLogWalletError.mockReset()
     mockHasHardwareAsync.mockResolvedValue(true)
     mockIsEnrolledAsync.mockResolvedValue(true)
     mockAuthenticateAsync.mockResolvedValue({ success: true })
-    mockIsNativeWeakBiometricAvailable.mockReturnValue(false)
-    mockAuthenticateWeakBiometric.mockResolvedValue(true)
-  })
-
-  test('uses Android native weak biometric prompt when available', async () => {
-    mockIsNativeWeakBiometricAvailable.mockReturnValueOnce(true)
-
-    await confirmPresentationBiometric()
-
-    expect(mockAuthenticateWeakBiometric).toHaveBeenCalledWith(biometricPromptMessage, biometricCancelText)
-    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-native-weak-start')
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-complete', {
-      authenticator: 'android-native-biometric-weak',
-    })
-  })
-
-  test('rejects when Android native weak biometric prompt is cancelled', async () => {
-    mockIsNativeWeakBiometricAvailable.mockReturnValueOnce(true)
-    mockAuthenticateWeakBiometric.mockResolvedValueOnce(false)
-
-    await expect(confirmPresentationBiometric()).rejects.toThrow('PresentationBiometricCancelled')
-
-    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
   })
 
   test('uses biometric-only OS prompt without device credential fallback', async () => {
@@ -117,7 +80,7 @@ describe('presentationApproval', () => {
       cancelLabel: 'ยกเลิก',
       disableDeviceFallback: true,
     })
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-expo-fallback-start')
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-expo-start')
     expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-sensor-available', {
       hasHardware: true,
       isEnrolled: true,

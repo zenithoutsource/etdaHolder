@@ -1,7 +1,9 @@
+import { logWalletStep } from '../debug/walletLogger'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import {
   assertSupportedDcqlCredentialQuery,
   canWalletSatisfyDcqlCredentialQuery,
+  describeDcqlMatchFailure,
 } from './dcqlCredentialMatch'
 import type { DcqlCredentialSetQuery, DcqlQuery } from './presentationService'
 
@@ -71,6 +73,25 @@ export function resolveDcqlCredentialSelection(
   })
 
   if (!selectedId) {
+    const failures = supportedOptionIds.flatMap((id) => {
+      const credential = credentialById.get(id)
+      if (!credential) return []
+      return credentials.map((record) => describeDcqlMatchFailure(record, credential))
+    })
+    if (__DEV__) {
+      for (const failure of failures) {
+        logWalletStep('oid4vp', 'dcql-match-failed', failure)
+      }
+    }
+    if (failures.some((failure) => failure.failedGate === 'vct')) {
+      const mismatch = failures.find((failure) => failure.failedGate === 'vct')!
+      throw new Error(
+        `PresentationCredentialMetadataMismatch: stored ${mismatch.recordType} vct "${mismatch.recordVct ?? 'missing'}" is not in requested vct_values [${mismatch.requestedVctValues.join(', ')}]`,
+      )
+    }
+    if (failures.some((failure) => failure.failedGate === 'format')) {
+      throw new Error('PresentationCredentialFormatUnsupported: stored credential format does not match the Verifier request')
+    }
     throw new Error('PresentationCredentialMissing: no credential satisfies the required credential set')
   }
 

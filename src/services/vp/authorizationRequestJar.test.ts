@@ -18,6 +18,7 @@ function base64UrlEncodeBytes(bytes: Uint8Array): string {
 async function signedRequestJwt(
   payload: Record<string, unknown>,
   privateKey: Uint8Array,
+  headerOverrides: Record<string, unknown> = {},
 ): Promise<string> {
   const publicKey = getPublicKey(privateKey)
   const publicJwk = {
@@ -29,6 +30,7 @@ async function signedRequestJwt(
     alg: 'EdDSA',
     typ: 'oauth-authz-req+jwt',
     jwk: publicJwk,
+    ...headerOverrides,
   }
   const unsigned = `${encodePart(header)}.${encodePart(payload)}`
   const signature = await sign(new TextEncoder().encode(unsigned), privateKey)
@@ -91,6 +93,72 @@ describe('authorizationRequestJar', () => {
       client_id: 'decentralized_identifier:did:web:verifier.example.com',
       nonce: 'nonce-123',
     })
+  })
+
+  test('resolves signed decentralized_identifier request keys from trusted did:web document', async () => {
+    const payload = {
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      dcql_query: { credentials: [] },
+    }
+    const jwt = await signedRequestJwt(payload, privateKey, {
+      kid: 'did:web:verifier.example.com#key-1',
+      jwk: undefined,
+    })
+    const fetchMock = jest.fn(async () =>
+      Response.json({
+        id: 'did:web:verifier.example.com',
+        verificationMethod: [
+          {
+            id: 'did:web:verifier.example.com#key-1',
+            type: 'JsonWebKey2020',
+            publicKeyJwk: publicJwk,
+          },
+        ],
+      }),
+    )
+
+    await expect(
+      parseAuthorizationRequestBody(jwt, {
+        trustedVerifiers: [
+          {
+            clientId: 'decentralized_identifier:did:web:verifier.example.com',
+            name: 'Trusted Verifier',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).resolves.toMatchObject({
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
+      nonce: 'nonce-123',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('rejects untrusted decentralized_identifier request before did:web document fetch', async () => {
+    const payload = {
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      dcql_query: { credentials: [] },
+    }
+    const jwt = await signedRequestJwt(payload, privateKey, {
+      kid: 'did:web:verifier.example.com#key-1',
+      jwk: undefined,
+    })
+    const fetchMock = jest.fn()
+
+    await expect(
+      parseAuthorizationRequestBody(jwt, {
+        trustedVerifiers: [],
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow('PresentationRequestInvalid: verifier is not trusted')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test('rejects unsigned decentralized_identifier request objects', async () => {

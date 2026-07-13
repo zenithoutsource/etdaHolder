@@ -2,7 +2,7 @@ import { getCardSchema } from '../../config/cardSchemas'
 import { decodeJwtPayload, isRecord, readString } from '@/src/utils/jwtUtils'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { isExactDualFormatPair } from './dualFormatPresentationMatch'
-import type { DcqlCredentialQuery, DcqlQuery } from './presentationService'
+import type { DcqlClaimsQuery, DcqlCredentialQuery, DcqlQuery } from './presentationService'
 
 const THAI_ID_TYPE = 'ThaiNationalID'
 const TRANSCRIPT_TYPE = 'BangkokUniversityTranscript'
@@ -87,16 +87,22 @@ export function canWalletSatisfyDcqlCredentialQuery(
     return false
   }
 
+  return findUnsatisfiedDcqlClaimKeys(record, credential).length === 0
+}
+
+export function findUnsatisfiedDcqlClaimKeys(
+  record: VerifiableCredentialRecord,
+  credential: DcqlCredentialQuery,
+): string[] {
   const claims = credential.claims ?? []
-  if (claims.length === 0) return true
+  if (claims.length === 0) return []
 
-  const schema = getCardSchema(record.type)
-  const normalizedClaimKeys = new Map(Object.keys(record.claims).map((key) => [normalizeClaimKey(key), key]))
-
-  return claims.every((claimQuery) => {
+  const isClaimSatisfied = (claimQuery: DcqlClaimsQuery): boolean => {
     const requestedKey = claimQuery.path[0]
     if (!requestedKey) return false
 
+    const schema = getCardSchema(record.type)
+    const normalizedClaimKeys = new Map(Object.keys(record.claims).map((key) => [normalizeClaimKey(key), key]))
     const normalizedRequestedKey = normalizeClaimKey(requestedKey)
     const matchedKey = normalizedClaimKeys.get(normalizedRequestedKey)
     if (!matchedKey) return false
@@ -111,7 +117,81 @@ export function canWalletSatisfyDcqlCredentialQuery(
     )
 
     return Boolean(field ?? matchedKey)
-  })
+  }
+
+  const claimKey = (claimQuery: DcqlClaimsQuery): string => claimQuery.path[0] ?? '(empty path)'
+
+  // With claim_sets the verifier accepts any one group of claim ids; the query
+  // is satisfiable when a single group is fully satisfiable. Without claim_sets
+  // every listed claim is mandatory.
+  const claimSets = credential.claimSets ?? []
+  if (claimSets.length > 0) {
+    const claimsById = new Map(claims.filter((claim) => claim.id).map((claim) => [claim.id as string, claim]))
+    const groupResults = claimSets.map((group) =>
+      group
+        .map((id) => claimsById.get(id))
+        .filter((claim): claim is DcqlClaimsQuery => Boolean(claim))
+        .filter((claim) => !isClaimSatisfied(claim))
+        .map(claimKey),
+    )
+    if (groupResults.some((unsatisfied) => unsatisfied.length === 0)) return []
+    return groupResults.reduce((best, current) => (current.length < best.length ? current : best))
+  }
+
+  return claims.filter((claimQuery) => !isClaimSatisfied(claimQuery)).map(claimKey)
+}
+
+export type DcqlMatchFailure = {
+  recordType: string
+  recordFormat: 'sd-jwt' | 'jwt_vc' | 'unknown'
+  recordVct?: string
+  requestedFormat?: string
+  requestedTypeValues: string[]
+  requestedVctValues: string[]
+  failedGate: 'type' | 'vct' | 'format' | 'claims' | 'none'
+  unsatisfiedClaimKeys?: string[]
+  recordClaimKeys: string[]
+}
+
+/**
+ * Mirrors the gate order of canWalletSatisfyDcqlCredentialQuery and reports
+ * which gate rejected the record, so match failures are diagnosable from the
+ * wallet log. Contains only type metadata — no claim values, no raw VC.
+ */
+export function describeDcqlMatchFailure(
+  record: VerifiableCredentialRecord,
+  credential: DcqlCredentialQuery,
+): DcqlMatchFailure {
+  const base = {
+    recordType: record.type,
+    recordFormat: isCompactSdJwt(record.rawVc) ? ('sd-jwt' as const) : isCompactJwtVc(record.rawVc) ? ('jwt_vc' as const) : ('unknown' as const),
+    recordVct: readCredentialVct(record),
+    requestedFormat: credential.format,
+    requestedTypeValues: credential.meta?.type_values ?? [],
+    requestedVctValues: credential.meta?.vct_values ?? [],
+    recordClaimKeys: Object.keys(record.claims),
+  }
+
+  const typeValues = credential.meta?.type_values ?? []
+  if (typeValues.length > 0 && !typeValues.some((value) => record.type === readCredentialTypeFromDcqlTypeValue(value))) {
+    return { ...base, failedGate: 'type' }
+  }
+
+  const vctValues = credential.meta?.vct_values ?? []
+  if (vctValues.length > 0 && !isCredentialCompatibleWithDcqlMetadata(record, credential)) {
+    return { ...base, failedGate: 'vct' }
+  }
+
+  if (!isCredentialCompatibleWithDcqlFormat(record, credential.format)) {
+    return { ...base, failedGate: 'format' }
+  }
+
+  const unsatisfiedClaimKeys = findUnsatisfiedDcqlClaimKeys(record, credential)
+  if (unsatisfiedClaimKeys.length > 0) {
+    return { ...base, failedGate: 'claims', unsatisfiedClaimKeys }
+  }
+
+  return { ...base, failedGate: 'none' }
 }
 
 export function isCredentialCompatibleWithDcqlFormat(
