@@ -1,4 +1,5 @@
 import { logWalletError } from '../debug/walletLogger'
+import { maybeConsumeSingleUseCredential } from '../credentials/singleUseCredentialConsumption'
 import {
   appendWalletHistoryEvent,
   clearSuccessfulPresentationBadge as clearWalletPresentationBadge,
@@ -9,6 +10,7 @@ import type { SuccessfulPresentationHistoryEvent } from './walletHistory'
 
 export type RecordSuccessfulPresentationInput = {
   credentialId: string
+  credentialType: string
   verifierName: string
   documentType: string
   disclosedClaims: string[]
@@ -38,6 +40,11 @@ export function recordSuccessfulPresentation(
     )
     return undefined
   }
+
+  maybeConsumeSingleUseCredential({
+    credentialId: input.credentialId,
+    credentialType: input.credentialType,
+  })
 
   return {
     id: appended.id,

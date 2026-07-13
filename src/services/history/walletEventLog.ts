@@ -8,6 +8,7 @@ import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 export type WalletHistoryEventKind =
   | 'credential-received'
+  | 'credential-verify-failed'
   | 'presentation-success'
   | 'presentation-declined'
   | 'presentation-failed'
@@ -35,6 +36,8 @@ export type WalletHistoryFailureReason =
   | 'biometric-cancel'
   | 'timeout'
   | 'nfc-error'
+  | 'signature-invalid'
+  | 'holder-binding-mismatch'
   | 'unknown'
 
 export type WalletHistoryEvent = {
@@ -88,6 +91,7 @@ function statusForKind(kind: WalletHistoryEventKind): WalletHistoryEventStatus {
     case 'presentation-failed':
     case 'nfc-presentation-failed':
     case 'backend-sync-failed':
+    case 'credential-verify-failed':
       return 'failed'
     case 'credential-revoked':
       return 'revoked'
@@ -295,6 +299,28 @@ export function classifyPresentationFailure(error: unknown): WalletHistoryFailur
     lower.includes('failed to fetch')
   ) {
     return 'network-error'
+  }
+
+  return 'unknown'
+}
+
+export function classifyCredentialVerifyFailure(error: unknown): WalletHistoryFailureReason {
+  const message = error instanceof Error ? error.message : String(error)
+  const lower = message.toLowerCase()
+
+  if (
+    lower.includes('credentialissuersignatureinvalid') ||
+    lower.includes('credentialsignaturealgunsupported') ||
+    lower.includes('signature')
+  ) {
+    return 'signature-invalid'
+  }
+  if (
+    lower.includes('holderbinding') ||
+    lower.includes('holder-binding') ||
+    lower.includes('cnf')
+  ) {
+    return 'holder-binding-mismatch'
   }
 
   return 'unknown'

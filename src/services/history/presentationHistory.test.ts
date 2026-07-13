@@ -4,6 +4,7 @@ import {
   readSuccessfulPresentationHistory,
   recordSuccessfulPresentation,
 } from './presentationHistory'
+import { readCredentialLifecycleStatus } from '../credentials/credentialLifecycle'
 import { getCredentialStorage } from '../storage/storage'
 import type { WalletHistoryEvent } from './walletEventLog'
 
@@ -54,6 +55,7 @@ describe('presentationHistory', () => {
 
     const event = recordSuccessfulPresentation({
       credentialId: 'thai-id-1',
+      credentialType: 'ThaiNationalID',
       verifierName: 'Entertainment Venue',
       documentType: 'Thai National ID',
       disclosedClaims: ['Date of Birth'],
@@ -159,5 +161,33 @@ describe('presentationHistory', () => {
     storage.set('wallet:history:event:second', JSON.stringify(second))
 
     expect(readSuccessfullyPresentedCredentialIds()).toEqual(['thai-id-1'])
+  })
+
+  test('marks MedicalCertificate used after successful OID4VP presentation', () => {
+    mockStorage()
+
+    recordSuccessfulPresentation({
+      credentialId: 'med-1',
+      credentialType: 'MedicalCertificate',
+      verifierName: 'Pharmacy',
+      documentType: 'Medical Certificate',
+      disclosedClaims: ['Patient Name'],
+    })
+
+    expect(readCredentialLifecycleStatus('med-1')?.status).toBe('used')
+  })
+
+  test('does not mark Transcript used after successful OID4VP presentation', () => {
+    mockStorage()
+
+    recordSuccessfulPresentation({
+      credentialId: 'transcript-1',
+      credentialType: 'BangkokUniversityTranscript',
+      verifierName: 'University',
+      documentType: 'Academic Transcript',
+      disclosedClaims: ['GPA'],
+    })
+
+    expect(readCredentialLifecycleStatus('transcript-1')).toBeUndefined()
   })
 })

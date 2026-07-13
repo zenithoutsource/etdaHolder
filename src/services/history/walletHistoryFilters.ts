@@ -1,6 +1,6 @@
 import type { WalletHistoryEvent, WalletHistoryEventKind } from './walletEventLog'
 
-export type WalletHistoryFilter = 'all' | 'presentation' | 'issuance' | 'lifecycle'
+export type WalletHistoryFilter = 'issuance' | 'presentation' | 'lifecycle'
 
 const PRESENTATION_KINDS = new Set<WalletHistoryEventKind>([
   'presentation-success',
@@ -21,9 +21,8 @@ const LIFECYCLE_KINDS = new Set<WalletHistoryEventKind>([
 ])
 
 export const WALLET_HISTORY_FILTER_OPTIONS: { id: WalletHistoryFilter; label: string }[] = [
-  { id: 'all', label: 'ทั้งหมด' },
-  { id: 'presentation', label: 'แสดงเอกสาร' },
   { id: 'issuance', label: 'รับเอกสาร' },
+  { id: 'presentation', label: 'แสดงเอกสาร' },
   { id: 'lifecycle', label: 'จัดการเอกสาร' },
 ]
 
@@ -31,8 +30,9 @@ export function matchesWalletHistoryFilter(
   event: WalletHistoryEvent,
   filter: WalletHistoryFilter,
 ): boolean {
-  if (filter === 'all') return true
   if (filter === 'presentation') return PRESENTATION_KINDS.has(event.kind)
-  if (filter === 'issuance') return event.kind === 'credential-received'
+  if (filter === 'issuance') {
+    return event.kind === 'credential-received' || event.kind === 'credential-verify-failed'
+  }
   return LIFECYCLE_KINDS.has(event.kind)
 }

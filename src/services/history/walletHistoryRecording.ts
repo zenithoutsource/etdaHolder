@@ -1,9 +1,11 @@
 import { getCardSchema } from '../../config/cardSchemas'
-import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import type { ResolvedCredentialOffer, VerifiableCredentialRecord } from '../vci/exchangeService'
 import type { ResolvedPresentationRequest } from '../vp/presentationService'
 import {
   appendWalletHistoryEvent,
+  classifyCredentialVerifyFailure,
   classifyPresentationFailure,
+  type WalletHistoryFailureReason,
 } from './walletEventLog'
 
 export function recordOid4vpPresentationFailure(
@@ -18,6 +20,56 @@ export function recordOid4vpPresentationFailure(
     disclosedClaims: request.disclosures.map((disclosure) => disclosure.label),
     channel: 'oid4vp',
     reasonCode: classifyPresentationFailure(error),
+  })
+}
+
+export function mapVerifierReasonToHistory(reason: string | undefined): WalletHistoryFailureReason {
+  if (!reason) return 'verifier-rejected'
+  if (reason === 'issuer-signature-invalid') return 'signature-invalid'
+  if (reason === 'cnf-missing' || reason === 'kb-signature-invalid' || reason.includes('holder-binding')) {
+    return 'holder-binding-mismatch'
+  }
+  return 'verifier-rejected'
+}
+
+export function recordWalletInitiatedPresentationFailure(input: {
+  record: VerifiableCredentialRecord
+  verifierReason?: string
+  disclosedClaims: string[]
+}): void {
+  const schema = getCardSchema(input.record.type)
+  appendWalletHistoryEvent({
+    kind: 'presentation-failed',
+    credentialId: input.record.id,
+    documentType: schema.title,
+    partyName: 'Verifier',
+    disclosedClaims: input.disclosedClaims,
+    channel: 'wallet',
+    reasonCode: mapVerifierReasonToHistory(input.verifierReason),
+  })
+}
+
+/**
+ * P3 / P2 receive-side step: record local history when Issuer VC signature /
+ * holder-binding verification fails before storage (Wallet-local Audit Trail stand-in).
+ */
+export function recordCredentialVerifyFailed(input: {
+  resolvedOffer: ResolvedCredentialOffer
+  error: unknown
+  credentialId?: string
+  channel?: 'oid4vci' | 'renewal'
+}): void {
+  const offeredType = input.resolvedOffer.credentialConfigurations[0]?.id ?? 'Unknown'
+  const schema = getCardSchema(offeredType)
+  appendWalletHistoryEvent({
+    kind: 'credential-verify-failed',
+    credentialId:
+      input.credentialId ??
+      `unverified:${input.resolvedOffer.issuer}:${offeredType}`,
+    documentType: schema.title,
+    partyName: schema.issuerName,
+    channel: input.channel ?? 'oid4vci',
+    reasonCode: classifyCredentialVerifyFailure(input.error),
   })
 }
 

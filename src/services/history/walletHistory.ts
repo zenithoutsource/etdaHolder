@@ -61,7 +61,7 @@ function readPresentationAccessSuspendedRelatedIds(
 export function readWalletHistoryRows(
   options: ReadWalletHistoryRowsOptions = {},
 ): WalletHistoryRow[] {
-  const filter = options.filter ?? 'all'
+  const filter = options.filter ?? 'issuance'
   const includeHidden = options.includeHidden ?? false
   const hiddenIds = readHiddenWalletHistoryEventIds()
   const events = readWalletHistoryEvents()
@@ -145,6 +145,8 @@ function readActionLabel(event: WalletHistoryEvent): string {
   switch (event.kind) {
     case 'credential-received':
       return 'รับเอกสารแล้ว'
+    case 'credential-verify-failed':
+      return 'ตรวจสอบเอกสารไม่สำเร็จ'
     case 'presentation-success':
     case 'nfc-presentation-success':
       return 'แสดงเอกสารสำเร็จ'
@@ -182,8 +184,10 @@ function readFailureReasonLabel(reason?: WalletHistoryFailureReason): string {
       return 'ยกเลิกการยืนยันตัวตน'
     case 'timeout':
       return 'หมดเวลา'
-    case 'nfc-error':
-      return 'NFC ขัดข้อง'
+    case 'signature-invalid':
+      return 'ลายเซ็นไม่ถูกต้อง'
+    case 'holder-binding-mismatch':
+      return 'ผูกกุญแจผู้ถือไม่ตรง'
     default:
       return 'เกิดข้อผิดพลาด'
   }
@@ -193,6 +197,8 @@ function readSubtitle(event: WalletHistoryEvent, claimsText: string): string {
   switch (event.kind) {
     case 'credential-received':
       return 'บันทึกเอกสารลง Wallet แล้ว'
+    case 'credential-verify-failed':
+      return `${readFailureReasonLabel(event.reasonCode)} — ${event.partyName}`
     case 'presentation-success':
     case 'nfc-presentation-success':
       return claimsText ? `ข้อมูลที่เปิดเผย: ${claimsText}` : 'แสดงเอกสารสำเร็จ'
@@ -234,6 +240,9 @@ function readChannelCaption(event: WalletHistoryEvent): string {
   }
   if (event.kind === 'credential-received') {
     return 'รับเอกสารจาก Issuer'
+  }
+  if (event.kind === 'credential-verify-failed') {
+    return 'ตรวจสอบเอกสารจาก Issuer ไม่ผ่าน'
   }
   if (event.kind === 'credential-renewal-completed') {
     return 'ต่ออายุใน Wallet'
