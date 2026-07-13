@@ -1,4 +1,4 @@
-# ETDA OID4VCI Wallet
+# OID4VCI Wallet
 
 Expo SDK 54 mobile Holder Wallet for OID4VCI 1.0 credential issuance. The app claims credentials directly from Issuers, stores them in encrypted on-device MMKV storage, and can optionally sync finalized credentials to the company Wallet Backend through the Orval-generated SDK.
 

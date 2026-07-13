@@ -13,7 +13,7 @@ This slice also **unifies DCQL satisfiability** for all requests (with or withou
 ## Goals
 
 1. **Spec compliance** — Stop ignoring `credential_sets`; implement OID4VP §6.4.2 selection for the narrow OR slice.
-2. **ETDA journeys** — Support realistic requests such as ThaiNationalID **or** Driving Licence without requiring both.
+2. **the customer journeys** — Support realistic requests such as ThaiNationalID **or** Driving Licence without requiring both.
 3. **Minimal diff** — No `matchedCredentials[]`, no multi-key `vp_token` refactor, no new consent UI in v1.
 4. **Consistent DCQL semantics** — One `canWalletSatisfyDcqlCredentialQuery()` used for credential-set selection **and** final matching on `effectiveDcqlQuery` (including when `credential_sets` is absent).
 
@@ -56,7 +56,7 @@ This slice also **unifies DCQL satisfiability** for all requests (with or withou
 
 **v1 slice:** One required set, single-ID options, first match wins. Unselected branches are ignored for support and satisfiability checks. **Exact dual-format pairs never enter `credential_sets` selection or the new support/cardinality rules** — they are detected up front and routed to the existing dual-format path unchanged.
 
-### Example (ETDA-relevant)
+### Example (the customer-relevant)
 
 ```json
 {

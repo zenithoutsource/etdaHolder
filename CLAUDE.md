@@ -19,6 +19,13 @@ Primary references:
 | `docs/adr/` | Locked architecture decisions |
 | `docs/TASKS.md` | Active backlog and blockers |
 
+## Naming Rules
+
+- Do not use the customer organization name "ETDA" anywhere in the project: no new code identifiers, file names, module names, class names, docs, comments, or specs carrying that name. Use neutral names instead ("companion protocol", "companionV1", "reader profile", "wallet").
+- The native module `modules/etda-wallet-eddsa` has been removed; do not reference or recreate it. Keystore diagnostics/signing history lives in ADR 0007/0008.
+- Exception — wire-protocol constants: values already deployed on the wire (the companion AID byte sequence, the `urn:etda:companion:nfc:v1` KB-JWT `aud`) stay unchanged until a protocol version bump, because renaming them breaks reader compatibility. Treat them as opaque constants.
+- Existing `etda*`-named files/classes (e.g. remaining `etda-*` doc/spec mentions) are legacy: rename to neutral names when touching them, and do not add new references to the old names.
+
 ## Planning Philosophy
 
 When planning any new system, feature, or integration:

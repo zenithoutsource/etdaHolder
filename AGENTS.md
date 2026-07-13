@@ -14,7 +14,14 @@ This project targets Samsung Galaxy A26 devices paired with the ACR1311U-N2 Secu
 
 Session-by-session progress, verification runs, and next steps live in `docs/TASKS.md` — treat that file as the current source of truth instead of dates in this section, which go stale fast.
 
-**Standing architecture note (ADR 0007 → ADR 0008, 2026-06-16):** ETDA requires EdDSA/Ed25519 for both OID4VCI issuance PoP and OID4VP presentation KB-JWT. The target Galaxy S24 Ultra proved AndroidKeyStore Ed25519 key generation unavailable in practice (AndroidKeyStore returned EC keys for Ed25519 requests). Production uses a Keychain-protected software Ed25519 seed with biometric/device authentication at every sign call, producing protocol-valid `alg: EdDSA` signatures — a documented security tradeoff versus hardware non-extractability (ADR 0008, `docs/SECURITY.md` Section 1).
+## Naming Rules
+
+- Do not use the customer organization name "ETDA" anywhere in the project: no new code identifiers, file names, module names, class names, docs, comments, or specs carrying that name. Use neutral names instead ("companion protocol", "companionV1", "reader profile", "wallet").
+- The native module `modules/etda-wallet-eddsa` has been removed; do not reference or recreate it. Keystore diagnostics/signing history lives in ADR 0007/0008.
+- Exception — wire-protocol constants: values already deployed on the wire (the companion AID byte sequence, the `urn:etda:companion:nfc:v1` KB-JWT `aud`) stay unchanged until a protocol version bump, because renaming them breaks reader compatibility. Treat them as opaque constants.
+- Existing `etda*`-named files/classes (e.g. remaining `etda-*` doc/spec mentions) are legacy: rename to neutral names when touching them, and do not add new references to the old names.
+
+**Standing architecture note (ADR 0007 → ADR 0008, 2026-06-16):** The program requires EdDSA/Ed25519 for both OID4VCI issuance PoP and OID4VP presentation KB-JWT. The target Galaxy S24 Ultra proved AndroidKeyStore Ed25519 key generation unavailable in practice (AndroidKeyStore returned EC keys for Ed25519 requests). Production uses a Keychain-protected software Ed25519 seed with biometric/device authentication at every sign call, producing protocol-valid `alg: EdDSA` signatures — a documented security tradeoff versus hardware non-extractability (ADR 0008, `docs/SECURITY.md` Section 1).
 
 **Files to read before starting:**
 - `CLAUDE.md` - architecture rules and commands
@@ -44,7 +51,7 @@ Session-by-session progress, verification runs, and next steps live in `docs/TAS
 - `server/README.md`
 
 **Next concrete steps:**
-1. Add an ADR for ETDA EdDSA/Ed25519 requirements and the migration from P-256/ES256.
+1. Add an ADR for the EdDSA/Ed25519 requirements and the migration from P-256/ES256.
 2. Reissue test credentials through the dev-only EdDSA OID4VCI PoP path, then retry OID4VP Verifier QR.
 3. Reissue credentials using the Keychain Ed25519 Holder DID before OID4VP validation.
 4. Run Phase 4 release validation only after production EdDSA signing decisions are resolved: EAS production builds and physical-device golden-path walkthrough.
@@ -182,7 +189,7 @@ Any constant that expresses a duration, TTL, or timing window for a system-wide 
 [ ] Phase 3.3: NFC NDEF issuance reader, deferred until test device
 [ ] Phase 4: Security hardening and release build
 [x] OID4VP 1.0 first Verifier QR slice
-[x] ETDA EdDSA OID4VCI PoP migration
+[x] EdDSA OID4VCI PoP migration
 [x] Production Keychain Ed25519 signer for OID4VCI/OID4VP
 
 ## Key Package Decisions

@@ -16,7 +16,7 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 
 ### [GAP] `tx_code` sent under two parameter names
 - `requestPreAuthorizedAccessToken()` sets both `tx_code` (OID4VCI 1.0 final) and `user_pin` (pre-final draft naming) in the token request body (`exchangeService.ts:682-685`).
-- OID4VCI 1.0 final only defines `tx_code`. Sending `user_pin` alongside is harmless against spec-compliant ASes (unknown params ignored) but is not itself spec-conformant and should be removed once the target Issuer is confirmed to accept `tx_code` alone. Low priority — keep until the real ETDA Issuer's AS behavior is confirmed, then drop `user_pin`.
+- OID4VCI 1.0 final only defines `tx_code`. Sending `user_pin` alongside is harmless against spec-compliant ASes (unknown params ignored) but is not itself spec-conformant and should be removed once the target Issuer is confirmed to accept `tx_code` alone. Low priority — keep until the real the customer Issuer's AS behavior is confirmed, then drop `user_pin`.
 
 ### [OK] `c_nonce` refresh retry on `invalid_proof`
 - `acquireCredentialRecord()` (`exchangeService.ts`) signs the proof once with the `c_nonce` from the token response and sends the Credential Request. If the Credential Endpoint rejects with `invalid_proof` and a fresh `c_nonce` (OID4VCI 1.0 §8.3.3), `assertCredentialEndpointSuccess()` now throws the new exported `InvalidProofError` (carrying the fresh `c_nonce`), and `acquireCredentialRecord()` re-signs the proof with it and retries the Credential Request exactly once before giving up. Covered by a new test in `exchangeService.test.ts`.
@@ -34,10 +34,10 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 ## OID4VP 1.0 — Presentation
 
 ### [OK] Signed Request Object (JAR) signature verification
-- `authorizationRequestJar.ts` enforces `typ: oauth-authz-req+jwt`, requires EdDSA signatures for `decentralized_identifier` client IDs, optionally verifies signed `redirect_uri` requests when a pinned JWK is configured, and resolves `did:web` verification keys from env pin or `didWebResolver.ts`. Covered by `authorizationRequestJar.test.ts`.
+- `authorizationRequestJar.ts` enforces `typ: oauth-authz-req+jwt`, requires EdDSA signatures for `decentralized_identifier` client IDs, optionally verifies signed `redirect_uri` requests when a pinned JWK is configured, and resolves trusted `did:web` verification keys from env pin or HTTPS `didWebResolver.ts`. Untrusted `did:web` request objects are rejected before DID document fetch. Covered by `authorizationRequestJar.test.ts`.
 
 ### [OK] `client_id_scheme` enforcement
-- `clientIdScheme.ts` parses `redirect_uri`, `decentralized_identifier`, and legacy `pre_registered` IDs; `findTrustedVerifier()` in `presentationService.ts` matches by scheme with `readResponseUriMatchesClientId()` binding. `trustedVerifiers.ts` builds env-driven allowlist entries for dev `redirect_uri` and optional `did:web`. Production `did:web`-only policy is tracked separately in `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md`.
+- `clientIdScheme.ts` parses `redirect_uri`, `decentralized_identifier`, and legacy `pre_registered` IDs; `findTrustedVerifier()` matches by scheme with `readResponseUriMatchesClientId()` binding. `trustedVerifiers.ts` emits the LAN `redirect_uri` allowlist only in development builds and uses env-configured `decentralized_identifier:did:web:` entries for production.
 
 ### [OK] `presentation_definition_uri` fetch
 - `presentationDefinitionResolver.ts` fetches PD after trust gate with timeout + max-bytes cap; PE/DCQL mutually exclusive. P5 birth-date scope unchanged.
@@ -63,7 +63,7 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 2. ~~`c_nonce` refresh retry on `invalid_proof` (OID4VCI)~~ — done (2026-06-15).
 3. ~~Signed Request Object verification + `client_id_scheme` handling (OID4VP)~~ — done (2026-07-08).
 4. ~~`presentation_definition_uri` and DCQL `credential_sets`~~ — done (2026-07-08/09).
-5. Production `did:web` verifier trust policy (gate dev `redirect_uri` to `__DEV__`, DID fetch hardening) — see `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md`.
+5. ~~Production `did:web` verifier trust policy (gate dev `redirect_uri` to `__DEV__`, DID fetch hardening)~~ — done (2026-07-09).
 6. Deferred Credential Issuance — implement only if an Issuer starts returning `transaction_id`.
 
 None of the above block the EdDSA protocol migration. The practical next step is reissuing test credentials under the new Ed25519 Holder DID, then re-running the OID4VCI/OID4VP golden path.

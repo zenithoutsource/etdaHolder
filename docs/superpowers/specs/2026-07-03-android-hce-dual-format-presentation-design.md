@@ -1,6 +1,6 @@
 # Android HCE Dual-Format Presentation Design
 
-Status: Approved (rev 4 — 2026-07-06; design-level approval. Implementation of dual-format NFC additionally gated on the ETDA companion APDU spec and the EdDSA interop test pass.)
+Status: Approved (rev 4 — 2026-07-06; design-level approval. Implementation of dual-format NFC additionally gated on the companion APDU spec and the EdDSA interop test pass.)
 Date: 2026-07-03 (rev 4: 2026-07-06)
 
 ## Relationship To Prior Specs
@@ -14,14 +14,14 @@ This spec **amends** [`2026-06-23-nfc-proximity-design.md`](./2026-06-23-nfc-pro
 
 ## 1. Summary
 
-The Wallet must support ETDA dual-format credential issuance and presentation:
+The Wallet must support the customer dual-format credential issuance and presentation:
 
 - `dc+sd-jwt` for JSON / SD-JWT VC usage.
 - `mso_mdoc` for ISO 18013-5 mDOC usage.
 
 For online presentation, Wallet uses OpenID4VP 1.0 and can return both formats in one `vp_token` transaction when the Verifier requests both through DCQL.
 
-For offline NFC presentation, Wallet uses Android HCE and ISO 18013-5 mDOC as the normative proximity credential exchange. ETDA also requires a JSON companion payload in the same reader session. This JSON companion payload is an ETDA extension, not ISO 18013-5 compliance.
+For offline NFC presentation, Wallet uses Android HCE and ISO 18013-5 mDOC as the normative proximity credential exchange. the customer also requires a JSON companion payload in the same reader session. This JSON companion payload is an the customer extension, not ISO 18013-5 compliance.
 
 The primary reader validation target is the ACR1311U-N2 Secure Bluetooth NFC Reader USB. The phone brand is not fixed; any Android 10+ device with NFC and HCE support may be supported. The first acceptance target is the available physical Android device paired with ACR1311U-N2.
 
@@ -46,7 +46,7 @@ The QR or `credential_offer_uri` does not contain holder claims such as name, su
 
 ### OID4VP 1.0 Online Presentation
 
-OpenID4VP supports multiple credential formats in one transaction. ETDA Verifiers may request both:
+OpenID4VP supports multiple credential formats in one transaction. the production verifiers may request both:
 
 - `mso_mdoc`
 - `dc+sd-jwt`
@@ -57,7 +57,7 @@ Wallet must return both when both are requested, available, and approved by the 
 
 The ISO 18013-5-compliant payload is the mDOC `DeviceResponse`.
 
-The JSON companion payload required by ETDA is not part of ISO 18013-5. It must be implemented as an ETDA reader extension and clearly documented as such. Generic ISO 18013-5 readers should still be able to receive mDOC without depending on the ETDA JSON companion.
+The JSON companion payload required by the customer is not part of ISO 18013-5. It must be implemented as an the customer reader extension and clearly documented as such. Generic ISO 18013-5 readers should still be able to receive mDOC without depending on the customer JSON companion.
 
 ## 3. Device And Reader Requirements
 
@@ -157,10 +157,10 @@ Policy:
 
 - If core identifiers differ, Wallet must not link the records automatically.
 - If issue timestamps differ beyond the configured threshold, Wallet may link them but must set `consistencyStatus = "warning"`.
-- If expiry timestamps differ unexpectedly, Wallet must set a warning unless ETDA or the Issuer profile explicitly allows different expiry per format.
+- If expiry timestamps differ unexpectedly, Wallet must set a warning unless the customer or the Issuer profile explicitly allows different expiry per format.
 - If one format is reissued later, Wallet must either refresh the paired format or mark the logical credential as partially updated.
 
-Initial timestamp threshold: 5 minutes unless ETDA defines a stricter value. Per the project configurable-duration rule, this must be read from `EXPO_PUBLIC_DUAL_FORMAT_ISSUE_SKEW_MS` (`Number(process.env.EXPO_PUBLIC_DUAL_FORMAT_ISSUE_SKEW_MS) || 300000`) and documented in `.env.example` (unit: ms, default 300000, effect: max allowed issued-at skew between paired formats before `consistencyStatus = "warning"`).
+Initial timestamp threshold: 5 minutes unless the customer defines a stricter value. Per the project configurable-duration rule, this must be read from `EXPO_PUBLIC_DUAL_FORMAT_ISSUE_SKEW_MS` (`Number(process.env.EXPO_PUBLIC_DUAL_FORMAT_ISSUE_SKEW_MS) || 300000`) and documented in `.env.example` (unit: ms, default 300000, effect: max allowed issued-at skew between paired formats before `consistencyStatus = "warning"`).
 
 ## 6. Issuance Flow
 
@@ -215,7 +215,7 @@ Offline NFC presentation uses Android HCE with `requireDeviceScreenOn=true`.
 
 Consent happens before the tap, not inside the live APDU session. NFC readers time out within seconds; holder review of requested disclosures takes tens of seconds. The primary flow is:
 
-1. User opens the presentation screen (extends the existing `ProximityPresentButton` flow), reviews the sharing mode (mDOC-only or ETDA dual-format) and the disclosure set, and approves.
+1. User opens the presentation screen (extends the existing `ProximityPresentButton` flow), reviews the sharing mode (mDOC-only or the customer dual-format) and the disclosure set, and approves.
 2. Approval arms the HCE service for a bounded window (`EXPO_PUBLIC_HCE_ARM_WINDOW_MS`, default 60000 ms, documented in `.env.example`).
 3. User taps the reader; the armed session serves the approved disclosure set without further UI blocking the APDU exchange.
 4. If the reader requests fields outside the approved set, the Wallet returns an ISO 18013-5 error status and ends the session — it never silently widens consent.
@@ -226,11 +226,11 @@ In-session consent (approve while the reader waits) is not supported in v1. The 
 
 ISO 18013-5 delivers the reader's `DeviceRequest` only after session establishment (post-tap), so the pre-tap consent screen needs a defined source for the disclosure set the user approves. v1 normative behavior:
 
-- **v1 source: fixed ETDA reader profile.** The Wallet ships a per-document-type ETDA request profile (field list per `docType`/namespace, plus companion field list for dual-format mode) matching the locked ACR1311U-N2 request template. The consent screen renders this profile; approval covers exactly these fields.
-- The profile lives in config (`src/config/`), not hardcoded in components, so ETDA template changes are config edits.
+- **v1 source: fixed the customer reader profile.** The Wallet ships a per-document-type the customer request profile (field list per `docType`/namespace, plus companion field list for dual-format mode) matching the locked ACR1311U-N2 request template. The consent screen renders this profile; approval covers exactly these fields.
+- The profile lives in config (`src/config/`), not hardcoded in components, so the customer template changes are config edits.
 - Post-tap enforcement is unchanged: the actual decrypted `DeviceRequest` is checked against the approved set. A request for any field outside the approved profile ends the session with an ISO 18013-5 error status (Section 8 rule 4). A request for a **subset** of the approved profile is served with only the requested fields — approval is a ceiling, not a floor.
-- **Not in v1:** scanning a reader-engagement QR to obtain the request pre-tap (adds a sub-flow; revisit if ETDA readers stop using a fixed template), and blanket "approve all stored fields" consent (over-broad disclosure).
-- If ETDA later deploys variable request templates, this subsection must be revised before that deployment; the profile-mismatch error path above fails safe in the meantime.
+- **Not in v1:** scanning a reader-engagement QR to obtain the request pre-tap (adds a sub-flow; revisit if the customer readers stop using a fixed template), and blanket "approve all stored fields" consent (over-broad disclosure).
+- If the customer later deploys variable request templates, this subsection must be revised before that deployment; the profile-mismatch error path above fails safe in the meantime.
 
 ### ISO 18013-5 Session Layer
 
@@ -241,17 +241,17 @@ The mDOC exchange must implement the full ISO 18013-5 NFC data retrieval stack, 
 - **Transport**: ISO 7816-4 APDUs over HCE — `SELECT AID` (mDOC AID `A0000002480400`), `ENVELOPE` command chaining for requests, response chaining via `GET RESPONSE` / status `61XX`. Extended-length APDUs must be used when the reader and phone support them; command chaining is the fallback.
 - **Primary payload**: encrypted `DeviceResponse` (CBOR), with `DeviceSigned` authentication by the mDOC device key.
 
-Generic ISO 18013-5 readers must be able to complete this flow with no ETDA extension present.
+Generic ISO 18013-5 readers must be able to complete this flow with no the customer extension present.
 
-### ETDA JSON Companion Transport
+### JSON Companion Transport
 
 The companion is not part of ISO 18013-5 and must not alter the mDOC exchange. Transport:
 
-- The companion is served under a **separate ETDA proprietary AID**, selected by the reader after the ISO 18013-5 session completes. Readers that never select the ETDA AID get standard mDOC behavior only.
-- Dual-format mode is negotiated explicitly: the reader selects the ETDA AID and issues an ETDA `GET CAPABILITIES` command; the Wallet answers with supported modes. No heuristic detection.
-- Companion payload content is the **SD-JWT VC presentation** (SD-JWT + selected disclosures + KB-JWT bound to a session nonce supplied by the reader in the ETDA request), not unsigned JSON. An unsigned JSON blob would be unverifiable and is prohibited.
-- Companion transfer reuses the same APDU chaining rules (ENVELOPE / GET RESPONSE) under the ETDA AID.
-- Exact ETDA APDU command set (CLA/INS values, capability format, nonce format) is pinned in [`etda-nfc-companion-apdu.md`](./etda-nfc-companion-apdu.md); Wallet constants live in `src/config/etdaCompanionApdu.ts`.
+- The companion is served under a **separate the customer proprietary AID**, selected by the reader after the ISO 18013-5 session completes. Readers that never select the companion AID get standard mDOC behavior only.
+- Dual-format mode is negotiated explicitly: the reader selects the companion AID and issues an the customer `GET CAPABILITIES` command; the Wallet answers with supported modes. No heuristic detection.
+- Companion payload content is the **SD-JWT VC presentation** (SD-JWT + selected disclosures + KB-JWT bound to a session nonce supplied by the reader in the customer request), not unsigned JSON. An unsigned JSON blob would be unverifiable and is prohibited.
+- Companion transfer reuses the same APDU chaining rules (ENVELOPE / GET RESPONSE) under the companion AID.
+- Exact the customer APDU command set (CLA/INS values, capability format, nonce format) is pinned in [`nfc-companion-apdu.md`](./nfc-companion-apdu.md); Wallet constants live in `src/services/proximity/companionTransport/plugins/companionV1/constants.ts`.
 
 ### Payload Size Budget
 
@@ -261,10 +261,10 @@ NFC APDU throughput is on the order of a few KB/s. Budget:
 - Over-cap presentations fail fast at arm time (before the tap) with a clear size-limit error, never mid-transfer.
 - Large-transcript documents that exceed the cap are out of scope for NFC v1 and must use online OID4VP.
 
-Default sharing policy is all-or-nothing for ETDA dual-format presentation:
+Default sharing policy is all-or-nothing for the customer dual-format presentation:
 
-- If the reader requests ETDA dual-format mode, user approval covers both mDOC and JSON companion.
-- If the user rejects the JSON companion, Wallet rejects the whole ETDA dual-format session.
+- If the reader requests the customer dual-format mode, user approval covers both mDOC and JSON companion.
+- If the user rejects the JSON companion, Wallet rejects the whole the customer dual-format session.
 - mDOC-only fallback is allowed only when the reader explicitly runs in mDOC-only mode.
 
 ## 9. HCE State Machine
@@ -293,8 +293,8 @@ State rules:
 - `reader-selected` to `session-established`: Reader delivers `SessionEstablishment`; Wallet derives session keys and validates session encryption.
 - `session-established` to `request-received`: Wallet decrypts the ISO 18013-5 device request and checks it against the approved disclosure set. Out-of-scope fields end the session with an error status.
 - `request-received` to `transmitting-mdoc`: Wallet builds and sends the encrypted mDOC `DeviceResponse`.
-- `transmitting-mdoc` to `transmitting-json-companion`: Reader selects the ETDA AID and negotiates dual-format mode; Wallet sends the SD-JWT companion presentation.
-- `transmitting-mdoc` to `complete`: mDOC-only mode — reader ends the session without selecting the ETDA AID.
+- `transmitting-mdoc` to `transmitting-json-companion`: Reader selects the companion AID and negotiates dual-format mode; Wallet sends the SD-JWT companion presentation.
+- `transmitting-mdoc` to `complete`: mDOC-only mode — reader ends the session without selecting the companion AID.
 - `transmitting-json-companion` to `complete`: Reader acknowledges final receipt.
 - `hce-armed` to `cancelled`: Arm-window timeout expires with no reader, or user cancels.
 - Any active state to `cancelled`: User cancels, denies, or the session is explicitly stopped.
@@ -315,10 +315,10 @@ One holder action should cover one logical presentation. For offline NFC, that a
 
 Consent UI must show:
 
-- Verifier/reader identity when available. In the v1 fixed-profile flow no reader identity exists before the tap; the consent screen shows the ETDA request profile name and document type instead.
+- Verifier/reader identity when available. In the v1 fixed-profile flow no reader identity exists before the tap; the consent screen shows the customer request profile name and document type instead.
 - Requested mDOC fields.
 - Requested JSON / SD-JWT companion fields.
-- Whether the reader is using mDOC-only mode or ETDA dual-format mode.
+- Whether the reader is using mDOC-only mode or the customer dual-format mode.
 - Clear Allow and Deny actions.
 
 Authentication must follow the Wallet security rule: one biometric/device-auth event per user action. If the presentation requires a signing call that already triggers Keychain/device authentication, Wallet must not add a separate biometric prompt in front of it for the same action.
@@ -346,7 +346,7 @@ Required physical-device tests:
 - Reader request for fields outside the approved disclosure set is refused with an error status.
 - Reader request for a subset of the approved disclosure set succeeds and returns only the requested fields.
 - mDOC-only reader mode succeeds without JSON companion.
-- ETDA dual-format reader mode succeeds with mDOC plus JSON companion.
+- the customer dual-format reader mode succeeds with mDOC plus JSON companion.
 - Large transcript payload succeeds or fails with a clear size-limit error.
 - Retry after failed session starts from clean state.
 - Repeated presentations do not leak stale payloads between sessions.
@@ -383,7 +383,7 @@ Expo SDK 54 (Hermes, prebuild/dev-build) constraints:
 - Wallet links both formats under one `logicalCredentialId`.
 - Wallet detects and flags cross-format mismatch conditions.
 - Online OID4VP can return both `mso_mdoc` and `dc+sd-jwt` in one approved transaction when requested. (Net-new work: current `presentationService` matches and submits a single credential per request; multi-format `vp_token` assembly is not an extension of the existing path.)
-- Offline ACR1311U-N2 flow completes the full ISO 18013-5 session (engagement, session encryption, encrypted `DeviceResponse`) and, in ETDA mode, delivers the signed SD-JWT companion presentation under the ETDA AID.
+- Offline ACR1311U-N2 flow completes the full ISO 18013-5 session (engagement, session encryption, encrypted `DeviceResponse`) and, in the customer mode, delivers the signed SD-JWT companion presentation under the companion AID.
 - Claiming a dual-format offer triggers exactly one biometric/device-auth event despite two proof signs.
 - User sees one consent screen for dual-format sharing, before the tap; unarmed taps share nothing.
 - HCE does not respond when the device screen is off.
@@ -402,7 +402,7 @@ Expo SDK 54 (Hermes, prebuild/dev-build) constraints:
 Wallet core stays standards-first (OID4VCI, OID4VP, ISO 18013-5 mDOC). Proprietary reader and verifier ecosystems extend via registries:
 
 - **Reader profiles** (`src/config/readerProfiles.ts`): per-vendor offline disclosure templates keyed by `vendorId` + `profileId`.
-- **Companion transport plugins** (`src/services/proximity/companionTransport/`): proprietary second-leg NFC protocols (ETDA v1 is the reference plugin `etda-companion-v1`).
+- **Companion transport plugins** (`src/services/proximity/companionTransport/`): proprietary second-leg NFC protocols (the customer v1 is the reference plugin `etda-companion-v1`).
 - **Presentation token builders** (`src/services/vp/presentationTokenBuilders/`): verifier-specific `vp_token` assembly beyond standard DCQL / Presentation Exchange.
 
 Third parties add a reader profile + optional companion plugin and/or presentation builder without modifying wallet core flows.

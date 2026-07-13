@@ -1,6 +1,6 @@
 # Security Policy
 
-This document defines mandatory security constraints for the ETDA Wallet. Any code that violates them must not be merged.
+This document defines mandatory security constraints for the the wallet. Any code that violates them must not be merged.
 
 ## 1. Cryptographic Key Policy
 

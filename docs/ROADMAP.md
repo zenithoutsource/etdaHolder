@@ -1,6 +1,6 @@
 # Delivery Roadmap
 
-Original plan was a two-month, four-phase sequential plan. Phases 1-4 are now complete or substantially complete; OID4VP 1.0 online presentation (originally "post-v1, scope-only") has a working first slice; ETDA's EdDSA/Ed25519 requirement added Phase 5. Status below reflects `docs/TASKS.md` and `AGENTS.md` as of 2026-06-16.
+Original plan was a two-month, four-phase sequential plan. Phases 1-4 are now complete or substantially complete; OID4VP 1.0 online presentation (originally "post-v1, scope-only") has a working first slice; the customer's EdDSA/Ed25519 requirement added Phase 5. Status below reflects `docs/TASKS.md` and `AGENTS.md` as of 2026-06-16.
 
 ## Phase 1 - Cryptography, Native Integration, and Storage
 
@@ -44,7 +44,7 @@ Status: Substantially complete.
 
 Delivered:
 
-- Wallet home tab translated from `docs/ui-reference/home.html`, then re-translated to the `ETDA Wallet.html` reference for Wallet Home, Credential Detail, Scan, My QR, and History Log.
+- Wallet home tab translated from `docs/ui-reference/home.html`, then re-translated to the `the wallet.html` reference for Wallet Home, Credential Detail, Scan, My QR, and History Log.
 - Bottom tab shell: Wallet, My QR, Scan, History Log.
 - Dynamic `CardSchemaConfig` format in `src/config/cardSchemas.ts`, covering ThaID, DLT Driving Licence, and Bangkok University Transcript.
 - Generic `CredentialCard` / config-driven detail and summary rendering (`readCredentialSummaryDisplay`, `readCredentialDetailDisplay`).
@@ -80,11 +80,11 @@ Remaining:
 - EAS production builds for iOS and Android, then a physical-device golden-path walkthrough. Manual blocker: user-held EAS credentials, physical iOS device, physical Android device, and a real or test Issuer QR issuance source.
 - Both items above require credentials/holder-binding to be reissued under the new Ed25519 signing key before a meaningful golden-path walkthrough.
 
-## Phase 5 - ETDA EdDSA/Ed25519 Migration (new)
+## Phase 5 - the customer EdDSA/Ed25519 Migration (new)
 
 Status: Implemented with accepted security tradeoff.
 
-Why: ETDA requires `alg: EdDSA` (Ed25519) for both the OID4VCI PoP JWT and the OID4VP SD-JWT+KB presentation token. Target-device diagnostics on a Galaxy S24 Ultra showed AndroidKeyStore Ed25519 requests generated EC keys, so ADR 0008 supersedes the native AndroidKeyStore-only plan. The wallet now stores a 32-byte Ed25519 seed in `react-native-keychain`, derives the Ed25519 `did:key` Holder DID, and signs OID4VCI/OID4VP tokens with `@noble/curves` Ed25519.
+Why: The customer requires `alg: EdDSA` (Ed25519) for both the OID4VCI PoP JWT and the OID4VP SD-JWT+KB presentation token. Target-device diagnostics on a Galaxy S24 Ultra showed AndroidKeyStore Ed25519 requests generated EC keys, so ADR 0008 supersedes the native AndroidKeyStore-only plan. The wallet now stores a 32-byte Ed25519 seed in `react-native-keychain`, derives the Ed25519 `did:key` Holder DID, and signs OID4VCI/OID4VP tokens with `@noble/curves` Ed25519.
 
 Remaining:
 

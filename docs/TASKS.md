@@ -2,6 +2,44 @@
 
 Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
 
+### Session 2026-07-13 (My QR VP verify outcome — P5 #16/#18 Wallet scope)
+
+- Wallet-initiated My QR now polls explicit terminal statuses `verified` / `verify_failed` (replaces ambiguous `consumed`) after Verifier §2.1 crypto on scan.
+- Gateway finalizes sessions on verify failure; status API includes `reason` on `verify_failed` (not shown in Holder UI).
+- Wallet: `verify_failed` phase + `presentation-failed` history (`channel: wallet`); success path unchanged (`presentation-success`).
+- Spec: `docs/superpowers/specs/2026-07-13-wallet-initiated-vp-verify-outcome-design.md`; plan: `docs/superpowers/plans/2026-07-13-wallet-initiated-vp-verify-outcome.md`.
+
+### Session 2026-07-13 (companion GET CAPABILITIES uint32 encoding)
+
+- Fixed companion HCE `GET CAPABILITIES` returning `SW=6F00`: the advertised `max_companion_bytes=65536` exceeded the encoder's uint16-only branch and raised an exception.
+- Added CBOR uint32 encoding for values at and above `65536`; Android `:expo-mdoc-proximity:compileDebugKotlin` succeeds.
+
+### Session 2026-07-13 (unauthenticated startup biometric prompt)
+
+- Fixed startup prompting for PIN/biometric before routing an unauthenticated user to Login when the persisted wallet storage key/PIN remains but the session is missing.
+- Storage initialization now requires biometric authentication only when a persisted authenticated session exists; authenticated cold starts retain the existing biometric gate.
+- Fixed the remaining visible prompt by preventing the startup UI from entering `storage-pin-required` while an unauthenticated storage initialization is in progress.
+- Added regression coverage for no-session storage initialization without a biometric prompt.
+
+### Session 2026-07-13 (P3 step 31 local verify-failure history)
+
+- Added Wallet-local Audit Trail stand-in for receive-side VC signature/holder-binding failures: history kind `credential-verify-failed` via `recordCredentialVerifyFailed`, wired from `finalizeCredentialRecord` (covers OID4VCI claim + renewal auto-claim).
+- Shown under History Log issuance filter; no PII/JWT payload stored. External Audit Trail service still absent.
+
+### Session 2026-07-13 (P3 OID4VP old-VC auth after key rotation)
+
+- Implemented sequence steps 5–6 for P3 renewal: dual-key retention (`forceRotateWalletKey` keeps previous Ed25519 seed), silent Issuer OID4VP of the renewing old VC with previous-key PoP (`renewalOid4VpPresentation`), then existing auto-claim with new did:key.
+- Dev Issuer: `POST /wallet/renewal-request` returns `authorizationRequest`; `POST /wallet/renewal-vp/response` gates `offer-ready`. `__DEV__` trusted verifier for wallet-api renewal `redirect_uri`.
+- Spec changelog + §3.5 TASKS updated. Physical-device golden path still open.
+
+### Session 2026-07-13 (push token registration for renewal notifications)
+
+- Root cause of server `token-missing` for `renewal-required`: the default development setup wrote `EXPO_PUBLIC_SKIP_PUSH_REGISTRATION=true`, so the app never registered its Expo token under the current Holder DID.
+- Removed that skip flag from the generated and checked-in development environment; the flag remains available as an explicit opt-out for push-free development.
+- Deduplicated concurrent push-notification initialization for the same Holder DID so repeated startup/HMR calls share one Expo token request and do not create an avoidable aborted request.
+- Added setup-script regression coverage proving a fresh environment enables the normal push registration path.
+- Fixed post-claim Wallet Home fallback navigation to target the `/(tabs)` shell instead of the unresolved `/`/`index` route; renewal logs confirmed credential claim and save had already completed before this warning.
+
 ### Session 2026-07-13 (holder credential delete removal)
 
 - Fixed holder-initiated credential Delete from the detail action menu so it records the lifecycle/history deletion event and physically removes the credential from encrypted MMKV/index via the shared stored-credential removal path.
@@ -189,16 +227,18 @@ Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operat
 
 ### 3.5 P3 Wallet Key Expiry and Credential Renewal
 
-Source: `docs/User_Journey/id_card/P3.md`, `docs/superpowers/specs/2026-06-25-p3-wallet-key-renewal-design.md` (canonical; merged async + UX specs 2026-06-26).
+Source: `docs/User_Journey/id_card/P3.md`, `docs/superpowers/specs/2026-06-25-p3-wallet-key-renewal-design.md` (canonical; merged async + UX specs 2026-06-26; OID4VP old-VC auth 2026-07-13).
 
 [x] Wallet key TTL policy (`src/config/walletKeyPolicy.ts`) and `rotateWalletKey()` with per-credential `renewal-required` marking
 [x] Holder-binding parse (`credentialHolderBinding.ts`) and renewal state machine (`credentialKeyRenewal.ts`, `credentialRenewalService.ts`)
-[x] Async renewal flow: `submitRenewalRequest()` (one-shot after HTTP 201) + `refreshAndCompleteRenewals()` (poll on focus, auto-claim on `offer-ready`)
-[x] Dev renewal endpoints (`server/src/routes/devWallet.ts`: `POST /wallet/renewal-request` → `{ accepted: true }`, `GET /wallet/renewal-status` → `requested` → `offer-ready`)
+[x] Dual-key retention: previous Ed25519 seed kept after rotate for old-VC PoP; `clearPreviousWalletKey` on rotation cleanup
+[x] Silent OID4VP of old VC on renewal (`renewalOid4VpPresentation.ts`) — previous-key sign, no consent UI
+[x] Async renewal flow: `submitRenewalRequest()` (OID4VP then processing) + `refreshAndCompleteRenewals()` (poll on focus, auto-claim on `offer-ready`)
+[x] Dev renewal endpoints (`server/src/routes/devWallet.ts`: `POST /wallet/renewal-request` → `{ accepted, authorizationRequest }`, `POST /wallet/renewal-vp/response` → gates `offer-ready`, `GET /wallet/renewal-status`)
 [x] Wallet home expiry modal (`WalletKeyExpiredModal`) and renewal badges on document rows (`app/(tabs)/index.tsx`)
 [x] Credential detail inactive/active overlay (`ribbon_badge.png`), renewal CTA (renewal-required only), P3-6 cleanup dialog (`app/(tabs)/credential/[id].tsx`)
 [x] Scan-tab renewal deep link via `?renew=<credentialId>` submits only, then routes to old credential detail (`app/(tabs)/scan.tsx`)
-[ ] Physical-device validation: rotate key → submit renewal → wait/poll → green Active on new VC → P3-6 delete old VC on hardware
+[ ] Physical-device validation: rotate key → submit renewal (silent old-VC OID4VP biometric) → wait/poll → green Active on new VC → P3-6 delete old VC on hardware
 
 ### 3.6 P6 Case 2: Issuer-Initiated Suspension + Unified Holder Actions
 
@@ -301,6 +341,8 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 [x] P6 Case 1 Issuer round-trip for holder revoke (v1 dev): `POST /wallet-api/dev/issuer/holder-revoke` + `holderRevokeService`; credential detail awaits Issuer `201` before `recordCredentialLifecycleAction('Revoke')`. Keeps credential record for history; no per-credential key destruction (ADR 0009). v1: no PoP JWT — Wallet PIN approve unchanged.
 [x] P6 Case 3 Single-Use credential self-cleanup (v1): `CredentialLifecycleAction` `'Used'` via `recordCredentialLifecycleAction`, parser whitelist, `credential-used` history event, inactive badge, dev `POST /wallet-api/dev/wallet/mark-used`. Presentation blocked through existing lifecycle filter. No per-credential key destruction (ADR 0009).
+[x] P6 Slice 1 auto single-use consumption: `MedicalCertificate` schema (`singleUse: true` in `cardSchemas.ts`); `maybeConsumeSingleUseCredential()` after OID4VP and My QR presentation success (`presentationHistory.ts`, `walletInitiatedPresentation.ts`). Transcript/ThaID/DL not auto-consumed. Spec: `docs/superpowers/specs/2026-07-13-p6-wallet-gap-closure-design.md`.
+[x] P6 Slice 2 holder revoke PoP: `POST /dev/issuer/holder-revoke/nonce` + `signHolderStatusChangePop` + DEV Issuer PoP verify; Revoke skips PIN (biometric sign gate only). `holderRevokeService.ts`, `server/src/services/holderRevokePopVerifier.ts`.
 [x] OID4VP same-device link intake: `openid4vp` scheme in `app.json`, `readPendingPresentationRoute` + `vpGeneration` in `deeplinkStore`, Scan dismiss/remount parity, tests in `deeplinkStore.test.ts` and `ScanScreenDeeplink.test.tsx`. Manual: `adb shell am start -a android.intent.action.VIEW -d "openid4vp://authorize?..."` after `npx expo prebuild --platform android`.
 [x] ADR: single wallet-level Ed25519 key vs journey's per-credential `did:key` (P2 step 12) — accepted for v1 in `docs/adr/0009-wallet-level-holder-signing-key.md`: one Keychain Ed25519 seed; P3 rotation marks all credentials; P6 per-document key destruction deferred (lifecycle markers gate presentation instead).
 

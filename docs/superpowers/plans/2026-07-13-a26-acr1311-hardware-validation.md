@@ -82,7 +82,7 @@ Sequence from spec §8/§11. SELECT uses the canonical 9-byte AID.
 
 ## Part D — Acceptance (spec §12)
 
-- [ ] SELECT companion AID succeeds **only** when armed with screen on (tap while un-armed → `6A82`).
+- [ x ] SELECT companion AID succeeds **only** when armed with screen on (tap while un-armed → `6A82`).
 - [ ] GET CAPABILITIES returns CBOR version `1` and both modes.
 - [ ] BEGIN COMPANION with wrong `profile_id` → `6985`.
 - [ ] BEGIN COMPANION `dual-format` → valid SD-JWT with KB-JWT bound to the nonce.

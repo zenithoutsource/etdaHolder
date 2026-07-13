@@ -75,7 +75,36 @@ The first OID4VP slice is intentionally narrow and Verifier-driven:
 6. Send `vp_token`, `presentation_submission`, and optional `state` to the Verifier using `direct_post`.
 7. Record successful presentations locally after the Verifier returns a successful HTTP response.
 
-The current development allowlist includes `http://192.100.10.48/openid4vc/verify` for the supplied Verifier API. Production deployments must replace this with registered `did:web` Verifiers.
+The current development allowlist includes `http://192.100.10.48/openid4vc/verify` for the supplied Verifier API and is emitted only in development builds. Production deployments trust env-configured `decentralized_identifier:did:web:` Verifiers through `EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN`, and optional `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK`; unpinned DID document resolution uses HTTPS `did.json` with the `EXPO_PUBLIC_DID_WEB_FETCH_TIMEOUT_MS` and `EXPO_PUBLIC_DID_WEB_MAX_BYTES` policy.
+
+### Wallet-Initiated My QR (Verifier-Owned)
+
+The **My QR** tab is wallet-initiated: the holder shows a QR from a stored credential. Production authority sits on the **Verifier presentation service**, not the wallet company backend.
+
+```text
+Wallet App
+  │ POST /v1/presentation-sessions
+  │ PUT  /v1/presentation-sessions/{id}  (vpToken)
+  │ KB-JWT aud = Verifier presentation base URL
+  │ QR = verifyUrl (.../v1/present/verify?s=...)
+  │ poll GET .../status → consumed
+  ▼
+Verifier Presentation Service (verifier-owned)
+  │ §2.1 verify on GET /v1/present/verify
+  ▼
+Checkpoint scanner browser (Honeywell)
+```
+
+| Concern | Scan tab | My QR tab |
+|---------|----------|-----------|
+| Initiator | Verifier (`openid4vp://`) | Wallet (holder) |
+| Protocol | OID4VP 1.0 `direct_post` | VP-by-reference `/v1/*` |
+| Authority | Verifier OID4VP API | Verifier presentation service |
+| Wallet backend in path? | No | No |
+
+Mobile: `createVerifierPresentationAdapter()` → verifier `/v1/*`; base URL from `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL`.  
+Reference implementation: `server/src/routes/presentationGateway.ts` (may co-locate on local `server/` for LAN dev only).  
+Spec: `docs/superpowers/specs/2026-07-09-verifier-owned-wallet-initiated-presentation-design.md`.
 
 ## 4. Security Boundary
 
@@ -85,7 +114,7 @@ The current development allowlist includes `http://192.100.10.48/openid4vc/verif
 - Public key is cached in metadata storage as `wallet.ed25519_pub_key`.
 - Biometric/device authentication gates every Keychain seed retrieval for signing.
 - Signatures use `@noble/curves` Ed25519 and emit `alg: EdDSA`.
-- The Android native Ed25519 module remains diagnostic/experimental because target hardware returned EC keys for AndroidKeyStore Ed25519 requests.
+- The former Android native Ed25519 diagnostic module was removed after ADR 0008 settled on Keychain-protected software Ed25519 signing.
 
 ### Holder DID
 

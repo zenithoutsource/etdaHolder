@@ -431,13 +431,13 @@
     <div class="meta">
       <span class="pill">Approved rev 4</span>
       <span class="pill">Android HCE</span>
-      <span class="pill">ETDA dual-format</span>
+      <span class="pill">dual-format</span>
       <span class="pill">อัปเดต 2026-07-06</span>
     </div>
     <h1>อธิบายแบบเห็นภาพ: Android HCE Dual-Format Presentation</h1>
     <p class="hero-copy">
       หน้านี้สรุปสเปก <code>android-hce-dual-format-presentation-design.md</code> rev 4 เป็นภาษาไทย
-      เพื่อให้เข้าใจภาพรวมของ ETDA dual-format credential: <code>dc+sd-jwt</code> สำหรับ JSON/SD-JWT VC
+      เพื่อให้เข้าใจภาพรวมของ dual-format credential: <code>dc+sd-jwt</code> สำหรับ JSON/SD-JWT VC
       และ <code>mso_mdoc</code> สำหรับ ISO 18013-5 mDOC. Offline NFC ใช้ full ISO 18013-5 NFC retrieval ผ่าน Android HCE,
       ไม่ใช้ BLE data leg บนมือถือ
     </p>
@@ -479,11 +479,11 @@
         </article>
         <article class="card">
           <strong>ยืนยันก่อนแตะ</strong>
-          <p>ผู้ใช้ต้องเห็น disclosure set จาก fixed ETDA reader profile แล้วกดอนุญาตก่อนเปิด HCE. ถ้า reader ขอเกินที่อนุญาต Wallet ต้องปฏิเสธ</p>
+          <p>ผู้ใช้ต้องเห็น disclosure set จาก fixed reader profile แล้วกดอนุญาตก่อนเปิด HCE. ถ้า reader ขอเกินที่อนุญาต Wallet ต้องปฏิเสธ</p>
         </article>
       </div>
       <div class="callout warning">
-        <strong>จุดสำคัญ:</strong> JSON companion ต้องเป็น SD-JWT VC presentation ที่มี KB-JWT ผูกกับ nonce จาก reader ห้ามส่งเป็น JSON ธรรมดาที่ตรวจสอบลายเซ็นไม่ได้ และต้องอยู่ใต้ ETDA proprietary AID แยกจาก mDOC AID
+        <strong>จุดสำคัญ:</strong> JSON companion ต้องเป็น SD-JWT VC presentation ที่มี KB-JWT ผูกกับ nonce จาก reader ห้ามส่งเป็น JSON ธรรมดาที่ตรวจสอบลายเซ็นไม่ได้ และต้องอยู่ใต้ proprietary companion AID แยกจาก mDOC AID
       </div>
     </section>
 
@@ -501,18 +501,18 @@
           </ul>
         </div>
         <div class="card">
-          <h3>สิ่งที่เป็น ETDA extension</h3>
+          <h3>สิ่งที่เป็น proprietary extension</h3>
           <ul>
             <li>JSON companion payload ใน reader session เดียวกัน</li>
-            <li>ETDA proprietary AID แยกจาก mDOC AID</li>
-            <li>คำสั่ง APDU เฉพาะของ ETDA เช่น capabilities และ nonce request</li>
+            <li>proprietary companion AID แยกจาก mDOC AID</li>
+            <li>คำสั่ง APDU เฉพาะของ companion เช่น capabilities และ nonce request</li>
             <li>โหมด dual-format ที่ reader ต้อง negotiate ชัดเจน</li>
-            <li>fixed ETDA reader profile สำหรับ pre-tap consent ใน v1</li>
+            <li>fixed reader profile สำหรับ pre-tap consent ใน v1</li>
           </ul>
         </div>
       </div>
       <div class="callout">
-        Generic ISO 18013-5 reader ต้องยังอ่าน mDOC ได้ตามปกติ แม้ไม่รู้จัก ETDA JSON companion เลย. Reader ที่ไม่เลือก ETDA AID จะได้ mDOC-only behavior
+        Generic ISO 18013-5 reader ต้องยังอ่าน mDOC ได้ตามปกติ แม้ไม่รู้จัก companion JSON companion เลย. Reader ที่ไม่เลือก companion AID จะได้ mDOC-only behavior
       </div>
     </section>
 
@@ -618,19 +618,19 @@
       <h2>Offline NFC/HCE: ลำดับที่ถูกต้อง</h2>
       <p>
         NFC reader timeout เร็วมาก จึงไม่ควรให้ผู้ใช้อ่านรายละเอียดและกดอนุญาตระหว่าง APDU session
-        การออกแบบนี้กำหนดให้ consent เกิดก่อนแตะ reader โดย v1 ใช้ fixed ETDA reader profile เป็น disclosure set ที่ผู้ใช้เห็นก่อนแตะ
+        การออกแบบนี้กำหนดให้ consent เกิดก่อนแตะ reader โดย v1 ใช้ fixed reader profile เป็น disclosure set ที่ผู้ใช้เห็นก่อนแตะ
       </p>
       <div class="flow">
-        <div class="step"><span>1</span><strong>Review profile</strong><br>ผู้ใช้เปิด presentation screen ดู mDOC-only หรือ ETDA dual-format และ fixed profile field list</div>
+        <div class="step"><span>1</span><strong>Review profile</strong><br>ผู้ใช้เปิด presentation screen ดู mDOC-only หรือ dual-format และ fixed profile field list</div>
         <div class="step"><span>2</span><strong>Approve</strong><br>อนุญาตหนึ่งครั้ง และทำ signing/authentication ที่จำเป็น</div>
         <div class="step"><span>3</span><strong>Arm HCE</strong><br>เปิด HCE ในกรอบเวลา เช่น 60 วินาที</div>
         <div class="step"><span>4</span><strong>Tap reader</strong><br>reader เลือก mDOC AID แล้วส่ง SessionEstablishment</div>
         <div class="step"><span>5</span><strong>Check request</strong><br>decrypt DeviceRequest แล้วตรวจว่าไม่เกิน approved profile</div>
-        <div class="step"><span>6</span><strong>Send payloads</strong><br>ส่ง encrypted DeviceResponse และถ้า reader เลือก ETDA AID จึงส่ง SD-JWT companion</div>
+        <div class="step"><span>6</span><strong>Send payloads</strong><br>ส่ง encrypted DeviceResponse และถ้า reader เลือก companion AID จึงส่ง SD-JWT companion</div>
       </div>
       <div class="legend">
         <span class="tag green">mDOC-only: จบหลัง DeviceResponse</span>
-        <span class="tag">ETDA dual-format: mDOC + SD-JWT companion</span>
+        <span class="tag">dual-format: mDOC + SD-JWT companion</span>
         <span class="tag red">unarmed tap: ไม่ตอบ AID และไม่แชร์ข้อมูล</span>
       </div>
       <div class="callout warning">
@@ -661,12 +661,12 @@
     </section>
 
     <section class="section">
-      <h2>ETDA JSON Companion</h2>
+      <h2>companion JSON Companion</h2>
       <div class="split">
         <div class="card">
           <h3>วิธีส่ง</h3>
           <ul>
-            <li>reader ต้อง select ETDA proprietary AID หลัง mDOC session</li>
+            <li>reader ต้อง select proprietary companion AID หลัง mDOC session</li>
             <li>reader ต้องส่ง GET CAPABILITIES เพื่อ negotiate dual-format mode</li>
             <li>payload ใช้ APDU chaining เช่นเดียวกับ mDOC</li>
           </ul>
@@ -682,7 +682,7 @@
         </div>
       </div>
       <div class="callout warning">
-        ก่อน implement ต้องมี ETDA-extension spec ที่ pin CLA/INS, capability format และ nonce format ให้ชัดเจน. Companion ต้องไม่ alter mDOC exchange; reader ต้องเลือก ETDA AID หลัง ISO 18013-5 session จบ
+        ก่อน implement ต้องมี companion-extension spec ที่ pin CLA/INS, capability format และ nonce format ให้ชัดเจน. Companion ต้องไม่ alter mDOC exchange; reader ต้องเลือก companion AID หลัง ISO 18013-5 session จบ
       </div>
     </section>
 
@@ -697,7 +697,7 @@
         <div class="state"><code>session-established</code><div>derive session keys และตรวจ session encryption สำเร็จ</div></div>
         <div class="state"><code>request-received</code><div>ถอดรหัส DeviceRequest ตรวจว่าไม่เกิน disclosure set ที่อนุมัติ; subset ส่งได้, out-of-profile ต้อง error</div></div>
         <div class="state"><code>transmitting-mdoc</code><div>สร้างและส่ง encrypted mDOC DeviceResponse</div></div>
-        <div class="state"><code>transmitting-json-companion</code><div>reader เลือก ETDA AID แล้วรับ SD-JWT companion</div></div>
+        <div class="state"><code>transmitting-json-companion</code><div>reader เลือก companion AID แล้วรับ SD-JWT companion</div></div>
         <div class="state"><code>complete / cancelled / error</code><div>จบสำเร็จ ยกเลิก หรือเกิด protocol/reader/signing failure แล้วล้าง buffers</div></div>
       </div>
     </section>
@@ -761,7 +761,7 @@
         <div class="check"><b>EdDSA interop</b><br>reader/verifier stack ตรวจ Ed25519 deviceSignature ใน DeviceResponse ได้จริงก่อน lock key decision</div>
         <div class="check"><b>Consistency</b><br>Wallet ตรวจ mismatch/warning ได้ เช่น issuer, subject, document ID, issued-at หรือ expiry ไม่ตรงกัน</div>
         <div class="check"><b>Online VP</b><br>OpenID4VP ส่งทั้งสอง format ใน <code>vp_token</code> ได้เมื่อ Verifier ขอ; current path ต้องเพิ่ม multi-format assembly</div>
-        <div class="check"><b>Offline HCE</b><br>ACR1311U-N2 ทำ full ISO 18013-5 session สำเร็จ: engagement, session encryption, encrypted DeviceResponse และ ETDA companion</div>
+        <div class="check"><b>Offline HCE</b><br>ACR1311U-N2 ทำ full ISO 18013-5 session สำเร็จ: engagement, session encryption, encrypted DeviceResponse และ companion companion</div>
         <div class="check"><b>Consent</b><br>ผู้ใช้เห็น consent screen เดียวก่อนแตะ และ unarmed tap ต้องไม่แชร์ข้อมูล</div>
         <div class="check"><b>Failure safety</b><br>disconnect, timeout, screen off, over-size payload และ unsupported request ต้องไม่ทำให้แชร์ข้อมูลเงียบๆ</div>
       </div>
@@ -773,7 +773,7 @@
         <li>iOS HCE</li>
         <li>Generic BLE verifier app ที่ไม่เกี่ยวกับ ACR1311U-N2</li>
         <li>NFC NDEF issuance หรือ tag reading</li>
-        <li>ระบบ reader proprietary ที่ไม่ใช่ ETDA</li>
+        <li>ระบบ reader proprietary ที่ไม่ใช่ companion</li>
         <li>การ redesign UI ราย claim ที่ไม่เกี่ยวกับ dual-format consent</li>
         <li>Variable reader templates และ reader-engagement QR pre-tap request flow</li>
       </ul>
@@ -810,7 +810,7 @@
       ["EdDSA", "อัลกอริทึมลายเซ็นดิจิทัลที่ใช้กับกุญแจ Ed25519"],
       ["encrypted", "เข้ารหัสแล้ว คนกลางอ่านข้อมูลจริงไม่ได้ถ้าไม่มีกุญแจ session"],
       ["ephemeral key", "กุญแจชั่วคราวที่สร้างใช้เฉพาะ session เดียวแล้วทิ้ง"],
-      ["ETDA extension", "ส่วนเพิ่มเฉพาะ ETDA ที่อยู่นอกมาตรฐาน ISO หลัก"],
+      ["proprietary extension", "ส่วนเพิ่มเฉพาะ companion ที่อยู่นอกมาตรฐาน ISO หลัก"],
       ["EDeviceKey", "กุญแจ session ชั่วคราวฝั่ง Wallet ที่ใช้เริ่ม ISO 18013-5 session"],
       ["EReaderKey", "กุญแจ session ชั่วคราวฝั่ง reader ที่ใช้สร้าง session keys ร่วมกับ Wallet"],
       ["EXPO_PUBLIC_DUAL_FORMAT_ISSUE_SKEW_MS", "ตัวแปรตั้งค่าความต่างเวลาออกเอกสารสอง format ได้สูงสุด ค่าเป็นมิลลิวินาที default 300000 ms"],

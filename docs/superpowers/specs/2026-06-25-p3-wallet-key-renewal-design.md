@@ -17,6 +17,7 @@ This document is the **single source of truth** for P3 wallet key expiry and cre
 | 2026-06-26 | **Async flow:** split submit vs claim; poll on focus; auto-claim on `offer-ready`; P3-4 removed from happy path |
 | 2026-06-26 | **UX flow:** separate inactive/active ribbon assets; no auto P3-6 dialog; **ดูเอกสาร (เอกสารเดิม)** on home while waiting |
 | 2026-06-26 | **Implementation refinements:** realtime key-expiry modal (`WalletKeyExpiryHost` + `useWalletKeyExpired`); Active ribbon/badge only while old VC cleanup is pending (`shouldShowRenewedActiveBadge`); hide revoke/delete menu during rotation flow (`shouldHideCredentialActionMenu`); `confirmOldCredentialCleanup` clears `renewed-active` on replacement; home dismissible banner removed (cleanup CTA on old VC detail only) |
+| 2026-07-13 | **OID4VP old-VC auth (sequence steps 5–6):** dual-key retention — `forceRotateWalletKey` keeps previous Ed25519 seed in a second Keychain slot; `submitRenewalRequest` receives Issuer OID4VP `authorizationRequest`, silently presents the renewing old VC with previous-key PoP (`renewalOid4VpPresentation`), then polls/`offer-ready` auto-claim with **new** did:key PoP. Dev Issuer: `POST /wallet/renewal-vp/response` gates `offer-ready`. Previous seed wiped via `clearWalletKeyRotationRecord` / `clearPreviousWalletKey` when renewal work completes. |
 
 ---
 
@@ -190,11 +191,14 @@ isWalletKeyExpired(now) =
 
 `rotateWalletKey()`:
 
-1. Biometric/device authentication gate.
-2. New 32-byte Ed25519 seed → Keychain.
-3. Update cached public key and `wallet.key_registered_at`; notify `walletKeyExpiryWatch`.
-4. Persist `WalletKeyRotationRecord` in meta storage.
-5. For each stored credential bound to previous DID → `renewal-required`.
+1. Keychain biometric gate via reading the current seed (single prompt for rotation).
+2. Retain current seed in previous Keychain slot (`wallet.ed25519_seed.previous`) for old-VC OID4VP PoP.
+3. New 32-byte Ed25519 seed → active Keychain.
+4. Update cached public key and `wallet.key_registered_at`; notify `walletKeyExpiryWatch`.
+5. Persist `WalletKeyRotationRecord` in meta storage (includes `previousHolderDid`).
+6. For each stored credential bound to previous DID → `renewal-required`.
+
+Previous seed is wiped by `clearPreviousWalletKey()` when `clearWalletKeyRotationRecord()` runs after all renewal cleanup completes.
 
 ### 5.3 Holder binding
 
@@ -227,10 +231,11 @@ type CredentialRenewalRecord = {
 
 | Function | Responsibility |
 |---|---|
-| `submitRenewalRequest(credentialId)` | POST only; 201 → `renewal-processing` |
+| `submitRenewalRequest(credentialId)` | POST renewal-request → silent OID4VP of old VC with previous-key PoP → on success `renewal-processing` |
+| `presentOldCredentialForRenewal(...)` | Resolve Issuer OID4VP, build VP with previous seed, `direct_post` submit (no consent UI) |
 | `refreshAndCompleteRenewals()` | Poll; auto-claim on `offer-ready` |
 | `completeRenewalClaim(...)` | Internal: resolve + claim + write states |
-| `confirmOldCredentialCleanup(credentialId)` | Remove old VC; clear old + replacement renewal; clear lifecycle; maybe `clearWalletKeyRotationRecord()` |
+| `confirmOldCredentialCleanup(credentialId)` | Remove old VC; clear old + replacement renewal; clear lifecycle; maybe `clearWalletKeyRotationRecord()` (async; also clears previous seed) |
 | `repairInconsistentRenewalPairs()` | Poll-only repair; not during cleanup |
 | `requestCredentialRenewal` | **Deprecated** — sync submit+claim |
 
@@ -252,8 +257,14 @@ type CredentialRenewalRecord = {
 **`POST /wallet/renewal-request`**
 
 - Input: `{ credentialId, credentialType, oldHolderDid, newHolderDid, rawVc }`
-- Persists `state: 'requested'`
-- Response: `201 { accepted: true }` — mobile does **not** claim inline
+- Creates Issuer credential-offer (proxy) and an OID4VP Authorization Request for the old VC
+- Persists `state: 'requested'`, `vpAccepted: false`
+- Response: `201 { accepted: true, authorizationRequest }` — Wallet must silent-present before offer becomes ready
+
+**`POST /wallet/renewal-vp/response`**
+
+- `application/x-www-form-urlencoded` `vp_token` + `state` (= credentialId)
+- Dev-level VP shape check; on success sets `vpAccepted: true` and schedules `offer-ready`
 
 **`GET /wallet/renewal-status`**
 
@@ -266,7 +277,7 @@ type DevRenewalStatusItem = {
 }
 ```
 
-- `requested` → `offer-ready` after `DEV_RENEWAL_DELAY_MS` (default 8000) for visible wait in dev.
+- `requested` → `offer-ready` only after VP accepted and `DEV_RENEWAL_DELAY_MS` (default 8000) from that acceptance.
 
 ### 5.9 Home credential selection
 
