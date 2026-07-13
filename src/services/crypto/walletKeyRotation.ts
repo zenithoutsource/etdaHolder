@@ -1,6 +1,7 @@
 import { isWalletKeyExpiredAt } from '@/src/config/walletKeyPolicy'
 
 import {
+  clearPreviousWalletKey,
   forceRotateWalletKey,
   getHolderDid,
   getWalletKeyRegisteredAt,
@@ -10,7 +11,6 @@ import { getMetaStorage } from '../storage/storage'
 import { readStoredCredentials } from '../credentials/storedCredentials'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
 import { upsertCredentialRenewal } from '../credentials/credentialKeyRenewal'
-import { confirmWalletUnlockBiometric } from '../auth/walletUnlockBiometric'
 import { logWalletStep } from '../debug/walletLogger'
 
 const ROTATION_RECORD_KEY = 'wallet.key_rotation'
@@ -49,13 +49,13 @@ export function writeWalletKeyRotationRecord(record: WalletKeyRotationRecord): v
 }
 
 /**
- * Clears the wallet key rotation metadata record.
+ * Clears the wallet key rotation metadata record and the previous Keychain seed.
  * Called after all per-credential renewals are cleaned up
- * (P3 step 18: "ทำลายกุญแจดอกเก่าทิ้ง").
- * The actual old Ed25519 seed was already replaced in Keychain during rotateWalletKey().
+ * (P3: destroy previous did:key after renewal work completes).
  */
-export function clearWalletKeyRotationRecord(): void {
+export async function clearWalletKeyRotationRecord(): Promise<void> {
   getMetaStorage().remove(ROTATION_RECORD_KEY)
+  await clearPreviousWalletKey()
 }
 
 export async function rotateWalletKey(now = new Date()): Promise<{
@@ -65,9 +65,7 @@ export async function rotateWalletKey(now = new Date()): Promise<{
 }> {
   const previousHolderDid = hasWalletKey() ? getHolderDid() : undefined
 
-  logWalletStep('wallet-key-expiry', 'wallet-key-rotation-auth-start')
-  await confirmWalletUnlockBiometric()
-  logWalletStep('wallet-key-expiry', 'wallet-key-rotation-auth-complete')
+  // Keychain read inside forceRotateWalletKey is the single biometric gate for rotation.
   logWalletStep('wallet-key-expiry', 'wallet-key-rotation-seed-write-start')
   await forceRotateWalletKey(now)
   logWalletStep('wallet-key-expiry', 'wallet-key-rotation-seed-write-complete')

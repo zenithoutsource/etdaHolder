@@ -17,6 +17,7 @@ import {
   readCredentialInactiveState,
   resolveCredentialRevokeBehavior,
 } from "../../../src/services/credentials/credentialInactiveState";
+import { deleteStoredCredentialAfterHolderApproval } from "../../../src/services/credentials/credentialDeletion";
 import {
   readCredentialLifecycleStatuses,
   recordCredentialLifecycleAction,
@@ -31,7 +32,10 @@ import {
   refreshAndCompleteRenewals,
   submitRenewalRequest,
 } from "../../../src/services/credentials/credentialRenewalService";
-import { submitHolderRevokeRequest } from "../../../src/services/credentials/holderRevokeService";
+import {
+  HolderRevokeSigningCancelledError,
+  submitHolderRevokeRequest,
+} from "../../../src/services/credentials/holderRevokeService";
 import { canSubmitCredentialRenewal } from "../../../src/services/credentials/credentialGuard";
 import { isCredentialExpiringSoon } from "../../../src/services/credentials/credentialDocumentExpiry";
 import {
@@ -54,6 +58,10 @@ import {
 import { hasWalletPin, setWalletPin, verifyWalletPin } from "../../../src/services/auth/walletPin";
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
 import { isProximityPresentationSupported } from "../../../src/services/proximity/proximityPresentation";
+import {
+  armProximityTestSession,
+  NFC_TEST_ARM_WINDOW_SECONDS,
+} from "../../../src/services/proximity/proximityArmSession";
 import { hasStoredMdoc } from "../../../src/services/proximity/mdocStorage";
 import { readCompactTokenSignature } from "../../../src/services/vp/presentationEvidence";
 import { VpQrModal } from "../../../src/components/VpQrModal";
@@ -207,6 +215,25 @@ export default function CredentialDetailScreen() {
     setPinError(null);
   }, []);
 
+  const handleTestNfc = useCallback(async () => {
+    try {
+      await armProximityTestSession();
+      showDialog({
+        title: "HCE armed",
+        message: `Tap the reader now — armed for ~${NFC_TEST_ARM_WINDOW_SECONDS}s.`,
+        actions: [{ label: WALLET_HOME_COPY.acknowledge, variant: "secondary" }],
+      });
+    } catch (nfcError) {
+      logWalletError("credential-detail", "nfc-test-arm-failed", nfcError);
+      showDialog({
+        title: "Test NFC failed",
+        message: nfcError instanceof Error ? nfcError.message : "Unknown error",
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.acknowledge, variant: "secondary" }],
+      });
+    }
+  }, [showDialog]);
+
   const beginRenewalRequest = useCallback(async () => {
     if (!credential) return;
     setPhase({ tag: "renewalProcessing" });
@@ -261,10 +288,11 @@ export default function CredentialDetailScreen() {
           label: WALLET_HOME_COPY.confirmDelete,
           variant: "danger",
           onPress: () => {
-            confirmOldCredentialCleanup(credential.id);
-            refresh();
-            setRenewalRefreshTick((tick) => tick + 1);
-            router.replace("/(tabs)");
+            void confirmOldCredentialCleanup(credential.id).then(() => {
+              refresh();
+              setRenewalRefreshTick((tick) => tick + 1);
+              router.replace("/(tabs)");
+            });
           },
         },
       ],
@@ -315,6 +343,11 @@ export default function CredentialDetailScreen() {
 
     if (action === "Revoke" && resolveCredentialRevokeBehavior(suspensionStatus) === "issuer-acknowledgment") {
       setPhase({ tag: "issuerAck" });
+      return;
+    }
+
+    if (action === "Revoke") {
+      setPhase({ tag: "approve", action });
       return;
     }
 
@@ -376,6 +409,10 @@ export default function CredentialDetailScreen() {
         recordCredentialLifecycleAction(credential.id, action);
         router.push("/(tabs)/history");
       } catch (error) {
+        if (error instanceof HolderRevokeSigningCancelledError) {
+          setPhase({ tag: "detail" });
+          return;
+        }
         logWalletError("credential-detail", "holder-revoke-failed", error, {
           credentialId: credential.id,
         });
@@ -385,6 +422,11 @@ export default function CredentialDetailScreen() {
           message: "The issuer could not confirm this revoke request. Please try again.",
         });
       }
+      return;
+    }
+    if (action === "Delete") {
+      deleteStoredCredentialAfterHolderApproval(credential.id);
+      router.push("/(tabs)/history");
       return;
     }
     recordCredentialLifecycleAction(credential.id, action);
@@ -555,7 +597,11 @@ export default function CredentialDetailScreen() {
                 renewalBadgeLabel={renewalBadgeLabel}
                 renewalState={showRenewedActiveBadge ? "renewed-active" : undefined}
                 onOpenQr={
-                  isRenewalBlocked ? undefined : () => router.push("/(tabs)/qr")
+                  isRenewalBlocked
+                    ? undefined
+                    : showVpQrButton
+                      ? () => setVpQrVisible(true)
+                      : () => router.push("/(tabs)/qr")
                 }
                 onPresentViaNfc={
                   !isRenewalBlocked && credential && hasMdoc && isProximityPresentationSupported()
@@ -606,17 +652,6 @@ export default function CredentialDetailScreen() {
                   />
                 </View>
               ) : null}
-              {showVpQrButton ? (
-                <View className="mt-4">
-                  <AppButton
-                    variant="outline-block"
-                    label="แสดง QR สำหรับ Verifier"
-                    onPress={() => setVpQrVisible(true)}
-                    className="w-full rounded-xl py-3"
-                    textClassName="text-center text-sm font-bold"
-                  />
-                </View>
-              ) : null}
               {showRenewalCleanupCta ? (
                 <View className="mt-4">
                   <AppButton
@@ -624,6 +659,20 @@ export default function CredentialDetailScreen() {
                     label={WALLET_HOME_COPY.renewalCleanupCta}
                     onPress={showOldCredentialCleanupDialog}
                     className="w-full rounded-xl bg-danger-dark py-3"
+                    textClassName="text-center text-sm font-bold"
+                  />
+                </View>
+              ) : null}
+              {__DEV__ && isProximityPresentationSupported() ? (
+                <View className="mt-4">
+                  <AppButton
+                    variant="solid-block"
+                    label="Test NFC (arm HCE)"
+                    iconName="nfc-variant"
+                    onPress={() => {
+                      void handleTestNfc();
+                    }}
+                    className="w-full rounded-xl bg-wallet-navy py-3"
                     textClassName="text-center text-sm font-bold"
                   />
                 </View>

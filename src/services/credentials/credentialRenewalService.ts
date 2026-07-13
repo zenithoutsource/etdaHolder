@@ -21,6 +21,10 @@ import { clearRenewalCleanupBannerDismissal, isRenewalAwaitingHolderCleanup } fr
 import { clearCredentialLifecycleStatus } from './credentialLifecycle'
 import { findRenewedActiveCredentialForType } from './credentialGuard'
 import { syncPushTokenRegistration } from '../notifications/pushNotificationService'
+import {
+  presentOldCredentialForRenewal,
+  type SilentRenewalOid4VpDependencies,
+} from './renewalOid4VpPresentation'
 
 const DEV_RENEWAL_REQUEST_ENDPOINT = '/wallet-api/dev/wallet/renewal-request'
 const DEV_RENEWAL_STATUS_ENDPOINT = '/wallet-api/dev/wallet/renewal-status'
@@ -30,6 +34,7 @@ const renewalClaimsInFlight = new Set<string>()
 
 type RenewalRequestPayload = {
   accepted?: boolean
+  authorizationRequest?: string
 }
 
 type RenewalStatusPayload = {
@@ -49,6 +54,8 @@ type RenewalServiceDependencies = {
   ) => Promise<VerifiableCredentialRecord>
   getHolderDid: () => string
   syncPushTokenRegistration: (holderDid: string) => Promise<boolean>
+  presentOldCredentialForRenewal: typeof presentOldCredentialForRenewal
+  silentOid4VpDependencies?: Partial<SilentRenewalOid4VpDependencies>
 }
 
 function resolveDependencies(
@@ -60,6 +67,7 @@ function resolveDependencies(
     claimCredential,
     getHolderDid,
     syncPushTokenRegistration,
+    presentOldCredentialForRenewal,
     ...dependencies,
   }
 }
@@ -176,6 +184,26 @@ export async function submitRenewalRequest(
     const payload = (await response.json()) as Partial<RenewalRequestPayload>
     if (payload.accepted !== true) {
       throw new Error('CredentialRenewalRequestNotAccepted')
+    }
+
+    const authorizationRequest =
+      typeof payload.authorizationRequest === 'string' ? payload.authorizationRequest.trim() : ''
+    if (!authorizationRequest) {
+      throw new Error('CredentialRenewalAuthorizationRequestMissing')
+    }
+
+    try {
+      await resolvedDependencies.presentOldCredentialForRenewal(
+        authorizationRequest,
+        currentCredential,
+        {
+          fetchImpl: resolvedDependencies.fetchImpl,
+          ...resolvedDependencies.silentOid4VpDependencies,
+        },
+      )
+    } catch (error) {
+      logWalletError('renewal', 'oid4vp-submit-failed', error, { credentialId })
+      throw error
     }
 
     upsertCredentialRenewal(
@@ -375,7 +403,7 @@ export function markCredentialRenewalCleanupPending(
   )
 }
 
-export function confirmOldCredentialCleanup(credentialId: string): void {
+export async function confirmOldCredentialCleanup(credentialId: string): Promise<void> {
   const oldRenewal = readCredentialRenewal(credentialId)
   const replacementCredentialId = oldRenewal?.replacementCredentialId
   logWalletStep('credentials', 'confirm-old-cleanup-start', {
@@ -402,7 +430,7 @@ export function confirmOldCredentialCleanup(credentialId: string): void {
     return isRenewalAwaitingHolderCleanup(renewal) || renewal.state === 'renewal-required' || renewal.state === 'renewal-processing'
   })
   if (!hasPendingRenewalWork) {
-    clearWalletKeyRotationRecord()
+    await clearWalletKeyRotationRecord()
   }
 
   notifyCredentialsChanged()

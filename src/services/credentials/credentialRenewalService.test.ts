@@ -35,8 +35,17 @@ jest.mock('../notifications/pushNotificationService', () => ({
   syncPushTokenRegistration: jest.fn(),
 }))
 
+jest.mock('./renewalOid4VpPresentation', () => ({
+  presentOldCredentialForRenewal: jest.fn().mockResolvedValue(undefined),
+}))
+
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
 
+import { presentOldCredentialForRenewal } from './renewalOid4VpPresentation'
+
+const presentOldCredentialForRenewalMock = presentOldCredentialForRenewal as jest.MockedFunction<
+  typeof presentOldCredentialForRenewal
+>
 const mockCredential: VerifiableCredentialRecord = {
   id: 'urn:uuid:old',
   type: 'ThaiNationalID',
@@ -69,6 +78,7 @@ function seedCredential(values: Map<string, string>, credential: VerifiableCrede
 describe('submitRenewalRequest', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    presentOldCredentialForRenewalMock.mockResolvedValue(undefined)
   })
 
   test('sets renewal-processing on HTTP 201 and does not claim', async () => {
@@ -85,7 +95,10 @@ describe('submitRenewalRequest', () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       status: 201,
-      json: async () => ({ accepted: true }),
+      json: async () => ({
+        accepted: true,
+        authorizationRequest: 'openid4vp://authorize?client_id=redirect_uri:http://localhost:4000/wallet-api/dev/wallet/renewal-vp/response',
+      }),
     })
 
     await submitRenewalRequest(mockCredential.id, {
@@ -94,6 +107,11 @@ describe('submitRenewalRequest', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(presentOldCredentialForRenewalMock).toHaveBeenCalledWith(
+      expect.stringContaining('openid4vp://authorize'),
+      mockCredential,
+      expect.objectContaining({ fetchImpl: fetchMock }),
+    )
     expect(claimMock).not.toHaveBeenCalled()
     expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-processing')
   })
@@ -111,7 +129,10 @@ describe('submitRenewalRequest', () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       status: 201,
-      json: async () => ({ accepted: true }),
+      json: async () => ({
+        accepted: true,
+        authorizationRequest: 'openid4vp://authorize?nonce=1',
+      }),
     })
     const syncPushTokenRegistration = jest.fn().mockResolvedValue(undefined)
 
@@ -122,6 +143,7 @@ describe('submitRenewalRequest', () => {
 
     expect(syncPushTokenRegistration).toHaveBeenCalledWith('did:key:new')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(presentOldCredentialForRenewalMock).toHaveBeenCalled()
   })
 
   test('stays renewal-required on HTTP failure', async () => {
@@ -139,6 +161,33 @@ describe('submitRenewalRequest', () => {
     await expect(
       submitRenewalRequest(mockCredential.id, { fetchImpl: fetchMock }),
     ).rejects.toThrow('CredentialRenewalRequestFailed')
+
+    expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-required')
+  })
+
+  test('stays renewal-required when silent OID4VP fails', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      state: 'renewal-required',
+      updatedAt: new Date().toISOString(),
+    })
+
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        accepted: true,
+        authorizationRequest: 'openid4vp://authorize?nonce=1',
+      }),
+    })
+    presentOldCredentialForRenewalMock.mockRejectedValueOnce(new Error('PresentationSubmissionFailed'))
+
+    await expect(
+      submitRenewalRequest(mockCredential.id, { fetchImpl: fetchMock }),
+    ).rejects.toThrow('PresentationSubmissionFailed')
 
     expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-required')
   })
@@ -346,7 +395,7 @@ describe('repairInconsistentRenewalPairs', () => {
 })
 
 describe('confirmOldCredentialCleanup', () => {
-  test('removes old credential and clears renewed-active metadata on replacement', () => {
+  test('removes old credential and clears renewed-active metadata on replacement', async () => {
     const { values } = mockStorage()
     const oldCredential: VerifiableCredentialRecord = {
       id: 'urn:uuid:old',
@@ -380,7 +429,7 @@ describe('confirmOldCredentialCleanup', () => {
       updatedAt: '2026-06-26T00:00:00.000Z',
     })
 
-    confirmOldCredentialCleanup(oldCredential.id)
+    await confirmOldCredentialCleanup(oldCredential.id)
 
     expect(readStoredCredentials().map((record) => record.id)).toEqual([newCredential.id])
     expect(readCredentialRenewal(oldCredential.id)).toBeUndefined()

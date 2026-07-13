@@ -25,7 +25,7 @@ export const WALLET_HOME_COPY = {
   renewThaIdRequiredTitle: 'ต้องต่ออายุ ThaID ก่อน',
   renewThaIdRequiredMessage:
     'กรุณาขอและรับ ThaID ใหม่ให้เสร็จก่อนขอเอกสารอื่น',
-  thaIdAlreadyActiveMessage: 'คุณมี ThaID ที่ใช้งานได้อยู่แล้ว',
+  thaIdAlreadyActiveMessage: 'คุณมี PID ที่ใช้งานได้อยู่แล้ว',
   expiringSoonBadge: 'ใกล้หมดอายุ',
   documentExpiredBadge: 'หมดอายุ',
   documentExpiringSoonMessage:
