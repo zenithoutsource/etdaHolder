@@ -2,10 +2,6 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
 import { AppButton } from './AppButton'
-import {
-  PresentationDisclosureList,
-  type PresentationDisclosureListItem,
-} from './PresentationDisclosureList'
 
 import { THEME } from '../config/themeColors'
 
@@ -14,7 +10,6 @@ type PresentationSuccessPanelProps = {
   message: string
   buttonLabel: string
   onDone: () => void
-  items?: PresentationDisclosureListItem[]
   fullScreen?: boolean
 }
 
@@ -23,7 +18,6 @@ export function PresentationSuccessPanel({
   message,
   buttonLabel,
   onDone,
-  items,
   fullScreen = false,
 }: PresentationSuccessPanelProps) {
   return (
@@ -44,12 +38,6 @@ export function PresentationSuccessPanel({
       <Text className={`${fullScreen ? 'mt-4 mb-4 text-[14px] leading-5 text-slate750' : 'mt-2 text-sm text-slate'} text-center`}>
         {message}
       </Text>
-
-      {items && items.length > 0 ? (
-        <View className="mt-4 w-full">
-          <PresentationDisclosureList items={items} variant="result" />
-        </View>
-      ) : null}
 
       <AppButton
         variant="solid-block"

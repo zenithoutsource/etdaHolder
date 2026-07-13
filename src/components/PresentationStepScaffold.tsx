@@ -15,7 +15,7 @@ export function PresentationStepScaffold({
   onBack,
 }: PresentationStepScaffoldProps) {
   return (
-    <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+    <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
       <WalletHeader title={title} onBack={onBack} />
       {children}
     </SafeAreaView>

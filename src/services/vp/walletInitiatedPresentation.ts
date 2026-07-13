@@ -1,27 +1,29 @@
 import { getCardSchema } from '../../config/cardSchemas'
 import { signSdJwtKbPresentationToken } from '../crypto/crypto'
-import { logWalletStep } from '../debug/walletLogger'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { maybeConsumeSingleUseCredential } from '../credentials/singleUseCredentialConsumption'
 import { recordWalletPresentationSuccess } from '../history/recordWalletPresentationSuccess'
-import { resolveVpRelayBaseUrl } from './vpRelayBaseUrl'
+import type {
+  PresentationGatewayClient,
+  PresentationSession,
+  PresentationSessionStatusResponse,
+} from './presentationGatewayClient'
+import {
+  createVerifierPresentationAdapter,
+  getDefaultVerifierPresentationClient,
+} from './verifierPresentationAdapter'
+import { resolveVerifierPresentationBaseUrl } from './verifierPresentationBaseUrl'
 
-export type VpSessionResponse = {
-  sessionId: string
-  nonce: string
-  expiresAt: string
-}
+export type VpSessionResponse = PresentationSession
 
 export function isSdJwtCredential(record: VerifiableCredentialRecord): boolean {
   return record.rawVc.includes('~')
 }
 
-export async function createVpSession(): Promise<VpSessionResponse> {
-  const baseUrl = resolveVpRelayBaseUrl()
-  const response = await fetch(`${baseUrl}/dev/vp-session`, { method: 'POST' })
-  if (!response.ok) {
-    throw new Error(`VpSessionCreateFailed:${response.status}`)
-  }
-  return response.json() as Promise<VpSessionResponse>
+export async function createVpSession(
+  client: PresentationGatewayClient = getDefaultVerifierPresentationClient(),
+): Promise<VpSessionResponse> {
+  return client.createSession()
 }
 
 export async function buildWalletInitiatedVpToken(
@@ -29,7 +31,7 @@ export async function buildWalletInitiatedVpToken(
   session: { nonce: string },
 ): Promise<string> {
   return signSdJwtKbPresentationToken({
-    audience: resolveVpRelayBaseUrl(),
+    audience: resolveVerifierPresentationBaseUrl(),
     nonce: session.nonce,
     sdJwt: record.rawVc,
   })
@@ -39,27 +41,26 @@ export async function submitVpToSession(
   sessionId: string,
   vpToken: string,
   credentialType: string,
+  client: PresentationGatewayClient = getDefaultVerifierPresentationClient(),
 ): Promise<void> {
-  const baseUrl = resolveVpRelayBaseUrl()
-  const response = await fetch(`${baseUrl}/dev/vp-session/${sessionId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vpToken, credentialType }),
-  })
-  if (response.status === 409) {
-    throw new Error('VpSessionUploadConflict')
-  }
-  if (!response.ok) {
-    throw new Error(`VpSessionUploadFailed:${response.status}`)
-  }
-  logWalletStep('vp-relay', 'upload-complete', {
-    sessionPrefix: sessionId.slice(0, 8),
-    vpBytes: vpToken.length,
-  })
+  await client.uploadPresentation(sessionId, { vpToken, credentialType })
 }
 
-export function buildQrUrl(sessionId: string): string {
-  return `${resolveVpRelayBaseUrl()}/dev/vp-verify?s=${encodeURIComponent(sessionId)}`
+export type VpSessionStatusResponse = PresentationSessionStatusResponse
+
+export async function fetchVpSessionStatus(
+  sessionId: string,
+  client: PresentationGatewayClient = getDefaultVerifierPresentationClient(),
+): Promise<VpSessionStatusResponse> {
+  return client.fetchSessionStatus(sessionId)
+}
+
+export function buildQrUrl(session: Pick<PresentationSession, 'verifyUrl' | 'sessionId'>): string {
+  if (session.verifyUrl) {
+    return session.verifyUrl
+  }
+  const baseUrl = resolveVerifierPresentationBaseUrl()
+  return `${baseUrl}/v1/present/verify?s=${encodeURIComponent(session.sessionId)}`
 }
 
 export function readWalletInitiatedClaimLabels(record: VerifiableCredentialRecord): string[] {
@@ -71,13 +72,19 @@ export function readWalletInitiatedClaimLabels(record: VerifiableCredentialRecor
 
 export function recordWalletInitiatedPresentationHistory(
   record: VerifiableCredentialRecord,
-): void {
+): { consumed: boolean } {
   const schema = getCardSchema(record.type)
   recordWalletPresentationSuccess({
     credentialId: record.id,
     documentType: schema.title,
-    partyName: 'VP Relay (dev)',
+    partyName: 'Verifier',
     disclosedClaims: readWalletInitiatedClaimLabels(record),
     channel: 'wallet',
   })
+  return maybeConsumeSingleUseCredential({
+    credentialId: record.id,
+    credentialType: record.type,
+  })
 }
+
+export { createVerifierPresentationAdapter, createRelayPresentationGatewayAdapter } from './relayPresentationGatewayAdapter'
