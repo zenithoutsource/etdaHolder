@@ -48,6 +48,8 @@ import { normalizeNumericCode } from '../utils/normalizeNumericCode'
 
 import { THEME } from '../config/themeColors'
 
+const SCREEN_SAFE_EDGES = ['top'] as const
+
 type ClaimPhase =
   | { tag: 'initializing' }
   | { tag: 'resolving' }
@@ -291,7 +293,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     if (router.canGoBack()) {
       router.back()
     } else {
-      router.replace('/')
+      router.replace('/(tabs)')
     }
   }
 
@@ -328,7 +330,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   if (phase.tag === 'preview') {
     if (phase.record.type === 'ThaiNationalID') {
       return (
-        <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+        <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={resetToWalletHome} />
           <ThaiIdSuccessConfirmationPanel record={phase.record} onConfirm={() => setPhase({ tag: 'receive', record: phase.record })} />
         </SafeAreaView>
@@ -337,7 +339,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
     if (phase.record.type === 'BangkokUniversityTranscript') {
       return (
-        <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+        <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={resetToWalletHome} />
           <TranscriptPreviewPanel
             record={phase.record}
@@ -351,7 +353,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     const preview = readCredentialPreviewDisplay(phase.record)
 
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
         <WalletHeader onBack={resetToWalletHome} />
         <View className="flex-1 bg-surface px-4 pt-6">
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
@@ -385,7 +387,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
   if (phase.tag === 'receive') {
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
         <WalletHeader onBack={resetToWalletHome} />
         <ThaiIdReceivePanel record={phase.record} onConfirm={() => handleSave(phase.record)} />
       </SafeAreaView>
@@ -408,7 +410,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     }
 
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
         <WalletHeader onBack={resetToWalletHome} />
         <View className="flex-1 bg-surface px-4 pt-6">
           <View className="rounded-lg bg-white p-6">
@@ -456,7 +458,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
   if (phase.tag === 'thaIdVerify') {
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
         <WalletHeader onBack={resetToWalletHome} />
         <ThaIdVerificationPanel offer={phase.offer} onContinue={() => handleThaIdVerified(phase.offer)} />
       </SafeAreaView>
@@ -465,7 +467,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
   if (phase.tag === 'success') {
     return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
         <WalletHeader onBack={resetToWalletHome} />
         <ScanSuccessPanel record={phase.record} />
       </SafeAreaView>
@@ -491,7 +493,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
           : 'Opening Credential Offer'
 
   return (
-    <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top', 'bottom']}>
+    <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
       <WalletHeader onBack={resetToWalletHome} />
       <View className="flex-1 items-center justify-center bg-surface-soft p-6">
         <ActivityIndicator color={THEME.navy} />

@@ -64,6 +64,7 @@ describe('CredentialOfferClaimScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockRouterReplace.mockClear()
+    mockRouterCanGoBack.mockReturnValue(true)
     linkingMock.getInitialURL.mockResolvedValue(null)
     useUrlMock.mockReturnValue(null)
     useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null })
@@ -185,5 +186,19 @@ describe('CredentialOfferClaimScreen', () => {
 
     expect(useDeeplinkStore.getState().dismissedUri).toBe(offerUri)
     expect(mockRouterBack).toHaveBeenCalled()
+  })
+
+  it('returns to the tab shell when no navigation history exists', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer'
+    useUrlMock.mockReturnValue(offerUri)
+    resolveOfferMock.mockRejectedValue(new Error('Issuer offline'))
+    mockRouterCanGoBack.mockReturnValue(false)
+
+    render(<CredentialOfferClaimScreen />)
+
+    await screen.findByText('Back to Wallet')
+    fireEvent.press(screen.getByText('Back to Wallet'))
+
+    expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)')
   })
 })

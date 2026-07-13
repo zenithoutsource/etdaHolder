@@ -19,7 +19,13 @@ export function toFriendlyError(raw: string): string {
   if (raw.includes('PresentationCredentialHolderBindingMismatch')) return 'This credential is holder-bound to a different Wallet Signing Key. Reissue it on this device before presenting.'
   if (raw.includes('PresentationCredentialFormatUnsupported')) return 'The stored credential format does not match this Verifier request. Reissue the credential in the requested format or update the Verifier request.'
   if (raw.includes('PresentationRequestUnsupported')) return 'This presentation request is not supported by this wallet.'
-  if (raw.includes('PresentationCredentialMissing')) return 'No active credential is available for this Verifier request.'
+  if (raw.includes('PresentationCredentialMissing')) {
+    const claimMatch = raw.match(/missing claims:\s*([^;\]]+)/)
+    if (claimMatch) {
+      return `This Verifier requires information your credential does not include (${claimMatch[1].trim()}). Ask the Verifier to drop it, or have the Issuer reissue the credential with that field.`
+    }
+    return 'No active credential is available for this Verifier request.'
+  }
   if (raw.includes('PresentationBiometricUnavailable')) return 'Biometric authentication is not available on this device. Enroll biometrics in device settings and try again.'
   if (raw.includes('WalletKeySigningCancelled')) return 'Biometric authentication was cancelled. Try again when you are ready to continue.'
   if (raw.includes('PresentationBiometricCancelled')) return 'Biometric authentication was cancelled. Try again when you are ready to continue.'

@@ -24,7 +24,10 @@ import { readNormalizedDocumentExpiry } from '../credentials/credentialDocumentE
 import { notifyCredentialsChanged } from '../credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { appendWalletHistoryEvent } from '../history/walletEventLog'
-import { recordBackendSyncHistory } from '../history/walletHistoryRecording'
+import {
+  recordBackendSyncHistory,
+  recordCredentialVerifyFailed,
+} from '../history/walletHistoryRecording'
 import {
   importCredential as defaultImportCredential,
 } from '../../sdk/walletApi'
@@ -40,6 +43,7 @@ import {
   readString,
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
+import { assertIssuerDidWebCredentialSignature } from './issuerDidWebVerify'
 
 const CREDENTIAL_INDEX_KEY = 'credential:index'
 const CREDENTIAL_KEY_PREFIX = 'credential:'
@@ -126,6 +130,8 @@ export type ClaimCredentialDependencies = {
   requestCredential: (input: RequestCredentialInput) => Promise<string>
   signProof: SignProof
   getCredentialStorage: () => CredentialStorage
+  /** Optional fetch for Issuer did:web resolve on credential receive (P2 steps 29–31). */
+  fetchImpl?: typeof fetch
 }
 
 export type ClaimCredentialOptions = {
@@ -320,20 +326,30 @@ export async function acquireCredentialRecord(
     return finalizeMdocCredentialRecord(rawVc, resolvedOffer, configuration)
   }
 
-  return finalizeCredentialRecord(rawVc, proof, resolvedOffer)
+  return finalizeCredentialRecord(rawVc, proof, resolvedOffer, {
+    fetchImpl: dependencies.fetchImpl,
+  })
 }
 
-function finalizeCredentialRecord(
+async function finalizeCredentialRecord(
   rawVc: string,
   proof: string,
   resolvedOffer: ResolvedCredentialOffer,
-): VerifiableCredentialRecord {
-  assertCredentialIssuerSignatureAlg(rawVc)
-  assertDevelopmentEddsaHolderBinding(rawVc, proof)
-  logWalletStep('oid4vci', 'holder-binding-validated', { issuer: resolvedOffer.issuer })
-  const record = normalizeCredentialRecord(rawVc, resolvedOffer)
-  logWalletStep('oid4vci', 'credential-normalized', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
-  return record
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<VerifiableCredentialRecord> {
+  try {
+    assertCredentialIssuerSignatureAlg(rawVc)
+    await assertIssuerDidWebCredentialSignature(rawVc, { fetchImpl: options.fetchImpl })
+    assertDevelopmentEddsaHolderBinding(rawVc, proof)
+    logWalletStep('oid4vci', 'holder-binding-validated', { issuer: resolvedOffer.issuer })
+    const record = normalizeCredentialRecord(rawVc, resolvedOffer)
+    logWalletStep('oid4vci', 'credential-normalized', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
+    return record
+  } catch (error) {
+    logWalletError('oid4vci', 'credential-verify-failed', error, { issuer: resolvedOffer.issuer })
+    recordCredentialVerifyFailed({ resolvedOffer, error })
+    throw error
+  }
 }
 
 export function saveCredentialRecord(
@@ -459,7 +475,7 @@ export async function pollDeferredCredential(params: {
     credentialBytes: credential.length,
   })
 
-  return finalizeCredentialRecord(credential, proof, resolvedOffer)
+  return await finalizeCredentialRecord(credential, proof, resolvedOffer)
 }
 
 export async function syncCredentialToBackend(
