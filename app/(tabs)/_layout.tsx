@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Image, type ImageSourcePropType } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { WalletKeyExpiryHost } from '@/src/components/WalletKeyExpiryHost';
 import { CredentialExpiryHost } from '@/src/components/CredentialExpiryHost';
@@ -29,6 +30,8 @@ function TabAssetIcon({ color, focused, source }: TabIconProps) {
 }
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <>
       <WalletKeyExpiryHost />
@@ -42,8 +45,8 @@ export default function TabLayout() {
           borderTopColor: THEME.gray200,
           borderTopWidth: 1,
           elevation: 8,
-          height: 66,
-          paddingBottom: 8,
+          height: 66 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
         },
         tabBarLabelStyle: {

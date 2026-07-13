@@ -1,5 +1,6 @@
 import { Platform } from 'react-native'
 import * as Keychain from 'react-native-keychain'
+import * as LocalAuthentication from 'expo-local-authentication'
 
 import { createHash } from 'react-native-quick-crypto'
 
@@ -15,16 +16,14 @@ import {
   resetStorage,
 } from './storage'
 
-const mockIsNativeWeakBiometricAvailable = jest.fn(() => false)
-const mockAuthenticateWeakBiometric = jest.fn(
-  async (_promptMessage: string, _cancelButtonText: string) => true,
-)
-
-jest.mock('@/src/services/crypto/nativeEddsaSigner', () => ({
-  isNativeWeakBiometricAvailable: () => mockIsNativeWeakBiometricAvailable(),
-  authenticateWeakBiometric: (promptMessage: string, cancelButtonText: string) =>
-    mockAuthenticateWeakBiometric(promptMessage, cancelButtonText),
+jest.mock('expo-local-authentication', () => ({
+  hasHardwareAsync: jest.fn(),
+  isEnrolledAsync: jest.fn(),
+  authenticateAsync: jest.fn(),
 }))
+
+const STORAGE_BIOMETRIC_TITLE = 'ปลดล็อกพื้นที่จัดเก็บ Wallet'
+const STORAGE_BIOMETRIC_CANCEL = 'ยกเลิก'
 
 function hashWalletPinForTest(pin: string, salt: string): string {
   return createHash('sha256').update(`${salt}:${pin}`).digest('hex')
@@ -36,8 +35,9 @@ describe('credential storage keychain policy', () => {
   beforeEach(async () => {
     await resetStorage()
     jest.clearAllMocks()
-    mockIsNativeWeakBiometricAvailable.mockReturnValue(false)
-    mockAuthenticateWeakBiometric.mockResolvedValue(true)
+    jest.mocked(LocalAuthentication.hasHardwareAsync).mockResolvedValue(true)
+    jest.mocked(LocalAuthentication.isEnrolledAsync).mockResolvedValue(true)
+    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: true })
     delete process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
@@ -91,6 +91,15 @@ describe('credential storage keychain policy', () => {
     )
   })
 
+  test('can initialize storage without prompting when no authenticated session exists', async () => {
+    await initStorage({ requireBiometric: false })
+
+    expect(LocalAuthentication.authenticateAsync).not.toHaveBeenCalled()
+    expect(Keychain.getGenericPassword).toHaveBeenCalledWith({
+      service: 'etda.wallet.credential_storage_key',
+    })
+  })
+
   test('shares one Keychain read across concurrent storage initialization calls', async () => {
     let resolveRead: ((value: false) => void) | undefined
     jest.mocked(Keychain.getGenericPassword).mockImplementationOnce(
@@ -111,16 +120,19 @@ describe('credential storage keychain policy', () => {
     expect(Keychain.setGenericPassword).toHaveBeenCalledTimes(1)
   })
 
-  test('uses NO_AUTH Android keychain storage guarded by the weak biometric gate', async () => {
+  test('uses NO_AUTH Android keychain storage guarded by the biometric gate', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       value: 'android',
     })
-    mockIsNativeWeakBiometricAvailable.mockReturnValue(true)
 
     await initStorage()
 
-    expect(mockAuthenticateWeakBiometric).toHaveBeenCalled()
+    expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledWith({
+      promptMessage: STORAGE_BIOMETRIC_TITLE,
+      cancelLabel: STORAGE_BIOMETRIC_CANCEL,
+      disableDeviceFallback: true,
+    })
     expect(Keychain.setGenericPassword).toHaveBeenCalledWith(
       'wallet-credentials',
       expect.any(String),
@@ -138,8 +150,10 @@ describe('credential storage keychain policy', () => {
       configurable: true,
       value: 'android',
     })
-    mockIsNativeWeakBiometricAvailable.mockReturnValue(true)
-    mockAuthenticateWeakBiometric.mockResolvedValueOnce(false)
+    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValueOnce({
+      success: false,
+      error: 'user_cancel',
+    })
 
     await expect(initStorage()).rejects.toThrow('StorageUnlockCancelled')
 

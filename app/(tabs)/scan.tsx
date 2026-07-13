@@ -9,7 +9,7 @@ import { AppButton } from '../../src/components/AppButton'
 import { FacePreparePanel } from '../../src/components/FacePreparePanel'
 import { PresentationConsentPanel } from '../../src/components/PresentationConsentPanel'
 import { PresentationInfoPanel } from '../../src/components/PresentationInfoPanel'
-import { PresentationResultPanel, type PresentationResultItem } from '../../src/components/PresentationResultPanel'
+import { PresentationResultPanel } from '../../src/components/PresentationResultPanel'
 import { PresentationStepScaffold } from '../../src/components/PresentationStepScaffold'
 import { ScanCaptureSurface } from '../../src/components/ScanCaptureSurface'
 import { WalletHeader } from '../../src/components/WalletHeader'
@@ -309,6 +309,7 @@ export default function ScanScreen() {
 
       recordSuccessfulPresentation({
         credentialId: request.matchedCredential.id,
+        credentialType: request.matchedCredential.type,
         verifierName: request.verifier.name,
         documentType: getCardSchema(request.matchedCredential.type).title,
         disclosedClaims: request.disclosures.map((disclosure) => disclosure.label),
@@ -366,7 +367,7 @@ export default function ScanScreen() {
 
   function goToWalletHome() {
     resetScanner()
-    router.replace('/')
+    router.replace('/(tabs)')
   }
 
   if (!permission) {
@@ -439,15 +440,9 @@ export default function ScanScreen() {
   }
 
   if (phase.tag === 'presentationSuccess') {
-    const schema = getCardSchema(phase.request.matchedCredential.type)
-    const items: PresentationResultItem[] = [
-      ...phase.request.disclosures.map((disclosure) => ({ key: disclosure.key, label: disclosure.label, status: 'verified' as const })),
-      { key: phase.request.matchedCredential.id, label: schema.title, status: 'used' as const },
-    ]
-
     return (
       <PresentationStepScaffold title="Verifier" onBack={goToWalletHome}>
-        <PresentationResultPanel verifierName={phase.verifierName} items={items} onDone={goToWalletHome} />
+        <PresentationResultPanel verifierName={phase.verifierName} onDone={goToWalletHome} />
       </PresentationStepScaffold>
     )
   }

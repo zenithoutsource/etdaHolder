@@ -24,7 +24,6 @@ function parseArgs(argv) {
 function buildRootEnv(baseUrl) {
   return [
     `EXPO_PUBLIC_WALLET_API_BASE_URL=${baseUrl}`,
-    'EXPO_PUBLIC_SKIP_PUSH_REGISTRATION=true',
     '',
   ].join('\n');
 }

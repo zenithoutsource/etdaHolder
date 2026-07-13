@@ -32,6 +32,8 @@ export type CardSchemaConfig = {
   summaryRowDivider?: "horizontal" | "vertical" | "both";
   /** Hide the Issue Date / Expiry Date footer row in PresentationCredentialSummaryCard. */
   hideSummaryValidityFooter?: boolean;
+  /** When true, first successful presentation marks credential Used (P6 Case 3). */
+  singleUse?: boolean;
   issuanceVerification?: IssuanceVerificationConfig;
   issuanceConfirmation?: IssuanceConfirmationConfig;
 };
@@ -340,6 +342,41 @@ const SCHEMAS: CardSchemaConfig[] = [
     summaryRowDivider: "both",
     hideSummaryValidityFooter: true,
   },
+  {
+    type: "MedicalCertificate",
+    title: "Medical Certificate",
+    documentTitle: "MEDICAL CERTIFICATE",
+    issuerName: "Licensed Medical Practitioner",
+    primaryColor: THEME.success,
+    imageKey: "profile",
+    singleUse: true,
+    displayFields: [
+      {
+        key: "fullName",
+        label: "Patient Name",
+        presentationLabel: "ชื่อ-นามสกุลผู้ป่วย",
+        aliases: ["full_name", "name", "givenName", "familyName"],
+      },
+      {
+        key: "diagnosis",
+        label: "Diagnosis",
+        presentationLabel: "การวินิจฉัย",
+        aliases: ["diagnosis_text", "condition"],
+      },
+      {
+        key: "issuedAt",
+        label: "Issue Date",
+        presentationLabel: "วันที่ออกใบรับรอง",
+        aliases: ["issuanceDate", "issuance_date", "issue_date"],
+      },
+      {
+        key: "expiryDate",
+        label: "Expiry Date",
+        presentationLabel: "วันหมดอายุ",
+        aliases: ["expiry_date", "expirationDate", "validUntil", "valid_until"],
+      },
+    ],
+  },
 ];
 
 const SCHEMA_MAP = new Map<string, CardSchemaConfig>(
@@ -362,6 +399,13 @@ export function getCardSchemaForConfigurationId(
   const normalized = configurationId.toLowerCase();
   if (normalized.includes("transcript"))
     return getCardSchema("BangkokUniversityTranscript");
+  if (
+    normalized.includes("medical") ||
+    normalized.includes("medicine") ||
+    normalized.includes("medcert")
+  ) {
+    return getCardSchema("MedicalCertificate");
+  }
   if (
     normalized.includes("driving") ||
     normalized.includes("licence") ||

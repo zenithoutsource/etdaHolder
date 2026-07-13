@@ -18,7 +18,7 @@ export default function HistoryLogScreen() {
   const router = useRouter();
   const { showDialog } = useAppDialog();
   const { error } = useStoredCredentials();
-  const [filter, setFilter] = useState<WalletHistoryFilter>('all');
+  const [filter, setFilter] = useState<WalletHistoryFilter>('issuance');
   const [refreshTick, setRefreshTick] = useState(0);
   const items = readWalletHistoryRows({ filter });
 

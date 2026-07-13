@@ -34,7 +34,7 @@ const display: CredentialDetailDisplay = {
 }
 
 describe('CredentialDocumentDetailCard', () => {
-  test('renders the ETDA Wallet document detail structure from the HTML reference', () => {
+  test('renders the wallet document detail structure from the HTML reference', () => {
     render(
       <CredentialDocumentDetailCard
         display={display}

@@ -197,7 +197,7 @@ function getKeychainSetOptions(): Keychain.SetOptions {
   }
 }
 
-function getKeychainGetOptions(): Keychain.GetOptions {
+function getKeychainGetOptions(requireBiometric: boolean): Keychain.GetOptions {
   if (isBiometricDisabledForTesting()) {
     return {
       service: KEYCHAIN_SERVICE,
@@ -209,6 +209,12 @@ function getKeychainGetOptions(): Keychain.GetOptions {
       service: KEYCHAIN_SERVICE,
     }
   }
+  if (!requireBiometric) {
+    return {
+      service: KEYCHAIN_SERVICE,
+    }
+  }
+
   return {
     service: KEYCHAIN_SERVICE,
     accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
@@ -219,19 +225,20 @@ function getKeychainGetOptions(): Keychain.GetOptions {
   }
 }
 
-async function getOrCreateEncryptionKey(): Promise<{ encryptionKey: string; isNewKey: boolean }> {
-  if (Platform.OS === 'android' && !isBiometricDisabledForTesting()) {
+async function getOrCreateEncryptionKey(
+  requireBiometric: boolean,
+): Promise<{ encryptionKey: string; isNewKey: boolean }> {
+  if (requireBiometric && Platform.OS === 'android' && !isBiometricDisabledForTesting()) {
     await confirmBiometricGate({
       promptMessage: STORAGE_BIOMETRIC_TITLE,
       cancelButtonText: STORAGE_BIOMETRIC_CANCEL,
       logScope: 'storage',
       errorPrefix: 'StorageUnlock',
-      allowFallback: false,
     })
   }
 
   logWalletStep('storage', 'keychain-read-start')
-  const credentials = await Keychain.getGenericPassword(getKeychainGetOptions())
+  const credentials = await Keychain.getGenericPassword(getKeychainGetOptions(requireBiometric))
 
   if (credentials) {
     if (credentials.password.length !== MMKV_AES_256_KEY_BYTES) {
@@ -260,7 +267,7 @@ async function getOrCreateEncryptionKey(): Promise<{ encryptionKey: string; isNe
  * Must be called once at app startup before any credential read/write.
  * Biometric/device auth may fire when the MMKV key is retrieved from Keychain.
  */
-export async function initStorage(): Promise<void> {
+export async function initStorage(options: { requireBiometric?: boolean } = {}): Promise<void> {
   if (credentialStorage !== null) {
     logWalletStep('storage', 'init-cache-hit')
     return
@@ -271,7 +278,7 @@ export async function initStorage(): Promise<void> {
     return initStoragePromise
   }
 
-  initStoragePromise = initializeStorage()
+  initStoragePromise = initializeStorage(options.requireBiometric ?? true)
   try {
     await initStoragePromise
   } finally {
@@ -279,10 +286,10 @@ export async function initStorage(): Promise<void> {
   }
 }
 
-async function initializeStorage(): Promise<void> {
+async function initializeStorage(requireBiometric: boolean): Promise<void> {
   try {
     logWalletStep('storage', 'init-start')
-    const { encryptionKey, isNewKey } = await getOrCreateEncryptionKey()
+    const { encryptionKey, isNewKey } = await getOrCreateEncryptionKey(requireBiometric)
     openCredentialStorage(encryptionKey)
     if (!isNewKey) {
       await migrateAndroidKeychainToNoAuthIfNeeded(encryptionKey)

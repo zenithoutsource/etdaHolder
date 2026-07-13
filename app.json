@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "etdaWallet",
-    "slug": "etdaWallet",
+    "name": "Wallet",
+    "slug": "wallet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

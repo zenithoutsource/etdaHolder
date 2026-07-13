@@ -34,7 +34,7 @@ describe('setup-dev-env', () => {
     expect(result.status).toBe(0);
     const rootEnv = fs.readFileSync(path.join(tmpDir, '.env'), 'utf8');
     expect(rootEnv).toContain('EXPO_PUBLIC_WALLET_API_BASE_URL=http://192.168.50.10:4000');
-    expect(rootEnv).toContain('EXPO_PUBLIC_SKIP_PUSH_REGISTRATION=true');
+    expect(rootEnv).not.toContain('EXPO_PUBLIC_SKIP_PUSH_REGISTRATION=true');
     expect(rootEnv).not.toContain('EXPO_PUBLIC_ENABLE_WALLET_DEBUG_LOGS');
     const serverEnv = fs.readFileSync(path.join(tmpDir, 'server', '.env'), 'utf8');
     expect(serverEnv).toContain('PORT=4000');

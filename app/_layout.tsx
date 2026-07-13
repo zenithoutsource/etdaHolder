@@ -61,7 +61,7 @@ function toUserMessage(message: string): string {
     return 'กรุณาตั้งค่าการล็อกหน้าจอหรือ Biometric ก่อนใช้งาน Wallet'
   if (message.includes('StorageInitializationFailed'))
     return 'ไม่สามารถเปิดพื้นที่จัดเก็บข้อมูลได้ กรุณาลองใหม่อีกครั้ง'
-  if (message.includes('WalletKeyNotInitialized') || message.includes('generateKeypair') || message.includes('NativeEd25519SignerRequired'))
+  if (message.includes('WalletKeyNotInitialized'))
     return 'ไม่สามารถสร้าง Wallet Key ได้ กรุณาลองใหม่อีกครั้ง'
   if (message.includes('DeviceIntegrityCompromised'))
     return 'ไม่สามารถใช้งาน Wallet บนอุปกรณ์ที่ผ่านการ Root หรือ Jailbreak ได้'
@@ -115,18 +115,14 @@ export default function RootLayout() {
 
       const [
         { generateWalletKeyIfNeeded, getHolderDid },
-        { initPushNotifications },
         { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock, needsStoragePinFallbackMigration },
         { assertDeviceIntegrity },
         { assertConfiguredWalletApiRuntimePolicy },
-        { runNativeEd25519Diagnostics },
       ] = await Promise.all([
         import('@/src/services/crypto/crypto'),
-        import('@/src/services/notifications/pushNotificationService'),
         import('@/src/services/storage/storage'),
         import('@/src/services/security/deviceIntegrityPolicy'),
         import('@/src/sdk/walletApiRuntimePolicy'),
-        import('@/src/services/crypto/nativeEddsaDiagnostics'),
       ]);
 
       setStartupState((currentState) =>
@@ -138,7 +134,6 @@ export default function RootLayout() {
         }),
       );
       logWalletStep('startup', 'native-modules-imported');
-      runNativeEd25519Diagnostics();
 
       const { default: JailMonkey } = await import('jail-monkey');
       assertDeviceIntegrity({ isJailBroken: JailMonkey.isJailBroken() });
@@ -181,12 +176,12 @@ export default function RootLayout() {
                 ),
               );
             }
-            await initStorage();
+            await initStorage({ requireBiometric: Boolean(existingSession) });
             setWalletPin(storagePin);
             logWalletStep('startup', 'storage-pin-fallback-provisioned-after-pin');
           }
         } else {
-          if (isCurrentRun() && !openStorageForMigration) {
+          if (isCurrentRun() && !openStorageForMigration && existingSession) {
             setStartupState(
               readStorageBiometricReadyState(
                 isStoragePinFallbackAvailable(),
@@ -194,7 +189,7 @@ export default function RootLayout() {
               ),
             );
           }
-          await initStorage();
+          await initStorage({ requireBiometric: Boolean(existingSession) });
         }
       } catch (storageError) {
         if (!isCurrentRun()) return;
@@ -291,9 +286,14 @@ export default function RootLayout() {
         setPinVerified(true)
       }
       logWalletStep('startup', 'session-loaded');
-      await initPushNotifications(getHolderDid());
-      if (!isCurrentRun()) return;
-      logWalletStep('startup', 'push-notifications-ready');
+      void import('@/src/services/notifications/pushNotificationService')
+        .then(({ launchPushNotificationsInBackground }) => {
+          launchPushNotificationsInBackground(getHolderDid());
+          logWalletStep('startup', 'push-notifications-started');
+        })
+        .catch((error: unknown) => {
+          logWalletError('startup', 'push-notifications-module-load-failed', error);
+        });
       setStartupState({ status: 'ready' });
       logWalletStep('startup', 'prepare-wallet-ready');
     } catch (error) {
@@ -575,7 +575,7 @@ export default function RootLayout() {
           <Stack.Screen name="pin-setup" options={{ headerShown: false }} />
           <Stack.Screen name="pin-lock" options={{ headerShown: false }} />
         </Stack>
-        <StatusBar style={isTabRoute ? 'light' : 'dark'} backgroundColor={isTabRoute ? THEME.navy : THEME.surfaceSoft} />
+        <StatusBar style={isTabRoute ? 'light' : 'dark'} backgroundColor="transparent" translucent />
       </AppDialogProvider>
     </ThemeProvider>
   );
