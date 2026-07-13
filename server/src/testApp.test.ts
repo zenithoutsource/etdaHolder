@@ -1,8 +1,68 @@
 import request from 'supertest'
+import { createPublicKey, generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'node:crypto'
 
 import { readNotificationCopy, resetDevWalletState } from './routes/devWallet'
 import { isParseableCredentialOfferUri } from './services/devRenewalOffer'
 import { createTestApp } from './testApp'
+
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+const ED25519_MULTICODEC_PREFIX = Buffer.from([0xed, 0x01])
+
+function base58Encode(bytes: Buffer): string {
+  let leadingOnes = 0
+  for (const byte of bytes) {
+    if (byte !== 0) break
+    leadingOnes += 1
+  }
+
+  let value = 0n
+  for (const byte of bytes) value = (value << 8n) | BigInt(byte)
+
+  let encoded = ''
+  while (value > 0n) {
+    const remainder = Number(value % 58n)
+    encoded = BASE58_ALPHABET[remainder]! + encoded
+    value /= 58n
+  }
+
+  return `${'1'.repeat(leadingOnes)}${encoded}`
+}
+
+function ed25519PublicJwkToDidKey(publicJwk: { kty: 'OKP'; crv: 'Ed25519'; x: string }): string {
+  const der = createPublicKey({ key: publicJwk, format: 'jwk' }).export({ type: 'spki', format: 'der' }) as Buffer
+  const rawPublicKey = der.subarray(-32)
+  const multicodec = Buffer.concat([ED25519_MULTICODEC_PREFIX, rawPublicKey])
+  return `did:key:z${base58Encode(multicodec)}`
+}
+
+function signHolderRevokePop(
+  input: {
+    nonce: string
+    audience: string
+    credentialId: string
+    holderDid: string
+    holderKid: string
+  },
+  privateKey: KeyObject,
+): string {
+  const headerB64 = Buffer.from(
+    JSON.stringify({ alg: 'EdDSA', typ: 'holder-status-change+jwt', kid: input.holderKid }),
+  ).toString('base64url')
+  const payloadB64 = Buffer.from(
+    JSON.stringify({
+      iss: input.holderDid,
+      sub: input.holderDid,
+      aud: input.audience,
+      iat: Math.floor(Date.now() / 1000),
+      nonce: input.nonce,
+      credential_id: input.credentialId,
+      action: 'revoke',
+    }),
+  ).toString('base64url')
+  const signingInput = `${headerB64}.${payloadB64}`
+  const signature = cryptoSign(null, Buffer.from(signingInput), privateKey)
+  return `${signingInput}.${signature.toString('base64url')}`
+}
 
 const ORIGINAL_ENV = process.env
 
@@ -140,12 +200,39 @@ describe('test app security middleware', () => {
     expect(status.body).toEqual({ used: true, credentialId: 'transcript-1' })
   })
 
-  test('confirms development holder revoke requests', async () => {
+  test('confirms development holder revoke requests with PoP', async () => {
     const app = createTestApp()
+    const holderKeys = generateKeyPairSync('ed25519')
+    const holderPublicJwk = holderKeys.publicKey.export({ format: 'jwk' }) as {
+      kty: 'OKP'
+      crv: 'Ed25519'
+      x: string
+    }
+    const holderDid = ed25519PublicJwkToDidKey(holderPublicJwk)
+    const holderKid = `${holderDid}#${holderDid.slice('did:key:'.length)}`
+
+    const nonceResponse = await request(app).post('/wallet-api/dev/issuer/holder-revoke/nonce').send({
+      credentialId: 'transcript-1',
+      holderDid,
+    })
+    expect(nonceResponse.status).toBe(201)
+    const { nonce, audience } = nonceResponse.body as { nonce: string; audience: string }
+
+    const popJwt = signHolderRevokePop(
+      {
+        nonce,
+        audience,
+        credentialId: 'transcript-1',
+        holderDid,
+        holderKid,
+      },
+      holderKeys.privateKey,
+    )
 
     const created = await request(app).post('/wallet-api/dev/issuer/holder-revoke').send({
       credentialId: 'transcript-1',
-      holderDid: 'did:key:z6Mkholder',
+      holderDid,
+      popJwt,
     })
     const status = await request(app).get('/wallet-api/dev/wallet/revoke-status?credentialId=transcript-1')
 
@@ -155,6 +242,18 @@ describe('test app security middleware', () => {
     expect(typeof created.body.confirmedAt).toBe('string')
     expect(status.status).toBe(200)
     expect(status.body.status).toBe('revoked')
+  })
+
+  test('rejects holder revoke without PoP', async () => {
+    const app = createTestApp()
+
+    const created = await request(app).post('/wallet-api/dev/issuer/holder-revoke').send({
+      credentialId: 'transcript-1',
+      holderDid: 'did:key:z6Mkholder',
+    })
+
+    expect(created.status).toBe(400)
+    expect(created.body.message).toContain('popJwt')
   })
 
   test('registers a push token and delivers a mapped credential-event push through Expo', async () => {
@@ -211,9 +310,10 @@ describe('test app security middleware', () => {
     )
   })
 
-  test('renewal-request accepts without returning offer; status transitions to offer-ready', async () => {
+  test('renewal-request returns OID4VP auth request; offer-ready only after VP submit', async () => {
     process.env.DEV_RENEWAL_DELAY_MS = '0'
     process.env.ISSUER_PROXY_TARGET = 'https://issuer.office.example'
+    process.env.PUBLIC_BASE_URL = 'http://localhost:4000'
     const issuerOfferUri =
       'openid-credential-offer://?credential_offer_uri=http%3A%2F%2Fissuer.office.example%2Fopenid4vc%2FcredentialOffer%3Fid%3Drenewal-1'
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -246,7 +346,25 @@ describe('test app security middleware', () => {
       body: JSON.stringify({ document_type: 'IdCard' }),
     })
     expect(created.status).toBe(201)
-    expect(created.body).toEqual({ accepted: true })
+    expect(created.body.accepted).toBe(true)
+    expect(typeof created.body.authorizationRequest).toBe('string')
+    expect(created.body.authorizationRequest).toContain('openid4vp://authorize?')
+    expect(created.body.authorizationRequest).toContain(
+      encodeURIComponent('http://localhost:4000/wallet-api/dev/wallet/renewal-vp/response'),
+    )
+
+    const statusBeforeVp = await request(app).get('/wallet-api/dev/wallet/renewal-status')
+    expect(statusBeforeVp.body.renewals[0].state).toBe('requested')
+
+    const vpResponse = await request(app)
+      .post('/wallet-api/dev/wallet/renewal-vp/response')
+      .type('form')
+      .send({
+        vp_token: 'header.payload.signature',
+        state: 'thai-id-1',
+      })
+    expect(vpResponse.status).toBe(200)
+    expect(vpResponse.body).toEqual({ status: 'verified' })
 
     const statusReady = await request(app).get('/wallet-api/dev/wallet/renewal-status')
     expect(statusReady.status).toBe(200)
@@ -297,9 +415,18 @@ describe('test app security middleware', () => {
 
     expect(created.status).toBe(201)
 
+    await request(app)
+      .post('/wallet-api/dev/wallet/renewal-vp/response')
+      .type('form')
+      .send({
+        vp_token: 'header.payload.signature',
+        state: 'thai-id-3',
+      })
+
     const statusReady = await request(app).get('/wallet-api/dev/wallet/renewal-status')
 
     expect(statusReady.status).toBe(200)
+    expect(statusReady.body.renewals[0].state).toBe('offer-ready')
 
     const pushBodies = fetchMock.mock.calls
       .filter(([url]) => String(url) === 'https://exp.host/--/api/v2/push/send')
@@ -373,6 +500,14 @@ describe('test app security middleware', () => {
     })
 
     expect(created.status).toBe(201)
+
+    await request(app)
+      .post('/wallet-api/dev/wallet/renewal-vp/response')
+      .type('form')
+      .send({
+        vp_token: 'header.payload.signature',
+        state: 'thai-id-4',
+      })
 
     await new Promise((resolve) => setTimeout(resolve, 25))
 

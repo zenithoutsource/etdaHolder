@@ -1,5 +1,7 @@
 import type { VerifiedVpClaim } from './sdJwtVerifier'
 
+export const VP_HTML_CONTENT_TYPE = 'text/html; charset=utf-8'
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -13,6 +15,7 @@ function pageShell(title: string, body: string): string {
 <html lang="th">
 <head>
   <meta charset="utf-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
   <style>
@@ -55,6 +58,10 @@ export function renderVpErrorHtml(message: string, reason?: string): string {
 
 export function renderVpConsumedHtml(): string {
   return pageShell('QR ถูกใช้แล้ว', '<h1 class="err">QR นี้ถูกใช้แล้ว</h1>')
+}
+
+export function renderVpExpiredHtml(): string {
+  return pageShell('QR หมดอายุ', '<h1 class="err">QR หมดอายุ</h1>')
 }
 
 export function renderVpPendingHtml(): string {

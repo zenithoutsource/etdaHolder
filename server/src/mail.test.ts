@@ -44,7 +44,7 @@ describe('sendPinResetOtp', () => {
     process.env.SMTP_USER = 'wallet@example.com'
     process.env.SMTP_PASSWORD = 'secret'
     process.env.MAIL_FROM = 'wallet-noreply@example.com'
-    process.env.MAIL_FROM_NAME = 'ETDA Wallet'
+    process.env.MAIL_FROM_NAME = 'Wallet'
     const logSpy = jest.spyOn(console, 'info').mockImplementation(() => undefined)
 
     await sendPinResetOtp('user@example.com', '482910')
@@ -57,9 +57,9 @@ describe('sendPinResetOtp', () => {
     })
     expect(sendMailMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: '"ETDA Wallet" <wallet-noreply@example.com>',
+        from: '"Wallet" <wallet-noreply@example.com>',
         to: 'user@example.com',
-        subject: 'ETDA Wallet PIN reset code',
+        subject: 'Wallet PIN reset code',
         text: expect.stringContaining('482910'),
         html: expect.stringContaining('482910'),
       }),

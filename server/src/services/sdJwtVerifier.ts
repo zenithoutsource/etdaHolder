@@ -2,6 +2,8 @@ import { createHash, createPublicKey, verify as cryptoVerify } from 'node:crypto
 
 import type { Ed25519PublicJwk } from '../config'
 
+import { didKeyToEd25519PublicJwk, resolveVpIssuerPublicKeyFromRawVc } from './resolveVpIssuerKey'
+
 export type VerifiedVpClaim = {
   label: string
   value: string
@@ -53,6 +55,33 @@ function readRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function readEd25519PublicJwk(value: unknown): Ed25519PublicJwk | undefined {
+  const record = readRecord(value)
+  if (!record) return undefined
+  if (record.kty !== 'OKP' || record.crv !== 'Ed25519' || typeof record.x !== 'string') return undefined
+  return { kty: 'OKP', crv: 'Ed25519', x: record.x }
+}
+
+function resolveHolderPublicJwk(cnf: Record<string, unknown> | undefined): Ed25519PublicJwk | undefined {
+  if (!cnf) return undefined
+
+  const jwk = readEd25519PublicJwk(cnf.jwk)
+  if (jwk) return jwk
+
+  const kid = readString(cnf.kid)
+  if (!kid?.startsWith('did:key:')) return undefined
+
+  try {
+    return didKeyToEd25519PublicJwk(kid.split('#')[0]!)
+  } catch {
+    return undefined
+  }
 }
 
 export function extractDisclosedClaims(
@@ -125,10 +154,9 @@ export function verifySdJwtKbPresentation(
   }
 
   const issuerPayload = decodeJwtPart<Record<string, unknown>>(issuerJwt.split('.')[1] ?? '')
-  const cnf = readRecord(issuerPayload.cnf)
-  const holderJwk = readRecord(cnf?.jwk)
-  if (!holderJwk) return { ok: false, reason: 'cnf-missing' }
-  if (!verifyEdDSA(parts.kbJwt, holderJwk as Ed25519PublicJwk)) {
+  const holderPublicJwk = resolveHolderPublicJwk(readRecord(issuerPayload.cnf))
+  if (!holderPublicJwk) return { ok: false, reason: 'cnf-missing' }
+  if (!verifyEdDSA(parts.kbJwt, holderPublicJwk)) {
     return { ok: false, reason: 'kb-signature-invalid' }
   }
 
@@ -152,4 +180,83 @@ export function verifySdJwtKbPresentation(
     issuerName: String(issuerPayload.iss ?? 'Unknown'),
     claims: extractDisclosedClaims(parts.sdJwtWithoutKb, issuerPayload),
   }
+}
+
+type IssuerKeyCacheEntry = {
+  jwk: Ed25519PublicJwk
+  expiresAtMs: number
+}
+
+const issuerKeyCache = new Map<string, IssuerKeyCacheEntry>()
+
+function readSdJwtIssuerPortion(vpToken: string): string | undefined {
+  const parts = splitSdJwtKbPresentation(vpToken)
+  if (!parts) return undefined
+  return parts.sdJwtWithoutKb
+}
+
+function issuerCacheKey(sdJwtPortion: string): string {
+  const issuerJwt = sdJwtPortion.split('~')[0] ?? ''
+  const [headerB64, payloadB64] = issuerJwt.split('.')
+  if (!payloadB64) return sdJwtPortion
+  try {
+    const header = headerB64 ? decodeJwtPart<Record<string, unknown>>(headerB64) : {}
+    const payload = decodeJwtPart<Record<string, unknown>>(payloadB64)
+    const iss = readString(payload.iss) ?? 'unknown-issuer'
+    const kid = readString(header.kid)
+    return `${iss}:${kid ?? 'no-kid'}`
+  } catch {
+    return sdJwtPortion
+  }
+}
+
+async function resolveIssuerPublicKeyJwk(
+  vpToken: string,
+  pinnedJwk: Ed25519PublicJwk | undefined,
+  jwksCacheMs: number,
+): Promise<Ed25519PublicJwk | undefined> {
+  if (pinnedJwk) return pinnedJwk
+
+  const sdJwtPortion = readSdJwtIssuerPortion(vpToken)
+  if (!sdJwtPortion) return undefined
+
+  const cacheKey = issuerCacheKey(sdJwtPortion)
+  const cached = issuerKeyCache.get(cacheKey)
+  if (cached && cached.expiresAtMs > Date.now()) {
+    return cached.jwk
+  }
+
+  try {
+    const jwk = await resolveVpIssuerPublicKeyFromRawVc(sdJwtPortion)
+    issuerKeyCache.set(cacheKey, { jwk, expiresAtMs: Date.now() + jwksCacheMs })
+    return jwk
+  } catch {
+    return undefined
+  }
+}
+
+export function resetSdJwtIssuerKeyCacheForTests(): void {
+  issuerKeyCache.clear()
+}
+
+export async function verifySdJwtKbPresentationAsync(
+  vpToken: string,
+  context: {
+    nonce: string
+    relayBaseUrl: string
+    maxAgeMs: number
+    issuerPublicKeyJwk?: Ed25519PublicJwk
+    jwksCacheMs?: number
+  },
+): Promise<SdJwtVerificationResult> {
+  const issuerPublicKeyJwk = await resolveIssuerPublicKeyJwk(
+    vpToken,
+    context.issuerPublicKeyJwk,
+    context.jwksCacheMs ?? 3_600_000,
+  )
+
+  return verifySdJwtKbPresentation(vpToken, {
+    ...context,
+    issuerPublicKeyJwk,
+  })
 }

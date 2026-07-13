@@ -32,9 +32,9 @@ function getTransport(): Transporter | null {
 }
 
 function buildPinResetContent(otp: string): { subject: string; text: string; html: string } {
-  const subject = 'ETDA Wallet PIN reset code'
+  const subject = 'Wallet PIN reset code'
   const text = [
-    'Your ETDA Wallet verification code is:',
+    'Your Wallet verification code is:',
     '',
     otp,
     '',
@@ -43,7 +43,7 @@ function buildPinResetContent(otp: string): { subject: string; text: string; htm
   ].join('\n')
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#1a2a42">
-      <h2 style="margin:0 0 12px;color:#002887">ETDA Wallet</h2>
+      <h2 style="margin:0 0 12px;color:#002887">Wallet</h2>
       <p style="margin:0 0 16px">Use this verification code to reset your wallet PIN:</p>
       <p style="margin:0 0 16px;font-size:28px;font-weight:700;letter-spacing:4px">${otp}</p>
       <p style="margin:0 0 8px;color:#6d7a8d">This code expires in 10 minutes.</p>

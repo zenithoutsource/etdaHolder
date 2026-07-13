@@ -41,6 +41,25 @@ describe('server config', () => {
     expect(config.vpIssuerPublicKeyJwk?.crv).toBe('Ed25519')
   })
 
+  test('reads verifier presentation config from env', () => {
+    process.env.VERIFIER_PRESENTATION_BASE_URL = 'https://verifier.example'
+    const config = readConfig()
+    expect(config.verifierPresentationBaseUrl).toBe('https://verifier.example')
+    expect(config.presentationGatewayBaseUrl).toBe('https://verifier.example')
+  })
+
+  test('reads presentation gateway config from env fallback', () => {
+    delete process.env.VERIFIER_PRESENTATION_BASE_URL
+    process.env.PRESENTATION_SESSION_TTL_MS = '240000'
+    process.env.PRESENTATION_GATEWAY_BASE_URL = 'https://gateway.example'
+    process.env.PRESENTATION_ISSUER_JWKS_CACHE_MS = '7200000'
+    const config = readConfig()
+    expect(config.presentationSessionTtlMs).toBe(240_000)
+    expect(config.verifierPresentationBaseUrl).toBe('https://gateway.example')
+    expect(config.presentationGatewayBaseUrl).toBe('https://gateway.example')
+    expect(config.presentationIssuerJwksCacheMs).toBe(7_200_000)
+  })
+
   test('allows missing VP issuer key outside tests', () => {
     process.env = { ...process.env, NODE_ENV: 'development' }
     delete process.env.VP_ISSUER_PUBLIC_KEY_JWK

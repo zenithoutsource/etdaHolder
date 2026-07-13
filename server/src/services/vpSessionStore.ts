@@ -1,63 +1,55 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import {
+  createInMemoryPresentationSessionStore,
+  getDefaultPresentationSessionStore,
+  type FinalizeVerificationInput,
+  type FinalizeVerificationOutcome,
+  type PresentationSession,
+  type PresentationSessionStatus,
+  type SetVpTokenOutcome,
+} from './presentationSessionStore'
 
-export type VpSession = {
-  sessionId: string
-  nonce: string
-  expiresAt: string
-  vpToken: string | null
-  consumed: boolean
-  credentialType: string
-}
+export type VpSession = PresentationSession
+export type VpSessionStatus = PresentationSessionStatus
 
-const sessions = new Map<string, VpSession>()
+const store = getDefaultPresentationSessionStore()
 
 export function createVpSession(ttlMs: number): VpSession {
-  const session: VpSession = {
-    sessionId: randomUUID(),
-    nonce: randomBytes(32).toString('hex'),
-    expiresAt: new Date(Date.now() + ttlMs).toISOString(),
-    vpToken: null,
-    consumed: false,
-    credentialType: '',
-  }
-  sessions.set(session.sessionId, session)
-  return session
+  return store.createSession(ttlMs)
 }
 
 export function getVpSession(sessionId: string): VpSession | undefined {
-  return sessions.get(sessionId)
-}
-
-function isExpired(session: VpSession): boolean {
-  return Date.parse(session.expiresAt) <= Date.now()
+  return store.getSession(sessionId)
 }
 
 export function isVpSessionExpired(session: VpSession): boolean {
-  return isExpired(session)
+  return store.isExpired(session)
+}
+
+export function resolveVpSessionStatus(sessionId: string): VpSessionStatus | 'not-found' {
+  return store.resolveStatus(sessionId)
 }
 
 export function setVpToken(
   sessionId: string,
   vpToken: string,
   credentialType: string,
-): 'ok' | 'not-found' | 'expired' | 'already-set' | 'consumed' {
-  const session = sessions.get(sessionId)
-  if (!session) return 'not-found'
-  if (isExpired(session)) return 'expired'
-  if (session.consumed) return 'consumed'
-  if (session.vpToken !== null) return 'already-set'
-  session.vpToken = vpToken
-  session.credentialType = credentialType
-  return 'ok'
+): SetVpTokenOutcome {
+  return store.setVpToken(sessionId, vpToken, credentialType)
+}
+
+export function finalizeVpVerification(
+  sessionId: string,
+  input: FinalizeVerificationInput,
+): FinalizeVerificationOutcome {
+  return store.finalizeVerification(sessionId, input)
 }
 
 export function consumeVpSession(sessionId: string): VpSession | undefined {
-  const session = sessions.get(sessionId)
-  if (!session || isExpired(session) || session.consumed || !session.vpToken) return undefined
-  session.consumed = true
-  return session
+  return store.consumeSession(sessionId)
 }
 
 export function resetVpSessionStore(): void {
-  sessions.clear()
+  store.reset()
 }
+
+export { createInMemoryPresentationSessionStore }

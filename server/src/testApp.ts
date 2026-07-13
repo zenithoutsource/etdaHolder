@@ -8,6 +8,7 @@ import { credentialsRouter } from './routes/credentials'
 import { devIssuerProxyRouter, devVerifierProxyRouter } from './routes/devIssuerProxy'
 import { devWalletRouter } from './routes/devWallet'
 import { vpSessionRouter } from './routes/vpSession'
+import { presentationGatewayRouter } from './routes/presentationGateway'
 import { pushTokensRouter } from './routes/pushTokens'
 import { walletsRouter } from './routes/wallets'
 
@@ -99,6 +100,7 @@ export function createTestApp(): express.Express {
   app.use(createCorsMiddleware())
 
   app.use('/dev', express.json({ limit: '1mb' }), vpSessionRouter)
+  app.use('/v1', express.json({ limit: '1mb' }), presentationGatewayRouter)
 
   if (process.env.ENABLE_DEV_ISSUER_PROXY === 'true') {
     app.use('/dev-issuer-proxy', devIssuerProxyRouter)
@@ -108,6 +110,7 @@ export function createTestApp(): express.Express {
   }
 
   app.use(express.json({ limit: '1mb' }))
+  app.use(express.urlencoded({ extended: false, limit: '1mb' }))
 
   app.use('/wallet-api/auth', createAuthRateLimiter())
   app.use('/wallet-api/auth', authRouter)

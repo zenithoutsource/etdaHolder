@@ -2,14 +2,10 @@ import { Router } from 'express'
 
 import { readConfig } from '../config'
 import {
-  formatVpIssuerPublicKeyEnvLine,
-  resolveVpIssuerPublicKeyFromRawVc,
-} from '../services/resolveVpIssuerKey'
-import {
-  createDevVpSession,
+  createPresentationSession,
   fetchPresentationSessionStatus,
   uploadPresentation,
-  verifyDevVpSession,
+  verifyPresentationSession,
 } from '../services/presentationGatewayService'
 import { getDefaultPresentationSessionStore } from '../services/presentationSessionStore'
 import {
@@ -19,7 +15,8 @@ import {
   renderVpSuccessHtml,
 } from '../services/vpSessionHtml'
 
-export const vpSessionRouter = Router()
+/** Reference verifier presentation service — deploy on verifier infrastructure in production. */
+export const presentationGatewayRouter = Router()
 
 const store = getDefaultPresentationSessionStore()
 
@@ -27,40 +24,16 @@ function sendVpHtml(res: import('express').Response, statusCode: number, html: s
   res.status(statusCode).type('text/html; charset=utf-8').send(html)
 }
 
-vpSessionRouter.post('/vp-issuer-key/resolve', async (req, res) => {
-  const rawVc = typeof req.body?.rawVc === 'string' ? req.body.rawVc.trim() : ''
-  const issuerUrl = typeof req.body?.issuerUrl === 'string' ? req.body.issuerUrl.trim() : undefined
-  if (!rawVc) {
-    res.status(400).json({ message: 'rawVc is required' })
-    return
-  }
-
-  try {
-    const jwk = await resolveVpIssuerPublicKeyFromRawVc(rawVc, issuerUrl)
-    const envLine = formatVpIssuerPublicKeyEnvLine(jwk)
-    res.status(200).json({ jwk, envLine })
-  } catch (error) {
-    console.error('[vp-relay] issuer-key-resolve-failed', {
-      error: error instanceof Error ? error.message : String(error),
-    })
-    res.status(422).json({
-      message: 'Could not resolve issuer public key from rawVc',
-    })
-  }
-})
-
-vpSessionRouter.post('/vp-session', (_req, res) => {
+presentationGatewayRouter.post('/presentation-sessions', (_req, res) => {
   const config = readConfig()
-  const session = createDevVpSession(store, config.vpSessionTtlMs)
+  const session = createPresentationSession(store, config)
   res.status(201).json(session)
 })
 
-vpSessionRouter.put('/vp-session/:sessionId', (req, res) => {
+presentationGatewayRouter.put('/presentation-sessions/:sessionId', (req, res) => {
   const vpToken = typeof req.body?.vpToken === 'string' ? req.body.vpToken : ''
   const credentialType = typeof req.body?.credentialType === 'string' ? req.body.credentialType : ''
-  const outcome = uploadPresentation(store, req.params.sessionId, vpToken, credentialType, {
-    enforceThaiNationalId: false,
-  })
+  const outcome = uploadPresentation(store, req.params.sessionId, vpToken, credentialType)
   if (!outcome.ok) {
     if (outcome.code === 'bad-request') {
       res.status(400).json({ message: 'Bad Request' })
@@ -81,7 +54,7 @@ vpSessionRouter.put('/vp-session/:sessionId', (req, res) => {
   res.status(200).json({ ok: true })
 })
 
-vpSessionRouter.get('/vp-session/:sessionId/status', (req, res) => {
+presentationGatewayRouter.get('/presentation-sessions/:sessionId/status', (req, res) => {
   const status = fetchPresentationSessionStatus(store, req.params.sessionId)
   if (status === 'not-found') {
     res.status(404).json({ status })
@@ -99,11 +72,16 @@ vpSessionRouter.get('/vp-session/:sessionId/status', (req, res) => {
   res.status(200).json(body)
 })
 
-vpSessionRouter.get('/vp-verify', async (req, res) => {
+presentationGatewayRouter.get('/present/verify', async (req, res) => {
   const sessionId = typeof req.query.s === 'string' ? req.query.s : ''
   const config = readConfig()
-  const outcome = await verifyDevVpSession(store, sessionId, config)
 
+  if (process.env.NODE_ENV === 'production' && !config.verifierPresentationBaseUrl.startsWith('https://')) {
+    sendVpHtml(res, 403, renderVpErrorHtml('ไม่รองรับการตรวจสอบ'))
+    return
+  }
+
+  const outcome = await verifyPresentationSession(store, sessionId, config)
   if (outcome.kind === 'not-found') {
     sendVpHtml(res, 404, renderVpErrorHtml('ไม่พบ QR'))
     return
@@ -122,7 +100,7 @@ vpSessionRouter.get('/vp-verify', async (req, res) => {
     return
   }
   if (outcome.kind === 'verify-failed') {
-    console.info('[vp-relay] verify-failed', {
+    console.info('[presentation-gateway] verify-failed', {
       reason: outcome.reason,
       credentialType: outcome.credentialType,
       vpBytes: outcome.vpBytes,

@@ -50,7 +50,7 @@ SMTP_SECURE=false
 SMTP_USER=your-account@gmail.com
 SMTP_PASSWORD=your-app-password
 MAIL_FROM=your-account@gmail.com
-MAIL_FROM_NAME=ETDA Wallet
+MAIL_FROM_NAME=Wallet
 ```
 
 If `SMTP_HOST` is left empty, the backend logs OTP codes to the server terminal instead of sending email.

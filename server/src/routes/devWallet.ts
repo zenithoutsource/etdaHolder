@@ -2,12 +2,21 @@ import { Router } from 'express'
 
 import { readPushToken } from './pushTokens'
 import { requestIssuerRenewalOffer } from '../services/devRenewalOffer'
+import { verifyHolderRevokePop } from '../services/holderRevokePopVerifier'
 import { sendExpoPush, type ExpoPushEvent, type ExpoPushPayload } from '../services/expoPushClient'
 
 type DevHolderRevocationRecord = {
   credentialId: string
   holderDid: string
   confirmedAt: string
+}
+
+type DevHolderRevokeNonceRecord = {
+  credentialId: string
+  holderDid: string
+  nonce: string
+  audience: string
+  expiresAt: string
 }
 
 type DevIssuerSuspensionRecord = {
@@ -27,6 +36,9 @@ type DevWalletRenewalRecord = {
   state: 'requested' | 'offer-ready' | 'revoked'
   rawVc: string
   offerUri: string
+  authorizationRequest: string
+  nonce: string
+  vpAccepted: boolean
   requestedAt: string
   revokedAt?: string
   updatedAt: string
@@ -43,6 +55,14 @@ const suspensions = new Map<string, DevIssuerSuspensionRecord>()
 const renewals = new Map<string, DevWalletRenewalRecord>()
 const usedCredentials = new Set<string>()
 const holderRevocations = new Map<string, DevHolderRevocationRecord>()
+const holderRevokeNonces = new Map<string, DevHolderRevokeNonceRecord>()
+
+const DEV_HOLDER_REVOKE_AUDIENCE = 'urn:wallet:dev:issuer:holder-revoke'
+const DEV_HOLDER_REVOKE_NONCE_TTL_MS = 5 * 60 * 1000
+
+function holderRevokeNonceKey(credentialId: string, holderDid: string): string {
+  return `${credentialId}:${holderDid}`
+}
 const renewalReadyTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 async function sendCredentialEventPush(
@@ -95,9 +115,9 @@ function clearRenewalReadyTimer(credentialId: string): void {
 
 function transitionRenewalToOfferReadyIfElapsed(credentialId: string, now = Date.now()): void {
   const record = renewals.get(credentialId)
-  if (!record || record.state !== 'requested') return
+  if (!record || record.state !== 'requested' || !record.vpAccepted) return
 
-  const requestedAt = Date.parse(record.requestedAt)
+  const requestedAt = Date.parse(record.updatedAt)
   if (!Number.isFinite(requestedAt) || now - requestedAt < readDevRenewalDelayMs()) {
     return
   }
@@ -174,6 +194,7 @@ export function resetDevWalletState(): void {
   renewals.clear()
   usedCredentials.clear()
   holderRevocations.clear()
+  holderRevokeNonces.clear()
   for (const timer of renewalReadyTimers.values()) {
     clearTimeout(timer)
   }
@@ -193,8 +214,8 @@ devWalletRouter.get('/wallet/renewal-status', (_req, res) => {
   const now = Date.now()
 
   for (const record of renewals.values()) {
-    if (record.state !== 'requested') continue
-    if (now - Date.parse(record.requestedAt) < delayMs) continue
+    if (record.state !== 'requested' || !record.vpAccepted) continue
+    if (now - Date.parse(record.updatedAt) < delayMs) continue
     transitionRenewalToOfferReadyIfElapsed(record.credentialId, now)
   }
 
@@ -295,7 +316,7 @@ devWalletRouter.get('/wallet/used-status', (req, res) => {
   res.json({ used: usedCredentials.has(credentialId), credentialId })
 })
 
-devWalletRouter.post('/issuer/holder-revoke', (req, res) => {
+devWalletRouter.post('/issuer/holder-revoke/nonce', (req, res) => {
   const credentialId =
     typeof req.body?.credentialId === 'string' ? req.body.credentialId.trim() : ''
   const holderDid =
@@ -305,6 +326,61 @@ devWalletRouter.post('/issuer/holder-revoke', (req, res) => {
     res.status(400).json({ message: 'credentialId and holderDid are required' })
     return
   }
+
+  const nonce = `holder-revoke-${credentialId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  const expiresAt = new Date(Date.now() + DEV_HOLDER_REVOKE_NONCE_TTL_MS).toISOString()
+  const record: DevHolderRevokeNonceRecord = {
+    credentialId,
+    holderDid,
+    nonce,
+    audience: DEV_HOLDER_REVOKE_AUDIENCE,
+    expiresAt,
+  }
+  holderRevokeNonces.set(holderRevokeNonceKey(credentialId, holderDid), record)
+  res.status(201).json({
+    nonce,
+    audience: DEV_HOLDER_REVOKE_AUDIENCE,
+    expiresAt,
+  })
+})
+
+devWalletRouter.post('/issuer/holder-revoke', (req, res) => {
+  const credentialId =
+    typeof req.body?.credentialId === 'string' ? req.body.credentialId.trim() : ''
+  const holderDid =
+    typeof req.body?.holderDid === 'string' ? req.body.holderDid.trim() : ''
+  const popJwt =
+    typeof req.body?.popJwt === 'string' ? req.body.popJwt.trim() : ''
+
+  if (!credentialId || !holderDid || !popJwt) {
+    res.status(400).json({ message: 'credentialId, holderDid, and popJwt are required' })
+    return
+  }
+
+  const nonceRecord = holderRevokeNonces.get(holderRevokeNonceKey(credentialId, holderDid))
+  if (!nonceRecord) {
+    res.status(400).json({ message: 'Holder revoke nonce not found or expired' })
+    return
+  }
+
+  if (Date.parse(nonceRecord.expiresAt) < Date.now()) {
+    holderRevokeNonces.delete(holderRevokeNonceKey(credentialId, holderDid))
+    res.status(400).json({ message: 'Holder revoke nonce expired' })
+    return
+  }
+
+  const verification = verifyHolderRevokePop(popJwt, {
+    holderDid,
+    credentialId,
+    nonce: nonceRecord.nonce,
+    audience: nonceRecord.audience,
+  })
+  if (!verification.ok) {
+    res.status(400).json({ message: `Holder PoP verification failed: ${verification.reason}` })
+    return
+  }
+
+  holderRevokeNonces.delete(holderRevokeNonceKey(credentialId, holderDid))
 
   const confirmedAt = new Date().toISOString()
   const record: DevHolderRevocationRecord = {
@@ -405,6 +481,16 @@ devWalletRouter.post('/wallet/renewal-request', async (req, res) => {
   }
 
   const updatedAt = new Date().toISOString()
+  const publicBaseUrl = readRenewalPublicBaseUrl(req)
+  const responseUri = `${publicBaseUrl}/wallet-api/dev/wallet/renewal-vp/response`
+  const nonce = `renewal-nonce-${credentialId}-${Date.now()}`
+  const authorizationRequest = buildRenewalAuthorizationRequest({
+    credentialId,
+    credentialType,
+    rawVc,
+    responseUri,
+    nonce,
+  })
 
   renewals.set(credentialId, {
     credentialId,
@@ -414,10 +500,12 @@ devWalletRouter.post('/wallet/renewal-request', async (req, res) => {
     state: 'requested',
     rawVc,
     offerUri,
+    authorizationRequest,
+    nonce,
+    vpAccepted: false,
     requestedAt: updatedAt,
     updatedAt,
   })
-  scheduleRenewalReadyTransition(credentialId)
 
   void sendCredentialEventPush(
     'renewal-required',
@@ -426,5 +514,142 @@ devWalletRouter.post('/wallet/renewal-request', async (req, res) => {
     credentialType,
   ).catch(() => undefined)
 
-  res.status(201).json({ accepted: true })
+  res.status(201).json({
+    accepted: true,
+    authorizationRequest,
+  })
 })
+
+devWalletRouter.post('/wallet/renewal-vp/response', (req, res) => {
+  const vpToken =
+    typeof req.body?.vp_token === 'string'
+      ? req.body.vp_token
+      : typeof req.body?.vp_token === 'object' && req.body?.vp_token !== null
+        ? JSON.stringify(req.body.vp_token)
+        : ''
+  const state = typeof req.body?.state === 'string' ? req.body.state.trim() : ''
+
+  if (!vpToken || !state) {
+    res.status(400).json({ message: 'vp_token and state are required' })
+    return
+  }
+
+  const record = renewals.get(state)
+  if (!record) {
+    res.status(404).json({ message: 'Renewal session not found' })
+    return
+  }
+
+  if (record.state !== 'requested') {
+    res.status(409).json({ message: 'Renewal session is not awaiting VP' })
+    return
+  }
+
+  if (!isDevAcceptableRenewalVpToken(vpToken, record.oldHolderDid)) {
+    res.status(400).json({ message: 'VP verification failed' })
+    return
+  }
+
+  const updatedAt = new Date().toISOString()
+  renewals.set(state, {
+    ...record,
+    vpAccepted: true,
+    updatedAt,
+  })
+  scheduleRenewalReadyTransition(state)
+
+  res.status(200).json({ status: 'verified' })
+})
+
+function readRenewalPublicBaseUrl(req: { protocol: string; get: (name: string) => string | undefined; headers: Record<string, unknown> }): string {
+  const envBase =
+    process.env.PUBLIC_BASE_URL?.trim() ||
+    process.env.VP_RELAY_BASE_URL?.trim() ||
+    process.env.EXPO_PUBLIC_WALLET_API_BASE_URL?.trim()
+  if (envBase) return envBase.replace(/\/$/, '')
+
+  const forwardedProto = typeof req.headers['x-forwarded-proto'] === 'string'
+    ? req.headers['x-forwarded-proto'].split(',')[0]?.trim()
+    : undefined
+  const forwardedHost = typeof req.headers['x-forwarded-host'] === 'string'
+    ? req.headers['x-forwarded-host'].split(',')[0]?.trim()
+    : undefined
+  const proto = forwardedProto || req.protocol || 'http'
+  const host = forwardedHost || req.get('host') || 'localhost:4000'
+  return `${proto}://${host}`
+}
+
+function buildRenewalAuthorizationRequest(input: {
+  credentialId: string
+  credentialType: string
+  rawVc: string
+  responseUri: string
+  nonce: string
+}): string {
+  const typeValue = mapCredentialTypeToDcqlTypeValue(input.credentialType)
+  const format = input.rawVc.includes('~') ? 'dc+sd-jwt' : 'jwt_vc_json'
+  const params = new URLSearchParams({
+    response_type: 'vp_token',
+    client_id: `redirect_uri:${input.responseUri}`,
+    response_mode: 'direct_post',
+    response_uri: input.responseUri,
+    nonce: input.nonce,
+    state: input.credentialId,
+    dcql_query: JSON.stringify({
+      credentials: [
+        {
+          id: 'renewal_old_vc',
+          format,
+          meta: { type_values: [typeValue] },
+        },
+      ],
+    }),
+  })
+  return `openid4vp://authorize?${params.toString()}`
+}
+
+function mapCredentialTypeToDcqlTypeValue(credentialType: string): string {
+  switch (credentialType) {
+    case 'ThaiNationalID':
+      return 'IDCardCredential'
+    case 'DLTDrivingLicence':
+      return 'DrivingLicence'
+    case 'BangkokUniversityTranscript':
+    case 'UniversityTranscript':
+      return 'Transcript'
+    default:
+      return credentialType
+  }
+}
+
+function isDevAcceptableRenewalVpToken(vpToken: string, oldHolderDid: string): boolean {
+  if (vpToken.trim().length < 10) return false
+
+  // Dev stub: accept JWT VP or SD-JWT+KB shapes. Prefer oldHolderDid presence when payload is readable.
+  try {
+    if (vpToken.includes('~')) {
+      return vpToken.split('~').length >= 2
+    }
+
+    if (vpToken.trim().startsWith('{')) {
+      const parsed = JSON.parse(vpToken) as Record<string, unknown>
+      const values = Object.values(parsed)
+      return values.some((value) => typeof value === 'string' || Array.isArray(value))
+    }
+
+    const parts = vpToken.split('.')
+    if (parts.length === 3 && parts[1]) {
+      const payloadJson = Buffer.from(
+        parts[1].replace(/-/g, '+').replace(/_/g, '/'),
+        'base64',
+      ).toString('utf8')
+      if (payloadJson.includes(oldHolderDid)) return true
+      // Compact JWT VP without embedded DID string still accepted in local stub after shape check.
+      return true
+    }
+  } catch {
+    return false
+  }
+
+  return false
+}
