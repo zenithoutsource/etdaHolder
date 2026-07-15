@@ -68,6 +68,13 @@ Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCH
 - Local scheduled notification permission/tap routing now initializes even when `EXPO_PUBLIC_SKIP_PUSH_REGISTRATION=true`; the flag skips only Expo push-token/backend registration, not local OS notification setup.
 - Added focused regression coverage proving repeated scheduling for an unchanged credential creates one `document-expiring-soon` and one `document-expired` notification, proving stale markers are rebuilt when native alarms are missing, proving alarm-cap recovery clears stale state before retrying, and proving dev push-registration skip still requests local notification permission.
 
+### Session 2026-07-13 (P2 canvas + OID4VP handler status sync)
+
+- P2 sequence canvas: Wallet steps 4, 6, 7 updated from Missing → Done (handler shipped 2026-07-10). Step 5 note clarified (consent + single sign-time gate on OID4VP path).
+- Spec `docs/superpowers/specs/2026-07-10-p2-issuer-oid4vp-pid-auth-design.md`: status → Handler shipped · E2E pending Issuer step 3; added E2E checklist for `192.100.10.46`.
+- `.env.development.local.example`: issuer OID4VP vars documented with `192.100.10.46` example.
+- No new Wallet code — gap was documentation/canvas drift only.
+
 ### Session 2026-07-10 (P2 Issuer did:web verify on receive)
 
 - On OID4VCI credential finalize, when VC `iss` is `did:web:…`, Wallet resolves the Issuer DID document (`resolveDidWebVerificationJwk`) and verifies the Issuer JWT EdDSA signature (`assertIssuerDidWebCredentialSignature`).
@@ -303,8 +310,8 @@ Release-blocking scope: Important UI-correctness, security, and robustness items
 [x] `useStoredCredentials.refresh()` (`src/hooks/useStoredCredentials.ts:35-40`) silently catches `StorageNotInitialized` into an empty list with no error — reproduces the cold-launch bug pattern fixed this session if init ordering ever regresses. Release fix exposes `status: 'storage-not-ready'` plus a visible "Wallet storage is not ready." error; an empty list with `status: 'ready'` means storage is ready and no credentials exist.
 [x] Local backend auth hardening for development release confidence, not production Wallet Backend readiness: no rate limiting on `/wallet-api/auth/login|register` (`server/src/testApp.ts`); `JWT_SECRET` default-secret check only enforced when `NODE_ENV === 'production'` and fails open otherwise (`server/src/config.ts:42-48`); `requireAuth` (`server/src/auth.ts:109`) catches DB and token errors together into a bare 401 with no logging, masking infra failures as auth failures. `server/` remains a development-only Local Wallet Backend for XAMPP testing.
 [x] Backend cert pinning (`src/sdk/walletApiCertPinning.ts:87`) is opt-in via `EXPO_PUBLIC_WALLET_API_PINNED_CERTS` with no startup assertion blocking release-like builds that ship with empty pins or plain HTTP — hard-block check added alongside `assertDeviceIntegrity`/`assertHardwareSecureEnvironmentSupported`. Development may allow LAN HTTP and empty pins; every non-development native runtime now fails startup when the Wallet Backend base URL is plain HTTP or HTTPS pins are empty.
-[ ] Advisory: dedupe claim-reading helpers/alias lists (`stringifyClaim`, `HIDDEN_CLAIM_KEYS`, `readClaimValue`, type→title/image maps) duplicated across `app/(tabs)/index.tsx`, `app/(tabs)/credential/[id].tsx`, `app/(tabs)/scan.tsx`, `src/services/vci/qrIssuanceFlow.ts` instead of being driven from `cardSchemas.ts` per the config-driven UI rule.
-[ ] Advisory: add error logging to swallowed catches with no signal — `authService.ts` (`loadSession` JSON.parse, `readCredentialIds` JSON.parse, `logout` best-effort server call), and bare `catch { res.status(500)... }` in `server/src/routes/{auth,credentials,wallets}.ts` and `auth.ts:132` logout — all discard the original error/stack with zero log trail.
+[x] Advisory: dedupe claim-reading helpers — shared `src/services/credentials/claimFormatting.ts` (`stringifyClaim`, `HIDDEN_CLAIM_KEYS`, `readClaimText`); wired into `credentialDisplay.ts`, `qrIssuanceFlow.ts`, `presentationService.ts`, `dcqlCredentialMatch.ts`. Screen-level alias maps in `app/(tabs)/*` were already absent; type→title maps remain in `cardSchemas.ts` via `getCardSchema()`.
+[x] Advisory: route error logging — `authService.ts` already uses `logWalletError`; `server/src/routes/{auth,credentials,wallets}.ts` now log via `logRouteError` before 500 responses. Dev routes unchanged.
 [ ] Advisory: local-backend auth oracle cleanup still open only for registration email enumeration — registration returns distinct 409 vs 400 (`server/src/routes/auth.ts:82`). Login now runs dummy bcrypt comparison for unknown users, CORS is restricted to configured development origins, and JWT verification pins `algorithms: ['HS256']`.
 
 ## OID4VP 1.0 Online Presentation
@@ -338,11 +345,11 @@ Remaining:
 
 [x] Signed Request Object (JAR) signature verification — `authorizationRequestJar.ts` verifies `typ: oauth-authz-req+jwt`; `decentralized_identifier` requires EdDSA signature (pinned JWK or `did:web` document fetch); `redirect_uri` stays unsigned per OID4VP §5.9.3.
 [x] `client_id_scheme` enforcement — `clientIdScheme.ts` + scheme-aware `findTrustedVerifier()` for `redirect_uri`, `decentralized_identifier`, and legacy pre-registered `did:web` allowlist entries.
-[ ] Replace development `redirect_uri:` Verifier with registered production `did:web` Verifier entries — spec: `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md` (gate dev `redirect_uri` to `__DEV__`; require `EXPO_PUBLIC_VERIFIER_DID_WEB_*` in production; DID fetch timeout/size).
+[ ] Replace development `redirect_uri:` Verifier with registered production `did:web` Verifier entries — spec: `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md` (gate dev `redirect_uri` to `__DEV__`; require `EXPO_PUBLIC_VERIFIER_DID_WEB_*` in production; DID fetch timeout/size). **Env checklist:** `docs/GETTING_STARTED.md` § Production Verifier OID4VP checklist + `.env.example`; E2E pending customer Verifier host.
 [x] `presentation_definition_uri` fetch support — `presentationDefinitionResolver.ts`; fetch after trust gate; AbortController timeout + max-bytes cap; PE/DCQL mutually exclusive in v1; P5 birth-date scope unchanged.
 [x] DCQL `credential_sets` grouping — `dcqlCredentialSetResolver.ts` + `dcqlCredentialMatch.ts`; single-credential OR v1; first satisfiable option; unified DCQL claim validation; exact dual-format short-circuit unchanged.
 [ ] Add broader claim sets only after trust and disclosure semantics are documented
-[ ] Add MSW Verifier handler group or integration harness for direct_post tests
+[x] Add MSW Verifier handler group or integration harness for direct_post tests — `src/__tests__/setup/handlers/verifier.ts`, `src/__tests__/setup/mswServer.ts`, opt-in `presentationService MSW harness` describe block.
 [ ] Decide whether to add a full ADR before expanding beyond the P5 age-over-20 slice
 
 ## User Journey Gap Backlog (2026-07-06 audit vs docs/User_Journey)
@@ -363,7 +370,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 [ ] Trust Registry integration: wallet-side Issuer accreditation check on credential receive (P2 journey step 21) and Verifier trust check before presenting (P4 steps 6–7). Blocked: no Trust Registry service/API exists. Note: Issuer `did:web` document resolve + EdDSA signature verify on receive is implemented (`issuerDidWebVerify.ts`) when VC `iss` is `did:web:` — that is crypto verify, not Trust Registry accreditation.
 [ ] DID Resolver integration: resolve Verifier public key (P4 steps 4–5) and Issuer public key for wallet-side verification. Partially overlaps the open JAR signature-verification item above; production resolution mechanism blocked on ecosystem DID method decision.
 [ ] VC Status Registry checking: wallet-side credential status refresh (suspended/revoked/used) from a central registry instead of dev polling endpoints. Blocked: no registry exists; current P6 Case 2 dev polling is the stand-in.
-[ ] P2 identity verification via real PID VC presentation to Issuer (journey steps 5–10): wallet presents stored PID VC, Issuer verifies against Trust Registry + VC Status Registry before sending the offer. Currently simulated by the ThaID interstitial. Blocked: requires Issuer-side support; document as accepted deviation if the customer Issuer never requests PID presentation.
+[ ] P2 identity verification via real PID VC presentation to Issuer (journey steps 3–10): **Wallet handler shipped** (Scan OID4VP path + `EXPO_PUBLIC_ISSUER_OID4VP_*` trust env; spec `2026-07-10-p2-issuer-oid4vp-pid-auth-design.md`). E2E blocked until customer Issuer sends live `openid4vp` Authorization Request and `response_uri`. P1 ThaID interstitial remains until Issuer drives real OID4VP. Issuer-side Trust Registry + VC Status Registry checks (steps 8–17) remain peer-owned.
 
 ## Definition of Done Per Session
 
@@ -374,6 +381,20 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 5. Session notes below are updated.
 
 ## Active Session Notes and Blockers
+
+### Session 2026-07-14 (Wave 1 claims/errors/msw/verifier docs)
+
+- Added `src/services/credentials/claimFormatting.ts` and wired consumers (`credentialDisplay`, `qrIssuanceFlow`, `presentationService`, `dcqlCredentialMatch`).
+- Extended `scanFriendlyErrors.ts` with Issuer OID4VP error mappings; `presentationService.ts` throws `:issuer` / `:issuer-pid` suffixes via `isIssuerOid4VpClientId` / `isIssuerOid4VpResponseUri` in `trustedVerifiers.ts`.
+- MSW harness: `src/__tests__/setup/handlers/verifier.ts`, `mswServer.ts`, one opt-in test in `presentationService.test.ts`.
+- Production Verifier env checklist in `docs/GETTING_STARTED.md` and `.env.example`.
+- P2 step 18 (partial): Scan OID4VP Issuer PID errors surfaced; Issuer notify channel still peer-owned.
+
+### Session 2026-07-14 (Phase 4 screen capture + route logging)
+
+- Restored `useScreenCaptureGuard` on Home, Credential Detail, Scan, History; tester override `EXPO_PUBLIC_DISABLE_SCREEN_CAPTURE_GUARD=true`.
+- Added `server/src/logging/routeError.ts` and wired auth/credentials/wallets catch blocks.
+- Plan: `docs/superpowers/plans/2026-07-14-phase4-screen-capture-and-route-logging.md`.
 
 ### Session 2026-06-02
 

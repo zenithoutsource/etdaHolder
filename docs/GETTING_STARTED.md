@@ -100,6 +100,16 @@ If the app cannot reach the backend, re-run `yarn setup` and confirm `EXPO_PUBLI
 - **Full backend docs:** `server/README.md`
 - **Architecture:** `docs/ARCHITECTURE.md`
 
+## Production Verifier OID4VP checklist
+
+Use this before a release build that must present to a customer Verifier over OID4VP (not the dev `redirect_uri` Verifier API).
+
+1. Set `EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN`, `EXPO_PUBLIC_VERIFIER_DID_WEB_NAME`, and `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK` to match the production Verifier `client_id` and `response_uri` origin. See `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md`.
+2. Unset `EXPO_PUBLIC_VERIFIER_API_BASE_URL` for release builds — that variable only enables the dev-only `redirect_uri` trust entry in `__DEV__` builds.
+3. Scan a signed JAR Authorization Request QR from the production Verifier; confirm trust resolution and `direct_post` submission succeed on a physical device.
+
+E2E validation still requires a live customer Verifier host — env configuration alone is not sufficient.
+
 ## Verification commands
 
 ```powershell

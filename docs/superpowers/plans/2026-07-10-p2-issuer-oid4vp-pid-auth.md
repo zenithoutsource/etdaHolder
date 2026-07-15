@@ -4,18 +4,21 @@ overview: "Enable the Wallet to handle an Issuer OID4VP Authorization Request (P
 todos:
   - id: spec
     content: Write P2 Issuer OID4VP PID auth design spec under docs/superpowers/specs/
-    status: pending
+    status: completed
   - id: trust-env
     content: Add Issuer OID4VP allowlist env + merge into trusted presentation parties
-    status: pending
+    status: completed
   - id: scan-gaps
     content: Close any Scan/OID4VP gaps for Issuer PID DCQL + errors (minimal)
-    status: pending
+    status: completed
   - id: tests
     content: "Unit tests: allowlist + resolve/submit with fetch mock (no Issuer server)"
-    status: pending
+    status: completed
   - id: tasks-docs
     content: "Update docs/TASKS.md: handler ready, E2E blocked on real Issuer API"
+    status: completed
+  - id: e2e-issuer
+    content: "E2E: live Issuer openid4vp + response_uri on 192.100.10.46 (customer team)"
     status: pending
 ---
 

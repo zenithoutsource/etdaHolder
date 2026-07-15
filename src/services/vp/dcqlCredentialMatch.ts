@@ -1,4 +1,5 @@
 import { getCardSchema } from '../../config/cardSchemas'
+import { readClaimText } from '../credentials/claimFormatting'
 import { decodeJwtPayload, isRecord, readString } from '@/src/utils/jwtUtils'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { isExactDualFormatPair } from './dualFormatPresentationMatch'
@@ -107,7 +108,7 @@ export function findUnsatisfiedDcqlClaimKeys(
     const matchedKey = normalizedClaimKeys.get(normalizedRequestedKey)
     if (!matchedKey) return false
 
-    const value = readClaimValueAsString(record.claims[matchedKey])
+    const value = readClaimText(record.claims, [matchedKey])
     if (value === undefined) return false
 
     const field = schema.displayFields.find(
@@ -231,12 +232,6 @@ function isCompactJwtVc(rawVc: string): boolean {
 
 function isCompactSdJwt(rawVc: string): boolean {
   return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
-}
-
-function readClaimValueAsString(value: unknown): string | undefined {
-  if (typeof value === 'string') return value.length > 0 ? value : undefined
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return undefined
 }
 
 function normalizeClaimKey(key: string): string {

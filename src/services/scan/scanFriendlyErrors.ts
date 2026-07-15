@@ -38,6 +38,12 @@ export function toFriendlyError(raw: string): string {
   if (raw.includes('WalletKeySigningCancelled')) return 'Biometric authentication was cancelled. Try again when you are ready to continue.'
   if (raw.includes('PresentationBiometricCancelled')) return 'Biometric authentication was cancelled. Try again when you are ready to continue.'
   if (raw.includes('PresentationBiometricFailed')) return 'Biometric authentication failed. Please try again.'
+  if (raw.includes('PresentationSubmissionFailed:issuer')) {
+    const detail = raw.replace(/^PresentationSubmissionFailed:issuer:\s*/, '')
+    return detail
+      ? `The Issuer rejected the PID presentation. ${detail}`
+      : 'The Issuer rejected the PID presentation. Try again or contact the Issuer.'
+  }
   if (raw.includes('PresentationSubmissionFailed')) {
     const detail = raw.replace(/^PresentationSubmissionFailed:\s*/, '')
     return detail ? `The Verifier rejected the presentation response. ${detail}` : 'The Verifier rejected the presentation response.'

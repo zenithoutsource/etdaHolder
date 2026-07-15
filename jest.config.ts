@@ -12,6 +12,8 @@ const config: Config = {
     '^react-native-mmkv$': '<rootDir>/src/__mocks__/react-native-mmkv.ts',
     '^react-native-quick-crypto$': '<rootDir>/src/__mocks__/react-native-quick-crypto.ts',
     '^react-native-keychain$': '<rootDir>/src/__mocks__/react-native-keychain.ts',
+    '^msw$': '<rootDir>/node_modules/msw/lib/core/index.js',
+    '^msw/node$': '<rootDir>/node_modules/msw/lib/node/index.js',
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
@@ -30,7 +32,7 @@ const config: Config = {
     },
   },
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|sentry-expo|native-base|@sphereon/.*|@craftzdog/.*|@noble/.*|uuid)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|sentry-expo|native-base|@sphereon/.*|@craftzdog/.*|@noble/.*|uuid|msw|@mswjs|rettime|until-async|strict-event-emitter|outvariant|headers-polyfill)',
   ],
 }
 

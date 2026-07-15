@@ -106,6 +106,45 @@ export function readTrustedVerifierBuildPolicy(
   }
 }
 
+export function isIssuerOid4VpClientId(clientId: string, env: Env = process.env): boolean {
+  const issuer = readIssuerOid4VpTrustFromEnv(env)
+  if (!issuer) return false
+  return clientIdsEquivalent(clientId, issuer.clientId)
+}
+
+export function isIssuerOid4VpResponseUri(responseUri: string, env: Env = process.env): boolean {
+  const issuer = readIssuerOid4VpTrustFromEnv(env)
+  if (!issuer) return false
+
+  const origin = readResponseOrigin(responseUri)
+  return Boolean(origin && issuer.allowedOrigins.includes(origin))
+}
+
+function readIssuerOid4VpTrustFromEnv(env: Env): TrustedVerifier | undefined {
+  return buildDidWebTrustedPartyFromEnv({
+    env,
+    clientIdKey: 'EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID',
+    responseOriginKey: 'EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_RESPONSE_ORIGIN',
+    nameKey: 'EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_NAME',
+    fallbackName: 'Trusted Issuer',
+    jwkKey: 'EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_JWK',
+  })
+}
+
+function clientIdsEquivalent(left: string, right: string): boolean {
+  const parsedLeft = parseClientId(left)
+  const parsedRight = parseClientId(right)
+  return parsedLeft.scheme === parsedRight.scheme && parsedLeft.originalClientId === parsedRight.originalClientId
+}
+
+function readResponseOrigin(responseUri: string): string | undefined {
+  try {
+    return new URL(responseUri).origin
+  } catch {
+    return undefined
+  }
+}
+
 export const TRUSTED_VERIFIERS: TrustedVerifier[] = buildTrustedVerifiersFromEnv()
 
 function normalizeBaseUrl(value: string | undefined): string | undefined {

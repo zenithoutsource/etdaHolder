@@ -7,6 +7,8 @@ import {
   submitPresentationResponse,
 } from './presentationService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { execFileSync } from 'node:child_process'
+import path from 'node:path'
 
 function unsignedJwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) =>
@@ -1234,5 +1236,52 @@ describe('presentationService', () => {
     await expect(
       submitPresentationResponse(request, { vpToken: 'vp.jwt', fetchImpl: fetchMock as unknown as typeof fetch }),
     ).rejects.toThrow('PresentationSubmissionFailed: HTTP 400: invalid_request - Present VP is invalid')
+  })
+})
+
+describe('presentationService MSW harness', () => {
+  test('MSW verifier handler accepts issuer direct_post (node smoke)', () => {
+    const smokeScript = path.join(__dirname, '../../__tests__/setup/mswHarnessSmoke.cjs')
+    const output = execFileSync(process.execPath, [smokeScript], { encoding: 'utf8' })
+    expect(output.trim()).toBe('accepted')
+  })
+
+  test('submits issuer PID VP through issuer direct_post contract', async () => {
+    const request = await resolvePresentationRequest(issuerPidRequestUri(), [thaiIdRecord], {
+      trustedVerifiers: [
+        {
+          clientId: 'decentralized_identifier:did:web:issuer.example.com',
+          name: 'PID Issuer',
+          allowedOrigins: ['https://issuer.example.com'],
+        },
+      ],
+    })
+
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url === 'https://issuer.example.com/oid4vp/direct-post' && init?.method?.toUpperCase() === 'POST') {
+        const body = String(init.body ?? '')
+        if (!body.includes('vp_token')) {
+          return new Response(JSON.stringify({ error: 'invalid_request' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        return new Response(JSON.stringify({ status: 'accepted' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      throw new Error(`Unhandled fetch in MSW harness integration test: ${url}`)
+    }
+
+    const result = await submitPresentationResponse(request, {
+      vpToken: 'issuer.vp.jwt',
+      fetchImpl,
+    })
+
+    expect(request.verifier.name).toBe('PID Issuer')
+    expect(request.matchedCredential.id).toBe('thai-id-1')
+    expect(result).toEqual({ status: 'accepted' })
   })
 })

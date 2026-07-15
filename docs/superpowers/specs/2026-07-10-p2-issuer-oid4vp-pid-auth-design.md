@@ -1,6 +1,17 @@
 # P2 Issuer OID4VP PID Auth Design
 
-Status: Approved for handler-only implementation
+Status: **Handler shipped** (2026-07-10) · **E2E pending** live Issuer API (step 3 peer)
+
+## Implementation status
+
+| Wallet step | Diagram | Status | Notes |
+|-------------|---------|--------|-------|
+| 4 | Prompt PID consent | Shipped | Scan OID4VP consent UI |
+| 6 | Generate VP | Shipped | `createApprovedPresentationResponse()` |
+| 7 | Submit VP | Shipped | `submitPresentationResponse()` → Issuer `response_uri` |
+| 3 | Issuer sends OID4VP | Peer | Wallet cannot invent; E2E blocked here |
+
+Wallet steps 4–7 are **not** wired inside the credential-offer claim screen by design. Intake is `openid4vp` QR/deeplink → Scan tab (same path as Verifier OID4VP).
 
 ## Goal
 
@@ -71,12 +82,19 @@ A signed VP or SD-JWT+KB response uses the Keychain Ed25519 sign-time gate. The 
 - Replacing the P1 ThaID simulation
 - Per-credential `did:key`
 
-## Manual Validation
+## Manual Validation (E2E — when Issuer API is live)
 
-When the real Issuer API is available:
+Prerequisites: Issuer at `http://192.100.10.46` (or production host) sends a real `openid4vp://` Authorization Request with PID DCQL and a working `response_uri`.
 
-1. Configure issuer OID4VP trust env to match the real `client_id`, `response_uri` origin, and pinned JWK if signed Request Objects are used.
-2. Launch a live request through QR or `adb shell am start ... openid4vp://authorize?...`.
-3. Approve consent and complete the sign-time biometric prompt.
-4. Confirm the Wallet POST reaches the Issuer `response_uri`.
-5. Claim the credential offer through the existing OID4VCI path when the Issuer sends it.
+1. Set issuer OID4VP trust env in `.env.development.local` (see `.env.development.local.example`):
+   - `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID` — must match Issuer `client_id` (with or without `decentralized_identifier:` prefix)
+   - `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_RESPONSE_ORIGIN` — origin of Issuer `response_uri`
+   - `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_NAME` (optional display label)
+   - `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_JWK` (optional; required if Issuer uses signed Request Objects / JAR)
+2. Holder must have stored PID VC (`ThaiNationalID`) before presenting.
+3. Launch request via Scan QR or `adb shell am start -a android.intent.action.VIEW -d "openid4vp://authorize?..."`.
+4. Approve consent; complete the single sign-time Keychain biometric gate (no second prompt).
+5. Confirm Wallet POST reaches Issuer `response_uri` (check Issuer logs or network trace).
+6. When Issuer sends the credential offer separately, claim through existing OID4VCI path (`resolveOffer` → claim).
+
+**Blocked until step 1 prerequisites are met by the customer Issuer team.** No Wallet mock server is provided for this slice.

@@ -1,4 +1,6 @@
 import { readCredentialHolderProfile } from '../credentials/credentialDisplay'
+import { readClaimText } from '../credentials/claimFormatting'
+import { isIssuerOid4VpClientId, isIssuerOid4VpResponseUri } from '../../config/trustedVerifiers'
 import { getCardSchema } from '../../config/cardSchemas'
 import {
   isSdJwtKbDisabledForTesting,
@@ -179,6 +181,9 @@ export async function resolvePresentationRequest(
 
   const verifier = findTrustedVerifier(clientId, responseUri, options.trustedVerifiers)
   if (!verifier) {
+    if (isIssuerOid4VpClientId(clientId)) {
+      throw new Error('IssuerOid4VpUntrusted: client_id and response_uri origin must be allowlisted')
+    }
     throw new Error('VerifierUntrusted: did:web client_id and response_uri origin must be allowlisted')
   }
 
@@ -211,6 +216,7 @@ export async function resolvePresentationRequest(
   }
 
   const requestedTypes = effectiveDcqlQuery ? readRequestedCredentialTypes(effectiveDcqlQuery) : [THAI_ID_TYPE]
+  const issuerPidRequest = isIssuerOid4VpClientId(clientId) && requestedTypes.includes(THAI_ID_TYPE)
   const matchedCredential = credentials.find((record) => {
     if (presentationDefinition) {
       return (
@@ -306,12 +312,20 @@ export async function resolvePresentationRequest(
       if (metadataCompatibleCredentials.length === 0) {
         throw new Error(`PresentationCredentialMetadataMismatch: ${describeCredentialMetadataMismatch(effectiveDcqlQuery, formatCompatibleCredentials)}`)
       }
-      throw new Error(`PresentationCredentialMissing: requested credential is not available (${matchDiagnostics})`)
+      throw new Error(
+        issuerPidRequest
+          ? `PresentationCredentialMissing:issuer-pid: no ThaiNationalID (${matchDiagnostics})`
+          : `PresentationCredentialMissing: requested credential is not available (${matchDiagnostics})`,
+      )
     }
     if (candidateCredentials.length > 0) {
       throw new Error('PresentationCredentialFormatUnsupported: stored credential format does not match the Verifier request')
     }
-    throw new Error(`PresentationCredentialMissing: requested credential is not available (${matchDiagnostics})`)
+    throw new Error(
+      issuerPidRequest
+        ? `PresentationCredentialMissing:issuer-pid: no ThaiNationalID (${matchDiagnostics})`
+        : `PresentationCredentialMissing: requested credential is not available (${matchDiagnostics})`,
+    )
   }
 
   if (effectiveDcqlQuery && isDualFormatDcqlRequest(effectiveDcqlQuery)) {
@@ -451,7 +465,12 @@ export async function submitPresentationResponse(
       status: response.status,
       parsedBody,
     })
-    throw new Error(`PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`)
+    const isIssuerPost = isIssuerOid4VpResponseUri(request.responseUri) || isIssuerOid4VpClientId(request.clientId)
+    throw new Error(
+      isIssuerPost
+        ? `PresentationSubmissionFailed:issuer: HTTP ${response.status}${formatVerifierError(parsedBody)}`
+        : `PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`,
+    )
   }
 
   return {
@@ -786,7 +805,7 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
     const matchedKey = normalizedClaimKeys.get(normalizedRequestedKey)
     if (!matchedKey) continue
 
-    const value = readClaimValueAsString(record.claims[matchedKey])
+    const value = readClaimText(record.claims, [matchedKey])
     if (value === undefined) continue
 
     const field = schema.displayFields.find(
@@ -799,12 +818,6 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
   }
 
   return disclosures.length > 0 ? disclosures : undefined
-}
-
-function readClaimValueAsString(value: unknown): string | undefined {
-  if (typeof value === 'string') return value.length > 0 ? value : undefined
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return undefined
 }
 
 function describeCredentialMetadataMismatch(
