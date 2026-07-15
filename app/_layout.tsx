@@ -135,6 +135,13 @@ export default function RootLayout() {
       );
       logWalletStep('startup', 'native-modules-imported');
 
+      if (__DEV__) {
+        void import('@/src/services/crypto/walletKeyDeviceDiagnostics')
+          .then((m) => m.readWalletKeyDeviceDiagnostics())
+          .then((device) => logWalletStep('startup', 'device-key-capabilities', device))
+          .catch(() => undefined);
+      }
+
       const { default: JailMonkey } = await import('jail-monkey');
       assertDeviceIntegrity({ isJailBroken: JailMonkey.isJailBroken() });
       logWalletStep('startup', 'device-integrity-ok');
@@ -299,7 +306,10 @@ export default function RootLayout() {
     } catch (error) {
       if (!isCurrentRun()) return;
 
-      logWalletError('startup', 'prepare-wallet-failed', error);
+      const device = await import('@/src/services/crypto/walletKeyDeviceDiagnostics')
+        .then((m) => m.readWalletKeyDeviceDiagnostics())
+        .catch(() => undefined);
+      logWalletError('startup', 'prepare-wallet-failed', error, { device });
       setStartupState({
         status: 'error',
         message: toUserMessage(toErrorMessage(error)),

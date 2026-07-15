@@ -8,6 +8,7 @@ import { base64UrlDecodeToString, isSameJwk, isSameKid, readRecord, toErrorMessa
 
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getMetaStorage } from '../storage/storage'
+import { readWalletKeyDeviceDiagnostics } from './walletKeyDeviceDiagnostics'
 import { notifyWalletKeyRegistrationChanged } from './walletKeyExpiryWatch'
 
 hashes.sha512 = sha512
@@ -159,6 +160,23 @@ function getKeychainSetOptions(service: string): Keychain.SetOptions {
   }
 }
 
+/** Non-secret keychain policy summary for key-creation failure diagnostics. */
+function describeKeychainSetOptions(service: string): Record<string, unknown> {
+  const options = getKeychainSetOptions(service)
+  return {
+    accessControl: options.accessControl,
+    accessible: options.accessible,
+    securityLevel: options.securityLevel,
+    storage: options.storage,
+  }
+}
+
+function attachWalletKeyStep(error: unknown, step: string): void {
+  if (typeof error === 'object' && error !== null) {
+    ;(error as { walletKeyStep?: string }).walletKeyStep = step
+  }
+}
+
 function getKeychainGetOptions(service: string, promptTitle?: string): Keychain.GetOptions {
   if (isBiometricDisabledForTesting()) {
     return { service }
@@ -232,8 +250,11 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
 
   logWalletStep('crypto', 'wallet-key-init-start', { keyId: KEY_ID, alg: 'EdDSA', crv: 'Ed25519' })
 
+  let step = 'legacy-cleanup'
+  let existingKeyPresent: boolean | undefined
   try {
     await replaceLegacyWalletKeyIfNeeded()
+    step = 'stale-cache-reset'
     if (
       metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE) &&
       metaStorage.getString(KEY_SOURCE_STORAGE) !== KEY_SOURCE_KEYCHAIN_ED25519
@@ -243,22 +264,40 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
       metaStorage.remove(KEY_REGISTERED_AT_STORAGE)
     }
 
+    step = 'keychain-read'
     const existingSeed = await readStoredEd25519Seed(KEYCHAIN_SERVICE)
+    existingKeyPresent = Boolean(existingSeed)
     if (existingSeed) {
+      step = 'public-key-derive-existing'
       const existingPublicKey = readPublicKeyFromSeed(existingSeed)
+      step = 'cache-write'
       cacheWalletPublicKey(existingPublicKey)
       logWalletStep('crypto', 'wallet-key-keychain-existing', { keyId: KEY_ID, publicKeyBytes: existingPublicKey.length })
       return
     }
 
+    step = 'seed-generate'
     const seed = randomBytes(32)
     assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+    step = 'keychain-write'
     await writeEd25519Seed(seed, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+    step = 'public-key-derive'
     const publicKey = readPublicKeyFromSeed(seed)
+    step = 'cache-write'
     cacheWalletPublicKey(publicKey, new Date().toISOString())
     logWalletStep('crypto', 'wallet-key-generated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
   } catch (error) {
-    logWalletError('crypto', 'wallet-key-init-failed', error, { keyId: KEY_ID, alg: 'EdDSA', crv: 'Ed25519' })
+    attachWalletKeyStep(error, step)
+    logWalletError('crypto', 'wallet-key-init-failed', error, {
+      keyId: KEY_ID,
+      alg: 'EdDSA',
+      crv: 'Ed25519',
+      step,
+      existingKeyPresent,
+      biometricDisabledForTesting: isBiometricDisabledForTesting(),
+      keychainOptions: describeKeychainSetOptions(KEYCHAIN_SERVICE),
+      device: await readWalletKeyDeviceDiagnostics(),
+    })
     throw error
   }
 }
@@ -269,23 +308,46 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
  * the biometric gate for this action.
  */
 export async function forceRotateWalletKey(now = new Date()): Promise<void> {
-  const previousSeed = await readStoredEd25519Seed(KEYCHAIN_SERVICE, 'Rotate Wallet Key')
-  if (previousSeed) {
-    await writeEd25519Seed(previousSeed, PREVIOUS_KEYCHAIN_SERVICE, PREVIOUS_KEYCHAIN_USERNAME)
-    const previousPublicKey = readPublicKeyFromSeed(previousSeed)
-    metaStorage.set(PREVIOUS_ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(previousPublicKey))
-    logWalletStep('crypto', 'wallet-key-previous-retained', {
-      keyId: KEY_ID,
-      publicKeyBytes: previousPublicKey.length,
-    })
-  }
+  let step = 'previous-seed-read'
+  let previousKeyRetained = false
+  try {
+    const previousSeed = await readStoredEd25519Seed(KEYCHAIN_SERVICE, 'Rotate Wallet Key')
+    if (previousSeed) {
+      step = 'previous-seed-retain'
+      await writeEd25519Seed(previousSeed, PREVIOUS_KEYCHAIN_SERVICE, PREVIOUS_KEYCHAIN_USERNAME)
+      const previousPublicKey = readPublicKeyFromSeed(previousSeed)
+      metaStorage.set(PREVIOUS_ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(previousPublicKey))
+      previousKeyRetained = true
+      logWalletStep('crypto', 'wallet-key-previous-retained', {
+        keyId: KEY_ID,
+        publicKeyBytes: previousPublicKey.length,
+      })
+    }
 
-  const seed = randomBytes(32)
-  assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
-  await writeEd25519Seed(seed, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
-  const publicKey = readPublicKeyFromSeed(seed)
-  cacheWalletPublicKey(publicKey, now.toISOString())
-  logWalletStep('crypto', 'wallet-key-rotated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
+    step = 'seed-generate'
+    const seed = randomBytes(32)
+    assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+    step = 'keychain-write'
+    await writeEd25519Seed(seed, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+    step = 'public-key-derive'
+    const publicKey = readPublicKeyFromSeed(seed)
+    step = 'cache-write'
+    cacheWalletPublicKey(publicKey, now.toISOString())
+    logWalletStep('crypto', 'wallet-key-rotated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
+  } catch (error) {
+    attachWalletKeyStep(error, step)
+    logWalletError('crypto', 'wallet-key-rotate-failed', error, {
+      keyId: KEY_ID,
+      alg: 'EdDSA',
+      crv: 'Ed25519',
+      step,
+      previousKeyRetained,
+      biometricDisabledForTesting: isBiometricDisabledForTesting(),
+      keychainOptions: describeKeychainSetOptions(KEYCHAIN_SERVICE),
+      device: await readWalletKeyDeviceDiagnostics(),
+    })
+    throw error
+  }
 }
 
 export function hasWalletKey(): boolean {

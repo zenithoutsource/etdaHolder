@@ -53,6 +53,10 @@ const resetGenericPassword = jest.fn(async (options?: KeychainOptions): Promise<
   return true
 })
 
+const getSupportedBiometryType = jest.fn(async (): Promise<string | null> => null)
+
+const getSecurityLevel = jest.fn(async (): Promise<string | null> => SECURITY_LEVEL.SECURE_HARDWARE)
+
 export function __resetStore(): void {
   _store = {}
 }
@@ -64,6 +68,8 @@ export {
   SECURITY_LEVEL,
   STORAGE_TYPE,
   getGenericPassword,
+  getSecurityLevel,
+  getSupportedBiometryType,
   resetGenericPassword,
   setGenericPassword,
 }
@@ -71,6 +77,8 @@ export {
 export default {
   setGenericPassword,
   getGenericPassword,
+  getSecurityLevel,
+  getSupportedBiometryType,
   resetGenericPassword,
   ACCESS_CONTROL,
   ACCESSIBLE,

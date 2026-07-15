@@ -359,6 +359,52 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(kbJwt.split('.').length).toBe(3)
   })
 
+  test('logs the failing step when the Keychain seed write fails during key init', async () => {
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValueOnce(false)
+    jest.mocked(Keychain.setGenericPassword).mockResolvedValueOnce(false)
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      await expect(generateWalletKeyIfNeeded()).rejects.toThrow('Ed25519SeedKeychainWriteFailed')
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[wallet:crypto] wallet-key-init-failed'),
+        expect.objectContaining({
+          step: 'keychain-write',
+          existingKeyPresent: false,
+          device: expect.objectContaining({
+            platform: expect.any(String),
+            softwareEd25519Supported: expect.any(Boolean),
+          }),
+        }),
+        expect.objectContaining({ message: 'Ed25519SeedKeychainWriteFailed' }),
+      )
+    } finally {
+      consoleErrorSpy.mockRestore()
+    }
+  })
+
+  test('logs the failing step when the Keychain read rejects during key init', async () => {
+    const nativeError = Object.assign(new Error('code: 1, msg: Fingerprint hardware not available'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(nativeError)
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      await expect(generateWalletKeyIfNeeded()).rejects.toThrow('Fingerprint hardware not available')
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[wallet:crypto] wallet-key-init-failed'),
+        expect.objectContaining({ step: 'keychain-read' }),
+        expect.objectContaining({ code: 'E_CRYPTO_FAILED' }),
+      )
+    } finally {
+      consoleErrorSpy.mockRestore()
+    }
+  })
+
   test('throws when the stored Keychain seed is not 32 bytes', async () => {
     jest.mocked(Keychain.getGenericPassword).mockResolvedValueOnce({
       username: 'wallet-ed25519-seed',
