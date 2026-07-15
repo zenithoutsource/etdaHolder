@@ -178,4 +178,16 @@ describe('authService', () => {
 
     await expect(loadSession()).resolves.toBeNull()
   })
+
+  test('treats an unreadable Keychain session as signed out and clears it', async () => {
+    const keychainError = Object.assign(new Error('Wrapped error: null'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'CryptoFailedException',
+    })
+    getGenericPasswordMock.mockRejectedValueOnce(keychainError)
+
+    await expect(loadSession()).resolves.toBeNull()
+
+    expect(resetGenericPasswordMock).toHaveBeenCalledWith({ service: 'etda.wallet.session' })
+  })
 })

@@ -7,12 +7,19 @@ import {
   readStoragePinMigrationPinState,
   readStoragePinUnlockFailureState,
   readStoragePinUnlockMode,
+  shouldOfferStoragePinRecovery,
   readStorageUnlockCancelledState,
   resolveStoragePinUnlockError,
   type RootStartupState,
 } from './startupState'
 
 describe('startup state transitions', () => {
+  test('offers PIN recovery when storage initialization fails and fallback exists', () => {
+    expect(shouldOfferStoragePinRecovery('StorageInitializationFailed: Wrapped error: null', true)).toBe(true)
+    expect(shouldOfferStoragePinRecovery('StorageInitializationFailed: Wrapped error: null', false)).toBe(false)
+    expect(shouldOfferStoragePinRecovery('StorageUnlockCancelled', true)).toBe(false)
+  })
+
   test('keeps the PIN screen mounted when retrying biometric from the startup PIN surface', () => {
     const currentState: RootStartupState = {
       status: 'storage-pin-required',

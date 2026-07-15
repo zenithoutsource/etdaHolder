@@ -231,7 +231,21 @@ export async function logout(): Promise<void> {
 
 export async function loadSession(): Promise<SessionData | null> {
   logWalletStep('sdk', 'session-load-start')
-  const credentials = await Keychain.getGenericPassword({ service: KEYCHAIN_SERVICE })
+  let credentials: Awaited<ReturnType<typeof Keychain.getGenericPassword>>
+  try {
+    credentials = await Keychain.getGenericPassword({ service: KEYCHAIN_SERVICE })
+  } catch (error) {
+    logWalletError('sdk', 'session-keychain-read-failed', error, { service: KEYCHAIN_SERVICE })
+    try {
+      await Keychain.resetGenericPassword({ service: KEYCHAIN_SERVICE })
+      logWalletStep('sdk', 'session-keychain-cleared-after-read-failure')
+    } catch (resetError) {
+      logWalletError('sdk', 'session-keychain-clear-after-read-failure-failed', resetError, {
+        service: KEYCHAIN_SERVICE,
+      })
+    }
+    return null
+  }
   if (!credentials) {
     logWalletStep('sdk', 'session-load-empty')
     return null

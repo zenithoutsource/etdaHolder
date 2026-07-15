@@ -30,6 +30,7 @@ import {
   readStoragePinUnlockFailureState,
   readStoragePinUnlockMode,
   readStorageUnlockCancelledState,
+  shouldOfferStoragePinRecovery,
   type RootStartupState,
 } from '@/src/services/startup/startupState';
 import { useAuthStore } from '@/src/store/authStore';
@@ -263,6 +264,22 @@ export default function RootLayout() {
               mode,
             );
           });
+          return;
+        }
+
+        if (
+          shouldOfferStoragePinRecovery(
+            toErrorMessage(storageError),
+            isStoragePinFallbackAvailable(),
+          )
+        ) {
+          logWalletStep('startup', 'storage-pin-recovery-offered');
+          setStartupState(
+            readStorageUnlockCancelledState(
+              true,
+              canVerifyStoragePinUnlock(),
+            ),
+          );
           return;
         }
 

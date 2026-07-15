@@ -74,6 +74,13 @@ export function resolveStoragePinUnlockError(errorMessage: string): string {
   return 'รหัส PIN ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'
 }
 
+export function shouldOfferStoragePinRecovery(
+  errorMessage: string,
+  fallbackAvailable: boolean,
+): boolean {
+  return fallbackAvailable && errorMessage.startsWith('StorageInitializationFailed:')
+}
+
 export function readStartupStorageUnlockCopy(
   fallbackAvailable: boolean,
   pinUnlockEnabled: boolean,
