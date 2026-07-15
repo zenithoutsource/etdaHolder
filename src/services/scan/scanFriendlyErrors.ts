@@ -17,8 +17,16 @@ export function toFriendlyError(raw: string): string {
   }
   if (raw.includes('PresentationCredentialHolderBindingMissing')) return 'This credential is not holder-bound, but the Verifier requires SD-JWT key binding. Reissue the credential with wallet holder binding or ask the Verifier to set require_cryptographic_holder_binding to false.'
   if (raw.includes('PresentationCredentialHolderBindingMismatch')) return 'This credential is holder-bound to a different Wallet Signing Key. Reissue it on this device before presenting.'
+  if (raw.includes('CredentialRenewalPreviousKeyUnavailable')) return 'This document is bound to a wallet key that is no longer retained, so it cannot be renewed. Request a new document from the issuer.'
+  if (raw.includes('WalletKeyRotationBlockedPendingRenewals')) return 'Finish renewing your existing documents before creating a new wallet key.'
   if (raw.includes('PresentationCredentialFormatUnsupported')) return 'The stored credential format does not match this Verifier request. Reissue the credential in the requested format or update the Verifier request.'
   if (raw.includes('PresentationRequestUnsupported')) return 'This presentation request is not supported by this wallet.'
+  if (raw.includes('IssuerOid4VpUntrusted')) {
+    return 'This Issuer is not trusted for PID presentation. Configure EXPO_PUBLIC_ISSUER_OID4VP_* env to match the live Issuer.'
+  }
+  if (raw.includes('PresentationCredentialMissing:issuer-pid')) {
+    return 'Store Thai National ID (ThaID) before presenting to the Issuer.'
+  }
   if (raw.includes('PresentationCredentialMissing')) {
     const claimMatch = raw.match(/missing claims:\s*([^;\]]+)/)
     if (claimMatch) {

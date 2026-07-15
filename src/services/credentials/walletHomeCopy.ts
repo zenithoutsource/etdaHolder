@@ -11,6 +11,12 @@ export const WALLET_HOME_COPY = {
   walletKeyExpiredTitle: '!! กุญแจหมดอายุ !!',
   walletKeyExpiredMessage: 'กุญแจ Wallet หมดอายุแล้ว กรุณาสร้างกุญแจใหม่เพื่อต่ออายุเอกสารทั้งหมด',
   createNewWalletKey: 'สร้างกุญแจใหม่',
+  walletKeyRotationBlockedTitle: 'ยังสร้างกุญแจใหม่ไม่ได้',
+  walletKeyRotationBlockedMessage:
+    'กรุณาต่ออายุเอกสารที่ค้างอยู่ให้เสร็จก่อน จึงจะสร้างกุญแจใหม่ได้',
+  renewalKeyUnavailableTitle: 'ไม่สามารถต่ออายุเอกสารนี้ได้',
+  renewalKeyUnavailableMessage:
+    'กุญแจที่ผูกกับเอกสารนี้ถูกแทนที่ไปแล้ว ไม่สามารถต่ออายุได้ กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
   renewalRevokedTitle: 'ถูกเพิกถอนแล้ว',
   renewalRevokedMessage: 'เอกสารเดิมถูกเพิกถอนแล้ว เอกสารใหม่พร้อมใช้งาน',
   renewalDeleteTitle: '!! ดำเนินการลบเอกสาร !!',

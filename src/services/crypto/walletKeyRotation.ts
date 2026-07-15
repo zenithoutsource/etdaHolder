@@ -63,6 +63,18 @@ export async function rotateWalletKey(now = new Date()): Promise<{
   holderDid: string
   affectedCredentialIds: string[]
 }> {
+  // Only one previous Ed25519 seed is retained (single previous Keychain slot).
+  // Rotating again while a prior rotation is still outstanding would overwrite
+  // that seed and strand every credential still bound to it (they could no
+  // longer produce the renewal OID4VP PoP). Enforce the spec §5.2 invariant:
+  // one rotation at a time. The record is cleared by clearWalletKeyRotationRecord()
+  // only after all per-credential renewal cleanup completes.
+  if (readWalletKeyRotationRecord()) {
+    throw new Error(
+      'WalletKeyRotationBlockedPendingRenewals: finish renewing your existing documents before creating a new key',
+    )
+  }
+
   const previousHolderDid = hasWalletKey() ? getHolderDid() : undefined
 
   // Keychain read inside forceRotateWalletKey is the single biometric gate for rotation.
