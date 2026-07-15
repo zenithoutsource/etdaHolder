@@ -4,6 +4,7 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2'
 
 import { requireAuth, type AuthenticatedRequest } from '../auth'
 import { pool } from '../db'
+import { logRouteError } from '../logging/routeError'
 
 type WalletOwnershipRow = RowDataPacket & {
   id: string
@@ -65,7 +66,8 @@ credentialsRouter.post('/:wallet/credentials/import', requireAuth, async (req: A
       pending: false,
       addedOn: new Date().toISOString(),
     })
-  } catch {
+  } catch (error) {
+    logRouteError('credentials', 'import-credential', error)
     res.status(500).json({ message: 'Internal Server Error' })
   }
 })

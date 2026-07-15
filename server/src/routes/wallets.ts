@@ -3,6 +3,7 @@ import type { RowDataPacket } from 'mysql2'
 
 import { requireAuth, type AuthenticatedRequest } from '../auth'
 import { pool } from '../db'
+import { logRouteError } from '../logging/routeError'
 
 type WalletRow = RowDataPacket & {
   id: string
@@ -45,7 +46,8 @@ walletsRouter.get('/accounts/wallets', requireAuth, async (req: AuthenticatedReq
         }
       }),
     })
-  } catch {
+  } catch (error) {
+    logRouteError('wallets', 'list-wallets', error)
     res.status(500).json({ message: 'Internal Server Error' })
   }
 })

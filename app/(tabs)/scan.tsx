@@ -15,6 +15,7 @@ import { ScanCaptureSurface } from '../../src/components/ScanCaptureSurface'
 import { WalletHeader } from '../../src/components/WalletHeader'
 import { TRUSTED_VERIFIERS } from '../../src/config/trustedVerifiers'
 import { getCardSchema } from '../../src/config/cardSchemas'
+import { useScreenCaptureGuard } from '../../src/hooks/useScreenCaptureGuard'
 import { useStoredCredentials } from '../../src/hooks/useStoredCredentials'
 import { filterPresentableCredentials } from '../../src/services/credentials/credentialLifecycle'
 import { submitRenewalRequest } from '../../src/services/credentials/credentialRenewalService'
@@ -85,6 +86,7 @@ function toNfcFriendlyError(error: unknown): string {
 }
 
 export default function ScanScreen() {
+  useScreenCaptureGuard()
   useStoredCredentials()
   const [permission, requestPermission] = useCameraPermissions()
   const [phase, setPhase] = useState<ScanPhase>({ tag: 'scanning' })

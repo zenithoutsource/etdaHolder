@@ -12,6 +12,7 @@ import { PinEntrySurface } from "../../../src/components/PinEntrySurface";
 import { PresentationApprovalDeviceCard } from "../../../src/components/PresentationApprovalDeviceCard";
 import { PresentationPopCard } from "../../../src/components/PresentationPopCard";
 import { WalletHeader } from "../../../src/components/WalletHeader";
+import { useScreenCaptureGuard } from "../../../src/hooks/useScreenCaptureGuard";
 import { getWalletKeyRegisteredAt } from "../../../src/services/crypto/crypto";
 import {
   readCredentialInactiveState,
@@ -80,6 +81,7 @@ type DetailPhase =
   | { tag: "approve"; action: CredentialLifecycleAction }
 
 export default function CredentialDetailScreen() {
+  useScreenCaptureGuard();
   const { id, notificationEvent } = useLocalSearchParams<{ id: string; notificationEvent?: string }>();
   const router = useRouter();
   const { showDialog } = useAppDialog();

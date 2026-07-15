@@ -14,6 +14,7 @@ import {
   verifyPassword,
 } from '../auth'
 import { pool, withTransaction } from '../db'
+import { logRouteError } from '../logging/routeError'
 import { sendPinResetOtp } from '../mail'
 import { createRateLimiter } from '../rateLimit'
 import { displayNameValidationMessage, normalizeDisplayName } from '../validation/displayName'
@@ -199,7 +200,8 @@ authRouter.post('/email-status', async (req, res) => {
       [email],
     )
     res.status(200).json({ exists: rows.length > 0 })
-  } catch {
+  } catch (error) {
+    logRouteError('auth', 'email-status', error)
     res.status(500).json({ message: 'Internal Server Error' })
   }
 })
@@ -325,7 +327,8 @@ authRouter.post('/login', async (req, res) => {
     await storeSession(pool, sessionId, user.id, token, sessionExpiryFromNow())
 
     res.status(200).json({ id: user.id, token })
-  } catch {
+  } catch (error) {
+    logRouteError('auth', 'login', error)
     res.status(500).json({ message: 'Internal Server Error' })
   }
 })
@@ -372,7 +375,8 @@ authRouter.post('/pin-reset/request', async (req, res) => {
 
     await sendPinResetOtp(email, otp)
     res.status(204).end()
-  } catch {
+  } catch (error) {
+    logRouteError('auth', 'pin-reset-request', error)
     res.status(500).json({ message: 'Internal Server Error' })
   }
 })
@@ -395,7 +399,8 @@ authRouter.post('/pin-reset/verify', async (req, res) => {
     }
 
     res.status(204).end()
-  } catch {
+  } catch (error) {
+    logRouteError('auth', 'pin-reset-verify', error)
     res.status(500).json({ message: 'Internal Server Error' })
   }
 })
@@ -448,7 +453,8 @@ authRouter.post('/pin-reset/confirm', async (req, res) => {
     })
 
     res.status(204).end()
-  } catch {
+  } catch (error) {
+    logRouteError('auth', 'pin-reset-confirm', error)
     res.status(500).json({ message: 'Internal Server Error' })
   }
 })
@@ -458,8 +464,8 @@ authRouter.post('/logout', async (req, res) => {
   if (token) {
     try {
       await revokeSession(token)
-    } catch {
-      // Logout is idempotent from the client perspective.
+    } catch (error) {
+      logRouteError('auth', 'logout-revoke-session', error)
     }
   }
   res.status(200).json({})

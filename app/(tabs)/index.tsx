@@ -15,6 +15,7 @@ import {
 } from "../../src/components/WalletCredentialSummaryCard";
 import { WalletDocumentMenuItem } from "../../src/components/WalletDocumentMenuItem";
 import { WalletHeader } from "../../src/components/WalletHeader";
+import { useScreenCaptureGuard } from "../../src/hooks/useScreenCaptureGuard";
 import { useStoredCredentials } from "../../src/hooks/useStoredCredentials";
 import {
   clearNewCredentialBadge,
@@ -163,6 +164,7 @@ function readCredentialBadge({
 }
 
 export default function WalletHomeScreen() {
+  useScreenCaptureGuard();
   const { credentials, error, refresh } = useStoredCredentials();
   const router = useRouter();
   const { showDialog } = useAppDialog();

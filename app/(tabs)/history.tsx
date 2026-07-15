@@ -8,6 +8,7 @@ import { HistoryEmptyState } from '../../src/components/HistoryEmptyState';
 import { HistoryFilterChips } from '../../src/components/HistoryFilterChips';
 import { HistoryItem } from '../../src/components/HistoryItem';
 import { WalletHeader } from '../../src/components/WalletHeader';
+import { useScreenCaptureGuard } from '../../src/hooks/useScreenCaptureGuard';
 import { useStoredCredentials } from '../../src/hooks/useStoredCredentials';
 import { requestPresentationAccessSuspension } from '../../src/services/history/requestPresentationAccessSuspension';
 import { readWalletHistoryEvent } from '../../src/services/history/walletEventLog';
@@ -15,6 +16,7 @@ import { readWalletHistoryRows } from '../../src/services/history/walletHistory'
 import type { WalletHistoryFilter } from '../../src/services/history/walletHistoryFilters';
 
 export default function HistoryLogScreen() {
+  useScreenCaptureGuard();
   const router = useRouter();
   const { showDialog } = useAppDialog();
   const { error } = useStoredCredentials();

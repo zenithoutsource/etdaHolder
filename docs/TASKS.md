@@ -286,7 +286,7 @@ Source: `docs/superpowers/specs/2026-06-29-push-notifications-design.md`.
 
 ## Phase 4: Security Hardening and Release
 
-[ ] Screen capture prevention (temporarily removed for tester builds)
+[x] Screen capture prevention: focus-scoped `useScreenCaptureGuard` on Wallet Home, Credential Detail, Scan, and History; My QR excluded; disable via `EXPO_PUBLIC_DISABLE_SCREEN_CAPTURE_GUARD=true`. Spec: `docs/superpowers/specs/2026-07-14-phase4-screen-capture-and-route-logging-design.md`.
 [x] Certificate pinning decision and implementation if required
 [x] Jailbreak/root detection
 [ ] Issuer signature validation after trust metadata is finalized: missing decision is the trusted issuer registry/trust-list source that maps issuer identifiers to verification material plus accepted credential formats and status rules. Do not hardcode issuer keys or trust issuer-hosted metadata as the sole root of trust.
