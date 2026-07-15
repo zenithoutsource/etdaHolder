@@ -59,4 +59,45 @@ describe('WalletDocumentMenuItem', () => {
     expect(onViewOldCredential).toHaveBeenCalledTimes(1)
     expect(onRenewalRequest).toHaveBeenCalledTimes(1)
   })
+
+  test('renders a ready renewal receive action that invokes its callback once', () => {
+    const onReceiveRenewal = jest.fn()
+
+    render(
+      <WalletDocumentMenuItem
+        label="ID Card"
+        icon={icon}
+        iconStyle={{ width: 40, height: 40 }}
+        hasCredential
+        isExpanded
+        requestLabel="Request"
+        onPress={jest.fn()}
+        inactivePanelMessage="Your replacement is ready"
+        showReceiveRenewalCta
+        receiveRenewalCtaLabel="Receive new document"
+        onReceiveRenewal={onReceiveRenewal}
+      />,
+    )
+
+    fireEvent.press(screen.getByText('Receive new document'))
+
+    expect(onReceiveRenewal).toHaveBeenCalledTimes(1)
+  })
+
+  test('does not render a receive action when renewal is not ready', () => {
+    render(
+      <WalletDocumentMenuItem
+        label="ID Card"
+        icon={icon}
+        iconStyle={{ width: 40, height: 40 }}
+        hasCredential
+        isExpanded
+        requestLabel="Request"
+        onPress={jest.fn()}
+        inactivePanelMessage="Renewal is processing"
+      />,
+    )
+
+    expect(screen.queryByText('Receive new document')).toBeNull()
+  })
 })

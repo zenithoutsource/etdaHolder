@@ -34,6 +34,7 @@ import {
 import {
   shouldNavigateInactiveCredentialToDetail,
   shouldShowInactivePortalRequestCta,
+  shouldShowReadyRenewalReceiveCta,
 } from "../../src/services/credentials/credentialHomeNavigation";
 import { isIssuerPortalCredentialType } from "../../src/config/issuerPortalUrls";
 import { openCredentialRequestPortal } from "../../src/services/credentials/openCredentialRequestPortal";
@@ -47,6 +48,7 @@ import {
   type CredentialRenewalRecord,
 } from "../../src/services/credentials/credentialKeyRenewal";
 import {
+  claimReadyRenewal,
   refreshCredentialRenewalStatuses,
   submitRenewalRequest,
 } from "../../src/services/credentials/credentialRenewalService";
@@ -177,6 +179,8 @@ export default function WalletHomeScreen() {
   const [renewalStatuses, setRenewalStatuses] = useState<
     Record<string, CredentialRenewalRecord>
   >({});
+  const [receivingRenewalCredentialId, setReceivingRenewalCredentialId] =
+    useState<string | null>(null);
   const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
   const summaryCredential = pickPreferredHomeCredential(
     credentials.filter((record) => record.type === "ThaiNationalID"),
@@ -339,12 +343,41 @@ export default function WalletHomeScreen() {
       logWalletError("wallet-home", "renewal-request-failed", renewalError, {
         credentialId,
       });
+      const isPreviousKeyUnavailable =
+        renewalError instanceof Error &&
+        renewalError.message.includes("CredentialRenewalPreviousKeyUnavailable");
       showDialog({
-        title: "ไม่สามารถขอเอกสารใหม่ได้",
-        message: "กรุณาลองใหม่อีกครั้ง",
+        title: isPreviousKeyUnavailable
+          ? WALLET_HOME_COPY.renewalKeyUnavailableTitle
+          : "ไม่สามารถขอเอกสารใหม่ได้",
+        message: isPreviousKeyUnavailable
+          ? WALLET_HOME_COPY.renewalKeyUnavailableMessage
+          : "กรุณาลองใหม่อีกครั้ง",
         icon: "danger",
         actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
       });
+    }
+  }
+
+  async function handleReceiveReadyRenewal(credentialId: string) {
+    if (receivingRenewalCredentialId === credentialId) return;
+
+    setReceivingRenewalCredentialId(credentialId);
+    try {
+      await claimReadyRenewal(credentialId);
+      await refreshCredentialStatuses();
+    } catch (renewalError) {
+      logWalletError("wallet-home", "renewal-receive-failed", renewalError, {
+        credentialId,
+      });
+      showDialog({
+        title: "Unable to receive new credential",
+        message: "Please try again.",
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+    } finally {
+      setReceivingRenewalCredentialId(null);
     }
   }
 
@@ -484,6 +517,7 @@ export default function WalletHomeScreen() {
                                 hasPendingIssuerSuspensionAck(
                                   issuerSuspensionStatuses[credential.id],
                                 ),
+                              renewalStatus,
                             },
                           )
                         ) {
@@ -555,6 +589,21 @@ export default function WalletHomeScreen() {
                           void handleRenewalRequest(credential.id);
                         }
                       : undefined
+                  }
+                  showReceiveRenewalCta={shouldShowReadyRenewalReceiveCta(
+                    isExpanded,
+                    renewalStatus,
+                  )}
+                  receiveRenewalCtaLabel="Receive new document"
+                  onReceiveRenewal={
+                    credential
+                      ? () => {
+                          void handleReceiveReadyRenewal(credential.id);
+                        }
+                      : undefined
+                  }
+                  isReceivingRenewal={
+                    receivingRenewalCredentialId === credential?.id
                   }
                   showDocumentReissueCta={
                     isExpanded &&

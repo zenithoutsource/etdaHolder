@@ -28,6 +28,7 @@ import {
   readCredentialRenewalStatuses,
 } from "../../../src/services/credentials/credentialKeyRenewal";
 import {
+  claimReadyRenewal,
   confirmOldCredentialCleanup,
   refreshAndCompleteRenewals,
   submitRenewalRequest,
@@ -260,6 +261,34 @@ export default function CredentialDetailScreen() {
     setRenewalRefreshTick((tick) => tick + 1);
   }, [refresh]);
 
+  const receiveReadyRenewal = useCallback(async () => {
+    if (
+      !credential ||
+      renewalStatus?.state !== "renewal-processing" ||
+      !renewalStatus.readyOfferUri?.trim()
+    ) {
+      return;
+    }
+
+    setPhase({ tag: "renewalProcessing" });
+    try {
+      await claimReadyRenewal(credential.id);
+    } catch (renewalError) {
+      logWalletError("credential-detail", "renewal-receive-failed", renewalError, {
+        credentialId: credential.id,
+      });
+      showDialog({
+        title: "Unable to receive new document",
+        message: "Please try again.",
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+    } finally {
+      syncLocalRenewalState();
+      setPhase({ tag: "detail" });
+    }
+  }, [credential, renewalStatus, showDialog, syncLocalRenewalState]);
+
   const pollRenewalFromServer = useCallback(async () => {
     if (!id) return;
 
@@ -300,6 +329,8 @@ export default function CredentialDetailScreen() {
   }, [credential, refresh, renewalStatus, router, showDialog]);
 
   const hasRenewalProcessing = renewalStatus?.state === "renewal-processing";
+  const canReceiveReadyRenewal =
+    hasRenewalProcessing && Boolean(renewalStatus?.readyOfferUri?.trim());
 
   useEffect(() => {
     if (!hasRenewalProcessing) return;
@@ -647,6 +678,19 @@ export default function CredentialDetailScreen() {
                     variant="solid-block"
                     label={WALLET_HOME_COPY.requestNewCredential}
                     onPress={() => router.push("/(tabs)/scan")}
+                    className="w-full rounded-xl py-3"
+                    textClassName="text-center text-sm font-bold"
+                  />
+                </View>
+              ) : null}
+              {canReceiveReadyRenewal ? (
+                <View className="mt-4">
+                  <AppButton
+                    variant="solid-block"
+                    label="Receive new document"
+                    onPress={() => {
+                      void receiveReadyRenewal();
+                    }}
                     className="w-full rounded-xl py-3"
                     textClassName="text-center text-sm font-bold"
                   />

@@ -1,6 +1,18 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-14 (Keychain session recovery)
+
+- An unreadable session Keychain item (`E_CRYPTO_FAILED`) no longer aborts Wallet startup.
+- `loadSession()` retains the redacted diagnostic, clears the broken session entry, and returns signed-out state so the user can log in again.
+- Added regression coverage for Keychain read failure recovery; auth tests, TypeScript, and lint pass with existing warnings only.
+- If the encrypted storage Keychain item is unreadable while a PIN-wrapped fallback exists, startup now offers PIN recovery instead of failing before Login; encrypted wallet data is not wiped automatically.
+
 Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCHITECTURE.md`, `CONTEXT.md`, and `docs/adr/`.
+
+### Session 2026-07-14 (P3 manual renewal receive consent)
+
+- Renewal-ready notification taps no longer auto-claim. Wallet Home and Credential Detail now require the Holder to explicitly select **Receive new document**; an initial PIN/biometric unlock may occur for navigation but is not treated as consent to receive.
+- Final review: ready-offer markers are cleared after a failed claim, before resubmission, and on explicit status failures; malformed persisted ready-offer values are ignored. Focused renewal, detail, and notification tests (42 tests), TypeScript, and lint passed.
 
 ### Session 2026-07-13 (My QR VP verify outcome — P5 #16/#18 Wallet scope)
 

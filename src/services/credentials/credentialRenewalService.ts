@@ -1,4 +1,4 @@
-import { getHolderDid } from '../crypto/crypto'
+import { getHolderDid, getPreviousHolderDid } from '../crypto/crypto'
 import {
   clearCredentialRenewal,
   readCredentialRenewal,
@@ -90,6 +90,20 @@ function assertRenewalSubmittable(credentialId: string): void {
   }
 }
 
+function clearReadyOfferUri(credentialId: string): void {
+  const current = readCredentialRenewal(credentialId)
+  if (!current?.readyOfferUri) return
+
+  upsertCredentialRenewal(
+    credentialId,
+    {
+      ...current,
+      readyOfferUri: undefined,
+    },
+    new Date(),
+  )
+}
+
 export function repairInconsistentRenewalPairs(now = new Date()): void {
   const credentials = readStoredCredentials()
 
@@ -140,6 +154,17 @@ export async function submitRenewalRequest(
   }
 
   assertRenewalSubmittable(credentialId)
+
+  // Renewal presents the old VC with a PoP signed by the key it was bound to,
+  // read from the single retained previous Keychain slot. If the wallet key was
+  // rotated again after this credential's rotation, that slot no longer holds
+  // the binding key and the PoP would fail deep in signing with a cryptic
+  // HolderBindingMismatch. Fail fast here with a clear, actionable error.
+  if (oldHolderDid !== getPreviousHolderDid()) {
+    throw new Error(
+      `CredentialRenewalPreviousKeyUnavailable: ${credentialId} is bound to a wallet key that is no longer retained; request a new document from the issuer`,
+    )
+  }
 
   const resolvedDependencies = resolveDependencies(dependencies)
   const newHolderDid = resolvedDependencies.getHolderDid()
@@ -210,6 +235,7 @@ export async function submitRenewalRequest(
       credentialId,
       {
         previousHolderDid: oldHolderDid,
+        readyOfferUri: undefined,
         state: 'renewal-processing',
       },
       new Date(),
@@ -227,14 +253,11 @@ async function completeRenewalClaim(
   offerUri: string,
   dependencies: RenewalServiceDependencies,
 ): Promise<void> {
-  if (renewalClaimsInFlight.has(credentialId)) return
-
   const current = readCredentialRenewal(credentialId)
   if (!current || current.state !== 'renewal-processing') {
     return
   }
 
-  renewalClaimsInFlight.add(credentialId)
   const now = new Date()
   try {
     logWalletStep('renewal', 'claim-start', { credentialId })
@@ -278,14 +301,13 @@ async function completeRenewalClaim(
         credentialId,
         {
           previousHolderDid: latest.previousHolderDid,
+          readyOfferUri: undefined,
           state: 'renewal-required',
         },
         new Date(),
       )
     }
     throw error
-  } finally {
-    renewalClaimsInFlight.delete(credentialId)
   }
 }
 
@@ -332,19 +354,33 @@ export async function refreshAndCompleteRenewals(
       const current = readCredentialRenewal(renewal.credentialId)
       if (!current) continue
 
-      if (renewal.state === 'offer-ready' && renewal.offerUri) {
-        if (current.state === 'renewal-processing') {
-          try {
-            await completeRenewalClaim(
-              renewal.credentialId,
-              renewal.offerUri,
-              resolvedDependencies,
-            )
-          } catch {
-            // Keep renewal-processing; retry on next focus poll.
-          }
+      if (renewal.state === 'offer-ready') {
+        const readyOfferUri = typeof renewal.offerUri === 'string' ? renewal.offerUri.trim() : ''
+        if (
+          current.state === 'renewal-processing' &&
+          current.readyOfferUri !== (readyOfferUri || undefined)
+        ) {
+          upsertCredentialRenewal(
+            renewal.credentialId,
+            {
+              ...current,
+              readyOfferUri: readyOfferUri || undefined,
+            },
+            new Date(),
+          )
         }
         continue
+      }
+
+      if (current.state === 'renewal-processing' && current.readyOfferUri) {
+        upsertCredentialRenewal(
+          renewal.credentialId,
+          {
+            ...current,
+            readyOfferUri: undefined,
+          },
+          new Date(),
+        )
       }
 
       if (renewal.state === 'revoked' && current.state === 'cleanup-pending') {
@@ -367,23 +403,84 @@ export async function refreshAndCompleteRenewals(
   }
 }
 
-/** @deprecated Use submitRenewalRequest + refreshAndCompleteRenewals */
-export async function requestCredentialRenewal(
+export async function claimReadyRenewal(
   credentialId: string,
   dependencies: Partial<RenewalServiceDependencies> = {},
+): Promise<void> {
+  if (renewalClaimsInFlight.has(credentialId)) return
+
+  const current = readCredentialRenewal(credentialId)
+  if (!current || current.state !== 'renewal-processing') return
+
+  const resolvedDependencies = resolveDependencies(dependencies)
+  renewalClaimsInFlight.add(credentialId)
+  try {
+    let readyRenewal: RenewalStatusPayload['renewals'][number] | undefined
+    try {
+      const response = await resolvedDependencies.fetchImpl(DEV_RENEWAL_STATUS_ENDPOINT)
+      if (!response.ok) {
+        throw new Error(`CredentialRenewalStatusFailed: HTTP ${response.status}`)
+      }
+
+      const payload = (await response.json()) as Partial<RenewalStatusPayload>
+      if (!Array.isArray(payload.renewals)) {
+        throw new Error('CredentialRenewalStatusMalformed: renewals array is required')
+      }
+
+      readyRenewal = payload.renewals.find(
+        (renewal) =>
+          renewal.credentialId === credentialId &&
+          renewal.state === 'offer-ready' &&
+          typeof renewal.offerUri === 'string' &&
+          renewal.offerUri.trim().length > 0,
+      )
+    } catch (error) {
+      clearReadyOfferUri(credentialId)
+      logWalletError('renewal', 'status-refresh-failed', error, { credentialId })
+      throw error
+    }
+
+    const latest = readCredentialRenewal(credentialId)
+    if (!latest || latest.state !== 'renewal-processing') return
+
+    const readyOfferUri = readyRenewal?.offerUri?.trim()
+    if (!readyOfferUri) {
+      if (latest.readyOfferUri) {
+        upsertCredentialRenewal(
+          credentialId,
+          {
+            ...latest,
+            readyOfferUri: undefined,
+          },
+          new Date(),
+        )
+      }
+      return
+    }
+
+    if (latest.readyOfferUri !== readyOfferUri) {
+      upsertCredentialRenewal(
+        credentialId,
+        {
+          ...latest,
+          readyOfferUri,
+        },
+        new Date(),
+      )
+    }
+
+    await completeRenewalClaim(credentialId, readyOfferUri, resolvedDependencies)
+  } finally {
+    renewalClaimsInFlight.delete(credentialId)
+  }
+}
+
+/** @deprecated Use submitRenewalRequest followed by an explicit claimReadyRenewal call. */
+export async function requestCredentialRenewal(
+  _credentialId: string,
+  _dependencies: Partial<RenewalServiceDependencies> = {},
 ): Promise<VerifiableCredentialRecord> {
-  await submitRenewalRequest(credentialId, dependencies)
-  await refreshAndCompleteRenewals(dependencies)
-  const record = readCredentialRenewal(credentialId)
-  const replacementId = record?.replacementCredentialId
-  if (!replacementId) {
-    throw new Error('CredentialRenewalReplacementMissing')
-  }
-  const replacement = readStoredCredentials().find((entry) => entry.id === replacementId)
-  if (!replacement) {
-    throw new Error('CredentialRenewalReplacementMissing')
-  }
-  return replacement
+  throw new Error('CredentialRenewalManualReceiveRequired')
 }
 
 export function markCredentialRenewalCleanupPending(

@@ -16,6 +16,7 @@ export type CredentialRenewalRecord = {
   state: CredentialRenewalState
   previousHolderDid: string
   replacementCredentialId?: string
+  readyOfferUri?: string
   revokedAt?: string
   renewedAt?: string
   updatedAt: string
@@ -35,7 +36,12 @@ export function readCredentialRenewal(
       typeof parsed.updatedAt === 'string' &&
       isCredentialRenewalState(parsed.state)
     ) {
-      return parsed as CredentialRenewalRecord
+      if (typeof parsed.readyOfferUri === 'string') {
+        return parsed as CredentialRenewalRecord
+      }
+
+      const { readyOfferUri: _readyOfferUri, ...normalized } = parsed
+      return normalized as CredentialRenewalRecord
     }
   } catch {
     return undefined

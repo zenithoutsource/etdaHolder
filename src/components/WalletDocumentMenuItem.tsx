@@ -21,6 +21,10 @@ type WalletDocumentMenuItemProps = {
   showRenewalCta?: boolean
   renewalCtaLabel?: string
   onRenewalRequest?: () => void
+  showReceiveRenewalCta?: boolean
+  receiveRenewalCtaLabel?: string
+  onReceiveRenewal?: () => void
+  isReceivingRenewal?: boolean
   showDocumentReissueCta?: boolean
   documentReissueCtaLabel?: string
   onDocumentReissue?: () => void
@@ -41,6 +45,10 @@ export function WalletDocumentMenuItem({
   showRenewalCta = false,
   renewalCtaLabel,
   onRenewalRequest,
+  showReceiveRenewalCta = false,
+  receiveRenewalCtaLabel,
+  onReceiveRenewal,
+  isReceivingRenewal = false,
   showDocumentReissueCta = false,
   documentReissueCtaLabel,
   onDocumentReissue,
@@ -96,6 +104,17 @@ export function WalletDocumentMenuItem({
               variant="solid-block"
               label={renewalCtaLabel}
               onPress={onRenewalRequest}
+              className="mt-3 min-w-[142px] px-5 py-2"
+              textClassName="text-center text-xs font-bold"
+            />
+          ) : null}
+          {showReceiveRenewalCta && receiveRenewalCtaLabel && onReceiveRenewal ? (
+            <AppButton
+              variant="solid-block"
+              label={receiveRenewalCtaLabel}
+              onPress={onReceiveRenewal}
+              loading={isReceivingRenewal}
+              disabled={isReceivingRenewal}
               className="mt-3 min-w-[142px] px-5 py-2"
               textClassName="text-center text-xs font-bold"
             />
