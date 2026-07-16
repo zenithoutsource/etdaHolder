@@ -6,6 +6,7 @@ import { Platform } from 'react-native'
 import { registerPushToken } from '@/src/sdk/pushTokenApi'
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 
+import { setCachedExpoPushToken } from './expoPushTokenCache'
 import { routeNotificationTap, type NotificationData } from './notificationRouter'
 
 let notificationResponseSubscription:
@@ -162,6 +163,17 @@ function assertExpoProjectId(projectId: string | undefined): string {
   )
 }
 
+/**
+ * Fetches a fresh Expo push token using the same projectId resolution and retry
+ * helper as push registration. Exposed for `resolveDeviceTokenForBroker()` in
+ * `expoPushTokenCache.ts` so My QR broker sessions reuse this single fetch path.
+ */
+export async function fetchExpoPushTokenValue(): Promise<string> {
+  const projectId = assertExpoProjectId(readExpoProjectId())
+  const pushToken = await fetchExpoPushToken(projectId)
+  return pushToken.data
+}
+
 async function registerPushTokenWithBackend(holderDid: string): Promise<boolean> {
   if (__DEV__ && process.env.EXPO_PUBLIC_SKIP_PUSH_REGISTRATION === 'true') {
     logWalletStep('startup', 'push-notifications-skip-dev-flag')
@@ -173,6 +185,7 @@ async function registerPushTokenWithBackend(holderDid: string): Promise<boolean>
   logWalletStep('startup', 'push-token-native-fetch-start')
   const pushToken = await fetchExpoPushToken(projectId)
   logWalletStep('startup', 'push-token-native-fetch-complete', { tokenLength: pushToken.data.length })
+  setCachedExpoPushToken(pushToken.data)
 
   logWalletStep('startup', 'push-token-server-register-start')
   await retryable(() => registerPushToken(pushToken.data, holderDid), 3, 2000, {
