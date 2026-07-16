@@ -106,6 +106,20 @@ test('createSession throws when broker response is not ok', async () => {
   ).rejects.toThrow('BrokerSessionCreateFailed:500')
 })
 
+test('createSession throws when broker response is missing required fields', async () => {
+  const fetchMock = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      session_id: 's1',
+      qr_payload: 'http://x/broker/session/s1/request',
+    }),
+  })
+  const client = createBrokerSessionClient('http://192.100.10.49', fetchMock as unknown as typeof fetch)
+  await expect(
+    client.createSession({ walletId: 'w1', deviceToken: 't', platform: 'android' }),
+  ).rejects.toThrow('BrokerSessionCreateFailed:invalid-response')
+})
+
 test('fetchPresentationRequest returns null while pending', async () => {
   const fetchMock = jest.fn().mockResolvedValue({
     ok: true,
