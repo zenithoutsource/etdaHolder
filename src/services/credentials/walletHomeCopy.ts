@@ -14,6 +14,10 @@ export const WALLET_HOME_COPY = {
   walletKeyRotationBlockedTitle: 'ยังสร้างกุญแจใหม่ไม่ได้',
   walletKeyRotationBlockedMessage:
     'กรุณาต่ออายุเอกสารที่ค้างอยู่ให้เสร็จก่อน จึงจะสร้างกุญแจใหม่ได้',
+  walletKeyPendingRenewalsTitle: 'ยังมีเอกสารที่ต้องต่ออายุ',
+  walletKeyPendingRenewalsMessage:
+    'กรุณาต่ออายุหรือลบเอกสารที่ค้างอยู่ให้เสร็จก่อน จึงจะสร้างกุญแจใหม่ได้อีกครั้ง',
+  goFinishRenewals: 'ไปต่ออายุเอกสาร',
   renewalKeyUnavailableTitle: 'ไม่สามารถต่ออายุเอกสารนี้ได้',
   renewalKeyUnavailableMessage:
     'กุญแจที่ผูกกับเอกสารนี้ถูกแทนที่ไปแล้ว ไม่สามารถต่ออายุได้ กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
@@ -34,8 +38,6 @@ export const WALLET_HOME_COPY = {
   thaIdAlreadyActiveMessage: 'คุณมี PID ที่ใช้งานได้อยู่แล้ว',
   expiringSoonBadge: 'ใกล้หมดอายุ',
   documentExpiredBadge: 'หมดอายุ',
-  documentExpiringSoonMessage:
-    'เอกสารจะหมดอายุในอีกไม่นาน กรุณาติดต่อผู้ออกเอกสารเพื่อขอเอกสารใหม่',
   documentExpiredMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
   requestNewCredential: 'ขอเอกสารใหม่',
   documentExpiredCleanupTitle: '!! ดำเนินการลบเอกสาร !!',

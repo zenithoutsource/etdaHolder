@@ -28,6 +28,13 @@ describe('walletHomeCopy', () => {
       'กุญแจ Wallet หมดอายุแล้ว กรุณาสร้างกุญแจใหม่เพื่อต่ออายุเอกสารทั้งหมด',
     )
     expect(WALLET_HOME_COPY.createNewWalletKey).toBe('สร้างกุญแจใหม่')
+    expect(WALLET_HOME_COPY.walletKeyPendingRenewalsTitle).toBe(
+      'ยังมีเอกสารที่ต้องต่ออายุ',
+    )
+    expect(WALLET_HOME_COPY.walletKeyPendingRenewalsMessage).toBe(
+      'กรุณาต่ออายุหรือลบเอกสารที่ค้างอยู่ให้เสร็จก่อน จึงจะสร้างกุญแจใหม่ได้อีกครั้ง',
+    )
+    expect(WALLET_HOME_COPY.goFinishRenewals).toBe('ไปต่ออายุเอกสาร')
   })
 
   test('provides P3 renewal dialog copy', () => {
