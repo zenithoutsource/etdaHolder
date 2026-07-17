@@ -7,12 +7,12 @@ afterEach(() => {
   else process.env.EXPO_PUBLIC_BROKER_BASE_URL = ORIGINAL
 })
 
-test('defaults to LAN broker host', () => {
+test('defaults to configured broker host', () => {
   delete process.env.EXPO_PUBLIC_BROKER_BASE_URL
-  expect(resolveBrokerBaseUrl()).toBe('http://192.100.10.49')
+  expect(resolveBrokerBaseUrl()).toBe('https://wallet.zenithcomp.co.th:455')
 })
 
 test('trims trailing slash from override', () => {
-  process.env.EXPO_PUBLIC_BROKER_BASE_URL = 'http://192.100.10.49/'
-  expect(resolveBrokerBaseUrl()).toBe('http://192.100.10.49')
+  process.env.EXPO_PUBLIC_BROKER_BASE_URL = 'https://wallet.zenithcomp.co.th:455/'
+  expect(resolveBrokerBaseUrl()).toBe('https://wallet.zenithcomp.co.th:455')
 })

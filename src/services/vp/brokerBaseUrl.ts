@@ -1,4 +1,4 @@
-const DEFAULT_BROKER_BASE_URL = 'http://192.100.10.49'
+const DEFAULT_BROKER_BASE_URL = 'https://wallet.zenithcomp.co.th:455'
 
 export function resolveBrokerBaseUrl(): string {
   const override = process.env.EXPO_PUBLIC_BROKER_BASE_URL?.trim()
