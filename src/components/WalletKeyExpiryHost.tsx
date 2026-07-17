@@ -1,13 +1,25 @@
-import { useState } from 'react'
+import { router } from 'expo-router'
+import { useEffect, useRef, useState } from 'react'
 
-import { useAppDialog } from '@/src/components/AppDialog'
+import { useAppDialog, type AppDialogAction } from '@/src/components/AppDialog'
 import { WalletKeyExpiredModal } from '@/src/components/WalletKeyExpiredModal'
 import { useWalletKeyExpired } from '@/src/hooks/useWalletKeyExpired'
-import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
+import { readFirstPendingRenewalCredentialId } from '@/src/services/credentials/pendingRenewalNavigation'
 import { WALLET_HOME_COPY } from '@/src/services/credentials/walletHomeCopy'
-import { rotateWalletKey } from '@/src/services/crypto/walletKeyRotation'
+import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
+import {
+  readWalletKeyExpiryLane,
+  type WalletKeyExpiryLane,
+} from '@/src/services/crypto/walletKeyExpiryLane'
+import {
+  readWalletKeyRotationRecord,
+  rotateWalletKey,
+} from '@/src/services/crypto/walletKeyRotation'
 
-export function readWalletKeyRotationFailureDialog(error: unknown): { title: string; message: string } {
+export function readWalletKeyRotationFailureDialog(error: unknown): {
+  title: string
+  message: string
+} {
   const isBlockedByPendingRenewals =
     error instanceof Error &&
     error.message.includes('WalletKeyRotationBlockedPendingRenewals')
@@ -25,20 +37,100 @@ export function readWalletKeyRotationFailureDialog(error: unknown): { title: str
   }
 }
 
+export function isWalletKeyRotationBlockedByPendingRenewals(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes('WalletKeyRotationBlockedPendingRenewals')
+  )
+}
+
 export function shouldShowWalletKeyExpiredModal({
-  isExpired,
+  lane,
   isRotatingWalletKey,
 }: {
-  isExpired: boolean
+  lane: WalletKeyExpiryLane
   isRotatingWalletKey: boolean
 }): boolean {
-  return isExpired && !isRotatingWalletKey
+  return lane === 'create-key' && !isRotatingWalletKey
+}
+
+export function shouldShowPendingRenewalsDialog({
+  lane,
+  isExpired,
+}: {
+  lane: WalletKeyExpiryLane
+  isExpired: boolean
+}): boolean {
+  return lane === 'finish-renewals' && isExpired
+}
+
+export function buildFinishRenewalsDialogActions(
+  credentialId: string | undefined,
+  navigateToCredential: (id: string) => void,
+): AppDialogAction[] {
+  const actions: AppDialogAction[] = []
+
+  if (credentialId) {
+    actions.push({
+      label: WALLET_HOME_COPY.goFinishRenewals,
+      onPress: () => navigateToCredential(credentialId),
+    })
+  }
+
+  actions.push({
+    label: WALLET_HOME_COPY.cancel,
+    variant: 'secondary',
+  })
+
+  return actions
+}
+
+function navigateToPendingRenewalCredential(id: string) {
+  router.push(`/(tabs)/credential/${id}`)
 }
 
 export function WalletKeyExpiryHost() {
   const { isExpired, refreshExpiryState } = useWalletKeyExpired()
   const { showDialog } = useAppDialog()
   const [isRotatingWalletKey, setIsRotatingWalletKey] = useState(false)
+  const pendingRenewalsDialogShownRef = useRef(false)
+
+  const lane = readWalletKeyExpiryLane({
+    keyExpired: isExpired,
+    hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
+  })
+
+  useEffect(() => {
+    if (lane !== 'finish-renewals') {
+      pendingRenewalsDialogShownRef.current = false
+      return
+    }
+
+    if (!shouldShowPendingRenewalsDialog({ lane, isExpired })) {
+      return
+    }
+
+    if (pendingRenewalsDialogShownRef.current) {
+      return
+    }
+
+    pendingRenewalsDialogShownRef.current = true
+    const credentialId = readFirstPendingRenewalCredentialId()
+
+    logWalletStep('wallet-key-expiry', 'pending-renewals-dialog-show', {
+      hasCredentialTarget: Boolean(credentialId),
+    })
+
+    showDialog({
+      title: WALLET_HOME_COPY.walletKeyPendingRenewalsTitle,
+      message: WALLET_HOME_COPY.walletKeyPendingRenewalsMessage,
+      icon: 'warning',
+      actions: buildFinishRenewalsDialogActions(
+        credentialId,
+        navigateToPendingRenewalCredential,
+      ),
+    })
+  }, [isExpired, lane, showDialog])
 
   async function handleCreateNewWalletKey() {
     setIsRotatingWalletKey(true)
@@ -52,6 +144,20 @@ export function WalletKeyExpiryHost() {
       refreshExpiryState()
     } catch (error) {
       logWalletError('wallet-key-expiry', 'wallet-key-rotation-failed', error)
+
+      if (isWalletKeyRotationBlockedByPendingRenewals(error)) {
+        const credentialId = readFirstPendingRenewalCredentialId()
+        showDialog({
+          ...readWalletKeyRotationFailureDialog(error),
+          icon: 'danger',
+          actions: buildFinishRenewalsDialogActions(
+            credentialId,
+            navigateToPendingRenewalCredential,
+          ),
+        })
+        return
+      }
+
       showDialog({
         ...readWalletKeyRotationFailureDialog(error),
         icon: 'danger',
@@ -65,7 +171,7 @@ export function WalletKeyExpiryHost() {
   return (
     <WalletKeyExpiredModal
       visible={shouldShowWalletKeyExpiredModal({
-        isExpired,
+        lane,
         isRotatingWalletKey,
       })}
       isRotating={isRotatingWalletKey}
