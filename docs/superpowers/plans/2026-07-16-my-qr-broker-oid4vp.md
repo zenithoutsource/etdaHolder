@@ -154,8 +154,8 @@ test('normalize returns openid4vp string', () => {
 
 test('normalize returns request_uri from JSON', () => {
   expect(
-    normalizeBrokerPresentationRequest({ request_uri: 'http://192.100.10.48/openid4vc/request/abc' }),
-  ).toBe('http://192.100.10.48/openid4vc/request/abc')
+    normalizeBrokerPresentationRequest({ request_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/request/abc' }),
+  ).toBe('http://verifier.zenithcomp.co.th:455/openid4vc/request/abc')
 })
 
 test('normalize returns null when pending', () => {
@@ -487,7 +487,7 @@ Expected: all pass (lint warnings only if pre-existing).
 
 1. Set `EXPO_PUBLIC_BROKER_BASE_URL=http://192.100.10.49` and Verifier trust for `.48`.  
 2. Open My QR → QR shows `…/broker/session/{id}/request`.  
-3. Checkpoint: `POST http://192.100.10.48/verifier/scan` with `scannedValue` = QR payload, `docType` = `IDCard`.  
+3. Checkpoint: `POST http://verifier.zenithcomp.co.th:455/verifier/scan` with `scannedValue` = QR payload, `docType` = `IDCard`.  
 4. Wallet polls/push → disclosure UI appears.  
 5. Approve → one biometric → Verifier accepts `direct_post`.  
 6. History shows wallet-channel success.

@@ -18,8 +18,8 @@ test('normalize returns https url with response_type=vp_token', () => {
 
 test('normalize returns request_uri from JSON', () => {
   expect(
-    normalizeBrokerPresentationRequest({ request_uri: 'http://192.100.10.48/openid4vc/request/abc' }),
-  ).toBe('http://192.100.10.48/openid4vc/request/abc')
+    normalizeBrokerPresentationRequest({ request_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/request/abc' }),
+  ).toBe('http://verifier.zenithcomp.co.th:455/openid4vc/request/abc')
 })
 
 test('normalize returns null when pending', () => {
@@ -40,8 +40,8 @@ describe('rule 3: authorization_request / qr / openid4vp keys', () => {
 
   test('normalize returns qr string field', () => {
     expect(
-      normalizeBrokerPresentationRequest({ qr: 'http://192.100.10.48/openid4vc/request/qr1' }),
-    ).toBe('http://192.100.10.48/openid4vc/request/qr1')
+      normalizeBrokerPresentationRequest({ qr: 'http://verifier.zenithcomp.co.th:455/openid4vc/request/qr1' }),
+    ).toBe('http://verifier.zenithcomp.co.th:455/openid4vc/request/qr1')
   })
 
   test('normalize returns openid4vp string field', () => {
@@ -141,11 +141,11 @@ test('fetchPresentationRequest returns the request_uri once deposited', async ()
   const fetchMock = jest.fn().mockResolvedValue({
     ok: true,
     status: 200,
-    text: async () => JSON.stringify({ request_uri: 'http://192.100.10.48/openid4vc/request/abc' }),
+    text: async () => JSON.stringify({ request_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/request/abc' }),
   })
   const client = createBrokerSessionClient('http://192.100.10.49', fetchMock as unknown as typeof fetch)
   await expect(client.fetchPresentationRequestUri('s1')).resolves.toBe(
-    'http://192.100.10.48/openid4vc/request/abc',
+    'http://verifier.zenithcomp.co.th:455/openid4vc/request/abc',
   )
   expect(fetchMock).toHaveBeenCalledWith('http://192.100.10.49/broker/session/s1/request')
 })

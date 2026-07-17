@@ -1,15 +1,22 @@
 import { create } from 'zustand'
 
-export type PendingNotificationRoute = {
-  pathname: '/(tabs)/credential/[id]'
-  params: {
-    id: string
-    notificationEvent?:
-      | 'renewal-ready'
-      | 'document-expiring-soon'
-      | 'document-expired'
-  }
-}
+export type PendingNotificationRoute =
+  | {
+      pathname: '/(tabs)/credential/[id]'
+      params: {
+        id: string
+        notificationEvent?:
+          | 'renewal-ready'
+          | 'document-expiring-soon'
+          | 'document-expired'
+      }
+    }
+  | {
+      pathname: '/(tabs)/qr'
+      params?: {
+        brokerSessionId?: string
+      }
+    }
 
 type NotificationRouteState = {
   pendingRoute: PendingNotificationRoute | null
