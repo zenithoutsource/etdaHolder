@@ -17,6 +17,7 @@ import { WalletDocumentMenuItem } from "../../src/components/WalletDocumentMenuI
 import { WalletHeader } from "../../src/components/WalletHeader";
 import { useScreenCaptureGuard } from "../../src/hooks/useScreenCaptureGuard";
 import { useStoredCredentials } from "../../src/hooks/useStoredCredentials";
+import { useWalletKeyExpired } from "../../src/hooks/useWalletKeyExpired";
 import {
   clearNewCredentialBadge,
   readNewCredentialBadgeIds,
@@ -37,6 +38,9 @@ import {
   shouldShowInactivePortalRequestCta,
   shouldShowReadyRenewalReceiveCta,
 } from "../../src/services/credentials/credentialHomeNavigation";
+import { shouldOfferDocumentReissueCta } from "../../src/services/credentials/documentReissueCtaGate";
+import { readWalletKeyExpiryLane } from "../../src/services/crypto/walletKeyExpiryLane";
+import { readWalletKeyRotationRecord } from "../../src/services/crypto/walletKeyRotation";
 import { isIssuerPortalCredentialType } from "../../src/config/issuerPortalUrls";
 import { openCredentialRequestPortal } from "../../src/services/credentials/openCredentialRequestPortal";
 import { isCredentialExpiringSoon } from "../../src/services/credentials/credentialDocumentExpiry";
@@ -166,6 +170,11 @@ function readCredentialBadge({
 export default function WalletHomeScreen() {
   useScreenCaptureGuard();
   const { credentials, error, refresh } = useStoredCredentials();
+  const { isExpired: walletKeyExpired } = useWalletKeyExpired();
+  const walletKeyExpiryLane = readWalletKeyExpiryLane({
+    keyExpired: walletKeyExpired,
+    hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
+  });
   const router = useRouter();
   const { showDialog } = useAppDialog();
   const [expandedCredentialId, setExpandedCredentialId] = useState<
@@ -609,7 +618,11 @@ export default function WalletHomeScreen() {
                   }
                   showDocumentReissueCta={
                     isExpanded &&
-                    (inactiveState.kind === "document-expired" ||
+                    ((inactiveState.kind === "document-expired" &&
+                      shouldOfferDocumentReissueCta({
+                        lane: walletKeyExpiryLane,
+                        documentExpired: true,
+                      })) ||
                       (shouldShowInactivePortalRequestCta(inactiveState) &&
                         isIssuerPortalCredentialType(item.credentialType)))
                   }

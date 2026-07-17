@@ -13,6 +13,7 @@ import { PresentationApprovalDeviceCard } from "../../../src/components/Presenta
 import { PresentationPopCard } from "../../../src/components/PresentationPopCard";
 import { WalletHeader } from "../../../src/components/WalletHeader";
 import { useScreenCaptureGuard } from "../../../src/hooks/useScreenCaptureGuard";
+import { useWalletKeyExpired } from "../../../src/hooks/useWalletKeyExpired";
 import { getWalletKeyRegisteredAt } from "../../../src/services/crypto/crypto";
 import {
   readCredentialInactiveState,
@@ -44,6 +45,9 @@ import {
   isRenewalAwaitingHolderCleanup,
 } from "../../../src/services/credentials/renewalCleanupNotification";
 import { WALLET_HOME_COPY, readWalletHomeBadgeLabel } from "../../../src/services/credentials/walletHomeCopy";
+import { shouldOfferDocumentReissueCta } from "../../../src/services/credentials/documentReissueCtaGate";
+import { readWalletKeyExpiryLane } from "../../../src/services/crypto/walletKeyExpiryLane";
+import { readWalletKeyRotationRecord } from "../../../src/services/crypto/walletKeyRotation";
 import {
   shouldHideCredentialActionMenu,
   shouldShowRenewedActiveBadge,
@@ -82,6 +86,11 @@ type DetailPhase =
 
 export default function CredentialDetailScreen() {
   useScreenCaptureGuard();
+  const { isExpired: walletKeyExpired } = useWalletKeyExpired();
+  const walletKeyExpiryLane = readWalletKeyExpiryLane({
+    keyExpired: walletKeyExpired,
+    hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
+  });
   const { id, notificationEvent } = useLocalSearchParams<{ id: string; notificationEvent?: string }>();
   const router = useRouter();
   const { showDialog } = useAppDialog();
@@ -167,7 +176,12 @@ export default function CredentialDetailScreen() {
     inactiveState.kind === "old-revoked" ||
     inactiveState.kind === "cleanup-pending" ||
     inactiveState.kind === "document-expired";
-  const canRequestDocumentReissue = inactiveState.kind === "document-expired";
+  const canRequestDocumentReissue =
+    inactiveState.kind === "document-expired" &&
+    shouldOfferDocumentReissueCta({
+      lane: walletKeyExpiryLane,
+      documentExpired: true,
+    });
   const showExpiringSoonBanner =
     inactiveState.kind === "active" &&
     credential !== undefined &&
