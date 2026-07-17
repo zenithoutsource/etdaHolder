@@ -61,6 +61,9 @@ describe('walletHomeCopy', () => {
   test('provides P7 document expiry copy', () => {
     expect(WALLET_HOME_COPY.expiringSoonBadge).toBe('ใกล้หมดอายุ')
     expect(WALLET_HOME_COPY.documentExpiredBadge).toBe('หมดอายุ')
+    expect(WALLET_HOME_COPY.documentExpiringSoonMessage).toBe(
+      'เอกสารจะหมดอายุในอีกไม่นาน กรุณาติดต่อผู้ออกเอกสารเพื่อขอเอกสารใหม่',
+    )
     expect(WALLET_HOME_COPY.requestNewCredential).toBe('ขอเอกสารใหม่')
   })
 })
