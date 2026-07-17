@@ -1,5 +1,19 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-17 (document card unification)
+
+- Completed the full-width `DocumentCardLayout` banner geometry and aligned Driving Licence, ID Card, and Transcript wallet detail cards plus VC receive previews to the shared banner/hero/two-column/divider presentation.
+- Preserved the fixed Driving Licence reference card, dynamic Thai ID and Transcript values, distinct Thai ID confirmation phase, receive callbacks, and below-card accept/confirm buttons.
+- Restored Revoke/Delete visibility for active credentials with stale or non-blocking renewal metadata; actions remain hidden during wallet-key rotation and visible renewal/inactive ribbon contexts.
+- Verification: consolidated focused Jest passed (9 suites, 43 tests); `yarn tsc --noEmit` passed; `yarn lint` passed with 22 existing warnings and no errors.
+
+### Session 2026-07-17 (production configuration hardening)
+
+- Added centralized mobile endpoint validation for Wallet API and Broker URLs; release-like runtimes reject missing, non-HTTPS, loopback, malformed, and credential-bearing URLs while development keeps local defaults.
+- Server configuration now validates production JWT, database host, mail address, public presentation URL, and verifier URL; Issuer/public-base values are consumed through `ServerConfig` instead of direct service environment reads.
+- Updated mobile/server environment templates and onboarding documentation with development defaults and production requirements. Deferred migration of remaining timing-policy defaults to a separate slice.
+- Verification: mobile focused tests passed (17 tests), full server tests passed (100 tests), server TypeScript passed, root `yarn tsc --noEmit` passed, root lint passed, and `yarn setup --check` passed.
+
 ### Session 2026-07-17 (driving-licence reference card)
 
 - Added the fixed screenshot-reference driving-licence card to wallet credential detail/home and VC receive confirmation, using `assets/images/user_profile.png` for the portrait.
