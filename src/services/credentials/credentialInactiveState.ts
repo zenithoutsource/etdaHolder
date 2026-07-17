@@ -128,17 +128,13 @@ export function readCredentialInactiveState({
   }
 
   if (renewalStatus?.state === 'cleanup-pending') {
-    if (credential && isCredentialDocumentExpired(credential)) {
-      return {
-        kind: 'document-expired',
-        badgeLabel: WALLET_HOME_COPY.documentExpiredBadge,
-        badgeClassName: 'bg-gray-badge',
-        panelMessage: WALLET_HOME_COPY.documentExpiredMessage,
-      }
-    }
-
+    // Keep cleanup-pending above document-expired so the Holder still sees the
+    // P3-6 cleanup CTA instead of a competing "ขอเอกสารใหม่" → Scan path.
     return {
-      kind: 'active',
+      kind: 'cleanup-pending',
+      badgeLabel: 'Inactive',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: WALLET_HOME_COPY.renewalDeleteMessage,
     }
   }
 

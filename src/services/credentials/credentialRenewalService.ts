@@ -356,31 +356,24 @@ export async function refreshAndCompleteRenewals(
 
       if (renewal.state === 'offer-ready') {
         const readyOfferUri = typeof renewal.offerUri === 'string' ? renewal.offerUri.trim() : ''
+        // Persist a usable offer URI for the manual Receive CTA. Do not clear an
+        // existing marker when the server omits/blanks offerUri — remount/poll
+        // must not replace Receive with a document-expired Scan path.
         if (
           current.state === 'renewal-processing' &&
-          current.readyOfferUri !== (readyOfferUri || undefined)
+          readyOfferUri &&
+          current.readyOfferUri !== readyOfferUri
         ) {
           upsertCredentialRenewal(
             renewal.credentialId,
             {
               ...current,
-              readyOfferUri: readyOfferUri || undefined,
+              readyOfferUri,
             },
             new Date(),
           )
         }
         continue
-      }
-
-      if (current.state === 'renewal-processing' && current.readyOfferUri) {
-        upsertCredentialRenewal(
-          renewal.credentialId,
-          {
-            ...current,
-            readyOfferUri: undefined,
-          },
-          new Date(),
-        )
       }
 
       if (renewal.state === 'revoked' && current.state === 'cleanup-pending') {

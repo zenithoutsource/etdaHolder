@@ -215,7 +215,34 @@ describe('credentialInactiveState', () => {
     })
   })
 
-  test('does not render cleanup-pending through the inactive panel branch', () => {
+  test('keeps cleanup-pending above document-expired so reissue Scan CTA cannot replace cleanup', () => {
+    expect(
+      readCredentialInactiveState({
+        renewalStatus: {
+          credentialId: 'credential-1',
+          state: 'cleanup-pending',
+          previousHolderDid: 'did:key:old',
+          replacementCredentialId: 'credential-2',
+          updatedAt: '2026-06-25T10:00:00.000Z',
+        },
+        credential: {
+          id: 'credential-1',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-06-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'cleanup-pending',
+      badgeLabel: 'Inactive',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารเดิมไม่สามารถใช้งานได้แล้ว กรุณาลบเอกสารเดิมเพื่อดำเนินการต่อ',
+    })
+  })
+
+  test('surfaces cleanup-pending as inactive so the cleanup CTA stays primary', () => {
     expect(
       readCredentialInactiveState({
         renewalStatus: {
@@ -226,7 +253,10 @@ describe('credentialInactiveState', () => {
         },
       }),
     ).toEqual({
-      kind: 'active',
+      kind: 'cleanup-pending',
+      badgeLabel: 'Inactive',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารเดิมไม่สามารถใช้งานได้แล้ว กรุณาลบเอกสารเดิมเพื่อดำเนินการต่อ',
     })
   })
 

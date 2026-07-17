@@ -14,6 +14,8 @@ import { getPreviousHolderDid } from '../crypto/crypto'
 import { logWalletError } from '../debug/walletLogger'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
+import { presentOldCredentialForRenewal } from './renewalOid4VpPresentation'
+
 jest.mock('../storage/storage', () => ({
   getCredentialStorage: jest.fn(),
 }))
@@ -45,8 +47,6 @@ jest.mock('./renewalOid4VpPresentation', () => ({
 }))
 
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
-
-import { presentOldCredentialForRenewal } from './renewalOid4VpPresentation'
 
 const presentOldCredentialForRenewalMock = presentOldCredentialForRenewal as jest.MockedFunction<
   typeof presentOldCredentialForRenewal
@@ -319,7 +319,7 @@ describe('refreshAndCompleteRenewals', () => {
     expect(readCredentialRenewal(replacement.id)).toBeUndefined()
   })
 
-  test('clears ready offer marker when passive offer-ready status has no usable URI', async () => {
+  test('keeps ready offer marker when offer-ready status has no usable URI', async () => {
     const { values } = mockStorage()
     seedCredential(values, mockCredential)
     writeCredentialRenewal({
@@ -345,7 +345,40 @@ describe('refreshAndCompleteRenewals', () => {
       }),
     })
 
-    expect(readCredentialRenewal(mockCredential.id)?.readyOfferUri).toBeUndefined()
+    expect(readCredentialRenewal(mockCredential.id)?.readyOfferUri).toBe(
+      'openid-credential-offer://stale',
+    )
+  })
+
+  test('keeps ready offer marker when server status is no longer offer-ready', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      readyOfferUri: 'openid-credential-offer://ready',
+      state: 'renewal-processing',
+      updatedAt: new Date().toISOString(),
+    })
+
+    await refreshAndCompleteRenewals({
+      fetchImpl: jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          renewals: [
+            {
+              credentialId: mockCredential.id,
+              state: 'requested',
+            },
+          ],
+        }),
+      }),
+    })
+
+    expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-processing')
+    expect(readCredentialRenewal(mockCredential.id)?.readyOfferUri).toBe(
+      'openid-credential-offer://ready',
+    )
   })
 
   test('claims a ready renewal and writes cleanup-pending plus renewed-active states', async () => {
