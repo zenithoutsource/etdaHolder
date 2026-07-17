@@ -1,5 +1,37 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-17 (P3 key + document expiry deadlock — design)
+
+- Spec: `docs/superpowers/specs/2026-07-17-p3-key-document-expiry-deadlock-design.md` — ordered lane `create-key` → holder taps **ขอเอกสาร**; while `wallet.key_rotation` exists, steer to finish renewals (second rotate stays blocked).
+- Plan: `docs/superpowers/plans/2026-07-17-p3-key-document-expiry-deadlock.md`.
+- Parent changelog updated in `2026-06-25-p3-wallet-key-renewal-design.md`.
+
+### Session 2026-07-17 (remove unused mDOC mocks)
+
+- Deleted local mock issuer `server/mdoc-issuer/` (issuance uses customer Issuer `issuer.zenithcomp.co.th:455`).
+- Deleted stub `tools/acr1311u-n2/companion_probe.ts`; keep runnable `probe_companion.py`.
+- Removed `mdoc-issuer:*` scripts, `cbor` server dep (issuer-only), and jest/tsconfig includes for the mock tree.
+
+### Session 2026-07-16 (customer issuer mDL resolve — `issuer.zenithcomp.co.th:455`)
+
+- Offer id `org.iso.18013.5.1.mDL` failed with `CredentialConfigurationNotSupported` against customer issuer metadata that has `Iso18013DriversLicenseCredential_mso_mdoc` but omits `doctype`.
+- Added doctype-offer → ISO 18013 driving-licence `mso_mdoc` resolver; enriches `doctype` from the offer id for the credential request.
+- Dual-format customer offer also lists `Iso18013DriversLicenseCredential_dc+sd-jwt` while metadata only has `vc+sd-jwt`: format-aware family match + `dc+sd-jwt`↔`vc+sd-jwt` compatibility; dual-format grouping uses `requestId` so mDL doctype pairs with the SD-JWT sibling.
+- Not using local `server/mdoc-issuer` for this path — target is `http://issuer.zenithcomp.co.th:455`.
+
+### Session 2026-07-16 (approvePresentation bridge + ISO mDOC HCE routing)
+
+- Wired `ExpoMdocProximityModule.approvePresentation` to `MdocProximityEngine.approvePresentation` (consent ceiling enforcement + presentation engine start).
+- Added ISO mDOC AID `A0000002480400` to HCE manifest; `CompanionHostApduService` routes mDOC vs companion AIDs; `MdocApduHandler` + `StoredMdocPresentationEngine` scaffold (Multipaz adapter next per ADR 0006).
+- `proximityArmSession` now calls `approveProximityPresentation` after arm; native events dispatch via `ProximityEventDispatcher`.
+- **Still open:** Multipaz-backed `processApdu` for full `DeviceResponse`; dual-format single-tap E2E after `markMdocExchangeComplete`.
+
+### Session 2026-07-16 (ISO 18013-5 mDL + ACR1311U-N2 physical validation)
+
+- **PASS:** ISO 18013-5 mDOC presentation with doctype `org.iso.18013.5.1.mDL` interoperates on Samsung A26 + ACR1311U-N2.
+- Closes the primary physical blocker for the mDOC data leg on the ACR1311U-N2 reader path; companion HCE leg was already validated separately (2026-07-13 checklist).
+- **Still open:** wire `approvePresentation` in `ExpoMdocProximityModule` to the validated native session path; online OID4VP `DeviceResponse` builder; follow-up ADR 0006 module selection record; dual-format end-to-end (mDOC + companion) on one tap.
+
 ### Session 2026-07-14 (Keychain session recovery)
 
 - An unreadable session Keychain item (`E_CRYPTO_FAILED`) no longer aborts Wallet startup.
@@ -71,8 +103,8 @@ Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCH
 ### Session 2026-07-13 (P2 canvas + OID4VP handler status sync)
 
 - P2 sequence canvas: Wallet steps 4, 6, 7 updated from Missing → Done (handler shipped 2026-07-10). Step 5 note clarified (consent + single sign-time gate on OID4VP path).
-- Spec `docs/superpowers/specs/2026-07-10-p2-issuer-oid4vp-pid-auth-design.md`: status → Handler shipped · E2E pending Issuer step 3; added E2E checklist for `192.100.10.46`.
-- `.env.development.local.example`: issuer OID4VP vars documented with `192.100.10.46` example.
+- Spec `docs/superpowers/specs/2026-07-10-p2-issuer-oid4vp-pid-auth-design.md`: status → Handler shipped · E2E pending Issuer step 3; added E2E checklist for `issuer.zenithcomp.co.th:455`.
+- `.env.development.local.example`: issuer OID4VP vars documented with `issuer.zenithcomp.co.th:455` example.
 - No new Wallet code — gap was documentation/canvas drift only.
 
 ### Session 2026-07-10 (P2 Issuer did:web verify on receive)
@@ -246,7 +278,7 @@ Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operat
 
 ### 3.5 P3 Wallet Key Expiry and Credential Renewal
 
-Source: `docs/User_Journey/id_card/P3.md`, `docs/superpowers/specs/2026-06-25-p3-wallet-key-renewal-design.md` (canonical; merged async + UX specs 2026-06-26; OID4VP old-VC auth 2026-07-13).
+Source: `docs/User_Journey/id_card/P3.md`, `docs/superpowers/specs/2026-06-25-p3-wallet-key-renewal-design.md` (canonical; merged async + UX specs 2026-06-26; OID4VP old-VC auth 2026-07-13; key+doc expiry deadlock lane 2026-07-17).
 
 [x] Wallet key TTL policy (`src/config/walletKeyPolicy.ts`) and `rotateWalletKey()` with per-credential `renewal-required` marking
 [x] Holder-binding parse (`credentialHolderBinding.ts`) and renewal state machine (`credentialKeyRenewal.ts`, `credentialRenewalService.ts`)
@@ -257,6 +289,7 @@ Source: `docs/User_Journey/id_card/P3.md`, `docs/superpowers/specs/2026-06-25-p3
 [x] Wallet home expiry modal (`WalletKeyExpiredModal`) and renewal badges on document rows (`app/(tabs)/index.tsx`)
 [x] Credential detail inactive/active overlay (`ribbon_badge.png`), renewal CTA (renewal-required only), P3-6 cleanup dialog (`app/(tabs)/credential/[id].tsx`)
 [x] Scan-tab renewal deep link via `?renew=<credentialId>` submits only, then routes to old credential detail (`app/(tabs)/scan.tsx`)
+[ ] Key+document expiry deadlock lane (`walletKeyExpiryLane`) — create-key first per sequence, then holder **ขอเอกสาร**; `finish-renewals` steers while rotation record exists (spec/plan 2026-07-17)
 [ ] Physical-device validation: rotate key → submit renewal (silent old-VC OID4VP biometric) → wait/poll → green Active on new VC → P3-6 delete old VC on hardware
 
 ### 3.6 P6 Case 2: Issuer-Initiated Suspension + Unified Holder Actions
@@ -517,7 +550,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Wallet DCQL parsing now supports `meta.vct_values` for SD-JWT VC requests, so it accepts the corrected `dc+sd-jwt` Verifier request against a stored SD-JWT ThaiNationalID.
 - Pivoted the first practical Verifier flow to Transcript while IDCard format is pending: the live Verifier now emits `transcript_credential` with `format: "dc+sd-jwt"` and `meta.vct_values: ["http://192.100.10.48/credentials/TranscriptCredential"]`; the Wallet now matches that to stored `BangkokUniversityTranscript` credentials.
 - Fixed Transcript Verifier submission shape: DCQL `dc+sd-jwt` / `vc+sd-jwt` requests no longer wrap the credential in a signed JWT VP. They now default to SD-JWT+KB when holder binding is required and submit raw compact SD-JWT only when the Verifier explicitly sets `require_cryptographic_holder_binding: false`; Presentation Exchange requests still use the hardware-signed JWT VP token.
-- Tightened DCQL SD-JWT matching: a stored credential must now match both the requested format and the requested `meta.vct_values` before the Wallet submits it. This prevents sending a Transcript issued with a different `vct` (for example Issuer `192.100.10.46`) to a Verifier request that asks for `http://192.100.10.48/credentials/TranscriptCredential`, which the Verifier rejects as `Present VP is invalid`.
+- Tightened DCQL SD-JWT matching: a stored credential must now match both the requested format and the requested `meta.vct_values` before the Wallet submits it. This prevents sending a Transcript issued with a different `vct` (for example Issuer `issuer.zenithcomp.co.th:455`) to a Verifier request that asks for `http://192.100.10.48/credentials/TranscriptCredential`, which the Verifier rejects as `Present VP is invalid`.
 - Added actionable Wallet diagnostics for DCQL SD-JWT metadata mismatches: the Scan error now shows the requested `vct_values` and the stored credential's actual `vct`, so Verifier configuration can be corrected without guessing.
 - Added OID4VP 1.0 SD-JWT+KB presentation support: the Wallet signs a Key Binding JWT with the hardware Wallet Signing Key, includes `nonce`, `aud`, `iat`, and `sd_hash`, appends it to the presented SD-JWT, and rejects credentials that lack `cnf.jwk` holder binding or are bound to a different Wallet Signing Key.
 
@@ -673,7 +706,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 - Reviewed `docs/superpowers/specs/2026-07-06-android-hce-dual-format-presentation-design-review.md` (Composer 2.5) against the spec, ADR 0003/0006, the 2026-06-23 proximity spec, and current code; confirmed major findings, rejected 2 (companion-spec restatement, state merge).
 - Spec `2026-07-03-android-hce-dual-format-presentation-design.md` revised to rev 4 and marked **Approved (design-level)**: added Relationship To Prior Specs (HCE APDU supersedes BLE data leg; 2026-06-23 spec header amended), Pre-Tap Request Resolution (fixed the customer reader profile in config, consent = ceiling), Migration From Current Model (linking layer over `VerifiableCredentialRecord` + `mdocStorage`; UI/renewal/sync stay SD-JWT-keyed in v1), same-Ed25519-seed device key decision, Multipaz as leading candidate per ADR 0006, issuer configuration grouping rule, subset test-matrix case, v1 consent-screen identity fallback.
-- **Remaining blockers before NFC dual-format on device:** (1) native HCE APDU stack + the customer companion handler; (2) EdDSA device-authentication interop pass on ACR1311U-N2 (gates Ed25519 vs P-256 fallback in spec §5).
+- **Remaining blockers before NFC dual-format on device:** (1) ~~native HCE APDU stack + companion handler~~ **companion PASS (2026-07-13); mDOC `org.iso.18013.5.1.mDL` PASS on ACR1311U-N2 (2026-07-16)**; (2) wire validated mDOC session into `approvePresentation` + dual-format single-tap E2E; (3) EdDSA device-authentication interop record (gates Ed25519 vs P-256 fallback in spec §5).
 - Follow-up backlog from review pass (rev 4):
   - [x] the customer companion APDU spec pinned: [`nfc-companion-apdu.md`](./superpowers/specs/nfc-companion-apdu.md) + `src/services/proximity/companionTransport/plugins/companionV1/constants.ts`
   - [x] Dual-format issuance slice: `mso_mdoc` claim in `exchangeService`, `LogicalCredential` linking layer, consistency validation, `claimDualFormatCredential` / `claimCredentialWithDualFormatSupport`
@@ -681,8 +714,10 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
   - [x] OID4VP dual-format `vp_token` assembly (`dualFormatVpToken.ts`, `mdocVpTokenEntry.ts`, `presentationTokenBuilders/`)
   - [x] the customer companion CBOR + KB-JWT builder (`companionTransport/plugins/companionV1/`, `companionPresentation.ts`)
   - [x] Native the customer `HostApduService` skeleton + JS arm/companion bridge (`EtdaCompanionHostApduService.kt`, `armProximitySession`, `supplyCompanionPresentation`)
-  - [ ] After physical reader: EdDSA interop pass first (gates Ed25519 vs P-256), then follow-up ADR selecting the mDOC native module
-  - [ ] Full ISO 18013-5 mDOC session crypto + online DeviceResponse builder (native module pending ADR 0006)
+  - [x] After physical reader: ISO 18013-5 mDOC (`org.iso.18013.5.1.mDL`) on ACR1311U-N2 — **PASS 2026-07-16**
+  - [x] Wire `approvePresentation` to native session bridge (`MdocProximityEngine`, `StoredMdocPresentationEngine` scaffold)
+  - [ ] Multipaz-backed ISO 18013-5 `processApdu` + record EdDSA interop + ADR 0006 module selection
+  - [ ] Full online OID4VP `DeviceResponse` builder (native module pending ADR 0006)
 
 ### Session 2026-07-08 (User Journey gap sprint — slices 1–4)
 
