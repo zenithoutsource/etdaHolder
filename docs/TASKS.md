@@ -1,5 +1,10 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-17 (driving-licence reference card)
+
+- Added the fixed screenshot-reference driving-licence card to wallet credential detail/home and VC receive confirmation, using `assets/images/user_profile.png` for the portrait.
+- Verification: the four focused driving-licence suites passed (22 tests); `yarn tsc --noEmit` was run and currently reports two unrelated existing errors in `app/(tabs)/credential/[id].tsx`; `yarn lint` passed with 23 existing warnings and no errors.
+
 ### Session 2026-07-17 (P3 key + document expiry deadlock — implement)
 
 - Lane selector `readWalletKeyExpiryLane` + `readFirstPendingRenewalCredentialId` + pending-renewal copy.
@@ -13,8 +18,9 @@
 - Broker default: `EXPO_PUBLIC_BROKER_BASE_URL` → `https://wallet.zenithcomp.co.th:455` (swagger confirmed `POST/GET /broker/session…`).
 - Push route: `presentation-request` + `session_id` → `/(tabs)/qr` with `brokerSessionId`.
 - Option A verifier-owned `/v1/*` VP-by-reference is superseded for production My QR (see `2026-07-16-my-qr-broker-oid4vp-design.md`).
+- Removed unused mobile Option A stack (`verifierPresentationAdapter`, presentation gateway client/base URL helpers, pre-upload `walletInitiatedPresentation` session APIs). Kept `isSdJwtCredential` in `sdJwtCredential.ts`.
+- Removed unused `VP_RELAY_BASE_URL` / `vpRelayBaseUrl` (server fallbacks use `VERIFIER_PRESENTATION_BASE_URL` / `PRESENTATION_GATEWAY_BASE_URL` only for the local `/v1` reference service).
 - Open items for Broker team: exact `GET .../request` body sample after deposit; confirm push event name stays `presentation-request`.
-- Removed unused `VP_RELAY_BASE_URL` / `vpRelayBaseUrl` mobile helper (server fallbacks use `VERIFIER_PRESENTATION_BASE_URL` / `PRESENTATION_GATEWAY_BASE_URL` only).
 
 ### Session 2026-07-17 (customer issuer Iso18013 direct config keys)
 
@@ -760,5 +766,5 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Implemented the approved issuer-logo slice from [`docs/superpowers/specs/2026-07-17-history-issuer-logo-design.md`](./superpowers/specs/2026-07-17-history-issuer-logo-design.md).
 - History Log entries now render `thaid.png`, `dltt.png`, or `chulalongkorn.png` from card-schema metadata for the supported credential types; unknown types retain the generic icon fallback.
 - Added focused `HistoryItem` coverage for all three mappings and the fallback.
-- Issuer metadata `display.name` is now stored on claimed credential records and used for issuance, renewal, verification-failure, and backfilled History Log events; legacy records fall back to JWT `iss` without using the card-schema issuer name.
+- Temporary issuer names are now schema-configured for all supported types: Department of Provincial Administration, Department of Land Transport, and Chulalongkorn University. Unknown credential types may use issuer metadata or JWT `iss`; credential-configuration `display.name` remains the document name (`TranscriptCredential`).
 - Verification: affected history/issuance suites pass (45 tests); root TypeScript passes; lint passes with existing repository warnings and no errors.

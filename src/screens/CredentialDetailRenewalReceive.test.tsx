@@ -104,10 +104,9 @@ jest.mock('../../src/hooks/useStoredCredentials', () => ({
   }),
 }))
 jest.mock('../../src/services/proximity/proximityPresentation', () => ({ isProximityPresentationSupported: () => false }))
-jest.mock('../../src/services/proximity/proximityArmSession', () => ({ armProximityTestSession: jest.fn(), NFC_TEST_ARM_WINDOW_SECONDS: 60 }))
 jest.mock('../../src/services/proximity/mdocStorage', () => ({ hasStoredMdoc: jest.fn(() => new Promise(() => {})) }))
 jest.mock('../../src/services/vp/presentationEvidence', () => ({ readCompactTokenSignature: jest.fn() }))
-jest.mock('../../src/services/vp/walletInitiatedPresentation', () => ({ isSdJwtCredential: () => false }))
+jest.mock('../../src/services/vp/sdJwtCredential', () => ({ isSdJwtCredential: () => false }))
 jest.mock('../../src/config/themeColors', () => ({ THEME: { navy: '#000', danger: '#f00' } }))
 
 describe('CredentialDetailScreen renewal receive action', () => {

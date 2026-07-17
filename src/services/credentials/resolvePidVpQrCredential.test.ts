@@ -1,5 +1,7 @@
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
+import { resolvePidVpQrCredential } from './resolvePidVpQrCredential'
+
 jest.mock('./credentialKeyRenewal', () => ({
   readCredentialRenewalStatuses: jest.fn(() => ({})),
 }))
@@ -8,11 +10,9 @@ jest.mock('./credentialLifecycle', () => ({
   isCredentialPresentable: jest.fn(() => true),
 }))
 
-jest.mock('../vp/walletInitiatedPresentation', () => ({
+jest.mock('../vp/sdJwtCredential', () => ({
   isSdJwtCredential: (record: VerifiableCredentialRecord) => record.rawVc.includes('~'),
 }))
-
-import { resolvePidVpQrCredential } from './resolvePidVpQrCredential'
 
 const thaiIdRecord: VerifiableCredentialRecord = {
   id: 'thai-1',

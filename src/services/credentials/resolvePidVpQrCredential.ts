@@ -2,7 +2,7 @@ import { readCredentialRenewalStatuses } from './credentialKeyRenewal'
 import { isCredentialPresentable } from './credentialLifecycle'
 import { pickPreferredHomeCredential } from './credentialGuard'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
-import { isSdJwtCredential } from '../vp/walletInitiatedPresentation'
+import { isSdJwtCredential } from '../vp/sdJwtCredential'
 
 const PID_CREDENTIAL_TYPE = 'ThaiNationalID'
 
