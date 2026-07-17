@@ -28,7 +28,7 @@ export default function MyQrScreen() {
   const pidCredential = useMemo(() => resolvePidVpQrCredential(credentials), [credentials])
   const pidGateStatus = useMemo(() => readPidGateStatus(credentials), [credentials])
 
-  const { phase, qrUrl, devEnvLine, minutes, seconds, startSession } = useWalletInitiatedVpQrSession({
+  const { phase, qrUrl, minutes, seconds, startSession } = useWalletInitiatedVpQrSession({
     credential: pidCredential,
     active: isFocused && pidCredential !== undefined,
   })
@@ -122,12 +122,10 @@ export default function MyQrScreen() {
               qrUrl={qrUrl}
               minutes={minutes}
               seconds={seconds}
-              devEnvLine={devEnvLine}
               onRetry={handleRetry}
               qrSize={210}
-              showVerifiedRetry
             />
-            {phase === 'ready' ? (
+            {phase === 'waiting_scan' ? (
               <Text className="mt-7 text-center text-[15px] font-semibold leading-7 text-wallet-navy">
                 สแกน QR Code ของฉัน{'\n'}เพื่อตรวจดูเอกสาร
               </Text>

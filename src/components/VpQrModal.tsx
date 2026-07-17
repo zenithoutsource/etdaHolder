@@ -13,7 +13,7 @@ type Props = {
 }
 
 export function VpQrModal({ visible, credential, onClose }: Props) {
-  const { phase, qrUrl, devEnvLine, minutes, seconds, startSession } = useWalletInitiatedVpQrSession({
+  const { phase, qrUrl, minutes, seconds, startSession } = useWalletInitiatedVpQrSession({
     credential,
     active: visible,
   })
@@ -39,7 +39,6 @@ export function VpQrModal({ visible, credential, onClose }: Props) {
             qrUrl={qrUrl}
             minutes={minutes}
             seconds={seconds}
-            devEnvLine={devEnvLine}
             onRetry={handleRetry}
             variant="modal"
           />

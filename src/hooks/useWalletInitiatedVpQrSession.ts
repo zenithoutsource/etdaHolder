@@ -1,44 +1,53 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Platform } from 'react-native'
 
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
+import { useAuthStore } from '../store/authStore'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
-import {
-  buildQrUrl,
-  buildWalletInitiatedVpToken,
-  createVpSession,
-  fetchVpSessionStatus,
-  readWalletInitiatedClaimLabels,
-  recordWalletInitiatedPresentationHistory,
-  submitVpToSession,
-} from '../services/vp/walletInitiatedPresentation'
-import { recordWalletInitiatedPresentationFailure } from '../services/history/walletHistoryRecording'
+import { resolveDeviceTokenForBroker } from '../services/notifications/expoPushTokenCache'
+import { createBrokerSessionClient, type BrokerSessionClient } from '../services/vp/brokerSessionClient'
 import {
   formatVpIssuerPublicKeyEnvLine,
   resolveIssuerPublicJwkFromRawVc,
 } from '../services/vp/resolveIssuerPublicJwkFromRawVc'
 
+const POLL_INTERVAL_MS = 2000
+
 export type WalletInitiatedVpQrPhase =
   | 'idle'
   | 'loading'
-  | 'ready'
-  | 'verified'
-  | 'verify_failed'
+  | 'waiting_scan'
+  | 'request_ready'
   | 'expired'
   | 'error'
 
 type Options = {
   credential: VerifiableCredentialRecord | undefined
   active: boolean
+  client?: BrokerSessionClient
+  walletId?: string
+  deviceToken?: string
+  platform?: 'android' | 'ios'
 }
 
-export function useWalletInitiatedVpQrSession({ credential, active }: Options) {
+export function useWalletInitiatedVpQrSession({
+  credential,
+  active,
+  client,
+  walletId: walletIdOverride,
+  deviceToken: deviceTokenOverride,
+  platform: platformOverride,
+}: Options) {
+  const authWalletId = useAuthStore((state) => state.walletId)
+  const brokerClient = useMemo(() => client ?? createBrokerSessionClient(), [client])
+
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
   const [remainingMs, setRemainingMs] = useState(0)
   const [phase, setPhase] = useState<WalletInitiatedVpQrPhase>('idle')
   const [devEnvLine, setDevEnvLine] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [historyRecorded, setHistoryRecorded] = useState(false)
+  const [authorizationRequestUri, setAuthorizationRequestUri] = useState<string | null>(null)
 
   const startSession = useCallback(async () => {
     if (!credential) return
@@ -47,35 +56,37 @@ export function useWalletInitiatedVpQrSession({ credential, active }: Options) {
     setQrUrl(null)
     setDevEnvLine(null)
     setSessionId(null)
-    setHistoryRecorded(false)
-    logWalletStep('vp-relay', 'session-start', { credentialType: credential.type })
+    setAuthorizationRequestUri(null)
+    logWalletStep('vp-broker', 'session-start', { credentialType: credential.type })
 
     if (__DEV__) {
       try {
         const jwk = resolveIssuerPublicJwkFromRawVc(credential.rawVc)
         const envLine = formatVpIssuerPublicKeyEnvLine(jwk)
         setDevEnvLine(envLine)
-        logWalletStep('vp-relay', 'issuer-key-env-line', { envLine })
+        logWalletStep('vp-broker', 'issuer-key-env-line', { envLine })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        logWalletStep('vp-relay', 'issuer-key-resolve-failed', { message })
-        logWalletError('vp-relay', 'issuer-key-resolve-failed', error)
+        logWalletStep('vp-broker', 'issuer-key-resolve-failed', { message })
+        logWalletError('vp-broker', 'issuer-key-resolve-failed', error)
       }
     }
 
     try {
-      const session = await createVpSession()
-      const vpToken = await buildWalletInitiatedVpToken(credential, session)
-      await submitVpToSession(session.sessionId, vpToken, credential.type)
-      setSessionId(session.sessionId)
-      setQrUrl(buildQrUrl(session))
-      setExpiresAt(session.expiresAt)
-      setPhase('ready')
+      const deviceToken = deviceTokenOverride ?? (await resolveDeviceTokenForBroker())
+      const platform = platformOverride ?? (Platform.OS === 'ios' ? 'ios' : 'android')
+      const walletId = walletIdOverride ?? authWalletId ?? ''
+
+      const session = await brokerClient.createSession({ walletId, deviceToken, platform })
+      setSessionId(session.session_id)
+      setQrUrl(session.qr_payload)
+      setExpiresAt(session.expires_at)
+      setPhase('waiting_scan')
     } catch (error) {
-      logWalletError('vp-relay', 'session-start-failed', error)
+      logWalletError('vp-broker', 'session-start-failed', error)
       setPhase('error')
     }
-  }, [credential])
+  }, [credential, brokerClient, deviceTokenOverride, platformOverride, walletIdOverride, authWalletId])
 
   useEffect(() => {
     if (!active || !credential) {
@@ -83,7 +94,7 @@ export function useWalletInitiatedVpQrSession({ credential, active }: Options) {
       setQrUrl(null)
       setExpiresAt(null)
       setSessionId(null)
-      setHistoryRecorded(false)
+      setAuthorizationRequestUri(null)
       return
     }
 
@@ -91,7 +102,7 @@ export function useWalletInitiatedVpQrSession({ credential, active }: Options) {
   }, [active, credential, startSession])
 
   useEffect(() => {
-    if (!expiresAt || phase !== 'ready') return undefined
+    if (!expiresAt || (phase !== 'waiting_scan' && phase !== 'request_ready')) return undefined
 
     const tick = () => {
       const ms = Date.parse(expiresAt) - Date.now()
@@ -110,60 +121,33 @@ export function useWalletInitiatedVpQrSession({ credential, active }: Options) {
   }, [expiresAt, phase])
 
   useEffect(() => {
-    if (!active || phase !== 'ready' || !sessionId || !credential || historyRecorded) return undefined
+    if (!active || phase !== 'waiting_scan' || !sessionId) return undefined
 
     let cancelled = false
 
-    const pollVerifierStatus = async () => {
+    const pollPresentationRequest = async () => {
       try {
-        const outcome = await fetchVpSessionStatus(sessionId)
-        if (cancelled) return
+        const uri = await brokerClient.fetchPresentationRequestUri(sessionId)
+        if (cancelled || !uri) return
 
-        if (outcome.status === 'verified') {
-          recordWalletInitiatedPresentationHistory(credential)
-          setHistoryRecorded(true)
-          setQrUrl(null)
-          setPhase('verified')
-          logWalletStep('vp-relay', 'verifier-verified', { sessionPrefix: sessionId.slice(0, 8) })
-          return
-        }
-
-        if (outcome.status === 'verify_failed') {
-          recordWalletInitiatedPresentationFailure({
-            record: credential,
-            verifierReason: outcome.reason,
-            disclosedClaims: readWalletInitiatedClaimLabels(credential),
-          })
-          setHistoryRecorded(true)
-          setQrUrl(null)
-          setPhase('verify_failed')
-          logWalletStep('vp-relay', 'verifier-verify-failed', {
-            sessionPrefix: sessionId.slice(0, 8),
-            reason: outcome.reason ?? 'unknown',
-          })
-          return
-        }
-
-        if (outcome.status === 'expired') {
-          setRemainingMs(0)
-          setQrUrl(null)
-          setPhase('expired')
-        }
+        setAuthorizationRequestUri(uri)
+        setPhase('request_ready')
+        logWalletStep('vp-broker', 'presentation-request-ready', { sessionPrefix: sessionId.slice(0, 8) })
       } catch (error) {
-        logWalletError('vp-relay', 'status-poll-failed', error)
+        logWalletError('vp-broker', 'presentation-request-poll-failed', error)
       }
     }
 
-    void pollVerifierStatus()
+    void pollPresentationRequest()
     const timerId = setInterval(() => {
-      void pollVerifierStatus()
-    }, 2000)
+      void pollPresentationRequest()
+    }, POLL_INTERVAL_MS)
 
     return () => {
       cancelled = true
       clearInterval(timerId)
     }
-  }, [active, phase, sessionId, historyRecorded, credential])
+  }, [active, phase, sessionId, brokerClient])
 
   const minutes = String(Math.floor(remainingMs / 60_000))
   const seconds = String(Math.floor((remainingMs % 60_000) / 1000)).padStart(2, '0')
@@ -174,6 +158,8 @@ export function useWalletInitiatedVpQrSession({ credential, active }: Options) {
     devEnvLine,
     minutes,
     seconds,
+    sessionId,
+    authorizationRequestUri,
     startSession,
   }
 }
