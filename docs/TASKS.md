@@ -1,5 +1,12 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-17 (P3 key + document expiry deadlock — implement)
+
+- Lane selector `readWalletKeyExpiryLane` + `readFirstPendingRenewalCredentialId` + pending-renewal copy.
+- `WalletKeyExpiryHost` shows create-key only for `create-key` lane; `finish-renewals && isExpired` steers via AppDialog; blocked rotate offers **ไปต่ออายุเอกสาร**.
+- Document-expired `ขอเอกสารใหม่` gated by `shouldOfferDocumentReissueCta` on home + credential detail while lane is `create-key`.
+- Spec/plan: `2026-07-17-p3-key-document-expiry-deadlock-*`.
+
 ### Session 2026-07-17 (My QR Broker engagement + OID4VP cutover)
 
 - Production My QR now uses Wallet Broker engagement (`POST /broker/session` → show `qr_payload` → poll/push for deposited OID4VP request → shared `Oid4VpDisclosureFlow` → `direct_post`).
@@ -310,7 +317,7 @@ Source: `docs/User_Journey/id_card/P3.md`, `docs/superpowers/specs/2026-06-25-p3
 [x] Wallet home expiry modal (`WalletKeyExpiredModal`) and renewal badges on document rows (`app/(tabs)/index.tsx`)
 [x] Credential detail inactive/active overlay (`ribbon_badge.png`), renewal CTA (renewal-required only), P3-6 cleanup dialog (`app/(tabs)/credential/[id].tsx`)
 [x] Scan-tab renewal deep link via `?renew=<credentialId>` submits only, then routes to old credential detail (`app/(tabs)/scan.tsx`)
-[ ] Key+document expiry deadlock lane (`walletKeyExpiryLane`) — create-key first per sequence, then holder **ขอเอกสาร**; `finish-renewals` steers while rotation record exists (spec/plan 2026-07-17)
+[x] Key+document expiry deadlock lane (`walletKeyExpiryLane`) — create-key first per sequence, then holder **ขอเอกสาร**; `finish-renewals` steers while rotation record exists (spec/plan 2026-07-17)
 [ ] Physical-device validation: rotate key → submit renewal (silent old-VC OID4VP biometric) → wait/poll → green Active on new VC → P3-6 delete old VC on hardware
 
 ### 3.6 P6 Case 2: Issuer-Initiated Suspension + Unified Holder Actions
