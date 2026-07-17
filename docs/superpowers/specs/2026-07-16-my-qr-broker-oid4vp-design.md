@@ -13,8 +13,8 @@
 
 | Concern | Owner |
 |---------|--------|
-| Engagement / QR / push relay | Wallet Broker (`192.100.10.49`) |
-| `nonce`, DCQL, crypto verify | Verifier API (`192.100.10.48`) |
+| Engagement / QR / push relay | Wallet Broker (`https://wallet.zenithcomp.co.th:455`) |
+| `nonce`, DCQL, crypto verify | Verifier API (`verifier.zenithcomp.co.th:455`) |
 | Sign + `direct_post` | Wallet app (existing OID4VP path) |
 
 Wallet company backend does **not** verify VPs. Verifier does **not** need new product APIs beyond the existing OID4VP surface plus `/verifier/scan` (already updated).
@@ -25,14 +25,14 @@ Wallet company backend does **not** verify VPs. Verifier does **not** need new p
 2. Checkpoint Verifier scans the QR.
 3. Wallet enters the **existing** presentation / disclosure UI (same panels as Scan).
 
-## Hosts (dev LAN)
+## Hosts
 
 | Role | Base URL |
 |------|----------|
-| Broker | `http://192.100.10.49` |
-| Verifier | `http://192.100.10.48` |
+| Broker | `https://wallet.zenithcomp.co.th:455` (`EXPO_PUBLIC_BROKER_BASE_URL`) |
+| Verifier | `http://verifier.zenithcomp.co.th:455` |
 
-Production uses the same path shapes on HTTPS hosts via env.
+Override the broker host via `EXPO_PUBLIC_BROKER_BASE_URL` when needed.
 
 ## End-to-end flow
 

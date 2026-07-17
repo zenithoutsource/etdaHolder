@@ -1,7 +1,7 @@
 # Verifier-Owned Wallet-Initiated Presentation (Option A)
 
 > **Date:** 2026-07-09  
-> **Status:** Approved — production authority model  
+> **Status:** Superseded for production My QR by `docs/superpowers/specs/2026-07-16-my-qr-broker-oid4vp-design.md` (Broker engagement + OID4VP disclosure). Kept as historical Option A VP-by-reference design.  
 > **Supersedes:** wallet-as-authority framing in `docs/superpowers/specs/2026-07-09-production-my-qr-presentation-gateway-design.md`  
 > **Related:** `docs/superpowers/specs/2026-06-29-vp-qr-wallet-initiated-design.md` (§2.1 crypto checklist), `server/src/services/sdJwtVerifier.ts`, `src/hooks/useWalletInitiatedVpQrSession.ts`
 
@@ -81,7 +81,7 @@ v1 policy: `credentialType` must be `ThaiNationalID`.
 ### Base URL resolution
 
 Primary: `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL`  
-Fallback chain (deprecated): `EXPO_PUBLIC_PRESENTATION_GATEWAY_BASE_URL` → `EXPO_PUBLIC_VP_RELAY_BASE_URL` → wallet-api origin strip.
+Fallback chain (deprecated Option A): `EXPO_PUBLIC_PRESENTATION_GATEWAY_BASE_URL` → wallet-api origin strip. (`EXPO_PUBLIC_VP_RELAY_BASE_URL` removed.)
 
 KB-JWT `aud` and QR fallback URL construction use `resolveVerifierPresentationBaseUrl()`.
 
@@ -96,7 +96,7 @@ KB-JWT `aud` and QR fallback URL construction use `resolveVerifierPresentationBa
 
 ## Server reference implementation
 
-`server/src/routes/presentationGateway.ts` is a **reference verifier presentation service** for local/LAN dev. In production it must run on verifier infrastructure (e.g. external Verifier API at `192.100.10.48` once `/v1/*` endpoints are deployed there).
+`server/src/routes/presentationGateway.ts` is a **reference verifier presentation service** for local/LAN dev. In production it must run on verifier infrastructure (e.g. external Verifier API at `verifier.zenithcomp.co.th:455` once `/v1/*` endpoints are deployed there).
 
 Dev `/dev/vp-session` + `/dev/vp-verify` remain for backward-compatible LAN golden path.
 
@@ -106,7 +106,6 @@ Dev `/dev/vp-session` + `/dev/vp-verify` remain for backward-compatible LAN gold
 |--------------|--------------|---------|
 | `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL` | `VERIFIER_PRESENTATION_BASE_URL` | Verifier presentation service public base URL |
 | `EXPO_PUBLIC_PRESENTATION_GATEWAY_BASE_URL` (deprecated) | `PRESENTATION_GATEWAY_BASE_URL` (deprecated) | Legacy alias |
-| `EXPO_PUBLIC_VP_RELAY_BASE_URL` (deprecated) | `VP_RELAY_BASE_URL` | Dev `/dev/*` + fallback base URL |
 
 ## Security
 
@@ -124,4 +123,4 @@ Dev `/dev/vp-session` + `/dev/vp-verify` remain for backward-compatible LAN gold
 
 ## External Verifier API
 
-The development Verifier API (`192.100.10.48`) already serves Scan-tab OID4VP. Production My QR requires the same host (or successor) to expose `/v1/presentation-sessions` and `/v1/present/verify`. Until deployed, point `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL` / `VERIFIER_PRESENTATION_BASE_URL` at the local reference service on a LAN-reachable URL.
+The development Verifier API (`verifier.zenithcomp.co.th:455`) already serves Scan-tab OID4VP. Production My QR requires the same host (or successor) to expose `/v1/presentation-sessions` and `/v1/present/verify`. Until deployed, point `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL` / `VERIFIER_PRESENTATION_BASE_URL` at the local reference service on a LAN-reachable URL.

@@ -14,7 +14,7 @@ function readVerifierPresentationBaseUrl(): string {
   return normalizeBaseUrl(
     readOptionalString('VERIFIER_PRESENTATION_BASE_URL')
       ?? readOptionalString('PRESENTATION_GATEWAY_BASE_URL')
-      ?? readString('VP_RELAY_BASE_URL', 'http://localhost:4000'),
+      ?? 'http://localhost:4000',
   )
 }
 
@@ -41,7 +41,6 @@ export type ServerConfig = {
     fromName: string
   }
   vpSessionTtlMs: number
-  vpRelayBaseUrl: string
   vpIssuerPublicKeyJwk?: Ed25519PublicJwk
   presentationSessionTtlMs: number
   verifierPresentationBaseUrl: string
@@ -119,7 +118,6 @@ export function readConfig(): ServerConfig {
       fromName: readString('MAIL_FROM_NAME', 'Wallet'),
     },
     vpSessionTtlMs: readIntegerInRange('VP_SESSION_TTL_MS', '300000', 30_000, 3_600_000),
-    vpRelayBaseUrl: normalizeBaseUrl(readString('VP_RELAY_BASE_URL', 'http://localhost:4000')),
     vpIssuerPublicKeyJwk: readIssuerPublicKeyJwk(),
     presentationSessionTtlMs: readIntegerInRange('PRESENTATION_SESSION_TTL_MS', '300000', 30_000, 3_600_000),
     verifierPresentationBaseUrl: readVerifierPresentationBaseUrl(),

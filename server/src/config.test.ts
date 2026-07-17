@@ -31,13 +31,11 @@ describe('server config', () => {
     expect(() => readConfig()).toThrow('ConfigInvalid: JWT_SECRET')
   })
 
-  test('reads VP relay config from env', () => {
+  test('reads VP session TTL and issuer key from env', () => {
     process.env.VP_SESSION_TTL_MS = '120000'
-    process.env.VP_RELAY_BASE_URL = 'http://192.168.1.10:4000'
     process.env.VP_ISSUER_PUBLIC_KEY_JWK = TEST_ISSUER_PUBLIC_KEY_JWK
     const config = readConfig()
     expect(config.vpSessionTtlMs).toBe(120_000)
-    expect(config.vpRelayBaseUrl).toBe('http://192.168.1.10:4000')
     expect(config.vpIssuerPublicKeyJwk?.crv).toBe('Ed25519')
   })
 

@@ -148,12 +148,12 @@ export async function verifyPresentationSession(
 export async function verifyDevVpSession(
   store: PresentationSessionStore,
   sessionId: string,
-  config: Pick<ServerConfig, 'vpRelayBaseUrl' | 'vpSessionTtlMs' | 'vpIssuerPublicKeyJwk' | 'presentationIssuerJwksCacheMs'>,
+  config: Pick<ServerConfig, 'verifierPresentationBaseUrl' | 'vpSessionTtlMs' | 'vpIssuerPublicKeyJwk' | 'presentationIssuerJwksCacheMs'>,
 ): Promise<VerifyPresentationOutcome> {
   return verifyPresentationSession(store, sessionId, {
-    verifierPresentationBaseUrl: config.vpRelayBaseUrl,
+    verifierPresentationBaseUrl: config.verifierPresentationBaseUrl,
     presentationSessionTtlMs: config.vpSessionTtlMs,
     vpIssuerPublicKeyJwk: config.vpIssuerPublicKeyJwk,
     presentationIssuerJwksCacheMs: config.presentationIssuerJwksCacheMs,
-  }, { verifierBaseUrl: config.vpRelayBaseUrl, useAsyncIssuerResolve: false })
+  }, { verifierBaseUrl: config.verifierPresentationBaseUrl, useAsyncIssuerResolve: false })
 }

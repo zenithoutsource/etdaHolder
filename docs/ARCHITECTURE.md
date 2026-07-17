@@ -75,36 +75,33 @@ The first OID4VP slice is intentionally narrow and Verifier-driven:
 6. Send `vp_token`, `presentation_submission`, and optional `state` to the Verifier using `direct_post`.
 7. Record successful presentations locally after the Verifier returns a successful HTTP response.
 
-The current development allowlist includes `http://192.100.10.48/openid4vc/verify` for the supplied Verifier API and is emitted only in development builds. Production deployments trust env-configured `decentralized_identifier:did:web:` Verifiers through `EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN`, and optional `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK`; unpinned DID document resolution uses HTTPS `did.json` with the `EXPO_PUBLIC_DID_WEB_FETCH_TIMEOUT_MS` and `EXPO_PUBLIC_DID_WEB_MAX_BYTES` policy.
+The current development allowlist includes `http://verifier.zenithcomp.co.th:455/openid4vc/verify` for the supplied Verifier API and is emitted only in development builds. Production deployments trust env-configured `decentralized_identifier:did:web:` Verifiers through `EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN`, and optional `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK`; unpinned DID document resolution uses HTTPS `did.json` with the `EXPO_PUBLIC_DID_WEB_FETCH_TIMEOUT_MS` and `EXPO_PUBLIC_DID_WEB_MAX_BYTES` policy.
 
-### Wallet-Initiated My QR (Verifier-Owned)
+### Wallet-Initiated My QR (Broker Engagement + OID4VP)
 
-The **My QR** tab is wallet-initiated: the holder shows a QR from a stored credential. Production authority sits on the **Verifier presentation service**, not the wallet company backend.
+The **My QR** tab is wallet-initiated: the holder shows a broker engagement QR. After the checkpoint Verifier scans it, the Wallet Broker holds a standard OID4VP Authorization Request. The wallet then reuses the **Scan-tab disclosure path** (resolve → consent → sign → `direct_post`). The Broker does **not** verify VPs — crypto verification stays on the Verifier.
 
 ```text
-Wallet App
-  │ POST /v1/presentation-sessions
-  │ PUT  /v1/presentation-sessions/{id}  (vpToken)
-  │ KB-JWT aud = Verifier presentation base URL
-  │ QR = verifyUrl (.../v1/present/verify?s=...)
-  │ poll GET .../status → consumed
-  ▼
-Verifier Presentation Service (verifier-owned)
-  │ §2.1 verify on GET /v1/present/verify
-  ▼
-Checkpoint scanner browser (Honeywell)
+Wallet App                      Wallet Broker                         Verifier
+  │ POST /broker/session            │                                    │
+  │ show QR = qr_payload            │                                    │
+  │ (waiting_scan)                  │                                    │
+  │                                 │  POST /verifier/scan               │
+  │                                 │  ◄─────────────────────────────────│
+  │                                 │  deposit OID4VP request            │
+  │ poll/push GET .../request       │                                    │
+  │ disclosure → direct_post ───────────────────────────────────────────►│
 ```
 
 | Concern | Scan tab | My QR tab |
 |---------|----------|-----------|
 | Initiator | Verifier (`openid4vp://`) | Wallet (holder) |
-| Protocol | OID4VP 1.0 `direct_post` | VP-by-reference `/v1/*` |
-| Authority | Verifier OID4VP API | Verifier presentation service |
-| Wallet backend in path? | No | No |
+| Protocol | OID4VP 1.0 `direct_post` | Broker engagement → same OID4VP disclosure + `direct_post` |
+| Authority | Verifier OID4VP API | Verifier OID4VP API (Broker only relays the request) |
+| Wallet backend in path? | No | Yes — Broker session + push/poll only |
 
-Mobile: `createVerifierPresentationAdapter()` → verifier `/v1/*`; base URL from `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL`.  
-Reference implementation: `server/src/routes/presentationGateway.ts` (may co-locate on local `server/` for LAN dev only).  
-Spec: `docs/superpowers/specs/2026-07-09-verifier-owned-wallet-initiated-presentation-design.md`.
+Mobile: `createBrokerSessionClient()` + `Oid4VpDisclosureFlow`; base URL from `EXPO_PUBLIC_BROKER_BASE_URL` (default `https://wallet.zenithcomp.co.th:455`).  
+Spec: `docs/superpowers/specs/2026-07-16-my-qr-broker-oid4vp-design.md` (supersedes Option A VP-by-reference for production My QR).
 
 ## 4. Security Boundary
 

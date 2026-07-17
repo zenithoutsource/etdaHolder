@@ -472,8 +472,8 @@ devWalletRouter.post('/wallet/renewal-request', async (req, res) => {
       res.status(400).json({ message })
       return
     }
-    if (message === 'IssuerProxyTargetMissing') {
-      res.status(503).json({ message: 'ISSUER_PROXY_TARGET is not configured' })
+    if (message === 'IssuerBaseUrlMissing') {
+      res.status(503).json({ message: 'ISSUER_BASE_URL is not configured' })
       return
     }
     res.status(502).json({ message: 'Renewal offer creation failed' })
@@ -564,7 +564,8 @@ devWalletRouter.post('/wallet/renewal-vp/response', (req, res) => {
 function readRenewalPublicBaseUrl(req: { protocol: string; get: (name: string) => string | undefined; headers: Record<string, unknown> }): string {
   const envBase =
     process.env.PUBLIC_BASE_URL?.trim() ||
-    process.env.VP_RELAY_BASE_URL?.trim() ||
+    process.env.VERIFIER_PRESENTATION_BASE_URL?.trim() ||
+    process.env.PRESENTATION_GATEWAY_BASE_URL?.trim() ||
     process.env.EXPO_PUBLIC_WALLET_API_BASE_URL?.trim()
   if (envBase) return envBase.replace(/\/$/, '')
 

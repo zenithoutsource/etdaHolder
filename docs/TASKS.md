@@ -1,5 +1,26 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-17 (My QR Broker engagement + OID4VP cutover)
+
+- Production My QR now uses Wallet Broker engagement (`POST /broker/session` → show `qr_payload` → poll/push for deposited OID4VP request → shared `Oid4VpDisclosureFlow` → `direct_post`).
+- Broker default: `EXPO_PUBLIC_BROKER_BASE_URL` → `https://wallet.zenithcomp.co.th:455` (swagger confirmed `POST/GET /broker/session…`).
+- Push route: `presentation-request` + `session_id` → `/(tabs)/qr` with `brokerSessionId`.
+- Option A verifier-owned `/v1/*` VP-by-reference is superseded for production My QR (see `2026-07-16-my-qr-broker-oid4vp-design.md`).
+- Open items for Broker team: exact `GET .../request` body sample after deposit; confirm push event name stays `presentation-request`.
+- Removed unused `VP_RELAY_BASE_URL` / `vpRelayBaseUrl` mobile helper (server fallbacks use `VERIFIER_PRESENTATION_BASE_URL` / `PRESENTATION_GATEWAY_BASE_URL` only).
+
+### Session 2026-07-17 (customer issuer Iso18013 direct config keys)
+
+- Issuer reportedly added direct `credential_configurations_supported` keys: `org.iso.18013.5.1.mDL` (`mso_mdoc`) and `Iso18013DriversLicenseCredential_dc+sd-jwt` (`dc+sd-jwt`). Live fetch of `http://192.100.10.46/.well-known/openid-credential-issuer` timed out from this workstation (host unreachable).
+- Unit coverage: direct dual-format resolve (`requestId === offer id`) plus regression for missing-doctype / `vc+sd-jwt` alias paths; dual-format grouping maps ISO mDL doctype ids onto the `Iso18013DriversLicenseCredential_*` family.
+- Kept prior compatibility fallbacks. Focused Jest (7) passed; root `tsc` still has unrelated existing `WalletInitiatedVpQr` phase errors.
+
+### Session 2026-07-17 (remove development Issuer/Verifier proxy)
+
+- Removed the development Issuer/Verifier proxy routes, environment switches, and mobile URL rewriting.
+- Renewal helpers now use the direct public `ISSUER_BASE_URL`; physical Android testing uses public Issuer/Verifier URLs directly.
+- Focused mobile and server tests pass. Root TypeScript still reports unrelated existing `WalletInitiatedVpQr` phase comparison errors.
+
 ### Session 2026-07-17 (P3 key + document expiry deadlock — design)
 
 - Spec: `docs/superpowers/specs/2026-07-17-p3-key-document-expiry-deadlock-design.md` — ordered lane `create-key` → holder taps **ขอเอกสาร**; while `wallet.key_rotation` exists, steer to finish renewals (second rotate stays blocked).
@@ -126,7 +147,7 @@ Controls local AI agent coding sessions. Cross-reference `AGENTS.md`, `docs/ARCH
 - Mobile: `resolveVerifierPresentationBaseUrl()` + `createVerifierPresentationAdapter()`; KB-JWT `aud` and QR fallback use verifier base URL; history `partyName: 'Verifier'`. Legacy gateway env names remain as deprecated fallbacks.
 - Server: `VERIFIER_PRESENTATION_BASE_URL` config; `presentationGateway.ts` documented as reference verifier presentation service (LAN co-location ok for dev).
 - Spec: `docs/superpowers/specs/2026-07-09-verifier-owned-wallet-initiated-presentation-design.md` supersedes wallet-as-authority framing in `2026-07-09-production-my-qr-presentation-gateway-design.md`.
-- Golden path env: `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL` (mobile) + `VERIFIER_PRESENTATION_BASE_URL` (server). External Verifier API (`192.100.10.48`) needs `/v1/*` deployed OR use local reference service on LAN until then.
+- Golden path env: `EXPO_PUBLIC_VERIFIER_PRESENTATION_BASE_URL` (mobile) + `VERIFIER_PRESENTATION_BASE_URL` (server). External Verifier API (`verifier.zenithcomp.co.th:455`) needs `/v1/*` deployed OR use local reference service on LAN until then.
 - Verification: focused VP/verifier tests + `yarn tsc --noEmit` + `yarn lint`.
 
 ### Session 2026-07-09 (Production My QR Presentation Gateway)
@@ -362,7 +383,7 @@ Resolved decisions:
 [x] Auth UI: native biometric sign-time gate
 [x] Result source: HTTP response body from `direct_post`
 [x] History: successful presentations only
-[x] Initial Verifier config: development Verifier API at `http://192.100.10.48`
+[x] Initial Verifier config: development Verifier API at `http://verifier.zenithcomp.co.th:455`
 
 Implemented:
 
@@ -542,21 +563,21 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 ### Session 2026-06-11
 
 - Implemented the first OID4VP P5 slice for ThaiNationalID age-over-20 checks: the Scan tab now accepts `openid4vp://` QR Authorization Requests, validates local `did:web` Verifier allowlist entries, supports Presentation Exchange birth-date disclosure, shows native Holder consent, signs a JWT VP token with the hardware Wallet Signing Key, and submits `vp_token` / `presentation_submission` through `direct_post`.
-- Added compatibility for the supplied Verifier API at `http://192.100.10.48`: `POST /generate-vp-qr` returns an `openid4vp://` QR with `request_uri`; `GET /openid4vc/request/{id}` returns a JWT request object using DCQL for `IDCardCredential`; `POST /openid4vc/verify/{id}` accepts `vp_token` and `state`.
+- Added compatibility for the supplied Verifier API at `http://verifier.zenithcomp.co.th:455`: `POST /generate-vp-qr` returns an `openid4vp://` QR with `request_uri`; `GET /openid4vc/request/{id}` returns a JWT request object using DCQL for `IDCardCredential`; `POST /openid4vc/verify/{id}` accepts `vp_token` and `state`.
 - Successful Verifier responses are now recorded in encrypted local presentation history and displayed in History Log. `src/config/trustedVerifiers.ts` contains the development `redirect_uri:` Verifier entry and must be replaced for production.
 - Attempted to add a Sphereon OID4VP package, but the expected package name was not available from the registry in this environment; the implementation uses a narrow local service boundary under `src/services/vp/` that can be replaced or adapted when the correct library is confirmed.
-- Added a development Verifier proxy for USB + PC VPN testing: matching Verifier calls are rewritten through `/dev-verifier-proxy/*` so the phone can scan Verifier QR codes even when only the PC can reach `http://192.100.10.48`.
+- Added a development Verifier proxy for USB + PC VPN testing: matching Verifier calls are rewritten through `/dev-verifier-proxy/*` so the phone can scan Verifier QR codes even when only the PC can reach `http://verifier.zenithcomp.co.th:455`.
 - Hardened Verifier submission after `Present VP is invalid`: DCQL `vp_token` is now encoded as a credential-query-id response object, Verifier error descriptions surface in Scan, JWT VP tokens include `jti`/`nbf`/`exp`, and the Wallet blocks submission when the stored ThaiNationalID format does not match the Verifier's requested DCQL format. Current known mismatch: the Issuer flow in this repo uses `IDCard_dc+sd-jwt`, while the supplied Verifier requests `jwt_vc_json`; the Verifier should request `format: "dc+sd-jwt"` with `meta.vct_values: ["IDCardCredential"]`.
 - Wallet DCQL parsing now supports `meta.vct_values` for SD-JWT VC requests, so it accepts the corrected `dc+sd-jwt` Verifier request against a stored SD-JWT ThaiNationalID.
-- Pivoted the first practical Verifier flow to Transcript while IDCard format is pending: the live Verifier now emits `transcript_credential` with `format: "dc+sd-jwt"` and `meta.vct_values: ["http://192.100.10.48/credentials/TranscriptCredential"]`; the Wallet now matches that to stored `BangkokUniversityTranscript` credentials.
+- Pivoted the first practical Verifier flow to Transcript while IDCard format is pending: the live Verifier now emits `transcript_credential` with `format: "dc+sd-jwt"` and `meta.vct_values: ["http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential"]`; the Wallet now matches that to stored `BangkokUniversityTranscript` credentials.
 - Fixed Transcript Verifier submission shape: DCQL `dc+sd-jwt` / `vc+sd-jwt` requests no longer wrap the credential in a signed JWT VP. They now default to SD-JWT+KB when holder binding is required and submit raw compact SD-JWT only when the Verifier explicitly sets `require_cryptographic_holder_binding: false`; Presentation Exchange requests still use the hardware-signed JWT VP token.
-- Tightened DCQL SD-JWT matching: a stored credential must now match both the requested format and the requested `meta.vct_values` before the Wallet submits it. This prevents sending a Transcript issued with a different `vct` (for example Issuer `issuer.zenithcomp.co.th:455`) to a Verifier request that asks for `http://192.100.10.48/credentials/TranscriptCredential`, which the Verifier rejects as `Present VP is invalid`.
+- Tightened DCQL SD-JWT matching: a stored credential must now match both the requested format and the requested `meta.vct_values` before the Wallet submits it. This prevents sending a Transcript issued with a different `vct` (for example Issuer `issuer.zenithcomp.co.th:455`) to a Verifier request that asks for `http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential`, which the Verifier rejects as `Present VP is invalid`.
 - Added actionable Wallet diagnostics for DCQL SD-JWT metadata mismatches: the Scan error now shows the requested `vct_values` and the stored credential's actual `vct`, so Verifier configuration can be corrected without guessing.
 - Added OID4VP 1.0 SD-JWT+KB presentation support: the Wallet signs a Key Binding JWT with the hardware Wallet Signing Key, includes `nonce`, `aud`, `iat`, and `sd_hash`, appends it to the presented SD-JWT, and rejects credentials that lack `cnf.jwk` holder binding or are bound to a different Wallet Signing Key.
 
 ### Session 2026-06-12
 
-- Fixed local Verifier trust configuration for physical-device testing: `.env` now sets `EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://192.100.10.48` and `EXPO_PUBLIC_VERIFIER_NAME=Verifier API`, so the Scan tab builds a non-empty development Verifier allowlist instead of rejecting ID-card Verifier QR codes as untrusted. Restarted Metro on port 8081 after the env change; focused verifier/presentation tests pass.
+- Fixed local Verifier trust configuration for physical-device testing: `.env` now sets `EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://verifier.zenithcomp.co.th:455` and `EXPO_PUBLIC_VERIFIER_NAME=Verifier API`, so the Scan tab builds a non-empty development Verifier allowlist instead of rejecting ID-card Verifier QR codes as untrusted. Restarted Metro on port 8081 after the env change; focused verifier/presentation tests pass.
 - Added temporary development-only SD-JWT KB bypass for the current Verifier API, which omits `require_cryptographic_holder_binding` while test credentials lack `cnf.jwk`: `EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING=true` makes omitted holder-binding requirements behave like `false` in dev only, so the wallet submits raw compact SD-JWT. This is now superseded locally by the software EdDSA test path below; production/release behavior remains SD-JWT+KB by default.
 - Added temporary development-only software Ed25519/EdDSA KB-JWT signing through `@noble/curves` for the the production verifier test path. `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true` makes OID4VP SD-JWT presentation use `alg: EdDSA` while preserving the existing hardware-backed P-256 `ES256` OID4VCI issuance path. This stores software key material in JS-accessible local metadata storage and is explicitly not release-safe.
 - Extended the same development-only software Ed25519 key to OID4VCI PoP JWTs when `EXPO_PUBLIC_ENABLE_SOFTWARE_EDDSA_FOR_TESTING=true`: `signProof()` now emits `alg: EdDSA`, an Ed25519 `did:key` `kid`, and an OKP public JWK for issuer interoperability testing. Existing credentials issued before this change must be reissued before the Verifier can validate EdDSA holder binding.
@@ -726,3 +747,11 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - **Slice 3:** P6 Case 3 Used — `CredentialLifecycleAction` `'Used'` through `recordCredentialLifecycleAction`; `credential-used` history kind; inactive badge; dev `POST /wallet-api/dev/wallet/mark-used`.
 - **Slice 4:** P6 Case 1 dev holder revoke — `POST /wallet-api/dev/issuer/holder-revoke`, `holderRevokeService`, credential detail `revokeSubmitting` phase; local revoke only after Issuer `201`; credential record retained (no key destruction). v1: no PoP — PIN flow unchanged.
 - Verification: `yarn test` on touched suites pass; root `yarn tsc --noEmit` still reports pre-existing `server/src/config.test.ts` `NODE_ENV` read-only assignment (unchanged by this sprint).
+
+### Session 2026-07-17 (History Log issuer logos)
+
+- Implemented the approved issuer-logo slice from [`docs/superpowers/specs/2026-07-17-history-issuer-logo-design.md`](./superpowers/specs/2026-07-17-history-issuer-logo-design.md).
+- History Log entries now render `thaid.png`, `dltt.png`, or `chulalongkorn.png` from card-schema metadata for the supported credential types; unknown types retain the generic icon fallback.
+- Added focused `HistoryItem` coverage for all three mappings and the fallback.
+- Issuer metadata `display.name` is now stored on claimed credential records and used for issuance, renewal, verification-failure, and backfilled History Log events; legacy records fall back to JWT `iss` without using the card-schema issuer name.
+- Verification: affected history/issuance suites pass (45 tests); root TypeScript passes; lint passes with existing repository warnings and no errors.
