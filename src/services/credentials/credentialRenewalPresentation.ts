@@ -47,6 +47,7 @@ export function shouldHideCredentialActionMenu(
   renewalStatus?: CredentialRenewalRecord,
   context?: CredentialActionMenuContext,
 ): boolean {
+  void renewalStatus
   if (readWalletKeyRotationRecord()) return true
   if (
     context &&
@@ -54,7 +55,5 @@ export function shouldHideCredentialActionMenu(
   ) {
     return true
   }
-  if (renewalStatus) return true
-
   return false
 }

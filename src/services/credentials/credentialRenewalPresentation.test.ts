@@ -148,7 +148,7 @@ describe('shouldHideCredentialActionMenu', () => {
     expect(shouldHideCredentialActionMenu(undefined)).toBe(true)
   })
 
-  test('hides while credential still has renewal metadata', () => {
+  test('shows for an active credential with a non-blocking renewal record', () => {
     mockStorage()
 
     expect(
@@ -157,8 +157,10 @@ describe('shouldHideCredentialActionMenu', () => {
         state: 'renewal-required',
         previousHolderDid: 'did:key:old',
         updatedAt: '2026-06-26T00:00:00.000Z',
+      }, {
+        inactiveState: { kind: 'active' },
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test('shows after rotation and renewal metadata are cleared', () => {
