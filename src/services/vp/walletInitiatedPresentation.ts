@@ -9,7 +9,6 @@ import type {
   PresentationSessionStatusResponse,
 } from './presentationGatewayClient'
 import {
-  createVerifierPresentationAdapter,
   getDefaultVerifierPresentationClient,
 } from './verifierPresentationAdapter'
 import { resolveVerifierPresentationBaseUrl } from './verifierPresentationBaseUrl'
