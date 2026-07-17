@@ -25,7 +25,6 @@ function sessionState(overrides: Record<string, unknown> = {}) {
   return {
     phase: 'waiting_scan',
     qrUrl: 'http://broker/session/s1/request',
-    devEnvLine: null,
     minutes: '0',
     seconds: '59',
     sessionId: 's1',

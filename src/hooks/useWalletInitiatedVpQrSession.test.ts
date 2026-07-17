@@ -4,11 +4,6 @@ import { useWalletInitiatedVpQrSession } from './useWalletInitiatedVpQrSession'
 import type { BrokerSessionClient } from '../services/vp/brokerSessionClient'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
-jest.mock('../services/vp/resolveIssuerPublicJwkFromRawVc', () => ({
-  resolveIssuerPublicJwkFromRawVc: jest.fn(),
-  formatVpIssuerPublicKeyEnvLine: jest.fn(() => 'VP_ISSUER_PUBLIC_KEY_JWK=...'),
-}))
-
 jest.mock('../services/debug/walletLogger', () => ({
   logWalletStep: jest.fn(),
   logWalletError: jest.fn(),

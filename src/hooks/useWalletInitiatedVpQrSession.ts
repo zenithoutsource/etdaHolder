@@ -6,10 +6,6 @@ import { useAuthStore } from '../store/authStore'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 import { resolveDeviceTokenForBroker } from '../services/notifications/expoPushTokenCache'
 import { createBrokerSessionClient, type BrokerSessionClient } from '../services/vp/brokerSessionClient'
-import {
-  formatVpIssuerPublicKeyEnvLine,
-  resolveIssuerPublicJwkFromRawVc,
-} from '../services/vp/resolveIssuerPublicJwkFromRawVc'
 
 const POLL_INTERVAL_MS = 2000
 
@@ -45,7 +41,6 @@ export function useWalletInitiatedVpQrSession({
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
   const [remainingMs, setRemainingMs] = useState(0)
   const [phase, setPhase] = useState<WalletInitiatedVpQrPhase>('idle')
-  const [devEnvLine, setDevEnvLine] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [authorizationRequestUri, setAuthorizationRequestUri] = useState<string | null>(null)
 
@@ -54,23 +49,9 @@ export function useWalletInitiatedVpQrSession({
 
     setPhase('loading')
     setQrUrl(null)
-    setDevEnvLine(null)
     setSessionId(null)
     setAuthorizationRequestUri(null)
     logWalletStep('vp-broker', 'session-start', { credentialType: credential.type })
-
-    if (__DEV__) {
-      try {
-        const jwk = resolveIssuerPublicJwkFromRawVc(credential.rawVc)
-        const envLine = formatVpIssuerPublicKeyEnvLine(jwk)
-        setDevEnvLine(envLine)
-        logWalletStep('vp-broker', 'issuer-key-env-line', { envLine })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        logWalletStep('vp-broker', 'issuer-key-resolve-failed', { message })
-        logWalletError('vp-broker', 'issuer-key-resolve-failed', error)
-      }
-    }
 
     try {
       const deviceToken = deviceTokenOverride ?? (await resolveDeviceTokenForBroker())
@@ -155,7 +136,6 @@ export function useWalletInitiatedVpQrSession({
   return {
     phase,
     qrUrl,
-    devEnvLine,
     minutes,
     seconds,
     sessionId,

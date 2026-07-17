@@ -26,7 +26,6 @@
 - Create: `src/config/runtimeEndpoints.ts`
 - Modify: `src/sdk/installWalletApiFetch.ts`
 - Modify: `src/services/vp/brokerBaseUrl.ts`
-- Modify: `src/services/vp/verifierPresentationBaseUrl.ts`
 - Test: `src/config/runtimeEndpoints.test.ts`
 - Test: `src/sdk/installWalletApiFetch.test.ts`
 - Test: `src/services/vp/brokerBaseUrl.test.ts`
@@ -34,7 +33,7 @@
 **Interfaces:**
 - `readMobileRuntimeEndpoint(name: string, raw: string | undefined, options: { requiredInRelease: boolean; allowHttpInDev: boolean }): string` returns a normalized URL or throws `MobileConfigInvalid:{name}:{reason}`.
 - `readMobileRuntimeEndpoint` must reject malformed URLs, credentials in URLs, and empty values. In release-like mode it must reject non-HTTPS URLs and loopback hosts.
-- Existing exported functions `getConfiguredWalletApiBaseUrl()`, `resolveBrokerBaseUrl()`, and `resolveVerifierPresentationBaseUrl()` retain their public signatures.
+- Existing exported functions `getConfiguredWalletApiBaseUrl()` and `resolveBrokerBaseUrl()` retain their public signatures.
 
 - [ ] **Step 1: Write failing endpoint validation tests**
 
@@ -76,7 +75,7 @@ Use an explicit development default only at the caller boundary. Do not expose t
 
 - [ ] **Step 4: Route mobile endpoint consumers through the reader**
 
-Update `installWalletApiFetch.ts`, `brokerBaseUrl.ts`, and `verifierPresentationBaseUrl.ts` so environment reads and defaults pass through the centralized reader. Preserve development loopback-to-Metro rewriting only in `__DEV__`.
+Update `installWalletApiFetch.ts` and `brokerBaseUrl.ts` so environment reads and defaults pass through the centralized reader. Preserve development loopback-to-Metro rewriting only in `__DEV__`.
 
 - [ ] **Step 5: Add regression tests for endpoint consumers**
 
@@ -91,7 +90,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit the mobile configuration slice**
 
 ```powershell
-git add src/config/runtimeEndpoints.ts src/config/runtimeEndpoints.test.ts src/sdk/installWalletApiFetch.ts src/sdk/installWalletApiFetch.test.ts src/services/vp/brokerBaseUrl.ts src/services/vp/brokerBaseUrl.test.ts src/services/vp/verifierPresentationBaseUrl.ts
+git add src/config/runtimeEndpoints.ts src/config/runtimeEndpoints.test.ts src/sdk/installWalletApiFetch.ts src/sdk/installWalletApiFetch.test.ts src/services/vp/brokerBaseUrl.ts src/services/vp/brokerBaseUrl.test.ts
 git commit -m "fix(config): validate mobile production endpoints"
 ```
 
