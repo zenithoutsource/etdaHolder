@@ -12,14 +12,32 @@ export type NotificationEvent =
   | 'old-revoked'
   | 'document-expiring-soon'
   | 'document-expired'
+  | 'presentation-request'
 
 export type NotificationData = {
   event?: NotificationEvent | string
   credentialId?: string
   credentialType?: string
+  session_id?: string
 }
 
 export function buildNotificationRoute(data: NotificationData): PendingNotificationRoute | undefined {
+  if (data.event === 'presentation-request') {
+    const sessionId = data.session_id?.trim()
+    if (!sessionId) {
+      logWalletStep('push-notifications', 'tap-ignored', {
+        event: data.event,
+        reason: 'missing-session-id',
+      })
+      return undefined
+    }
+
+    return {
+      pathname: '/(tabs)/qr',
+      params: { brokerSessionId: sessionId },
+    }
+  }
+
   if (!data.credentialId) {
     logWalletStep('push-notifications', 'tap-ignored', {
       event: data.event,

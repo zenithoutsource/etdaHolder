@@ -86,6 +86,22 @@ describe('notificationRouter', () => {
         credentialType: 'ThaiNationalID',
       })).toBeUndefined()
     })
+
+    test('routes presentation-request taps to My QR without requiring credentialId', () => {
+      expect(buildNotificationRoute({
+        event: 'presentation-request',
+        session_id: '989cc1b5-6443-41be-b0e2-7c38fabfd14b',
+      })).toEqual({
+        pathname: '/(tabs)/qr',
+        params: { brokerSessionId: '989cc1b5-6443-41be-b0e2-7c38fabfd14b' },
+      })
+    })
+
+    test('ignores presentation-request taps without a session id', () => {
+      expect(buildNotificationRoute({
+        event: 'presentation-request',
+      })).toBeUndefined()
+    })
   })
 
   describe('routeNotificationTap', () => {
