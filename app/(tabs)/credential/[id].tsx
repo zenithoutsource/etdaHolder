@@ -177,6 +177,7 @@ export default function CredentialDetailScreen() {
     shouldOfferDocumentReissueCta({
       lane: walletKeyExpiryLane,
       documentExpired: true,
+      renewalState: renewalStatus?.state,
     });
   const showExpiringSoonBanner =
     inactiveState.kind === "active" &&

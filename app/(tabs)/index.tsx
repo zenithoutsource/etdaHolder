@@ -622,6 +622,7 @@ export default function WalletHomeScreen() {
                       shouldOfferDocumentReissueCta({
                         lane: walletKeyExpiryLane,
                         documentExpired: true,
+                        renewalState: renewalStatus?.state,
                       })) ||
                       (shouldShowInactivePortalRequestCta(inactiveState) &&
                         isIssuerPortalCredentialType(item.credentialType)))

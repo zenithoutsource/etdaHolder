@@ -33,4 +33,28 @@ describe('shouldOfferDocumentReissueCta', () => {
       }),
     ).toBe(false)
   })
+
+  test('hides document reissue while a P3 renewal is in flight', () => {
+    expect(
+      shouldOfferDocumentReissueCta({
+        lane: 'idle',
+        documentExpired: true,
+        renewalState: 'renewal-processing',
+      }),
+    ).toBe(false)
+    expect(
+      shouldOfferDocumentReissueCta({
+        lane: 'idle',
+        documentExpired: true,
+        renewalState: 'renewal-required',
+      }),
+    ).toBe(false)
+    expect(
+      shouldOfferDocumentReissueCta({
+        lane: 'idle',
+        documentExpired: true,
+        renewalState: 'cleanup-pending',
+      }),
+    ).toBe(false)
+  })
 })

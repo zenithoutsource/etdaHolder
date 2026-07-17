@@ -381,6 +381,54 @@ describe('refreshAndCompleteRenewals', () => {
     )
   })
 
+  test('does not orphan ready renewals when status poll fails', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      readyOfferUri: 'openid-credential-offer://ready',
+      state: 'renewal-processing',
+      updatedAt: new Date().toISOString(),
+    })
+
+    await refreshAndCompleteRenewals({
+      fetchImpl: jest.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+      }),
+    })
+
+    expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-processing')
+    expect(readCredentialRenewal(mockCredential.id)?.readyOfferUri).toBe(
+      'openid-credential-offer://ready',
+    )
+  })
+
+  test('does not orphan a local ready marker when server omits the credential', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      readyOfferUri: 'openid-credential-offer://ready',
+      state: 'renewal-processing',
+      updatedAt: new Date().toISOString(),
+    })
+
+    await refreshAndCompleteRenewals({
+      fetchImpl: jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ renewals: [] }),
+      }),
+    })
+
+    expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-processing')
+    expect(readCredentialRenewal(mockCredential.id)?.readyOfferUri).toBe(
+      'openid-credential-offer://ready',
+    )
+  })
+
   test('claims a ready renewal and writes cleanup-pending plus renewed-active states', async () => {
     const { values } = mockStorage()
     seedCredential(values, mockCredential)

@@ -318,11 +318,15 @@ function recoverOrphanedRenewalProcessing(serverCredentialIds: Set<string>): voi
     const renewal = readCredentialRenewal(credential.id)
     if (renewal?.state !== 'renewal-processing') continue
     if (serverCredentialIds.has(credential.id)) continue
+    // Local ready marker means the Holder can still Receive — do not demote to
+    // renewal-required on a transient empty/mismatched server list.
+    if (renewal.readyOfferUri?.trim()) continue
 
     upsertCredentialRenewal(
       credential.id,
       {
         previousHolderDid: renewal.previousHolderDid,
+        readyOfferUri: undefined,
         state: 'renewal-required',
       },
       new Date(),
@@ -336,6 +340,7 @@ export async function refreshAndCompleteRenewals(
 ): Promise<void> {
   const resolvedDependencies = resolveDependencies(dependencies)
   let serverCredentialIds = new Set<string>()
+  let statusPollSucceeded = false
 
   try {
     const response = await resolvedDependencies.fetchImpl(DEV_RENEWAL_STATUS_ENDPOINT)
@@ -344,6 +349,7 @@ export async function refreshAndCompleteRenewals(
     const payload = (await response.json()) as Partial<RenewalStatusPayload>
     if (!Array.isArray(payload.renewals)) return
 
+    statusPollSucceeded = true
     serverCredentialIds = new Set(
       payload.renewals
         .map((renewal) => renewal.credentialId)
@@ -391,7 +397,11 @@ export async function refreshAndCompleteRenewals(
   } catch (error) {
     logWalletError('renewal', 'status-refresh-failed', error)
   } finally {
-    recoverOrphanedRenewalProcessing(serverCredentialIds)
+    // Only orphan after a successful status payload. A failed poll used to pass
+    // an empty id set through finally and wipe every ready Receive CTA.
+    if (statusPollSucceeded) {
+      recoverOrphanedRenewalProcessing(serverCredentialIds)
+    }
     repairInconsistentRenewalPairs()
   }
 }
