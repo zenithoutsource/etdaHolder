@@ -4,6 +4,7 @@ import { ActivityIndicator, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
+import { Oid4VpDisclosureFlow } from '../../src/components/Oid4VpDisclosureFlow'
 import { WalletHeader } from '../../src/components/WalletHeader'
 import { WalletInitiatedVpQrPanel } from '../../src/components/WalletInitiatedVpQrPanel'
 import { useStoredCredentials } from '../../src/hooks/useStoredCredentials'
@@ -28,18 +29,34 @@ export default function MyQrScreen() {
   const pidCredential = useMemo(() => resolvePidVpQrCredential(credentials), [credentials])
   const pidGateStatus = useMemo(() => readPidGateStatus(credentials), [credentials])
 
-  const { phase, qrUrl, minutes, seconds, startSession } = useWalletInitiatedVpQrSession({
-    credential: pidCredential,
-    active: isFocused && pidCredential !== undefined,
-  })
+  const { phase, qrUrl, minutes, seconds, authorizationRequestUri, startSession } =
+    useWalletInitiatedVpQrSession({
+      credential: pidCredential,
+      active: isFocused && pidCredential !== undefined,
+    })
 
   const handleRetry = useCallback(() => {
+    void startSession()
+  }, [startSession])
+
+  const handleDisclosureDone = useCallback(() => {
     void startSession()
   }, [startSession])
 
   const handleRequestThaId = useCallback(() => {
     void openCredentialRequestPortal('ThaiNationalID')
   }, [])
+
+  if (phase === 'request_ready' && authorizationRequestUri) {
+    return (
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri={authorizationRequestUri}
+        credentials={credentials}
+        onDone={handleDisclosureDone}
+        onCancel={handleDisclosureDone}
+      />
+    )
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>

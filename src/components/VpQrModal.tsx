@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { Modal, Pressable, View } from 'react-native'
 
 import { AppButton } from './AppButton'
+import { Oid4VpDisclosureFlow } from './Oid4VpDisclosureFlow'
 import { WalletInitiatedVpQrPanel } from './WalletInitiatedVpQrPanel'
 import { useWalletInitiatedVpQrSession } from '../hooks/useWalletInitiatedVpQrSession'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
@@ -13,14 +14,28 @@ type Props = {
 }
 
 export function VpQrModal({ visible, credential, onClose }: Props) {
-  const { phase, qrUrl, minutes, seconds, startSession } = useWalletInitiatedVpQrSession({
-    credential,
-    active: visible,
-  })
+  const { phase, qrUrl, minutes, seconds, authorizationRequestUri, startSession } =
+    useWalletInitiatedVpQrSession({
+      credential,
+      active: visible,
+    })
 
   const handleRetry = useCallback(() => {
     void startSession()
   }, [startSession])
+
+  if (visible && phase === 'request_ready' && authorizationRequestUri) {
+    return (
+      <Modal visible transparent={false} animationType="fade" onRequestClose={onClose}>
+        <Oid4VpDisclosureFlow
+          authorizationRequestUri={authorizationRequestUri}
+          credentials={[credential]}
+          onDone={onClose}
+          onCancel={onClose}
+        />
+      </Modal>
+    )
+  }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
