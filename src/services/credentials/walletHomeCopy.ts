@@ -38,6 +38,8 @@ export const WALLET_HOME_COPY = {
   thaIdAlreadyActiveMessage: 'คุณมี PID ที่ใช้งานได้อยู่แล้ว',
   expiringSoonBadge: 'ใกล้หมดอายุ',
   documentExpiredBadge: 'หมดอายุ',
+  documentExpiringSoonMessage:
+    'เอกสารจะหมดอายุในอีกไม่นาน กรุณาติดต่อผู้ออกเอกสารเพื่อขอเอกสารใหม่',
   documentExpiredMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
   requestNewCredential: 'ขอเอกสารใหม่',
   documentExpiredCleanupTitle: '!! ดำเนินการลบเอกสาร !!',
