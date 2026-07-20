@@ -845,10 +845,12 @@ Manual/host harness:
 In `docs/TASKS.md`, add:
 
 ```markdown
-### Session YYYY-MM-DD (mDOC proximity physical validation)
+### Session 2026-07-16 (mDOC proximity physical validation)
 
-- Samsung A26 + ACR1311U-N2 mdoc-only: pass/fail, notes.
-- Samsung A26 + ACR1311U-N2 dual-format: pass/fail, notes.
+- Samsung A26 + ACR1311U-N2 mdoc-only (`org.iso.18013.5.1.mDL`): **PASS**.
+- Samsung A26 + ACR1311U-N2 dual-format (mDOC + companion single tap): not yet recorded.
+- Remaining blockers: wire `approvePresentation`; online DeviceResponse builder; ADR 0006 selection record.
+
 - Multipaz NFC data retrieval verdict: pass/fail, version, API evidence.
 - Companion sign latency: p50/p95 or measured sample values, reader timeout budget.
 - Remaining blockers: list or "none".
