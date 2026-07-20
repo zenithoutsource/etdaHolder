@@ -6,6 +6,8 @@ import type { CredentialDetailDisplay, CredentialDisplayRow, CredentialHolderPro
 import type { CredentialRenewalState } from '../services/credentials/credentialKeyRenewal'
 import type { CredentialInactiveState } from '../services/credentials/credentialInactiveState'
 import { CredentialRenewalOverlay } from './CredentialRenewalOverlay'
+import { DrivingLicenceDocumentCard } from './DrivingLicenceDocumentCard'
+import { DocumentCardLayout } from './DocumentCardLayout'
 
 import { THEME } from '../config/themeColors'
 
@@ -176,6 +178,19 @@ function TranscriptValue({ label, value, isCritical = false }: { label: string; 
   )
 }
 
+function IdCardValue({ label, value, isCritical = false }: { label: string; value?: string; isCritical?: boolean }) {
+  return (
+    <View className="mb-4">
+      <Text className={`text-[12px] font-semibold leading-[16px] ${isCritical ? 'text-danger-bright' : 'text-gray-cool'}`}>
+        {label}
+      </Text>
+      <Text className={`mt-1 text-[13px] font-extrabold leading-[18px] ${isCritical ? 'text-danger-bright' : 'text-navy-mid'}`}>
+        {value || EMPTY_VALUE}
+      </Text>
+    </View>
+  )
+}
+
 function TranscriptDocumentDetailCard({ display, onOpenQr, onPresentViaNfc, holderProfile, inactiveState, renewalBadgeLabel, renewalState }: Props) {
   const rows = [...display.primaryRows, ...display.extraRows]
   const birthDate = findRow(rows, ['birthDate', 'dateOfBirth', 'dob'], /birth|dob|วันเกิด/i)
@@ -195,77 +210,17 @@ function TranscriptDocumentDetailCard({ display, onOpenQr, onPresentViaNfc, hold
   return (
     <View>
       <DocumentCardShell inactiveState={inactiveState} renewalBadgeLabel={renewalBadgeLabel} renewalState={renewalState}>
-        <View
-          testID="document-detail-card"
-          className="overflow-hidden rounded-2xl bg-white"
-          style={{ elevation: 4, shadowColor: THEME.navyShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
-          <View
-            testID="document-detail-band-wrap"
-            className="min-h-[60px] w-full justify-center overflow-hidden px-6"
-            style={{ alignSelf: 'stretch', backgroundColor: THEME.pink, width: '100%' }}>
-            <Text testID="document-detail-band" className="text-[20px] font-extrabold leading-7 text-white">
-              TRANSCRIPT
-            </Text>
-          </View>
-
-          <View testID="document-detail-hero" className="min-h-[245px] flex-row px-8 pb-6 pt-12">
-          <View testID="document-detail-photo" className="h-[190px] w-[150px] shrink-0 items-center justify-end overflow-hidden bg-white">
-            <Image
-              testID="document-detail-image"
-              source={credentialImages.transcript}
-              className="h-full w-full"
-              resizeMode="cover"
-              style={{ height: '100%', width: '100%' }}
-              accessibilityLabel={display.title}
-            />
-          </View>
-
-          <View className="min-w-0 flex-1 justify-center pl-8">
-            <Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">ชื่อ - นามสกุล / Name</Text>
-            <Text testID="document-detail-name" className="mt-2 text-[14px] font-extrabold leading-5 text-navy-mid">
-              {primaryName || EMPTY_VALUE}
-            </Text>
-            <Text testID="document-detail-name-en" className="mt-1 text-[10px] font-semibold leading-[14px] text-slate-muted">
-              {secondaryName || EMPTY_VALUE}
-            </Text>
-
-            <View className="mt-8">
-              <Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">วันเกิด / Date of Birth</Text>
-              <Text className="mt-2 text-[13px] font-extrabold leading-[18px] text-navy-mid">{formatThaiDate(birthDateValue) || EMPTY_VALUE}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View className="flex-row px-8 pb-7">
-          <View testID="document-detail-left-column" className="flex-1 pr-8">
-            <TranscriptValue label="เลขประจำตัวนิสิต" value={studentId?.value} />
-            <TranscriptValue label="คณะ" value={faculty?.value} />
-            <TranscriptValue label="สาขาวิชา" value={major?.value} />
-          </View>
-          <View className="w-px bg-slate100" />
-          <View testID="document-detail-right-column" className="flex-1 pl-8">
-            <TranscriptValue label="Cumulative GPA" value={gpa?.value} />
-            <TranscriptValue label="Graduation Year" value={graduationYear?.value} />
-            <TranscriptValue label="วันหมดอายุ / Expiry Date" value={expiryValue} isCritical />
-          </View>
-        </View>
+        <View testID="document-detail-card">
+          <DocumentCardLayout
+            primaryColor={THEME.pink}
+            banner={<Text testID="document-detail-band" className="text-[20px] font-extrabold leading-7 text-white">TRANSCRIPT</Text>}
+            hero={<View testID="document-detail-hero" className="min-h-[245px] flex-row px-4 py-6"><View testID="document-detail-photo" className="h-[190px] w-[150px] shrink-0 items-center justify-end overflow-hidden bg-white"><Image testID="document-detail-image" source={credentialImages.transcript} className="h-full w-full" resizeMode="cover" style={{ height: '100%', width: '100%' }} accessibilityLabel={display.title} /></View><View className="min-w-0 flex-1 justify-center pl-8"><Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">ชื่อ - นามสกุล / Name</Text><Text testID="document-detail-name" className="mt-2 text-[14px] font-extrabold leading-5 text-navy-mid">{primaryName || EMPTY_VALUE}</Text><Text testID="document-detail-name-en" className="mt-1 text-[10px] font-semibold leading-[14px] text-slate-muted">{secondaryName || EMPTY_VALUE}</Text><View className="mt-8"><Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">วันเกิด / Date of Birth</Text><Text className="mt-2 text-[13px] font-extrabold leading-[18px] text-navy-mid">{formatThaiDate(birthDateValue) || EMPTY_VALUE}</Text></View></View></View>}
+            leftColumn={<View testID="document-detail-left-column"><TranscriptValue label="เลขประจำตัวนิสิต" value={studentId?.value} /><TranscriptValue label="คณะ" value={faculty?.value} /><TranscriptValue label="สาขาวิชา" value={major?.value} /></View>}
+            rightColumn={<View testID="document-detail-right-column"><TranscriptValue label="Cumulative GPA" value={gpa?.value} /><TranscriptValue label="Graduation Year" value={graduationYear?.value} /><TranscriptValue label="วันหมดอายุ / Expiry Date" value={expiryValue} isCritical /></View>}
+          />
         </View>
       </DocumentCardShell>
-
       <DocumentActionRow onOpenQr={onOpenQr} onPresentViaNfc={onPresentViaNfc} />
-    </View>
-  )
-}
-
-function IdCardValue({ label, value, isCritical = false }: { label: string; value?: string; isCritical?: boolean }) {
-  return (
-    <View className="mb-4">
-      <Text className={`text-[12px] font-semibold leading-[16px] ${isCritical ? 'text-danger-bright' : 'text-gray-cool'}`}>
-        {label}
-      </Text>
-      <Text className={`mt-1 text-[13px] font-extrabold leading-[18px] ${isCritical ? 'text-danger-bright' : 'text-navy-mid'}`}>
-        {value || EMPTY_VALUE}
-      </Text>
     </View>
   )
 }
@@ -286,65 +241,29 @@ function IdCardDocumentDetailCard({ display, onOpenQr, onPresentViaNfc, holderPr
   return (
     <View>
       <DocumentCardShell inactiveState={inactiveState} renewalBadgeLabel={renewalBadgeLabel} renewalState={renewalState}>
-        <View
-          testID="document-detail-card"
-          className="overflow-hidden rounded-2xl bg-white"
-          style={{ elevation: 4, shadowColor: THEME.navyShadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 16 }}>
-          <View
-            testID="document-detail-band-wrap"
-            className="min-h-[60px] w-full justify-center overflow-hidden px-7"
-            style={{ alignSelf: 'stretch', backgroundColor: display.primaryColor || THEME.navyRoyal, width: '100%' }}>
-            <Text testID="document-detail-band" className="text-[20px] font-extrabold leading-7 text-white">
-              ID CARD
-            </Text>
-          </View>
-
-          <View testID="document-detail-hero" className="min-h-[225px] flex-row px-7 pb-5 pt-10">
-          <View testID="document-detail-photo" className="h-[168px] w-[148px] shrink-0 items-center justify-end overflow-hidden bg-white">
-            <Image
-              testID="document-detail-image"
-              source={credentialImages.id}
-              className="h-full w-full"
-              resizeMode="cover"
-              style={{ height: '100%', width: '100%' }}
-              accessibilityLabel={display.title}
-            />
-          </View>
-
-          <View className="min-w-0 flex-1 justify-center pl-8">
-            <Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">ชื่อ - นามสกุล</Text>
-            <Text testID="document-detail-name" className="mt-2 text-[14px] font-extrabold leading-5 text-navy-mid">
-              {thaiName && thaiName !== display.title ? thaiName : EMPTY_VALUE}
-            </Text>
-            <Text testID="document-detail-name-en" className="mt-1 text-[12px] font-semibold leading-[16px] text-navy-mid">
-              {englishName || EMPTY_VALUE}
-            </Text>
-
-            <View className="mt-7">
-              <Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">เลขบัตรประจำตัวประชาชน</Text>
-              <Text testID="document-detail-primary-id" className="mt-2 text-[15px] font-extrabold leading-5 text-navy-mid">
-                {idNumber?.value || EMPTY_VALUE}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View className="flex-row px-7 pb-7">
-          <View testID="document-detail-left-column" className="flex-1 pr-8">
-            <IdCardValue label="วันเดือนปีเกิด" value={formatThaiDate(birthDateValue)} />
-            <IdCardValue label="ที่อยู่ตามทะเบียนบ้าน" value={address?.value || MOCK_ID_CARD_ADDRESS} />
-          </View>
-          <View className="w-px bg-slate100" />
-          <View testID="document-detail-right-column" className="flex-1 pl-8">
-            <IdCardValue label="ศาสนา" value={religion?.value || MOCK_ID_CARD_RELIGION} />
-            <IdCardValue label="วันอนุญาต / Issue Date" value={formatThaiDate(issueDate?.value)} />
-            <IdCardValue label="วันหมดอายุ / Expiry Date" value={expiryValue} isCritical />
-          </View>
-        </View>
+        <View testID="document-detail-card">
+          <DocumentCardLayout
+            primaryColor={display.primaryColor || THEME.navyRoyal}
+            banner={<Text testID="document-detail-band" className="text-[20px] font-extrabold leading-7 text-white">ID CARD</Text>}
+            hero={<View testID="document-detail-hero" className="min-h-[225px] flex-row px-4 py-5"><View testID="document-detail-photo" className="h-[168px] w-[148px] shrink-0 items-center justify-end overflow-hidden bg-white"><Image testID="document-detail-image" source={credentialImages.id} className="h-full w-full" resizeMode="cover" style={{ height: '100%', width: '100%' }} accessibilityLabel={display.title} /></View><View className="min-w-0 flex-1 justify-center pl-8"><Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">ชื่อ - นามสกุล</Text><Text testID="document-detail-name" className="mt-2 text-[14px] font-extrabold leading-5 text-navy-mid">{thaiName && thaiName !== display.title ? thaiName : EMPTY_VALUE}</Text><Text testID="document-detail-name-en" className="mt-1 text-[12px] font-semibold leading-[16px] text-navy-mid">{englishName || EMPTY_VALUE}</Text><View className="mt-7"><Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">เลขบัตรประจำตัวประชาชน</Text><Text testID="document-detail-primary-id" className="mt-2 text-[15px] font-extrabold leading-5 text-navy-mid">{idNumber?.value || EMPTY_VALUE}</Text></View></View></View>}
+            leftColumn={<View testID="document-detail-left-column"><IdCardValue label="วันเดือนปีเกิด" value={formatThaiDate(birthDateValue)} /><IdCardValue label="ที่อยู่ตามทะเบียนบ้าน" value={address?.value || MOCK_ID_CARD_ADDRESS} /></View>}
+            rightColumn={<View testID="document-detail-right-column"><IdCardValue label="ศาสนา" value={religion?.value || MOCK_ID_CARD_RELIGION} /><IdCardValue label="วันอนุญาต / Issue Date" value={formatThaiDate(issueDate?.value)} /><IdCardValue label="วันหมดอายุ / Expiry Date" value={expiryValue} isCritical /></View>}
+          />
         </View>
       </DocumentCardShell>
-
       <DocumentActionRow onOpenQr={onOpenQr} onPresentViaNfc={onPresentViaNfc} />
+    </View>
+  )
+}
+
+function DrivingLicenceDocumentDetailCard({ onOpenQr, onPresentViaNfc, inactiveState, renewalBadgeLabel, renewalState }: Props) {
+  return (
+    <View>
+      <DocumentCardShell inactiveState={inactiveState} renewalBadgeLabel={renewalBadgeLabel} renewalState={renewalState}>
+        <DrivingLicenceDocumentCard />
+      </DocumentCardShell>
+
+      <DocumentActionRow onOpenQr={onOpenQr} onPresentViaNfc={onPresentViaNfc} className="mt-[10px] justify-end" />
     </View>
   )
 }
@@ -374,6 +293,19 @@ export function CredentialDocumentDetailCard({
   if (display.imageKey === 'id') {
     return (
       <IdCardDocumentDetailCard
+        display={display}
+        onOpenQr={onOpenQr}
+        onPresentViaNfc={onPresentViaNfc}
+        holderProfile={holderProfile}
+        inactiveState={inactiveState}
+        renewalBadgeLabel={renewalBadgeLabel}
+        renewalState={renewalState}
+      />
+    )
+  }
+  if (display.imageKey === 'car') {
+    return (
+      <DrivingLicenceDocumentDetailCard
         display={display}
         onOpenQr={onOpenQr}
         onPresentViaNfc={onPresentViaNfc}

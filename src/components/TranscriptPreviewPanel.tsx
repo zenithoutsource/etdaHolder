@@ -18,6 +18,7 @@ export function TranscriptPreviewPanel({ record, profileImage, onAccept }: Props
   const preview = readCredentialPreviewDisplay(record)
   const profile = readCredentialHolderProfile(record)
   const getRow = (key: string) => preview.rows.find((row) => row.key === key)?.value
+  const birthDate = profile.birthDate ?? getRow('birthDate')
   const expiryDate = record.expiresAt ? new Date(record.expiresAt).toLocaleDateString('th-TH-u-ca-buddhist', { year: 'numeric', month: 'long', day: 'numeric' }) : getRow('expiryDate')
 
   return (
@@ -25,9 +26,8 @@ export function TranscriptPreviewPanel({ record, profileImage, onAccept }: Props
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
         <DocumentCardLayout
           primaryColor={THEME.pinkDeep}
-          secondaryColor={THEME.pink}
           banner={<Text className="text-[15px] font-extrabold text-white">TRANSCRIPT</Text>}
-          hero={<View className="flex-row"><Image source={profileImage} className="h-[110px] w-[90px] rounded-lg" resizeMode="cover" /><View className="ml-4 flex-1 justify-center"><Text className="text-[11px] text-gray-cool">ชื่อ - นามสกุล / Name</Text><Text className="text-[14px] font-bold text-navy-deep">{profile.thaiName ?? '-'}</Text><Text className="text-[12px] text-gray-cool">{profile.englishName ?? ''}</Text>{profile.birthDate ? <><Text className="mt-3 text-[11px] text-gray-cool">วันเกิด / Date of Birth</Text><Text className="text-[14px] font-bold text-navy-deep">{profile.birthDate}</Text></> : null}</View></View>}
+          hero={<View className="flex-row"><Image source={profileImage} className="h-[110px] w-[90px] rounded-lg" resizeMode="cover" /><View className="ml-4 flex-1 justify-center"><Text className="text-[11px] text-gray-cool">ชื่อ - นามสกุล / Name</Text><Text className="text-[14px] font-bold text-navy-deep">{profile.thaiName ?? '-'}</Text><Text className="text-[12px] text-gray-cool">{profile.englishName ?? ''}</Text>{birthDate ? <><Text className="mt-3 text-[11px] text-gray-cool">วันเกิด / Date of Birth</Text><Text className="text-[14px] font-bold text-navy-deep">{birthDate}</Text></> : null}</View></View>}
           leftColumn={<View><DetailValue label="เลขประจำตัวนิสิต" value={getRow('studentId')} /><DetailValue label="คณะ" value={getRow('faculty')} /><DetailValue label="สาขาวิชา" value={getRow('degree')} /></View>}
           rightColumn={<View><DetailValue label="Cumulative GPA" value={getRow('gpa')} /><DetailValue label="Graduation Year" value={getRow('graduationYear')} /><DetailValue label="วันหมดอายุ / Expiry Date" value={expiryDate} critical /></View>}
         />

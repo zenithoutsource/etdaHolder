@@ -4,7 +4,6 @@ import { AppButton } from './AppButton'
 import { CredentialFieldRow } from './CredentialFieldRow'
 import { DocumentCardLayout } from './DocumentCardLayout'
 import { getCardSchema } from '../config/cardSchemas'
-import { THEME } from '../config/themeColors'
 import { readCredentialHolderProfile, readDisplayValue } from '../services/credentials/credentialDisplay'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
@@ -31,7 +30,6 @@ export function ThaiIdReceivePanel({ record, onConfirm }: Props) {
         <View testID="thai-id-receive-panel">
           <DocumentCardLayout
             primaryColor={schema.primaryColor}
-            secondaryColor={THEME.blueMist}
             banner={<Text className="text-[15px] font-extrabold text-white">{schema.documentTitle}</Text>}
             hero={<View className="flex-row"><Image testID="thai-id-receive-photo" source={portraitImage} className="h-[114px] w-24 rounded-lg" resizeMode="cover" /><View className="ml-4 flex-1 justify-center"><Text className="text-[11px] text-gray-cool">ชื่อ - นามสกุล</Text><Text className="text-[14px] font-extrabold text-navy-deep">{profile.thaiName ?? '-'}</Text>{profile.englishName ? <Text className="text-[12px] text-gray-cool">{profile.englishName}</Text> : null}<Text className="mt-3 text-[11px] text-gray-cool">เลขบัตรประจำตัวประชาชน</Text><Text className="text-[14px] font-extrabold text-navy-deep">{nationalId ?? '-'}</Text></View></View>}
             leftColumn={<View><CredentialFieldRow label="วันเดือนปีเกิด" value={birthDate} divider={false} /><CredentialFieldRow label="ที่อยู่ตามทะเบียนบ้าน" value={address} /></View>}

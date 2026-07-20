@@ -1,14 +1,30 @@
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { Pressable, Text, View, type ImageSourcePropType } from "react-native";
+import {
+  Image,
+  Pressable,
+  Text,
+  View,
+  type ImageSourcePropType,
+} from "react-native";
 
 import { AppButton } from "./AppButton";
 import { StatusBadge } from "./StatusBadge";
+import { getCardSchemaForConfigurationId } from "../config/cardSchemas";
 import type { WalletHistoryRow } from "../services/history/walletHistory";
 
 import { THEME } from '../config/themeColors'
 
 const trashCanImage =
   require("../../assets/images/trash_can.png") as ImageSourcePropType;
+
+const issuerLogoImages: Record<
+  NonNullable<ReturnType<typeof getCardSchemaForConfigurationId>["issuerLogoKey"]>,
+  ImageSourcePropType
+> = {
+  thaid: require("../../assets/images/thaid.png"),
+  dltt: require("../../assets/images/dltt.png"),
+  chulalongkorn: require("../../assets/images/chulalongkorn.png"),
+};
 
 type MaterialIconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -61,6 +77,7 @@ type HistoryItemProps = {
 export function HistoryItem({ item, onPress, onSuspendAccess }: HistoryItemProps) {
   const dateParts = formatDateParts(item.occurredAt);
   const statusConfig = readStatusConfig(item.status);
+  const issuerLogoKey = getCardSchemaForConfigurationId(item.documentType).issuerLogoKey;
 
   return (
     <Pressable
@@ -79,11 +96,23 @@ export function HistoryItem({ item, onPress, onSuspendAccess }: HistoryItemProps
         <View className="min-w-0 flex-1 px-3.5 py-3.5">
           <View className="flex-row items-start gap-3">
             <View className="h-11 w-11 items-center justify-center rounded-full bg-blue-tint">
-              <MaterialCommunityIcons
-                name={readIssuerIcon(item.documentType)}
-                size={24}
-                color={THEME.navy}
-              />
+              {issuerLogoKey ? (
+                <Image
+                  testID="history-item-issuer-logo"
+                  source={issuerLogoImages[issuerLogoKey]}
+                  className="h-10 w-10"
+                  resizeMode="contain"
+                  accessibilityLabel={`${item.partyName} logo`}
+                />
+              ) : (
+                <View testID="history-item-issuer-icon">
+                  <MaterialCommunityIcons
+                    name={readIssuerIcon(item.documentType)}
+                    size={24}
+                    color={THEME.navy}
+                  />
+                </View>
+              )}
             </View>
             <View className="min-w-0 flex-1">
               <Text

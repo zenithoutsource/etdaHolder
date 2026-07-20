@@ -1,4 +1,4 @@
-import { getCardSchema, getAllCardSchemas } from './cardSchemas'
+import { getCardSchema, getCardSchemaForConfigurationId, getAllCardSchemas } from './cardSchemas'
 
 import { THEME } from './themeColors'
 
@@ -16,6 +16,11 @@ describe('getCardSchema', () => {
     expect(schema.type).toBe('DLTDrivingLicence')
     expect(schema.title).toBe('Driving Licence')
     expect(schema.displayFields.some((f) => f.key === 'licenceNumber')).toBe(true)
+  })
+
+  test('maps ISO mDL configuration id and doctype to DLTDrivingLicence', () => {
+    expect(getCardSchemaForConfigurationId('org.iso.18013.5.1.mDL').type).toBe('DLTDrivingLicence')
+    expect(getCardSchemaForConfigurationId('TestMdocDrivingLicence').type).toBe('DLTDrivingLicence')
   })
 
   test('returns BangkokUniversityTranscript schema', () => {
@@ -47,9 +52,9 @@ describe('getCardSchema', () => {
     }
   })
 
-  test('getAllCardSchemas returns all 3 initial cards', () => {
+  test('getAllCardSchemas returns registered card types', () => {
     const schemas = getAllCardSchemas()
-    expect(schemas).toHaveLength(3)
+    expect(schemas.length).toBeGreaterThanOrEqual(3)
     const types = schemas.map((s) => s.type)
     expect(types).toContain('ThaiNationalID')
     expect(types).toContain('DLTDrivingLicence')

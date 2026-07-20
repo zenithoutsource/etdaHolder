@@ -22,6 +22,7 @@ export type DocumentExpiryNotificationEvent =
 type ScheduledNotificationRecord = {
   notificationId: string
   event: DocumentExpiryNotificationEvent
+  fireAtMs: number
 }
 
 type ExpiryNotificationStorage = ReturnType<typeof getCredentialStorage> & {
@@ -62,11 +63,12 @@ function markScheduledNotification(
   credentialId: string,
   event: DocumentExpiryNotificationEvent,
   notificationId: string,
+  fireAtMs: number,
 ): void {
   const storage = getCredentialStorage()
   storage.set(
     readScheduledNotificationKey(credentialId, event),
-    JSON.stringify({ notificationId, event } satisfies ScheduledNotificationRecord),
+    JSON.stringify({ notificationId, event, fireAtMs } satisfies ScheduledNotificationRecord),
   )
   storage.set(readNotificationIdKey(credentialId, event), notificationId)
 }
@@ -100,7 +102,7 @@ function clearExpiryNotificationScheduleState(): number {
   return scheduleKeys.length
 }
 
-async function reconcileScheduledNotificationState(): Promise<void> {
+async function reconcileScheduledNotificationState(now: number): Promise<void> {
   let scheduledNotifications: NativeScheduledNotification[]
   try {
     scheduledNotifications =
@@ -125,10 +127,22 @@ async function reconcileScheduledNotificationState(): Promise<void> {
     const notificationId = storage.getString(key)
     if (!notificationId || nativeNotificationIds.has(notificationId)) continue
 
-    storage.remove(key)
     const scheduledKey = `${EXPIRY_NOTIFICATION_SCHEDULED_PREFIX}${key.slice(
       EXPIRY_NOTIFICATION_ID_PREFIX.length,
     )}`
+    const scheduledRecordJson = storage.getString(scheduledKey)
+    const fireAtMs = scheduledRecordJson
+      ? (JSON.parse(scheduledRecordJson) as Partial<ScheduledNotificationRecord>).fireAtMs
+      : undefined
+
+    // A missing native alarm only means "evicted" (safe to reschedule) when its
+    // fire time is still in the future. Once fireAtMs has passed, the native
+    // list no longer contains it because it already fired and was delivered —
+    // treating that as an eviction would reschedule an already-delivered
+    // notification on every subsequent call, producing repeat notifications.
+    if (typeof fireAtMs === 'number' && fireAtMs <= now) continue
+
+    storage.remove(key)
     storage.remove(scheduledKey)
     removedMarkerCount += 1
   }
@@ -194,7 +208,7 @@ async function scheduleNotificationRequest(
     },
   })
 
-  markScheduledNotification(credential.id, event, notificationId)
+  markScheduledNotification(credential.id, event, notificationId, fireAtMs)
   logWalletStep('document-expiry-notifications', 'scheduled', {
     credentialId: credential.id,
     event,
@@ -278,7 +292,7 @@ export async function scheduleDocumentExpiryNotifications(
   now = Date.now(),
 ): Promise<void> {
   const recoveryRevisionAtStart = alarmCapRecoveryRevision
-  await reconcileScheduledNotificationState()
+  await reconcileScheduledNotificationState(now)
 
   for (const credential of credentials) {
     if (!readCredentialDocumentExpiresAt(credential)) continue

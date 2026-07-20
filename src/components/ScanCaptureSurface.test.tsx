@@ -14,24 +14,21 @@ jest.mock('expo-camera', () => ({
 }))
 
 describe('ScanCaptureSurface', () => {
-  test('routes barcode scans and NFC presses through props', () => {
+  test('routes barcode scans through props and does not render NFC', () => {
     const onBarcode = jest.fn()
-    const onNfcPress = jest.fn()
 
     render(
       <ScanCaptureSurface
         isLoading={false}
         loadingLabel="Scan QR code"
         onBarcode={onBarcode}
-        onNfcPress={onNfcPress}
         onCancel={jest.fn()}
       />,
     )
 
     fireEvent.press(screen.getByTestId('mock-camera'))
-    fireEvent.press(screen.getByText('Use NFC'))
 
     expect(onBarcode).toHaveBeenCalledWith('openid4vp://request')
-    expect(onNfcPress).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Use NFC')).toBeNull()
   })
 })

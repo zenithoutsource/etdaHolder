@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 
 import { CredentialOfferClaimScreen } from './CredentialOfferClaimScreen'
 import { useDeeplinkStore } from '../store/deeplinkStore'
-import { resolveOffer } from '../services/vci/exchangeService'
+import { acquireCredentialRecord, resolveOffer } from '../services/vci/exchangeService'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
 
@@ -47,12 +47,27 @@ jest.mock('../services/debug/walletLogger', () => ({
   logWalletStep: jest.fn(),
 }))
 
+jest.mock('../services/credentials/credentialGuard', () => ({
+  canRequestCredentialType: jest.fn(() => true),
+  isPidCredentialOffer: jest.fn((offer) =>
+    offer.credentialConfigurations.some((configuration: { id: string }) =>
+      configuration.id.toLowerCase().includes('thai'),
+    ),
+  ),
+  readPidGateStatus: jest.fn(() => 'ready'),
+}))
+
+jest.mock('../services/credentials/credentialKeyRenewal', () => ({
+  readCredentialRenewalStatuses: jest.fn(() => ({})),
+}))
+
 jest.mock('../services/vci/exchangeService', () => ({
   resolveOffer: jest.fn(),
   acquireCredentialRecord: jest.fn(),
 }))
 
 const resolveOfferMock = resolveOffer as jest.Mock
+const acquireCredentialRecordMock = acquireCredentialRecord as jest.Mock
 const readStoredCredentialsMock = readStoredCredentials as jest.Mock
 const linkingMock = jest.requireMock('expo-linking') as {
   getInitialURL: jest.Mock<Promise<string | null>, []>
@@ -130,11 +145,11 @@ describe('CredentialOfferClaimScreen', () => {
   })
 
   it('waits for the initial launch URL before showing a missing pending offer error', async () => {
-    const offerUri = 'openid-credential-offer://?credential_offer_uri=http%3A%2F%2F192.100.10.46%2Fopenid4vc%2FcredentialOffer%3Fid%3D06c03c04-39ec-4287-b819-7bb72dd2395d'
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=http%3A%2F%2Fissuer.zenithcomp.co.th:455%2Fopenid4vc%2FcredentialOffer%3Fid%3D06c03c04-39ec-4287-b819-7bb72dd2395d'
     linkingMock.getInitialURL.mockResolvedValue(offerUri)
     resolveOfferMock.mockResolvedValue({
       credentialConfigurations: [{ id: 'ThaiNationalID' }],
-      issuer: 'http://192.100.10.46',
+      issuer: 'http://issuer.zenithcomp.co.th:455',
       txCode: undefined,
     })
 
@@ -172,6 +187,39 @@ describe('CredentialOfferClaimScreen', () => {
       expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
     })
     expect(screen.queryByText(WALLET_HOME_COPY.renewThaIdRequiredMessage)).toBeNull()
+  })
+
+  it('uses the driving-licence preview panel for a driving-licence record', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fdriving-licence-offer'
+    readStoredCredentialsMock.mockReturnValue([
+      {
+        id: 'active-id-card',
+        type: 'ThaiNationalID',
+        rawVc: 'vc',
+        claims: {},
+        issuedAt: '2026-06-09T00:00:00.000Z',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    ])
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'DLTDrivingLicence', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+    acquireCredentialRecordMock.mockResolvedValue({
+      id: 'driving-licence',
+      type: 'DLTDrivingLicence',
+      rawVc: 'vc',
+      claims: {},
+      issuedAt: '2026-06-09T00:00:00.000Z',
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
+    })
   })
 
   it('dismisses the active deeplink before navigating back to wallet', async () => {

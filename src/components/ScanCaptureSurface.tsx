@@ -10,7 +10,6 @@ type ScanCaptureSurfaceProps = {
   isLoading: boolean
   loadingLabel: string
   onBarcode: (data: string) => void
-  onNfcPress: () => void
   onCancel: () => void
 }
 
@@ -18,7 +17,6 @@ export function ScanCaptureSurface({
   isLoading,
   loadingLabel,
   onBarcode,
-  onNfcPress,
   onCancel,
 }: ScanCaptureSurfaceProps) {
   const [viewfinderHeight, setViewfinderHeight] = useState(0)
@@ -88,8 +86,8 @@ export function ScanCaptureSurface({
         ) : null}
       </View>
 
-      <View className="w-full flex-1 items-center bg-black/25 px-4 pt-10">
-        {isLoading ? (
+      {isLoading ? (
+        <View className="w-full flex-1 items-center bg-black/25 px-4 pt-10">
           <AppButton
             variant="icon-circle"
             label="Cancel"
@@ -97,16 +95,10 @@ export function ScanCaptureSurface({
             className="bg-white/20 px-6 py-2"
             textClassName="text-[14px] font-semibold text-white"
           />
-        ) : (
-          <AppButton
-            variant="solid-block"
-            label="Use NFC"
-            onPress={onNfcPress}
-            className="rounded-xl bg-white/20 px-5 py-3"
-            textClassName="text-[14px] font-semibold text-white"
-          />
-        )}
-      </View>
+        </View>
+      ) : (
+        <View className="w-full flex-1 bg-black/25" />
+      )}
     </View>
   )
 }

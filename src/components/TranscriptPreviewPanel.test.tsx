@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native'
 
 import { TranscriptPreviewPanel } from './TranscriptPreviewPanel'
+import * as credentialDisplay from '../services/credentials/credentialDisplay'
 
 const record = {
   id: 'transcript-preview',
@@ -38,5 +39,20 @@ describe('TranscriptPreviewPanel', () => {
     fireEvent.press(screen.getByText('ยอมรับ'))
 
     expect(onAccept).toHaveBeenCalledTimes(1)
+  })
+
+  test('uses the preview birth-date row when the holder profile has none', () => {
+    const profileSpy = jest.spyOn(credentialDisplay, 'readCredentialHolderProfile').mockReturnValue({})
+
+    render(
+      <TranscriptPreviewPanel
+        record={{ ...record, claims: { ...record.claims, birthDate: '1990-05-15' } }}
+        profileImage={require('../../assets/images/user_profile.png')}
+        onAccept={() => undefined}
+      />,
+    )
+
+    expect(screen.getByText('1990-05-15')).toBeTruthy()
+    profileSpy.mockRestore()
   })
 })

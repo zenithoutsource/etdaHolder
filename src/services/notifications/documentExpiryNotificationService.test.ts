@@ -142,6 +142,30 @@ describe('documentExpiryNotificationService', () => {
     expect(scheduleNotificationAsyncMock).toHaveBeenCalled()
   })
 
+  test('does not reschedule a document-expiring-soon notification that already fired and was delivered', async () => {
+    const now = new Date('2032-05-20T12:00:00+07:00').getTime()
+    const deliveredFireAtMs = new Date('2032-05-20T11:00:00+07:00').getTime()
+    const { values } = mockStorage({
+      'credential:expiry-notif-scheduled:document-expiring-soon:credential-1': JSON.stringify({
+        notificationId: 'delivered-id',
+        event: 'document-expiring-soon',
+        fireAtMs: deliveredFireAtMs,
+      }),
+      'credential:expiry-notif-id:document-expiring-soon:credential-1': 'delivered-id',
+    })
+    getAllScheduledNotificationsAsyncMock.mockResolvedValue([])
+
+    await scheduleDocumentExpiryNotifications([thaiIdCredential], now)
+
+    const scheduledEvents = scheduleNotificationAsyncMock.mock.calls.map(
+      ([request]) => request.content.data.event,
+    )
+    expect(scheduledEvents).not.toContain('document-expiring-soon')
+    expect(values.get('credential:expiry-notif-id:document-expiring-soon:credential-1')).toBe(
+      'delivered-id',
+    )
+  })
+
   test('recovers from Android alarm cap by clearing stale scheduled notification state and retrying once', async () => {
     const { values } = mockStorage({
       'credential:expiry-notif-scheduled:document-expired:old-credential':

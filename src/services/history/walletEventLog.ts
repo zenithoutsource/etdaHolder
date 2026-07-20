@@ -5,6 +5,7 @@ import { readStoredCredentials } from '../credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { readCredentialIssuerName } from '../credentials/credentialIssuer'
 
 export type WalletHistoryEventKind =
   | 'credential-received'
@@ -394,7 +395,7 @@ function backfillCredentialReceivedEvents(credentials: VerifiableCredentialRecor
       kind: 'credential-received',
       credentialId: record.id,
       documentType: schema.title,
-      partyName: schema.issuerName,
+      partyName: readCredentialIssuerName(record),
       channel: 'oid4vci',
       occurredAt: record.issuedAt,
     })
@@ -419,7 +420,7 @@ function backfillLifecycleEvents(credentials: VerifiableCredentialRecord[]): voi
       kind,
       credentialId: record.id,
       documentType: schema.title,
-      partyName: schema.issuerName,
+      partyName: readCredentialIssuerName(record),
       channel: 'wallet',
       initiatedBy: 'holder',
       occurredAt: lifecycle.occurredAt,

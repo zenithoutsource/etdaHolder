@@ -1,15 +1,25 @@
-import { render, screen } from '@testing-library/react-native'
+import { fireEvent, render, screen } from '@testing-library/react-native'
 import { Image, StyleSheet } from 'react-native'
 
 import { CredentialDocumentDetailCard } from './CredentialDocumentDetailCard'
 import type { CredentialDetailDisplay } from '../services/credentials/credentialDisplay'
 
 import { THEME } from '../config/themeColors'
+import { DRIVING_LICENCE_SAMPLE } from '../config/drivingLicenceSample'
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'MaterialCommunityIcons')
 
 const ReactNativeImage = Image as unknown as {
   resolveAssetSource: (source: unknown) => unknown
+}
+
+function expectSharedDocumentCardLayout() {
+  expect(screen.getByTestId('document-card-layout')).toBeTruthy()
+  expect(screen.getByTestId('document-card-banner')).toBeTruthy()
+  expect(screen.getByTestId('document-card-hero')).toBeTruthy()
+  expect(screen.getByTestId('document-card-left-column')).toBeTruthy()
+  expect(screen.getByTestId('document-card-divider')).toBeTruthy()
+  expect(screen.getByTestId('document-card-right-column')).toBeTruthy()
 }
 
 const display: CredentialDetailDisplay = {
@@ -44,6 +54,7 @@ describe('CredentialDocumentDetailCard', () => {
     )
 
     expect(screen.getByTestId('document-detail-card')).toBeTruthy()
+    expectSharedDocumentCardLayout()
     expect(screen.getByTestId('document-detail-band')).toHaveTextContent('ID CARD')
     expect(screen.getByTestId('document-detail-hero')).toBeTruthy()
     expect(screen.getByTestId('document-detail-photo')).toBeTruthy()
@@ -94,6 +105,29 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByText('พุทธ')).toBeTruthy()
     expect(screen.getByText('8 กันยายน 2561')).toBeTruthy()
     expect(screen.getByText('27 สิงหาคม 2570')).toBeTruthy()
+  })
+
+  test('resolves ID card values from Thai display labels when claim keys are unfamiliar', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          primaryRows: [
+            { key: 'holderCode', label: 'เลขบัตรประจำตัวประชาชน', value: '9-9999-99999-99-9' },
+            { key: 'belief', label: 'ศาสนา', value: 'Buddhist' },
+            { key: 'home', label: 'ที่อยู่ตามทะเบียนบ้าน', value: 'Bangkok residence' },
+            { key: 'validUntil', label: 'วันหมดอายุ', value: '2030-11-28' },
+          ],
+          extraRows: [],
+        }}
+        onOpenQr={() => undefined}
+      />
+    )
+
+    expect(screen.getByTestId('document-detail-primary-id')).toHaveTextContent('9-9999-99999-99-9')
+    expect(screen.getByText('Buddhist')).toBeTruthy()
+    expect(screen.getByText('Bangkok residence')).toBeTruthy()
+    expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
   })
 
   test('uses requested ID card mock fallbacks when VC omits EN name, address, and religion', () => {
@@ -172,6 +206,7 @@ describe('CredentialDocumentDetailCard', () => {
     )
 
     expect(screen.getByTestId('document-detail-band')).toHaveTextContent('TRANSCRIPT')
+    expectSharedDocumentCardLayout()
     expect(screen.getByText('เลขประจำตัวนิสิต')).toBeTruthy()
     expect(screen.getByText('คณะ')).toBeTruthy()
     expect(screen.getByText('สาขาวิชา')).toBeTruthy()
@@ -181,6 +216,30 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
+  })
+
+  test('resolves transcript values from Thai display labels when claim keys are unfamiliar', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Academic Transcript',
+          documentTitle: 'TRANSCRIPT',
+          imageKey: 'transcript',
+          primaryRows: [
+            { key: 'enrollmentCode', label: 'เลขประจำตัวนิสิต', value: '6304012022' },
+            { key: 'schoolUnit', label: 'คณะ', value: 'Engineering' },
+            { key: 'studyTrack', label: 'สาขาวิชา', value: 'Computer Engineering' },
+          ],
+          extraRows: [],
+        }}
+        onOpenQr={() => undefined}
+      />
+    )
+
+    expect(screen.getByText('6304012022')).toBeTruthy()
+    expect(screen.getByText('Engineering')).toBeTruthy()
+    expect(screen.getByText('Computer Engineering')).toBeTruthy()
   })
 
   test('uses credential expiry metadata when transcript expiry claim is absent', () => {
@@ -278,7 +337,10 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
   })
 
-  test('sizes the blue card header as a full-width unclipped band', () => {
+  test('uses the fixed driving-licence card and retains document actions', () => {
+    const onOpenQr = jest.fn()
+    const onPresentViaNfc = jest.fn()
+
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -288,23 +350,24 @@ describe('CredentialDocumentDetailCard', () => {
           imageKey: 'car',
           primaryColor: THEME.navyRoyal,
         }}
-        onOpenQr={() => undefined}
+        onOpenQr={onOpenQr}
+        onPresentViaNfc={onPresentViaNfc}
       />
     )
 
-    expect(StyleSheet.flatten(screen.getByTestId('document-detail-band-wrap').props.style)).toEqual(
-      expect.objectContaining({
-        alignSelf: 'stretch',
-        backgroundColor: THEME.navyRoyal,
-        minHeight: 48,
-        overflow: 'hidden',
-        width: '100%',
-      })
+    expect(screen.getByTestId('driving-licence-card')).toBeTruthy()
+    expectSharedDocumentCardLayout()
+    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.documentTitle)).toBeTruthy()
+    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.thaiName)).toBeTruthy()
+    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.licenceNumber)).toBeTruthy()
+    expect(screen.getByTestId('driving-licence-expiry')).toHaveTextContent(
+      DRIVING_LICENCE_SAMPLE.expiryDate,
     )
-    expect(screen.getByTestId('document-detail-band').props.style).toEqual(
-      expect.objectContaining({
-        lineHeight: 24,
-      })
-    )
+
+    fireEvent.press(screen.getByTestId('document-detail-my-qr'))
+    fireEvent.press(screen.getByTestId('document-detail-present-nfc'))
+
+    expect(onOpenQr).toHaveBeenCalledTimes(1)
+    expect(onPresentViaNfc).toHaveBeenCalledTimes(1)
   })
 })

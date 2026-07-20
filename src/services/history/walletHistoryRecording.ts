@@ -7,6 +7,7 @@ import {
   classifyPresentationFailure,
   type WalletHistoryFailureReason,
 } from './walletEventLog'
+import { readCredentialIssuerName } from '../credentials/credentialIssuer'
 
 export function recordOid4vpPresentationFailure(
   request: ResolvedPresentationRequest,
@@ -81,7 +82,7 @@ export function recordCredentialRenewalCompleted(
     kind: 'credential-renewal-completed',
     credentialId: record.id,
     documentType: schema.title,
-    partyName: schema.issuerName,
+    partyName: readCredentialIssuerName(record),
     channel: 'renewal',
   })
 }

@@ -25,6 +25,7 @@ export type CardSchemaConfig = {
   issuerName: string;
   primaryColor: string;
   imageKey: "profile" | "id" | "car" | "transcript";
+  issuerLogoKey?: "thaid" | "dltt" | "chulalongkorn";
   displayFields: DisplayField[];
   summaryFields?: DisplayField[];
   summaryRows?: DisplayField[][];
@@ -56,6 +57,7 @@ const SCHEMAS: CardSchemaConfig[] = [
     issuerName: "Department of Provincial Administration",
     primaryColor: THEME.navy,
     imageKey: "id",
+    issuerLogoKey: "thaid",
     displayFields: [
       { key: "givenName", label: "Given Name" },
       { key: "familyName", label: "Family Name" },
@@ -142,9 +144,18 @@ const SCHEMAS: CardSchemaConfig[] = [
     issuerName: "Department of Land Transport",
     primaryColor: THEME.navyRoyal,
     imageKey: "car",
+    issuerLogoKey: "dltt",
     displayFields: [
-      { key: "givenName", label: "Given Name" },
-      { key: "familyName", label: "Family Name" },
+      {
+        key: "givenName",
+        label: "Given Name",
+        aliases: ["given_name"],
+      },
+      {
+        key: "familyName",
+        label: "Family Name",
+        aliases: ["family_name"],
+      },
       {
         key: "fullName",
         label: "Full Name",
@@ -167,13 +178,24 @@ const SCHEMAS: CardSchemaConfig[] = [
         key: "licenceNumber",
         label: "Licence Number",
         presentationLabel: "เลขที่ใบอนุญาตขับรถ",
-        aliases: ["licence_number", "licenseNumber", "license_number"],
+        aliases: [
+          "licence_number",
+          "licenseNumber",
+          "license_number",
+          "document_number",
+          "documentNumber",
+        ],
       },
       {
         key: "licenceClass",
         label: "Class",
         presentationLabel: "ประเภทใบอนุญาต",
         aliases: ["licence_class", "licenseClass", "license_class"],
+      },
+      {
+        key: "issuingCountry",
+        label: "Issuing Country",
+        aliases: ["issuing_country"],
       },
       {
         key: "issuanceDate",
@@ -198,7 +220,13 @@ const SCHEMAS: CardSchemaConfig[] = [
       {
         key: "licenceNumber",
         label: "Licence Number",
-        aliases: ["licence_number", "licenseNumber", "license_number"],
+        aliases: [
+          "licence_number",
+          "licenseNumber",
+          "license_number",
+          "document_number",
+          "documentNumber",
+        ],
       },
       {
         key: "licenceClass",
@@ -216,9 +244,10 @@ const SCHEMAS: CardSchemaConfig[] = [
     type: "BangkokUniversityTranscript",
     title: "Academic Transcript",
     documentTitle: "TRANSCRIPT",
-    issuerName: "Bangkok University",
+    issuerName: "Chulalongkorn University",
     primaryColor: THEME.navyRoyal,
     imageKey: "transcript",
+    issuerLogoKey: "chulalongkorn",
     displayFields: [
       { key: "givenName", label: "Given Name" },
       { key: "familyName", label: "Family Name" },
@@ -409,7 +438,9 @@ export function getCardSchemaForConfigurationId(
   if (
     normalized.includes("driving") ||
     normalized.includes("licence") ||
-    normalized.includes("license")
+    normalized.includes("license") ||
+    normalized.includes("mdl") ||
+    normalized.includes("1801351mdl")
   ) {
     return getCardSchema("DLTDrivingLicence");
   }
