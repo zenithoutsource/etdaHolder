@@ -15,7 +15,7 @@ export function readCredentialTypeFromDcqlTypeValue(value: string): string | und
   const normalized = normalizeCredentialType(value)
   if (normalized.includes('idcard') || normalized.includes('nationalid')) return THAI_ID_TYPE
   if (normalized.includes('transcript')) return TRANSCRIPT_TYPE
-  if (normalized.includes('drivinglicence') || normalized.includes('drivinglicense') || normalized.includes('dlt')) {
+  if (normalized.includes('drivinglicence') || normalized.includes('drivinglicense') || normalized.includes('dlt') || normalized.includes('mdl')) {
     return DRIVING_LICENCE_TYPE
   }
   return undefined

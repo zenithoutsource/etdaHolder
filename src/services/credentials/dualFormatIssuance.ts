@@ -3,6 +3,7 @@ import { storeMdocCredential } from '../proximity/mdocStorage'
 import {
   acquireCredentialRecord,
   claimCredential,
+  type AcquireAccessTokenResult,
   type ClaimCredentialOptions,
   type OfferedCredentialConfiguration,
   type ResolvedCredentialOffer,
@@ -37,6 +38,18 @@ export type DualFormatClaimResult = {
   missingFormat?: 'dc+sd-jwt' | 'mso_mdoc'
 }
 
+export type PendingMdocCredential = {
+  docType: string
+  configurationId: string
+  rawBase64: string
+}
+
+export type DualFormatPreviewResult = {
+  primaryRecord: VerifiableCredentialRecord
+  pendingMdoc?: PendingMdocCredential
+  missingFormat?: 'dc+sd-jwt' | 'mso_mdoc'
+}
+
 export type DualFormatClaimOptions = ClaimCredentialOptions & {
   dependencies?: Partial<DualFormatClaimDependencies>
 }
@@ -47,6 +60,114 @@ export type DualFormatClaimDependencies = ClaimCredentialDependencies & {
 }
 
 export { isDualFormatOffer }
+
+/**
+ * Single-format acquire paths (e.g. claim-screen preview) only request
+ * `credentialConfigurations[0]`. Dual-format offers list mso_mdoc first when the
+ * offer puts the doctype id ahead of the SD-JWT sibling — prefer SD-JWT so the
+ * preview path matches claimDualFormatCredential order and claimable UI claims.
+ */
+export function selectOfferForSingleFormatAcquire(
+  offer: ResolvedCredentialOffer,
+): ResolvedCredentialOffer {
+  const group = findDualFormatGroup(offer.credentialConfigurations)
+  if (!group?.sdJwt) {
+    return offer
+  }
+
+  return sliceOfferForConfiguration(offer, group.sdJwt.configurationId)
+}
+
+/**
+ * Acquire both formats for claim-screen preview without persisting.
+ * Shares one pre-authorized access token across both credential requests.
+ */
+export async function acquireDualFormatForPreview(
+  resolvedOffer: ResolvedCredentialOffer,
+  options: DualFormatClaimOptions = {},
+): Promise<DualFormatPreviewResult> {
+  const group = findDualFormatGroup(resolvedOffer.credentialConfigurations)
+  if (!group?.sdJwt || !group.mdoc) {
+    throw new Error('DualFormatOfferMissing: offer does not include both dc+sd-jwt and mso_mdoc configurations')
+  }
+
+  const dependencies: DualFormatClaimDependencies = {
+    ...createDefaultClaimCredentialDependencies(),
+    ...options.dependencies,
+  }
+  const acquireRecord = dependencies.acquireCredentialRecord ?? acquireCredentialRecord
+  const sdJwtOffer = sliceOfferForConfiguration(resolvedOffer, group.sdJwt.configurationId)
+  const mdocOffer = sliceOfferForConfiguration(resolvedOffer, group.mdoc.configurationId)
+
+  const sharedToken = await dependencies.acquireAccessToken({
+    resolvedOffer,
+    tx_code: options.tx_code,
+  })
+
+  logWalletStep('oid4vci', 'dual-format-preview-start', {
+    issuer: resolvedOffer.issuer,
+    sdJwtConfigurationId: group.sdJwt.configurationId,
+    mdocConfigurationId: group.mdoc.configurationId,
+  })
+
+  let sdJwtRecord: VerifiableCredentialRecord | undefined
+  let pendingMdoc: PendingMdocCredential | undefined
+  let missingFormat: DualFormatPreviewResult['missingFormat']
+
+  try {
+    sdJwtRecord = await acquireRecord(sdJwtOffer, {
+      ...options,
+      dependencies,
+      reuseToken: sharedToken,
+    })
+  } catch (error) {
+    logWalletError('oid4vci', 'dual-format-sd-jwt-failed', error)
+    missingFormat = 'dc+sd-jwt'
+  }
+
+  try {
+    pendingMdoc = await acquirePendingMdoc(
+      mdocOffer,
+      group.mdoc.configurationId,
+      options,
+      dependencies,
+      acquireRecord,
+      sharedToken,
+    )
+  } catch (error) {
+    logWalletError('oid4vci', 'dual-format-mdoc-failed', error)
+    if (!missingFormat) {
+      missingFormat = 'mso_mdoc'
+    }
+  }
+
+  if (!sdJwtRecord && !pendingMdoc) {
+    throw new Error('DualFormatClaimFailed: neither format could be acquired')
+  }
+
+  const primaryRecord = sdJwtRecord ?? createMdocPlaceholderRecord({
+    credentialId: deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId),
+    documentType: readDocumentTypeFromOffer(resolvedOffer),
+    docType: pendingMdoc?.docType ?? 'unknown',
+  })
+
+  return {
+    primaryRecord,
+    ...(pendingMdoc ? { pendingMdoc } : {}),
+    ...(missingFormat ? { missingFormat } : {}),
+  }
+}
+
+export async function persistPendingMdocForCredential(
+  credentialId: string,
+  pendingMdoc: PendingMdocCredential,
+  storeMdoc: typeof storeMdocCredential = storeMdocCredential,
+): Promise<void> {
+  await storeMdoc(
+    { credentialId, docType: pendingMdoc.docType },
+    base64UrlToBytes(pendingMdoc.rawBase64),
+  )
+}
 
 export async function claimDualFormatCredential(
   resolvedOffer: ResolvedCredentialOffer,
@@ -67,6 +188,11 @@ export async function claimDualFormatCredential(
   const sdJwtOffer = sliceOfferForConfiguration(resolvedOffer, group.sdJwt.configurationId)
   const mdocOffer = sliceOfferForConfiguration(resolvedOffer, group.mdoc.configurationId)
 
+  const sharedToken = options.reuseToken ?? await dependencies.acquireAccessToken({
+    resolvedOffer,
+    tx_code: options.tx_code,
+  })
+
   logWalletStep('oid4vci', 'dual-format-claim-start', {
     issuer: resolvedOffer.issuer,
     sdJwtConfigurationId: group.sdJwt.configurationId,
@@ -79,7 +205,11 @@ export async function claimDualFormatCredential(
   let missingFormat: DualFormatClaimResult['missingFormat']
 
   try {
-    sdJwtRecord = await acquireRecord(sdJwtOffer, { ...options, dependencies })
+    sdJwtRecord = await acquireRecord(sdJwtOffer, {
+      ...options,
+      dependencies,
+      reuseToken: sharedToken,
+    })
     saveCredentialRecord(sdJwtRecord, { getCredentialStorage: dependencies.getCredentialStorage })
   } catch (error) {
     logWalletError('oid4vci', 'dual-format-sd-jwt-failed', error)
@@ -87,18 +217,16 @@ export async function claimDualFormatCredential(
   }
 
   try {
-    const mdocConfiguration = mdocOffer.credentialConfigurations[0]
-    if (!mdocConfiguration) {
-      throw new Error('DualFormatOfferMissing: mso_mdoc configuration is unavailable')
-    }
-
-    mdocDocType = readMdocDocType(mdocConfiguration)
-    if (!mdocDocType) {
-      throw new Error('MdocDocTypeMissing: issuer metadata does not declare doctype')
-    }
-
-    const mdocRaw = await acquireMdocCredentialBytes(mdocOffer, options, dependencies, acquireRecord)
-    mdocBytes = base64UrlToBytes(mdocRaw)
+    const pendingMdoc = await acquirePendingMdoc(
+      mdocOffer,
+      group.mdoc.configurationId,
+      options,
+      dependencies,
+      acquireRecord,
+      sharedToken,
+    )
+    mdocDocType = pendingMdoc.docType
+    mdocBytes = base64UrlToBytes(pendingMdoc.rawBase64)
 
     const credentialId = sdJwtRecord?.id ?? deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId)
     await storeMdoc({ credentialId, docType: mdocDocType }, mdocBytes)
@@ -205,6 +333,38 @@ function sliceOfferForConfiguration(
   }
 }
 
+async function acquirePendingMdoc(
+  mdocOffer: ResolvedCredentialOffer,
+  configurationId: string,
+  options: DualFormatClaimOptions,
+  dependencies: DualFormatClaimDependencies,
+  acquireRecord: typeof acquireCredentialRecord,
+  sharedToken: AcquireAccessTokenResult,
+): Promise<PendingMdocCredential> {
+  const mdocConfiguration = mdocOffer.credentialConfigurations[0]
+  if (!mdocConfiguration) {
+    throw new Error('DualFormatOfferMissing: mso_mdoc configuration is unavailable')
+  }
+
+  const docType = readMdocDocType(mdocConfiguration)
+  if (!docType) {
+    throw new Error('MdocDocTypeMissing: issuer metadata does not declare doctype')
+  }
+
+  const mdocRaw = await acquireMdocCredentialBytes(
+    mdocOffer,
+    { ...options, reuseToken: sharedToken },
+    dependencies,
+    acquireRecord,
+  )
+
+  return {
+    docType,
+    configurationId,
+    rawBase64: mdocRaw,
+  }
+}
+
 async function acquireMdocCredentialBytes(
   resolvedOffer: ResolvedCredentialOffer,
   options: DualFormatClaimOptions,
@@ -229,7 +389,21 @@ function readDocumentTypeFromOffer(offer: ResolvedCredentialOffer): string {
     ? configuration.rawConfiguration.vct
     : undefined
   if (vct?.toLowerCase().includes('transcript')) return 'BangkokUniversityTranscript'
+
+  const docType = configuration ? readMdocDocTypeFromConfig(configuration) : undefined
+  if (docType?.toLowerCase().includes('mdl') || docType?.toLowerCase().includes('driving')) {
+    return 'DLTDrivingLicence'
+  }
+  if (configuration?.id.toLowerCase().includes('mdl') || configuration?.id.toLowerCase().includes('driving')) {
+    return 'DLTDrivingLicence'
+  }
+
   return configuration?.display?.name ?? 'VerifiableCredential'
+}
+
+function readMdocDocTypeFromConfig(configuration: OfferedCredentialConfiguration): string | undefined {
+  const raw = configuration.rawConfiguration as Record<string, unknown>
+  return typeof raw.doctype === 'string' ? raw.doctype : typeof raw.docType === 'string' ? raw.docType : undefined
 }
 
 function createMdocPlaceholderRecord(input: {

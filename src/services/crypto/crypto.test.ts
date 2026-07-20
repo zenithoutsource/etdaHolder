@@ -2,6 +2,7 @@ import * as Keychain from 'react-native-keychain'
 
 import {
   generateWalletKeyIfNeeded,
+  getHolderCoseKeyBase64Url,
   getPublicKeyJwk,
   signSdJwtKbPresentationToken,
   getHolderDid,
@@ -139,10 +140,36 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     }))
   })
 
+  test('signs OID4VCI PoP JWT with EdDSA jwk header for cose_key binding', async () => {
+    await generateWalletKeyIfNeeded()
+    const jwt = await signProof('nonce-123', 'https://issuer.example.com', { keyBinding: 'jwk' })
+    const [encodedHeader, encodedPayload] = jwt.split('.')
+    const header = base64UrlDecode(encodedHeader) as Record<string, unknown>
+    const payload = base64UrlDecode(encodedPayload) as Record<string, unknown>
+
+    expect(header).toMatchObject({
+      alg: 'EdDSA',
+      typ: 'openid4vci-proof+jwt',
+      jwk: {
+        kty: 'OKP',
+        crv: 'Ed25519',
+        x: 'apUzt87kDqiT9GpHtFV8oCSzdAe5CFqnu-XE9_DAW_k',
+      },
+      cose_key: getHolderCoseKeyBase64Url(),
+    })
+    expect(header.kid).toBeUndefined()
+    expect(payload).toMatchObject({
+      aud: 'https://issuer.example.com',
+      nonce: 'nonce-123',
+    })
+    expect(payload.iss).toBeUndefined()
+    expect(payload.sub).toBeUndefined()
+  })
+
   test('signs OID4VP JWT VP token with Keychain EdDSA', async () => {
     await generateWalletKeyIfNeeded()
     const jwt = await signPresentationVpToken({
-      audience: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      audience: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
       verifiableCredential: 'issuer.vc.jwt',
     })
@@ -157,7 +184,7 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(payload).toMatchObject({
       iss: ED25519_DID_KEY_VECTOR,
       sub: ED25519_DID_KEY_VECTOR,
-      aud: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      aud: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
       vp: {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
@@ -176,7 +203,7 @@ describe('Keychain Ed25519 wallet crypto service', () => {
       cnf: { jwk: holderJwk },
     })}~disclosure~`
     const presentation = await signSdJwtKbPresentationToken({
-      audience: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      audience: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
       sdJwt,
     })
@@ -192,7 +219,7 @@ describe('Keychain Ed25519 wallet crypto service', () => {
       kid: `${ED25519_DID_KEY_VECTOR}#${ED25519_DID_KEY_VECTOR.replace('did:key:', '')}`,
     })
     expect(payload).toMatchObject({
-      aud: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      aud: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
     })
     expect(typeof payload.iat).toBe('number')
@@ -208,7 +235,7 @@ describe('Keychain Ed25519 wallet crypto service', () => {
 
     await expect(
       signSdJwtKbPresentationToken({
-        audience: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+        audience: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
         nonce: 'request-123',
         sdJwt,
       }),

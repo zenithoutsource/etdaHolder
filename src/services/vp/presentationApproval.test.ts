@@ -22,6 +22,7 @@ jest.mock('../debug/walletLogger', () => ({
 }))
 
 const rawCredential = 'issuer.sd.jwt~disclosure~'
+const filteredSdJwt = 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~'
 
 const baseRequest: ResolvedPresentationRequest = {
   requestUri: 'openid4vp://authorize',
@@ -115,6 +116,36 @@ describe('presentationApproval', () => {
     expect(response).toEqual({ vpToken: rawCredential, presentationSubmission: undefined })
   })
 
+  test('filters SD-JWT disclosures even when holder binding is not requested', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...requestWithDcql(false),
+      disclosures: [{ key: 'name', label: 'Name', value: 'Alice' }],
+      matchedCredential: {
+        ...baseRequest.matchedCredential,
+        rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
+      },
+      dcqlQuery: {
+        credentials: [
+          {
+            id: 'transcript_credential',
+            format: 'dc+sd-jwt',
+            claims: [{ path: ['name'] }],
+            require_cryptographic_holder_binding: false,
+          },
+        ],
+      },
+    }
+
+    const response = await createApprovedPresentationResponse(request, {
+      confirmBiometric: jest.fn(),
+    })
+
+    expect(response).toEqual({
+      vpToken: filteredSdJwt,
+      presentationSubmission: undefined,
+    })
+  })
+
   test('signs SD-JWT+KB presentation tokens without the raw biometric helper', async () => {
     const confirmBiometric = jest.fn()
     const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
@@ -131,6 +162,36 @@ describe('presentationApproval', () => {
       sdJwt: rawCredential,
     })
     expect(response).toEqual({ vpToken: 'sd-jwt~kb.jwt', presentationSubmission: undefined })
+  })
+
+  test('passes only DCQL-requested SD-JWT disclosures to the signer', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...requestWithDcql(true),
+      disclosures: [{ key: 'name', label: 'Name', value: 'Alice' }],
+      matchedCredential: {
+        ...baseRequest.matchedCredential,
+        rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
+      },
+      dcqlQuery: {
+        credentials: [
+          {
+            id: 'transcript_credential',
+            format: 'dc+sd-jwt',
+            claims: [{ path: ['name'] }],
+            require_cryptographic_holder_binding: true,
+          },
+        ],
+      },
+    }
+    const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
+
+    await createApprovedPresentationResponse(request, { signSdJwtKbPresentationToken })
+
+    expect(signSdJwtKbPresentationToken).toHaveBeenCalledWith({
+      audience: request.clientId,
+      nonce: request.nonce,
+      sdJwt: filteredSdJwt,
+    })
   })
 
   test('builds dual-format DCQL vp_token envelopes without presentation_submission', async () => {

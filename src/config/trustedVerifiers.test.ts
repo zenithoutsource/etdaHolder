@@ -5,16 +5,16 @@ describe('trustedVerifiers', () => {
     expect(
       buildTrustedVerifiersFromEnv(
         {
-          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://192.100.10.48/',
+          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://verifier.zenithcomp.co.th:455/',
           EXPO_PUBLIC_VERIFIER_NAME: 'Demo Verifier',
         },
         true,
       ),
     ).toEqual([
       {
-        clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
         name: 'Demo Verifier',
-        allowedOrigins: ['http://192.100.10.48'],
+        allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
       },
     ])
   })
@@ -23,7 +23,7 @@ describe('trustedVerifiers', () => {
     expect(
       buildTrustedVerifiersFromEnv(
         {
-          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://192.100.10.48/',
+          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://verifier.zenithcomp.co.th:455/',
           EXPO_PUBLIC_VERIFIER_NAME: 'Demo Verifier',
         },
         false,
@@ -93,7 +93,7 @@ describe('trustedVerifiers', () => {
     expect(
       buildTrustedVerifiersFromEnv(
         {
-          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://192.100.10.48/',
+          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://verifier.zenithcomp.co.th:455/',
           EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID: 'did:web:issuer.example.com',
           EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_RESPONSE_ORIGIN: 'https://issuer.example.com',
         },
@@ -116,7 +116,7 @@ describe('trustedVerifiers', () => {
     expect(
       readTrustedVerifierBuildPolicy(
         {
-          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://192.100.10.48/',
+          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://verifier.zenithcomp.co.th:455/',
           EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID: 'did:web:verifier.example.com',
           EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN: 'https://verifier.example.com',
           EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID: 'did:web:issuer.example.com',
@@ -129,7 +129,7 @@ describe('trustedVerifiers', () => {
     expect(
       readTrustedVerifierBuildPolicy(
         {
-          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://192.100.10.48/',
+          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'http://verifier.zenithcomp.co.th:455/',
         },
         false,
       ),

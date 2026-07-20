@@ -37,7 +37,7 @@ const transcriptRecord: VerifiableCredentialRecord = {
   type: 'BangkokUniversityTranscript',
   rawVc: `${unsignedJwt({
     iss: 'https://issuer.example.com',
-    vct: 'http://192.100.10.48/credentials/TranscriptCredential',
+    vct: 'http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential',
   })}~disclosure~`,
   claims: {
     studentId: '6512345678',
@@ -70,13 +70,13 @@ const issuerTranscriptRecord: VerifiableCredentialRecord = {
   ...transcriptRecord,
   id: 'issuer-transcript-1',
   rawVc: `${unsignedJwt({
-    iss: 'http://192.100.10.46',
-    vct: 'http://192.100.10.46/credentials/TranscriptCredential',
+    iss: 'http://issuer.zenithcomp.co.th:455',
+    vct: 'http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential',
   })}~disclosure~`,
   claims: {
     ...transcriptRecord.claims,
-    iss: 'http://192.100.10.46',
-    vct: 'http://192.100.10.46/credentials/TranscriptCredential',
+    iss: 'http://issuer.zenithcomp.co.th:455',
+    vct: 'http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential',
   },
 }
 
@@ -113,7 +113,7 @@ function authorizationRequestUri(overrides: Record<string, string> = {}): string
 }
 
 function verifierRequestUri(id = 'request-123'): string {
-  return `openid4vp://authorize?client_id=redirect_uri:http://192.100.10.48/openid4vc/verify/${id}&request_uri=http://192.100.10.48/openid4vc/request/${id}`
+  return `openid4vp://authorize?client_id=redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/${id}&request_uri=http://verifier.zenithcomp.co.th:455/openid4vc/request/${id}`
 }
 
 function issuerPidRequestUri(): string {
@@ -269,11 +269,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -292,19 +292,19 @@ describe('presentationService', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://192.100.10.48/openid4vc/request/request-123',
+      'http://verifier.zenithcomp.co.th:455/openid4vc/request/request-123',
       expect.objectContaining({ headers: { Accept: 'application/json, application/oauth-authz-req+jwt' } }),
     )
     expect(request.verifier.name).toBe('Verifier API')
-    expect(request.responseUri).toBe('http://192.100.10.48/openid4vc/verify/request-123')
+    expect(request.responseUri).toBe('http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123')
     expect(request.matchedCredential.id).toBe('thai-id-1')
     expect(request.disclosures).toEqual([{ key: 'credential', label: 'Credential', value: 'Thai National ID' }])
   })
@@ -315,11 +315,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -344,9 +344,9 @@ describe('presentationService', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -362,11 +362,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -387,9 +387,9 @@ describe('presentationService', () => {
         fetchImpl: fetchMock as unknown as typeof fetch,
         trustedVerifiers: [
           {
-            clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
             name: 'Verifier API',
-            allowedOrigins: ['http://192.100.10.48'],
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
           },
         ],
       }),
@@ -413,11 +413,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -444,9 +444,9 @@ describe('presentationService', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -479,17 +479,17 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
                   id: 'transcript_credential',
                   format: 'dc+sd-jwt',
-                  meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                  meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                   claims: [
                     { path: ['student_id'] },
                     { path: ['full_name'] },
@@ -511,9 +511,9 @@ describe('presentationService', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -535,11 +535,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -567,9 +567,9 @@ describe('presentationService', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -593,11 +593,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -617,9 +617,9 @@ describe('presentationService', () => {
         fetchImpl: fetchMock as unknown as typeof fetch,
         trustedVerifiers: [
           {
-            clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
             name: 'Verifier API',
-            allowedOrigins: ['http://192.100.10.48'],
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
           },
         ],
       }),
@@ -633,11 +633,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -656,9 +656,9 @@ describe('presentationService', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -677,17 +677,17 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
                   id: 'transcript_credential',
                   format: 'dc+sd-jwt',
-                  meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                  meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                 },
               ],
             },
@@ -700,9 +700,9 @@ describe('presentationService', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -718,7 +718,7 @@ describe('presentationService', () => {
             expect.objectContaining({
               id: 'transcript_credential',
               format: 'dc+sd-jwt',
-              meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+              meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
             }),
           ]),
         }),
@@ -732,17 +732,17 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
                   id: 'transcript_credential',
                   format: 'dc+sd-jwt',
-                  meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                  meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                 },
               ],
             },
@@ -756,14 +756,14 @@ describe('presentationService', () => {
         fetchImpl: fetchMock as unknown as typeof fetch,
         trustedVerifiers: [
           {
-            clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
             name: 'Verifier API',
-            allowedOrigins: ['http://192.100.10.48'],
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
           },
         ],
       }),
     ).rejects.toThrow(
-      'PresentationCredentialMetadataMismatch: requested vct_values [http://192.100.10.48/credentials/TranscriptCredential]; stored vct [http://192.100.10.46/credentials/TranscriptCredential]',
+      'PresentationCredentialMetadataMismatch: requested vct_values [http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential]; stored vct [http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential]',
     )
   })
 
@@ -774,18 +774,18 @@ describe('presentationService', () => {
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               state: 'request-123',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [
                   {
                     id: 'transcript_credential',
                     format: 'dc+sd-jwt',
                     require_cryptographic_holder_binding: false,
-                    meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                    meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                   },
                 ],
               },
@@ -795,9 +795,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -812,17 +812,17 @@ describe('presentationService', () => {
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               state: 'request-123',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [
                   {
                     id: 'transcript_credential',
                     format: 'dc+sd-jwt',
-                    meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                    meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                   },
                 ],
               },
@@ -832,9 +832,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -850,17 +850,17 @@ describe('presentationService', () => {
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               state: 'request-123',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [
                   {
                     id: 'transcript_credential',
                     format: 'dc+sd-jwt',
-                    meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                    meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                   },
                 ],
               },
@@ -870,9 +870,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -1025,11 +1025,11 @@ describe('presentationService', () => {
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               state: 'request-123',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -1039,9 +1039,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -1069,10 +1069,10 @@ describe('presentationService', () => {
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -1082,9 +1082,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -1115,10 +1115,10 @@ describe('presentationService', () => {
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -1128,9 +1128,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -1156,10 +1156,10 @@ describe('presentationService', () => {
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -1169,9 +1169,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -1188,10 +1188,10 @@ describe('presentationService', () => {
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -1201,9 +1201,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })

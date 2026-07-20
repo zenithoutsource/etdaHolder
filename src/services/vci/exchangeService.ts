@@ -17,6 +17,7 @@ import type {
 import {
   signProof as defaultSignProof,
   getHolderDid,
+  type SignProofOptions,
 } from '../crypto/crypto'
 import { getCardSchema } from '../../config/cardSchemas'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
@@ -31,10 +32,10 @@ import {
 import {
   importCredential as defaultImportCredential,
 } from '../../sdk/walletApi'
-import { resolveDevIssuerProxyUrl } from '../../sdk/installWalletApiFetch'
 import { getCredentialStorage as getDefaultCredentialStorage } from '../storage/storage'
 import {
   base64UrlDecodeToString,
+  base64UrlToBytes,
   decodeJwtPayloadStrict as decodeJwtPayload,
   isSameJwk,
   isSameKid,
@@ -44,6 +45,8 @@ import {
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
 import { assertIssuerDidWebCredentialSignature } from './issuerDidWebVerify'
+import { storeMdocCredential } from '../proximity/mdocStorage'
+import { readCredentialIssuerName } from '../credentials/credentialIssuer'
 
 const CREDENTIAL_INDEX_KEY = 'credential:index'
 const CREDENTIAL_KEY_PREFIX = 'credential:'
@@ -97,6 +100,7 @@ export type VerifiableCredentialRecord = {
   claims: Record<string, unknown>
   issuedAt: string
   expiresAt?: string
+  issuerName?: string
 }
 
 export type CredentialStorage = {
@@ -105,7 +109,11 @@ export type CredentialStorage = {
   remove?: (key: string) => boolean
 }
 
-export type SignProof = (cNonce: string, issuerUrl: string) => Promise<string>
+export type SignProof = (
+  cNonce: string,
+  issuerUrl: string,
+  options?: SignProofOptions,
+) => Promise<string>
 
 export type AcquireAccessTokenInput = {
   resolvedOffer: ResolvedCredentialOffer
@@ -137,6 +145,8 @@ export type ClaimCredentialDependencies = {
 export type ClaimCredentialOptions = {
   tx_code?: string
   dependencies?: Partial<ClaimCredentialDependencies>
+  /** Reuse a pre-authorized access token (dual-format second credential request). */
+  reuseToken?: AcquireAccessTokenResult
 }
 
 export type AcquireCredentialRecordOptions = ClaimCredentialOptions
@@ -171,13 +181,11 @@ export async function resolveOffer(offerUri: string, options: ResolveOfferOption
     const issuerMetadata = await (options.fetchIssuerMetadata ?? fetchIssuerMetadata)(issuer)
 
     assertIssuerMetadata(issuer, issuerMetadata)
-    const transportIssuerMetadata = rewriteIssuerMetadataForTransport(issuerMetadata)
-
     const resolved = {
       offerUri: resolvedOfferUri,
       issuer,
       credentialOffer,
-      issuerMetadata: transportIssuerMetadata,
+      issuerMetadata,
       issuerDisplay: toCredentialDisplay(issuerMetadata.display),
       credentialConfigurations: resolveCredentialConfigurations(credentialOffer, issuerMetadata),
       preAuthorizedCode: credentialOffer.preAuthorizedCode,
@@ -237,6 +245,7 @@ export async function claimCredential(
     ...options.dependencies,
   }
   const record = await acquireCredentialRecord(resolvedOffer, { ...options, dependencies })
+  await persistClaimedCredentialFormats(record, resolvedOffer, dependencies)
   logWalletStep('oid4vci', 'credential-save-start', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
   saveCredentialRecord(record, { getCredentialStorage: dependencies.getCredentialStorage })
   logWalletStep('oid4vci', 'credential-save-complete', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
@@ -268,22 +277,37 @@ export async function acquireCredentialRecord(
     configurationIds: resolvedOffer.credentialConfigurations.map((configuration) => configuration.id),
     formats: resolvedOffer.credentialConfigurations.map((configuration) => configuration.format),
     txCodeProvided: Boolean(options.tx_code),
+    reuseToken: Boolean(options.reuseToken),
   })
-  const token = await dependencies.acquireAccessToken({ resolvedOffer, tx_code: options.tx_code })
+  const token = options.reuseToken
+    ?? await dependencies.acquireAccessToken({ resolvedOffer, tx_code: options.tx_code })
   logWalletStep('oid4vci', 'access-token-acquired', {
     issuer: resolvedOffer.issuer,
     cNoncePresent: Boolean(token.cNonce),
     credentialIdentifierPresent: Boolean(token.credentialIdentifier),
+    reused: Boolean(options.reuseToken),
   })
-  let proof = await dependencies.signProof(token.cNonce, resolvedOffer.issuer)
-  logWalletStep('oid4vci', 'proof-signed', { issuer: resolvedOffer.issuer, popBytes: proof.length })
+  const proofKeyBinding = readProofKeyBinding(resolvedOffer.credentialConfigurations[0])
+  let proof = await dependencies.signProof(token.cNonce, resolvedOffer.issuer, {
+    keyBinding: proofKeyBinding,
+  })
+  logWalletStep('oid4vci', 'proof-signed', {
+    issuer: resolvedOffer.issuer,
+    popBytes: proof.length,
+    keyBinding: proofKeyBinding,
+  })
   let rawVc: string
   try {
+    const requestConfiguration = resolvedOffer.credentialConfigurations[0]
     logWalletStep('oid4vci', 'credential-request-start', {
       issuer: resolvedOffer.issuer,
       credentialEndpoint: resolvedOffer.issuerMetadata.credential_endpoint,
+      configurationId: requestConfiguration?.id,
+      requestId: requestConfiguration?.requestId,
+      format: requestConfiguration?.format,
       credentialIdentifierPresent: Boolean(token.credentialIdentifier),
       popBytes: proof.length,
+      keyBinding: proofKeyBinding,
     })
     rawVc = await dependencies.requestCredential({
       resolvedOffer,
@@ -302,16 +326,27 @@ export async function acquireCredentialRecord(
     }
 
     if (!(error instanceof InvalidProofError)) {
+      const failedConfiguration = resolvedOffer.credentialConfigurations[0]
       logWalletError('oid4vci', 'credential-request-failed', error, {
         issuer: resolvedOffer.issuer,
         credentialEndpoint: resolvedOffer.issuerMetadata.credential_endpoint,
+        configurationId: failedConfiguration?.id,
+        requestId: failedConfiguration?.requestId,
+        format: failedConfiguration?.format,
+        keyBinding: proofKeyBinding,
       })
       throw error
     }
 
     logWalletError('oid4vci', 'credential-request-invalid-proof', error, { issuer: resolvedOffer.issuer, retry: true })
-    proof = await dependencies.signProof(error.cNonce, resolvedOffer.issuer)
-    logWalletStep('oid4vci', 'proof-resigned', { issuer: resolvedOffer.issuer, popBytes: proof.length })
+    proof = await dependencies.signProof(error.cNonce, resolvedOffer.issuer, {
+      keyBinding: proofKeyBinding,
+    })
+    logWalletStep('oid4vci', 'proof-resigned', {
+      issuer: resolvedOffer.issuer,
+      popBytes: proof.length,
+      keyBinding: proofKeyBinding,
+    })
     rawVc = await dependencies.requestCredential({
       resolvedOffer,
       accessToken: token.accessToken,
@@ -364,7 +399,7 @@ export function saveCredentialRecord(
     kind: 'credential-received',
     credentialId: record.id,
     documentType: schema.title,
-    partyName: schema.issuerName,
+    partyName: readCredentialIssuerName(record),
     channel: 'oid4vci',
     occurredAt: record.issuedAt,
   })
@@ -566,10 +601,9 @@ async function resolveCredentialOfferUriForTransport(offerUri: string): Promise<
   const credentialOfferUri = readCredentialOfferUriParameter(offerUri)
   if (!credentialOfferUri) return offerUri
 
-  const rewrittenOfferUri = resolveDevIssuerProxyUrl(credentialOfferUri)
   let response: Response
   try {
-    response = await fetch(rewrittenOfferUri, {
+    response = await fetch(credentialOfferUri, {
       headers: {
         Accept: 'application/json',
       },
@@ -614,17 +648,6 @@ function buildInlineCredentialOfferUri(originalOfferUri: string, credentialOffer
   return `${baseUrl}?${params.toString()}`
 }
 
-function rewriteIssuerMetadataForTransport(metadata: IssuerMetadataV1_0_15): IssuerMetadataV1_0_15 {
-  return {
-    ...metadata,
-    ...(metadata.token_endpoint ? { token_endpoint: resolveDevIssuerProxyUrl(metadata.token_endpoint) as string } : {}),
-    credential_endpoint: resolveDevIssuerProxyUrl(metadata.credential_endpoint) as string,
-    ...(metadata.deferred_credential_endpoint
-      ? { deferred_credential_endpoint: resolveDevIssuerProxyUrl(metadata.deferred_credential_endpoint) as string }
-      : {}),
-  }
-}
-
 function readCredentialIssuer(credentialOffer: CredentialOfferRequestWithBaseUrl): string {
   const issuer = credentialOffer.credential_offer?.credential_issuer
 
@@ -666,12 +689,14 @@ function resolveCredentialConfigurations(
       throw new Error(`CredentialConfigurationNotSupported: ${id}`)
     }
 
+    const rawConfiguration = enrichMsoMdocDoctype(matchedConfiguration.rawConfiguration, id)
+
     return {
       id,
       requestId: matchedConfiguration.id,
-      format: matchedConfiguration.rawConfiguration.format,
-      display: toCredentialDisplay(matchedConfiguration.rawConfiguration.display),
-      rawConfiguration: matchedConfiguration.rawConfiguration,
+      format: rawConfiguration.format,
+      display: toCredentialDisplay(rawConfiguration.display),
+      rawConfiguration,
     }
   })
 }
@@ -692,17 +717,28 @@ function findCredentialConfiguration(
   const matchedKey = Object.keys(supported).find((key) => normalizeCredentialConfigurationId(key) === normalizedId)
   if (matchedKey) return { id: matchedKey, rawConfiguration: supported[matchedKey] }
 
-  const baseId = stripCredentialConfigurationFormatSuffix(normalizedId)
-  const baseMatchedKey = Object.keys(supported).find((key) => normalizeCredentialConfigurationId(key) === baseId)
-  if (baseMatchedKey) return { id: baseMatchedKey, rawConfiguration: supported[baseMatchedKey] }
-
-  const containedBaseMatchedKey = Object.keys(supported).find((key) => {
-    const supportedBaseId = stripCredentialConfigurationFormatSuffix(normalizeCredentialConfigurationId(key))
-    return supportedBaseId.includes(baseId) || baseId.includes(supportedBaseId)
-  })
-  if (containedBaseMatchedKey) return { id: containedBaseMatchedKey, rawConfiguration: supported[containedBaseMatchedKey] }
-
   const offeredFormat = readCredentialConfigurationFormatSuffix(normalizedId)
+  const baseId = stripCredentialConfigurationFormatSuffix(normalizedId)
+
+  const baseMatchedKey = Object.keys(supported).find((key) => normalizeCredentialConfigurationId(key) === baseId)
+  if (baseMatchedKey && isCompatibleCredentialConfigurationFormat(offeredFormat, supported[baseMatchedKey])) {
+    return { id: baseMatchedKey, rawConfiguration: supported[baseMatchedKey] }
+  }
+
+  const familyMatchedKeys = Object.keys(supported).filter((key) => {
+    const supportedBaseId = stripCredentialConfigurationFormatSuffix(normalizeCredentialConfigurationId(key))
+    return supportedBaseId === baseId || supportedBaseId.includes(baseId) || baseId.includes(supportedBaseId)
+  })
+  const formatPreferredFamilyKey = familyMatchedKeys.find((key) =>
+    isCompatibleCredentialConfigurationFormat(offeredFormat, supported[key]),
+  )
+  if (formatPreferredFamilyKey) {
+    return { id: formatPreferredFamilyKey, rawConfiguration: supported[formatPreferredFamilyKey] }
+  }
+  if (!offeredFormat && familyMatchedKeys.length === 1) {
+    return { id: familyMatchedKeys[0], rawConfiguration: supported[familyMatchedKeys[0]] }
+  }
+
   const semanticMatchedKey = Object.keys(supported).find((key) =>
     isSemanticCredentialConfigurationMatch(id, offeredFormat, key, supported[key]),
   )
@@ -716,7 +752,108 @@ function findCredentialConfiguration(
     return { id: fallbackKey, rawConfiguration: supported[fallbackKey] }
   }
 
+  const doctypeMatched = findMsoMdocConfigurationForDoctypeOffer(id, supported)
+  if (doctypeMatched) return doctypeMatched
+
   return undefined
+}
+
+/** ISO mDOC offers often put the doctype in credential_configuration_ids while issuer metadata omits `doctype`. */
+function isIsoMdocDoctypeOfferId(id: string): boolean {
+  const normalized = id.trim().toLowerCase()
+  if (!normalized) return false
+  if (normalized.startsWith('org.iso.')) return true
+  return normalized.endsWith('.mdl') || normalized.endsWith('mdl')
+}
+
+function findMsoMdocConfigurationForDoctypeOffer(
+  offeredId: string,
+  supported: Record<string, CredentialConfigurationSupportedV1_0_15>,
+): MatchedCredentialConfiguration | undefined {
+  if (!isIsoMdocDoctypeOfferId(offeredId)) return undefined
+
+  const normalizedDoctype = normalizeCredentialConfigurationId(offeredId)
+  const msoMdocEntries = Object.entries(supported).filter(([, configuration]) => configuration.format === 'mso_mdoc')
+  if (msoMdocEntries.length === 0) return undefined
+
+  const byDoctypeField = msoMdocEntries.find(([, configuration]) => {
+    const raw = readRecord(configuration)
+    const docType = readString(raw?.doctype) ?? readString(raw?.docType)
+    return docType ? normalizeCredentialConfigurationId(docType) === normalizedDoctype : false
+  })
+  if (byDoctypeField) {
+    return { id: byDoctypeField[0], rawConfiguration: byDoctypeField[1] }
+  }
+
+  if (!isIsoMdlDoctype(normalizedDoctype)) return undefined
+
+  const drivingLicenceMatches = msoMdocEntries.filter(([key, configuration]) =>
+    isIso18013DrivingLicenceMdocConfiguration(key, configuration),
+  )
+
+  if (drivingLicenceMatches.length === 1) {
+    return { id: drivingLicenceMatches[0][0], rawConfiguration: drivingLicenceMatches[0][1] }
+  }
+
+  const preferred = drivingLicenceMatches.find(([key]) =>
+    normalizeCredentialConfigurationId(key).includes('iso18013driverslicensecredential'),
+  )
+  if (preferred) {
+    return { id: preferred[0], rawConfiguration: preferred[1] }
+  }
+
+  return drivingLicenceMatches[0]
+    ? { id: drivingLicenceMatches[0][0], rawConfiguration: drivingLicenceMatches[0][1] }
+    : undefined
+}
+
+function isIsoMdlDoctype(normalizedDoctype: string): boolean {
+  return (
+    normalizedDoctype === 'orgiso1801351mdl' ||
+    normalizedDoctype.endsWith('1801351mdl') ||
+    normalizedDoctype.endsWith('mdl')
+  )
+}
+
+function isIso18013DrivingLicenceMdocConfiguration(
+  configurationId: string,
+  configuration: CredentialConfigurationSupportedV1_0_15,
+): boolean {
+  const searchable = [
+    configurationId,
+    ...readTypeStrings(readRecord(configuration)?.types),
+    ...readTypeStrings(readRecord(configuration.credential_definition)?.type),
+    ...readDisplayNames(configuration.display),
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map(normalizeCredentialConfigurationId)
+
+  return searchable.some((value) => {
+    const looksIso18013 = value.includes('iso18013') || value.includes('18013')
+    const looksDriving =
+      value.includes('driving') ||
+      value.includes('licence') ||
+      value.includes('license') ||
+      value.includes('mdl')
+    return looksIso18013 && looksDriving
+  })
+}
+
+function enrichMsoMdocDoctype(
+  configuration: CredentialConfigurationSupportedV1_0_15,
+  offeredConfigurationId: string,
+): CredentialConfigurationSupportedV1_0_15 {
+  if (configuration.format !== 'mso_mdoc') return configuration
+
+  const raw = readRecord(configuration)
+  const existingDoctype = readString(raw?.doctype) ?? readString(raw?.docType)
+  if (existingDoctype) return configuration
+  if (!isIsoMdocDoctypeOfferId(offeredConfigurationId)) return configuration
+
+  return {
+    ...configuration,
+    doctype: offeredConfigurationId,
+  } as CredentialConfigurationSupportedV1_0_15
 }
 
 function normalizeCredentialConfigurationId(id: string): string {
@@ -753,6 +890,8 @@ function isSemanticCredentialConfigurationMatch(
   const searchableValues = [
     stripCredentialConfigurationFormatSuffix(normalizeCredentialConfigurationId(configurationId)),
     readString(configuration.vct),
+    readString(readRecord(configuration)?.doctype),
+    readString(readRecord(configuration)?.docType),
     ...readTypeStrings(readRecord(configuration)?.types),
     ...readTypeStrings(readRecord(configuration.credential_definition)?.type),
     ...readDisplayNames(configuration.display),
@@ -767,7 +906,11 @@ function isCompatibleCredentialConfigurationFormat(
   offeredFormat: string | undefined,
   configuration: CredentialConfigurationSupportedV1_0_15,
 ): boolean {
-  return !offeredFormat || configuration.format === offeredFormat
+  if (!offeredFormat) return true
+  if (configuration.format === offeredFormat) return true
+  // Customer issuers often advertise vc+sd-jwt while offers still use the dc+sd-jwt suffix.
+  if (isSdJwtVcFormat(offeredFormat) && isSdJwtVcFormat(configuration.format)) return true
+  return false
 }
 
 function isPidCredentialConfigurationId(id: string): boolean {
@@ -837,13 +980,18 @@ function toCredentialDisplay(
 
 function normalizeCredentialRecord(
   rawVc: string,
-  resolvedOffer?: Pick<ResolvedCredentialOffer, 'credentialConfigurations'>,
+  resolvedOffer?: Pick<ResolvedCredentialOffer, 'credentialConfigurations' | 'issuer' | 'issuerDisplay'>,
 ): VerifiableCredentialRecord {
   const claims = decodeCredentialClaims(rawVc)
   const vc = readRecord(claims.vc)
   const id = readString(claims.jti) ?? readString(vc?.id) ?? readString(claims.id) ?? hashCredential(rawVc)
   const issuedAt = normalizeDate(readString(vc?.issuanceDate) ?? readNumber(claims.iat) ?? readNumber(claims.nbf) ?? Date.now() / 1000)
   const type = readCredentialType(claims, vc, resolvedOffer)
+  const issuerName =
+    resolvedOffer?.issuerDisplay?.name?.trim() ||
+    (type === 'BangkokUniversityTranscript'
+      ? getCardSchema(type).issuerName
+      : resolvedOffer?.issuer)
   const expiresAt = readNormalizedDocumentExpiry({
     claims,
     type,
@@ -858,6 +1006,7 @@ function normalizeCredentialRecord(
     claims,
     issuedAt,
     ...(expiresAt ? { expiresAt } : {}),
+    ...(issuerName ? { issuerName } : {}),
   }
 }
 
@@ -908,8 +1057,12 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
             : { credentialConfigurationId: credentialConfiguration.requestId }),
           version: resolvedOffer.version as OpenId4VCIVersion,
         })
+        const requestPayload = applyMsoMdocCredentialRequestFields(
+          credentialRequest as unknown as Record<string, unknown>,
+          credentialConfiguration,
+        )
         const response = await credentialClient.acquireCredentialsUsingRequest(
-          credentialRequest,
+          requestPayload as unknown as Parameters<typeof credentialClient.acquireCredentialsUsingRequest>[0],
           credentialConfiguration.format as OID4VCICredentialFormat,
         )
         assertCredentialEndpointSuccess(response)
@@ -943,6 +1096,7 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
           error instanceof Error &&
           (error.message.startsWith('CredentialFormatUnsupported') ||
             error.message.startsWith('CredentialResponseUnsupported') ||
+            error.message.startsWith('CredentialResponseDeferred') ||
             error.message.startsWith('CredentialRequestFailed'))
         ) {
           throw error
@@ -970,7 +1124,7 @@ async function requestPreAuthorizedAccessToken(
     body.set('tx_code', txCode)
   }
 
-  const response = await fetch(resolveDevIssuerProxyUrl(tokenEndpoint), {
+  const response = await fetch(tokenEndpoint, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -1005,12 +1159,12 @@ async function discoverAuthorizationServerTokenEndpoint(
       const metadataUrl = `${baseUrl.replace(/\/$/, '')}/${wellKnownPath}`
 
       try {
-        const response = await fetch(resolveDevIssuerProxyUrl(metadataUrl), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) })
+        const response = await fetch(metadataUrl, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) })
         if (!response.ok) continue
 
         const metadata = await readJsonResponseBody(response)
         const tokenEndpoint = readString(metadata.token_endpoint)
-        if (tokenEndpoint) return resolveDevIssuerProxyUrl(tokenEndpoint) as string
+        if (tokenEndpoint) return tokenEndpoint
       } catch {
         continue
       }
@@ -1055,32 +1209,53 @@ export class DeferredIssuancePending extends Error {
   }
 }
 
+const ERROR_BODY_PREVIEW_MAX_CHARS = 280
+
 function assertCredentialEndpointSuccess(response: unknown): void {
   const responseRecord = readRecord(response)
-  const errorBody = readRecord(responseRecord?.errorBody)
-  if (!errorBody) return
+  if (!responseRecord) return
 
-  const error = readString(errorBody.error)
-  const description = readString(errorBody.error_description)
-  const status = readNumber(readRecord(responseRecord?.origResponse)?.status)
-  const statusMessage = status ? `HTTP ${status}: ` : ''
-  const message = `CredentialRequestFailed: ${statusMessage}${
-    error ? (description ? `${error} - ${description}` : error) : describeCredentialEndpointError(errorBody)
-  }`
+  const status = readCredentialResponseHttpStatus(responseRecord)
+  const statusMessage = status !== undefined ? `HTTP ${status}: ` : ''
+  const errorBodyRaw = responseRecord.errorBody
 
-  if (error === 'invalid_proof') {
-    const freshCNonce = readString(errorBody.c_nonce)
-    if (freshCNonce) {
-      throw new InvalidProofError(message, freshCNonce)
+  if (errorBodyRaw === undefined || errorBodyRaw === null) {
+    // Sphereon normally sets errorBody on non-2xx; still fail closed on HTTP errors.
+    if (status !== undefined && status >= 400) {
+      throw new Error(`CredentialRequestFailed: ${statusMessage}issuer credential endpoint failed`)
     }
+    return
   }
 
-  throw new Error(message)
+  const errorBody = readRecord(errorBodyRaw)
+  if (errorBody) {
+    const error = readString(errorBody.error)
+    const description = readString(errorBody.error_description)
+    const message = `CredentialRequestFailed: ${statusMessage}${
+      error ? (description ? `${error} - ${description}` : error) : describeCredentialEndpointError(errorBody)
+    }`
+
+    if (error === 'invalid_proof') {
+      const freshCNonce = readString(errorBody.c_nonce)
+      if (freshCNonce) {
+        throw new InvalidProofError(message, freshCNonce)
+      }
+    }
+
+    throw new Error(message)
+  }
+
+  // Sphereon leaves non-JSON / plain-text issuer bodies as a string on errorBody.
+  const preview = safeErrorBodyPreview(errorBodyRaw)
+  throw new Error(
+    `CredentialRequestFailed: ${statusMessage}${preview ?? `errorBody:${typeof errorBodyRaw}`}`,
+  )
 }
 
 function describeCredentialEndpointError(errorBody: Record<string, unknown>): string {
   const compact = safeJsonStringify(errorBody)
-  return compact ? `unknown_error ${compact}` : 'unknown_error'
+  const preview = compact ? safeErrorBodyPreview(compact) : undefined
+  return preview ? `unknown_error ${preview}` : 'unknown_error'
 }
 
 function safeJsonStringify(value: unknown): string | undefined {
@@ -1091,16 +1266,61 @@ function safeJsonStringify(value: unknown): string | undefined {
   }
 }
 
+/**
+ * Truncated, token-redacted preview of issuer error text for thrown diagnostics.
+ * Never includes full credential/JWT material — only a short safe snippet.
+ */
+function safeErrorBodyPreview(value: unknown, maxChars = ERROR_BODY_PREVIEW_MAX_CHARS): string | undefined {
+  if (typeof value !== 'string') return undefined
+
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  const redacted = redactSensitiveTokenSubstrings(trimmed)
+  if (redacted.length <= maxChars) return redacted
+  return `${redacted.slice(0, maxChars)}...`
+}
+
+function redactSensitiveTokenSubstrings(text: string): string {
+  // Compact JWT / SD-JWT-like segments (header.payload.signature[~...])
+  return text.replace(
+    /[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:~[A-Za-z0-9_-]+)*/g,
+    '[redacted]',
+  )
+}
+
+function readCredentialResponseHttpStatus(responseRecord: Record<string, unknown>): number | undefined {
+  return (
+    readNumber(readRecord(responseRecord.origResponse)?.status) ??
+    readNumber(responseRecord.status) ??
+    readNumber(responseRecord.httpStatus)
+  )
+}
+
+/**
+ * Reads an mso_mdoc credential payload from a Sphereon/OID4VCI credential
+ * response. Accepts legacy `{ format, credential }`, OID4VCI 1.0
+ * `{ credentials: [{ credential }] }`, and plain `{ credential }` when format
+ * is missing or `mso_mdoc`. mDOC values are base64url CBOR — not JWTs.
+ */
 export function readMdocCredentialFromResponse(response: unknown): string {
   const body = readCredentialResponseBody(response)
-  const format = readString(body?.format)
-  const credential = readString(body?.credential)
+  const credential = readMdocCredentialValue(body)
 
-  if (format === 'mso_mdoc' && credential) {
-    return credential
+  if (credential) return credential
+
+  const deferredId =
+    readString(body?.transaction_id) ??
+    readString(body?.acceptance_token)
+  if (deferredId) {
+    throw new Error(
+      `CredentialResponseDeferred: issuer returned deferred response without mso_mdoc credential (${describeCredentialResponseShape(response)})`,
+    )
   }
 
-  throw new Error(`CredentialResponseUnsupported: mso_mdoc credential response is required (${describeCredentialResponseShape(body)})`)
+  throw new Error(
+    `CredentialResponseUnsupported: mso_mdoc credential response is required (${describeCredentialResponseShape(response)})`,
+  )
 }
 
 export function readCompactCredentialFromResponse(response: unknown): string {
@@ -1109,7 +1329,9 @@ export function readCompactCredentialFromResponse(response: unknown): string {
 
   if (credential) return credential
 
-  throw new Error(`CredentialResponseUnsupported: compact credential response is required (${describeCredentialResponseShape(body)})`)
+  throw new Error(
+    `CredentialResponseUnsupported: compact credential response is required (${describeCredentialResponseShape(response)})`,
+  )
 }
 
 /**
@@ -1126,16 +1348,56 @@ export function readDeferredTransactionId(response: unknown): string | undefined
   const transactionId = readString(body.transaction_id)
   if (!transactionId) return undefined
 
-  // If the response also has a credential, the issuer is done — not deferred
-  const credential = readCompactCredentialValue(body)
-  if (credential) return undefined
+  // If the response also has a credential (JWT/SD-JWT or mso_mdoc), issuer is done
+  if (readCompactCredentialValue(body) || readMdocCredentialValue(body)) {
+    return undefined
+  }
 
   return transactionId
 }
 
 function readCredentialResponseBody(response: unknown): Record<string, unknown> | undefined {
   const responseRecord = readRecord(response)
+  // Prefer successBody when it is a plain object; otherwise fall back to the
+  // response itself (direct body or Sphereon wrapper without a usable body).
   return readRecord(responseRecord?.successBody) ?? responseRecord
+}
+
+/**
+ * Walk nested credential/credentials like compact JWT parsing, but accept any
+ * non-empty string (mDOC is base64url CBOR, not a JWT). Skip records whose
+ * explicit format is present and not mso_mdoc.
+ */
+function readMdocCredentialValue(value: unknown): string | undefined {
+  const direct = readString(value)
+  if (direct && direct.length > 0) return direct
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const credential = readMdocCredentialValue(item)
+      if (credential) return credential
+    }
+    return undefined
+  }
+
+  const record = readRecord(value)
+  if (!record) return undefined
+
+  const format = readString(record.format)
+  if (format && format !== 'mso_mdoc') {
+    // Format explicitly names a non-mdoc profile — do not treat its credential
+    // string as mso_mdoc, but still walk nested credentials arrays.
+    return (
+      readMdocCredentialValue(record.credentials) ??
+      readMdocCredentialValue(record.credential_response)
+    )
+  }
+
+  return (
+    readMdocCredentialValue(record.credential) ??
+    readMdocCredentialValue(record.credentials) ??
+    readMdocCredentialValue(record.credential_response)
+  )
 }
 
 function readCompactCredentialValue(value: unknown): string | undefined {
@@ -1165,22 +1427,88 @@ function isCompactCredentialString(value: string): boolean {
   return issuerJwt.split('.').length >= 3
 }
 
-function describeCredentialResponseShape(successBody: Record<string, unknown> | undefined): string {
-  if (!successBody) {
-    return 'missing successBody'
+/**
+ * Safe diagnostic summary for credential-response parse failures.
+ * Never includes credential bytes, tokens, or PII — only types/keys/presence.
+ */
+function describeCredentialResponseShape(response: unknown): string {
+  const responseRecord = readRecord(response)
+  if (!responseRecord) {
+    return `response:${response === undefined ? 'undefined' : typeof response}`
   }
 
-  const keys = Object.keys(successBody)
-  if (keys.length === 0) {
-    return 'empty successBody'
+  const successBodyRaw = responseRecord.successBody
+  const successBody = readRecord(successBodyRaw)
+  const errorBodyRaw = responseRecord.errorBody
+  const errorBody = readRecord(errorBodyRaw)
+  const httpStatus = readCredentialResponseHttpStatus(responseRecord)
+
+  // When caller already passed a success body (no Sphereon wrapper), treat the
+  // whole record as the credential body for presence checks.
+  const looksLikeSphereonWrapper =
+    'successBody' in responseRecord ||
+    'errorBody' in responseRecord ||
+    'origResponse' in responseRecord ||
+    'access_token' in responseRecord
+  const body = looksLikeSphereonWrapper ? (successBody ?? {}) : responseRecord
+
+  const parts: string[] = []
+
+  if (httpStatus !== undefined) {
+    parts.push(`httpStatus:${httpStatus}`)
   }
 
-  const credentials = successBody.credentials
-  const credentialsShape = Array.isArray(credentials)
-    ? `credentials[${credentials.map((item) => typeof item).join(',')}]`
-    : `credentials:${typeof credentials}`
+  if (looksLikeSphereonWrapper) {
+    if (successBodyRaw === undefined) {
+      parts.push('successBody:undefined')
+    } else if (typeof successBodyRaw === 'string') {
+      parts.push('successBody:string')
+    } else if (successBody) {
+      const keys = Object.keys(successBody)
+      parts.push(`successBodyKeys:${keys.length > 0 ? keys.join(',') : '(empty)'}`)
+    } else {
+      parts.push(`successBody:${typeof successBodyRaw}`)
+    }
 
-  return `keys:${keys.join(',')}; ${credentialsShape}; credential:${typeof successBody.credential}`
+    if (errorBody) {
+      parts.push(`errorBodyKeys:${Object.keys(errorBody).join(',')}`)
+      const oidError = readString(errorBody.error)
+      const oidDescription = readString(errorBody.error_description)
+      if (oidError) {
+        const preview = safeErrorBodyPreview(oidError)
+        if (preview) parts.push(`error:${preview}`)
+      }
+      if (oidDescription) {
+        const preview = safeErrorBodyPreview(oidDescription)
+        if (preview) parts.push(`error_description:${preview}`)
+      }
+    } else if (errorBodyRaw !== undefined) {
+      const preview = safeErrorBodyPreview(errorBodyRaw)
+      if (preview) {
+        parts.push(`errorBody:string:${preview}`)
+      } else {
+        parts.push(`errorBody:${typeof errorBodyRaw}`)
+      }
+    }
+
+    parts.push(`outerKeys:${Object.keys(responseRecord).join(',')}`)
+  } else {
+    const keys = Object.keys(responseRecord)
+    parts.push(`keys:${keys.length > 0 ? keys.join(',') : '(empty)'}`)
+  }
+
+  parts.push(`transaction_id:${body.transaction_id !== undefined}`)
+  parts.push(`acceptance_token:${body.acceptance_token !== undefined}`)
+
+  const credentials = body.credentials
+  if (Array.isArray(credentials)) {
+    parts.push(`credentials:array[${credentials.length}]`)
+  } else {
+    parts.push(`credentials:${typeof credentials}`)
+  }
+  parts.push(`credential:${typeof body.credential}`)
+
+  return parts.join('; ')
 }
 
 function isJwtVcFormat(format: string): boolean {
@@ -1193,6 +1521,57 @@ function isSdJwtVcFormat(format: string): boolean {
 
 function isMsoMdocFormat(format: string): boolean {
   return format === 'mso_mdoc'
+}
+
+/** mso_mdoc / cose_key configs need public key material in the PoP JWT (`jwk` header). */
+function readProofKeyBinding(
+  configuration: OfferedCredentialConfiguration | undefined,
+): 'did-kid' | 'jwk' {
+  if (!configuration) return 'did-kid'
+  if (isMsoMdocFormat(configuration.format)) return 'jwk'
+
+  const raw = readRecord(configuration.rawConfiguration)
+  const methods = raw?.cryptographic_binding_methods_supported
+  if (!Array.isArray(methods)) return 'did-kid'
+  if (methods.some((method) => method === 'cose_key')) return 'jwk'
+  return 'did-kid'
+}
+
+function readMdocDocType(configuration: OfferedCredentialConfiguration): string | undefined {
+  const rawConfiguration = readRecord(configuration.rawConfiguration)
+  return readString(rawConfiguration?.doctype) ?? readString(rawConfiguration?.docType)
+}
+
+function applyMsoMdocCredentialRequestFields(
+  credentialRequest: Record<string, unknown>,
+  configuration: OfferedCredentialConfiguration,
+): Record<string, unknown> {
+  if (!isMsoMdocFormat(configuration.format)) {
+    return credentialRequest
+  }
+
+  const docType = readMdocDocType(configuration)
+  const legacyProof = readRecord(credentialRequest.proof)
+  const proofJwt = readString(legacyProof?.jwt)
+
+  // OID4VCI 1.0 Credential Request uses `proofs.jwt[]`, not legacy `proof`.
+  // Sphereon 0.20 still emits `proof`; .NET issuers often KeyNotFound on `proofs`.
+  const {
+    proof: _legacyProof,
+    format: _legacyFormat,
+    cose_key: _requestCoseKey,
+    ...rest
+  } = credentialRequest
+
+  return {
+    ...rest,
+    ...(docType ? { doctype: docType } : {}),
+    ...(proofJwt
+      ? { proofs: { jwt: [proofJwt] } }
+      : legacyProof
+        ? { proof: legacyProof }
+        : {}),
+  }
 }
 
 function isSupportedCredentialFormat(format: string): boolean {
@@ -1214,8 +1593,7 @@ function finalizeMdocCredentialRecord(
   resolvedOffer: ResolvedCredentialOffer,
   configuration: OfferedCredentialConfiguration,
 ): VerifiableCredentialRecord {
-  const rawConfiguration = readRecord(configuration.rawConfiguration)
-  const docType = readString(rawConfiguration?.doctype) ?? readString(rawConfiguration?.docType) ?? 'unknown'
+  const docType = readMdocDocType(configuration) ?? 'unknown'
   const type = readCredentialType({ vct: docType }, undefined, resolvedOffer)
 
   return {
@@ -1224,6 +1602,29 @@ function finalizeMdocCredentialRecord(
     rawVc: `mdoc:${rawBase64}`,
     claims: { doctype: docType },
     issuedAt: new Date().toISOString(),
+  }
+}
+
+async function persistClaimedCredentialFormats(
+  record: VerifiableCredentialRecord,
+  resolvedOffer: ResolvedCredentialOffer,
+  _dependencies: ClaimCredentialDependencies,
+): Promise<void> {
+  if (!record.rawVc.startsWith('mdoc:')) return
+
+  const configuration = resolvedOffer.credentialConfigurations[0]
+  if (!configuration || !isMsoMdocFormat(configuration.format)) return
+
+  const docType = readMdocDocType(configuration) ?? readString(record.claims.doctype) ?? 'unknown'
+  const mdocBytes = base64UrlToBytes(record.rawVc.slice('mdoc:'.length))
+  try {
+    await storeMdocCredential({ credentialId: record.id, docType }, mdocBytes)
+  } catch (error) {
+    logWalletError('oid4vci', 'mdoc-native-store-failed', error, {
+      credentialId: record.id,
+      docType,
+    })
+    // Keep MMKV record; proximity presentation will fail until native store succeeds on retry/reclaim.
   }
 }
 
@@ -1354,7 +1755,7 @@ function decodeJwtHeader(jwt: string): Record<string, unknown> {
 function readCredentialType(
   claims: Record<string, unknown>,
   vc: Record<string, unknown> | undefined,
-  resolvedOffer?: Pick<ResolvedCredentialOffer, 'credentialConfigurations'>,
+  resolvedOffer?: Pick<ResolvedCredentialOffer, 'credentialConfigurations' | 'issuer' | 'issuerDisplay'>,
 ): string {
   const vcType = readTypeValue(vc?.type)
   if (vcType) return canonicalCredentialType(vcType)
@@ -1379,6 +1780,10 @@ function canonicalCredentialType(type: string): string {
   }
 
   if (normalized.includes('driving') || normalized.includes('licence') || normalized.includes('license')) {
+    return 'DLTDrivingLicence'
+  }
+
+  if (normalized.includes('mdl') || normalized.endsWith('.mdl') || normalized.includes('18013.5.1.mdl')) {
     return 'DLTDrivingLicence'
   }
 

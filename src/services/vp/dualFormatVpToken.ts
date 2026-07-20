@@ -8,6 +8,7 @@ import {
   type DcqlCredentialQuery,
   type ResolvedPresentationRequest,
 } from './presentationService'
+import { selectSdJwtDisclosures } from './sdJwtSelectiveDisclosure'
 
 export type DualFormatVpTokenDependencies = {
   signSdJwtKb?: typeof signSdJwtKbPresentationToken
@@ -60,7 +61,10 @@ async function buildDcqlCredentialToken(input: {
     return input.signSdJwtKb({
       audience: input.audience,
       nonce: input.request.nonce,
-      sdJwt: input.request.matchedCredential.rawVc,
+      sdJwt: selectSdJwtDisclosures(
+        input.request.matchedCredential.rawVc,
+        input.credentialQuery.claims?.flatMap((claim) => claim.path[0] ? [claim.path[0]] : []),
+      ),
     })
   }
 

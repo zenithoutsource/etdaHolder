@@ -46,14 +46,57 @@ export function readIssuerLogicalCredentialId(
   )
 }
 
+/** Canonical family for ISO mDL doctype ids + Iso18013DriversLicenseCredential_* siblings. */
+const ISO_18013_DRIVING_LICENCE_FAMILY_KEY = 'iso18013driverslicensecredential'
+
+function readConfigurationTypeHints(configuration: OfferedCredentialConfiguration): string[] {
+  const raw = readRecord(configuration.rawConfiguration)
+  const credentialDefinition = readRecord(raw?.credential_definition)
+  const values = [
+    ...(Array.isArray(raw?.types) ? raw.types : []),
+    ...(Array.isArray(credentialDefinition?.type) ? credentialDefinition.type : []),
+    credentialDefinition?.type,
+  ]
+  return values.filter((value): value is string => typeof value === 'string' && value.length > 0)
+}
+
+function isIsoMdlDoctypeFamilyId(value: string): boolean {
+  const normalized = normalizeConfigurationId(value)
+  return (
+    normalized === 'orgiso1801351mdl' ||
+    normalized.endsWith('1801351mdl') ||
+    (normalized.startsWith('orgiso') && normalized.endsWith('mdl'))
+  )
+}
+
 export function readConfigurationFamilyKey(configuration: OfferedCredentialConfiguration): string {
   const explicit = readIssuerLogicalCredentialId(configuration)
   if (explicit) return explicit
 
-  const normalized = normalizeConfigurationId(configuration.id)
+  // Prefer metadata requestId so offer doctypes (e.g. org.iso.18013.5.1.mDL) group with
+  // Iso18013DriversLicenseCredential_dc+sd-jwt / _mso_mdoc siblings.
+  const idForFamily = configuration.requestId || configuration.id
+  const normalized = normalizeConfigurationId(idForFamily)
   const suffix = readConfigurationFormatSuffix(normalized)
   if (suffix) {
-    return stripFormatSuffix(normalized)
+    const family = stripFormatSuffix(normalized)
+    if (family.includes('iso18013driverslicense')) {
+      return ISO_18013_DRIVING_LICENCE_FAMILY_KEY
+    }
+    return family
+  }
+
+  // Direct metadata keys use the doctype itself (org.iso.18013.5.1.mDL) without a format suffix.
+  const doctype = readMdocDocType(configuration)
+  if (isIsoMdlDoctypeFamilyId(idForFamily) || (doctype ? isIsoMdlDoctypeFamilyId(doctype) : false)) {
+    return ISO_18013_DRIVING_LICENCE_FAMILY_KEY
+  }
+
+  for (const typeHint of readConfigurationTypeHints(configuration)) {
+    const normalizedType = stripFormatSuffix(normalizeConfigurationId(typeHint))
+    if (normalizedType.includes('iso18013driverslicense')) {
+      return ISO_18013_DRIVING_LICENCE_FAMILY_KEY
+    }
   }
 
   return normalized

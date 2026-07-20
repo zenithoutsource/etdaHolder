@@ -15,14 +15,19 @@ const baseRequest: ResolvedPresentationRequest = {
   matchedCredential: {
     id: 'credential-1',
     type: 'BangkokUniversityTranscript',
-    rawVc: 'issuer.sd.jwt~disclosure~',
+    rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
     claims: { vct: 'Transcript' },
     issuedAt: '2026-06-01T10:00:00.000Z',
   },
   disclosures: [],
   dcqlQuery: {
     credentials: [
-      { id: 'transcript_sd_jwt', format: 'dc+sd-jwt', meta: { vct_values: ['Transcript'] } },
+      {
+        id: 'transcript_sd_jwt',
+        format: 'dc+sd-jwt',
+        claims: [{ path: ['name'] }],
+        meta: { vct_values: ['Transcript'] },
+      },
       { id: 'transcript_mdoc', format: 'mso_mdoc', meta: { type_values: ['org.iso.18013.5.1.mDL'] } },
     ],
   },
@@ -40,7 +45,7 @@ test('buildDualFormatDcqlVpToken assembles per-query-id tokens', async () => {
   expect(signSdJwtKb).toHaveBeenCalledWith({
     audience: baseRequest.clientId,
     nonce: 'nonce-123',
-    sdJwt: baseRequest.matchedCredential.rawVc,
+    sdJwt: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~',
   })
   expect(readMdocEntry).toHaveBeenCalledWith('credential-1')
   expect(JSON.parse(vpToken)).toEqual({

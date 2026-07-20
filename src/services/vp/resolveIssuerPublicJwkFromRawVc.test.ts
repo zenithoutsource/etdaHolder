@@ -15,7 +15,7 @@ describe('resolveIssuerPublicJwkFromRawVc', () => {
       typ: 'JWT',
       kid: 'did:key:z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk#z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk',
     })
-    const payload = base64UrlEncodeJson({ iss: 'http://192.100.10.46' })
+    const payload = base64UrlEncodeJson({ iss: 'http://issuer.zenithcomp.co.th:455' })
     const rawVc = `${header}.${payload}.signature~disclosure~`
 
     const jwk = resolveIssuerPublicJwkFromRawVc(rawVc)

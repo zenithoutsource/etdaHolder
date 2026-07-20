@@ -1,6 +1,14 @@
 import { isDualFormatDcqlRequest } from '../dualFormatPresentationMatch'
 import { buildPresentationSubmission, readPresentationTokenAudience, type ResolvedPresentationRequest } from '../presentationService'
+import { selectSdJwtDisclosures } from '../sdJwtSelectiveDisclosure'
 import type { PresentationTokenBuilder } from './types'
+
+function readRequestedClaimKeys(request: ResolvedPresentationRequest): readonly string[] | undefined {
+  const claims = request.dcqlQuery?.credentials.flatMap((credential) => credential.claims ?? []) ?? []
+  if (claims.length === 0) return undefined
+
+  return request.disclosures.map((disclosure) => disclosure.key)
+}
 
 export const dualFormatDcqlPresentationBuilder: PresentationTokenBuilder = {
   id: 'dual-format-dcql',
@@ -21,14 +29,22 @@ export const standardDcqlPresentationBuilder: PresentationTokenBuilder = {
     const audience = readPresentationTokenAudience(context.request)
 
     if (mode === 'raw-credential') {
-      return { vpToken: context.request.matchedCredential.rawVc }
+      return {
+        vpToken: selectSdJwtDisclosures(
+          context.request.matchedCredential.rawVc,
+          readRequestedClaimKeys(context.request),
+        ),
+      }
     }
 
     if (mode === 'sd-jwt-kb') {
       const vpToken = await context.signSdJwtKbPresentationToken({
         audience,
         nonce: context.request.nonce,
-        sdJwt: context.request.matchedCredential.rawVc,
+        sdJwt: selectSdJwtDisclosures(
+          context.request.matchedCredential.rawVc,
+          readRequestedClaimKeys(context.request),
+        ),
       })
       return { vpToken }
     }

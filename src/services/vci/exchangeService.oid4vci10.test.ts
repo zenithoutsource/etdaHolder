@@ -222,6 +222,92 @@ describe('OID4VCI 1.0 credential request', () => {
       }),
     ).rejects.toThrow('CredentialRequestFailed: HTTP 400: unknown_error {"message":"credential_definition not found"}')
   })
+
+  test('surfaces plain-text string errorBody from issuer HTTP 500', async () => {
+    acquireCredentialsUsingRequestMock.mockResolvedValue({
+      origResponse: { status: 500 },
+      successBody: undefined,
+      errorBody: 'The given key was not present in the dictionary.',
+      access_token: 'access-token',
+    })
+
+    await expect(
+      acquireCredentialRecord(makeIdCardResolvedOffer(), {
+        dependencies: {
+          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+          signProof: async () => 'proof.jwt',
+        },
+      }),
+    ).rejects.toThrow(
+      'CredentialRequestFailed: HTTP 500: The given key was not present in the dictionary.',
+    )
+  })
+
+  test('sends format+doctype for mso_mdoc and maps org.iso.18013.5.1.mDL to DLTDrivingLicence', async () => {
+    createCredentialRequestMock.mockResolvedValue({
+      credential_configuration_id: 'TestMdocDrivingLicence',
+      proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
+    })
+    acquireCredentialsUsingRequestMock.mockResolvedValue({
+      successBody: {
+        format: 'mso_mdoc',
+        credential: 'AQIDBA',
+      },
+    })
+
+    const signProof = jest.fn(async () => 'proof.jwt')
+    const record = await acquireCredentialRecord(makeMdlResolvedOffer(), {
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+        signProof,
+      },
+    })
+
+    expect(signProof).toHaveBeenCalledWith('nonce', 'https://issuer.example.com', {
+      keyBinding: 'jwk',
+    })
+    expect(createCredentialRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: 'mso_mdoc',
+        credentialConfigurationId: 'TestMdocDrivingLicence',
+      }),
+    )
+    expect(acquireCredentialsUsingRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        doctype: 'org.iso.18013.5.1.mDL',
+        credential_configuration_id: 'TestMdocDrivingLicence',
+        proofs: { jwt: ['proof.jwt'] },
+      }),
+      'mso_mdoc',
+    )
+    expect(acquireCredentialsUsingRequestMock.mock.calls[0]?.[0]).not.toHaveProperty('proof')
+    expect(acquireCredentialsUsingRequestMock.mock.calls[0]?.[0]).not.toHaveProperty('format')
+    expect(record.type).toBe('DLTDrivingLicence')
+    expect(record.rawVc).toBe('mdoc:AQIDBA')
+    expect(record.claims.doctype).toBe('org.iso.18013.5.1.mDL')
+  })
+
+  test('accepts OID4VCI 1.0 credentials array mso_mdoc response', async () => {
+    createCredentialRequestMock.mockResolvedValue({
+      credential_configuration_id: 'TestMdocDrivingLicence',
+      proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
+    })
+    acquireCredentialsUsingRequestMock.mockResolvedValue({
+      successBody: {
+        credentials: [{ credential: 'AQIDBAUG' }],
+      },
+    })
+
+    const record = await acquireCredentialRecord(makeMdlResolvedOffer(), {
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+        signProof: async () => 'proof.jwt',
+      },
+    })
+
+    expect(record.type).toBe('DLTDrivingLicence')
+    expect(record.rawVc).toBe('mdoc:AQIDBAUG')
+  })
 })
 
 function makeIdCardResolvedOffer(): ResolvedCredentialOffer {
@@ -256,6 +342,48 @@ function makeIdCardResolvedOffer(): ResolvedCredentialOffer {
           format: 'dc+sd-jwt',
           vct: 'https://issuer.example.com/vct/idcard',
           claims: [],
+        },
+      },
+    ],
+    preAuthorizedCode: 'preauth-code',
+    supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+    version: 10015,
+  }
+}
+
+function makeMdlResolvedOffer(): ResolvedCredentialOffer {
+  return {
+    offerUri: 'openid-credential-offer://mock',
+    issuer: 'https://issuer.example.com',
+    credentialOffer: {
+      credential_offer: {
+        credential_issuer: 'https://issuer.example.com',
+        credential_configuration_ids: ['org.iso.18013.5.1.mDL'],
+      },
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+      version: 10015,
+    } as unknown as ResolvedCredentialOffer['credentialOffer'],
+    issuerMetadata: {
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        TestMdocDrivingLicence: {
+          format: 'mso_mdoc',
+          doctype: 'org.iso.18013.5.1.mDL',
+          display: [{ name: 'Mobile Driving Licence' }],
+        },
+      },
+    },
+    credentialConfigurations: [
+      {
+        id: 'org.iso.18013.5.1.mDL',
+        requestId: 'TestMdocDrivingLicence',
+        format: 'mso_mdoc',
+        display: { name: 'Mobile Driving Licence' },
+        rawConfiguration: {
+          format: 'mso_mdoc',
+          doctype: 'org.iso.18013.5.1.mDL',
+          display: [{ name: 'Mobile Driving Licence' }],
         },
       },
     ],

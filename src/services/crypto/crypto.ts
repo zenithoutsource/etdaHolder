@@ -401,26 +401,101 @@ function readStoredEd25519PublicKey(): Uint8Array {
 /**
  * Builds and signs an OID4VCI Proof of Possession JWT.
  * Biometric fires here on every call (sign-time gate).
- * iss = Holder DID (did:key), kid = DID key fragment.
+ *
+ * Default (`did-kid`): iss/sub = Holder DID, header `kid` = DID key fragment.
+ * `jwk`: header carries OKP/Ed25519 public JWK plus `cose_key` (base64url CBOR
+ * RFC 8152 key) for issuers that bind mDOC as `cose_key`. Payload omits iss/sub
+ * for pre-authorized PoP.
  *
  * @param nonce    c_nonce from the token endpoint response
  * @param audience Issuer URL (aud claim)
  */
-export async function signProof(nonce: string, audience: string): Promise<string> {
-  const did = getHolderDid()
-  const kid = `${did}#${did.slice('did:key:'.length)}`
+export type SignProofOptions = {
+  keyBinding?: 'did-kid' | 'jwk'
+}
 
-  const header = { alg: 'EdDSA', typ: 'openid4vci-proof+jwt', kid }
-  const payload = {
-    iss: did,
-    sub: did,
-    aud: audience,
-    iat: Math.floor(Date.now() / 1000),
-    nonce,
-  }
+export async function signProof(
+  nonce: string,
+  audience: string,
+  options: SignProofOptions = {},
+): Promise<string> {
+  const keyBinding = options.keyBinding ?? 'did-kid'
+  const header =
+    keyBinding === 'jwk'
+      ? {
+          alg: 'EdDSA' as const,
+          typ: 'openid4vci-proof+jwt' as const,
+          jwk: getPublicKeyJwk(),
+          // Non-IANA JOSE param: Ed25519 COSE_Key CBOR for cose_key-binding issuers.
+          cose_key: getHolderCoseKeyBase64Url(),
+        }
+      : (() => {
+          const did = getHolderDid()
+          const kid = `${did}#${did.slice('did:key:'.length)}`
+          return { alg: 'EdDSA' as const, typ: 'openid4vci-proof+jwt' as const, kid }
+        })()
 
-  logWalletStep('crypto', 'sign-proof-start', { alg: header.alg, typ: header.typ, kid, audience, noncePresent: Boolean(nonce) })
+  const payload =
+    keyBinding === 'jwk'
+      ? {
+          aud: audience,
+          iat: Math.floor(Date.now() / 1000),
+          nonce,
+        }
+      : (() => {
+          const did = getHolderDid()
+          return {
+            iss: did,
+            sub: did,
+            aud: audience,
+            iat: Math.floor(Date.now() / 1000),
+            nonce,
+          }
+        })()
+
+  logWalletStep('crypto', 'sign-proof-start', {
+    alg: header.alg,
+    typ: header.typ,
+    keyBinding,
+    kid: 'kid' in header ? header.kid : undefined,
+    jwkCrv: 'jwk' in header ? header.jwk.crv : undefined,
+    coseKeyPresent: 'cose_key' in header,
+    audience,
+    noncePresent: Boolean(nonce),
+  })
   return signJwtLikeObject(header, payload, 'proof')
+}
+
+/** RFC 8152 COSE_Key for the holder Ed25519 public key, base64url-encoded CBOR. */
+export function getHolderCoseKeyBase64Url(): string {
+  return base64UrlEncode(encodeEd25519CoseKey(readStoredEd25519PublicKey()))
+}
+
+/**
+ * COSE_Key map (RFC 8152 / ISO 18013-5 device key shape) for Ed25519:
+ * {1:1, 3:-8, -1:6, -2:x}
+ */
+function encodeEd25519CoseKey(publicKey: Uint8Array): Uint8Array {
+  assertEd25519PublicKeyLength(publicKey)
+  // A4 = map(4)
+  // 01 01 = kty: OKP (1)
+  // 03 27 = alg: EdDSA (-8 → CBOR negative 7 → 0x27)
+  // 20 06 = crv: Ed25519 (-1 → 0x20, value 6)
+  // 21 58 20 <32 bytes> = x (-2 → 0x21, bstr 32)
+  const out = new Uint8Array(4 + 2 + 2 + 2 + 2 + publicKey.length)
+  let i = 0
+  out[i++] = 0xa4
+  out[i++] = 0x01
+  out[i++] = 0x01
+  out[i++] = 0x03
+  out[i++] = 0x27
+  out[i++] = 0x20
+  out[i++] = 0x06
+  out[i++] = 0x21
+  out[i++] = 0x58
+  out[i++] = 0x20
+  out.set(publicKey, i)
+  return out
 }
 
 export type HolderStatusChangePopInput = {

@@ -67,7 +67,7 @@ test('describes SD-JWT KB presentation metadata without full token contents', ()
   const kbJwt = jwt(
     { alg: 'EdDSA', typ: 'kb+jwt', kid: 'did:key:z6MkWallet' },
     {
-      aud: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      aud: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
       sd_hash: 'hash',
     },
@@ -75,8 +75,8 @@ test('describes SD-JWT KB presentation metadata without full token contents', ()
 
   const summary = describePresentationAttempt({
     request: {
-      clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
-      responseUri: 'http://192.100.10.48/openid4vc/verify/request-123',
+      clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+      responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
       dcqlQuery: {
         credentials: [
@@ -119,7 +119,7 @@ test('describes local SD-JWT KB validity checks without exposing token contents'
   const issuerJwt = jwt(
     { alg: 'EdDSA', typ: 'dc+sd-jwt', kid: 'did:key:z6MkIssuer' },
     {
-      vct: 'http://192.100.10.46/credentials/IDCard',
+      vct: 'http://issuer.zenithcomp.co.th:455/credentials/IDCard',
       cnf: { kid: did },
       hidden: 'do-not-include',
     },
@@ -128,7 +128,7 @@ test('describes local SD-JWT KB validity checks without exposing token contents'
   const sdHash = base64UrlEncodeDigest(createHash('sha256').update(new TextEncoder().encode(sdJwtWithoutKb)).digest())
   const kbHeader = { alg: 'EdDSA', typ: 'kb+jwt', kid: did }
   const kbPayload = {
-    aud: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+    aud: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
     nonce: 'request-123',
     iat: 1,
     sd_hash: sdHash,
@@ -139,8 +139,8 @@ test('describes local SD-JWT KB validity checks without exposing token contents'
   try {
     const summary = describePresentationAttempt({
       request: {
-        clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
-        responseUri: 'http://192.100.10.48/openid4vc/verify/request-123',
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
         nonce: 'request-123',
         state: 'request-123',
         dcqlQuery: {
@@ -148,7 +148,7 @@ test('describes local SD-JWT KB validity checks without exposing token contents'
             {
               id: 'idcard_credential',
               format: 'dc+sd-jwt',
-              meta: { vct_values: ['http://192.100.10.46/credentials/IDCard'] },
+              meta: { vct_values: ['http://issuer.zenithcomp.co.th:455/credentials/IDCard'] },
             },
           ],
         },
