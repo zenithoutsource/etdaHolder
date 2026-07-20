@@ -1,5 +1,6 @@
 import { Router } from 'express'
 
+import { readConfig } from '../config'
 import { readPushToken } from './pushTokens'
 import { requestIssuerRenewalOffer } from '../services/devRenewalOffer'
 import { verifyHolderRevokePop } from '../services/holderRevokePopVerifier'
@@ -562,11 +563,7 @@ devWalletRouter.post('/wallet/renewal-vp/response', (req, res) => {
 })
 
 function readRenewalPublicBaseUrl(req: { protocol: string; get: (name: string) => string | undefined; headers: Record<string, unknown> }): string {
-  const envBase =
-    process.env.PUBLIC_BASE_URL?.trim() ||
-    process.env.VERIFIER_PRESENTATION_BASE_URL?.trim() ||
-    process.env.PRESENTATION_GATEWAY_BASE_URL?.trim() ||
-    process.env.EXPO_PUBLIC_WALLET_API_BASE_URL?.trim()
+  const envBase = readConfig().publicBaseUrl
   if (envBase) return envBase.replace(/\/$/, '')
 
   const forwardedProto = typeof req.headers['x-forwarded-proto'] === 'string'

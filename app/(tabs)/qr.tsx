@@ -64,7 +64,7 @@ export default function MyQrScreen() {
 
       <View className="flex-1 items-center bg-wallet-bg px-6 pt-12">
         <Text className="text-center text-[26px] font-bold leading-9 text-ink">
-          My ID Card{'\n'}QR Code
+          My QR
         </Text>
 
         {status === 'storage-not-ready' || status === 'error' ? (

@@ -1,3 +1,5 @@
+import { readConfig } from '../config'
+
 export const CREDENTIAL_TYPE_TO_ISSUER_DOCUMENT_TYPE: Record<string, string> = {
   ThaiNationalID: 'IdCard',
   DLTDrivingLicence: 'DriverLicense',
@@ -66,12 +68,12 @@ export async function requestIssuerRenewalOffer(
   credentialType: string,
   dependencies: RequestIssuerRenewalOfferDependencies = {},
 ): Promise<string> {
-  const issuerTarget = (dependencies.issuerTarget ?? process.env.ISSUER_PROXY_TARGET)?.replace(
+  const issuerTarget = (dependencies.issuerTarget ?? readConfig().issuerBaseUrl)?.replace(
     /\/$/,
     '',
   )
   if (!issuerTarget) {
-    throw new Error('IssuerProxyTargetMissing')
+    throw new Error('IssuerBaseUrlMissing')
   }
 
   const documentType = mapCredentialTypeToIssuerDocumentType(credentialType)

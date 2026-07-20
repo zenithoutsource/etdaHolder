@@ -1,4 +1,4 @@
-import type { Ed25519PublicJwk } from '../config'
+import { readConfig, type Ed25519PublicJwk } from '../config'
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const ED25519_MULTICODEC_PREFIX = Buffer.from([0xed, 0x01])
@@ -178,8 +178,11 @@ export async function resolveVpIssuerPublicKeyFromRawVc(
   const issuer =
     issuerUrl ??
     readString(payload.iss) ??
-    process.env.ISSUER_PROXY_TARGET ??
-    'http://192.100.10.46'
+    readConfig().issuerBaseUrl
+
+  if (!issuer) {
+    throw new Error('IssuerBaseUrlMissing')
+  }
 
   return resolveFromIssuerJwks(rawVc, issuer)
 }

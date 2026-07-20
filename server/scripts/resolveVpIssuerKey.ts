@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     (args.rawVcFile ? readFileSync(args.rawVcFile, 'utf8').trim() : undefined)
 
   if (!rawVc) {
-    console.error('Usage: yarn resolve-vp-issuer-key --raw-vc "<sd-jwt rawVc>" [--issuer http://192.100.10.46] [--write-env]')
+    console.error('Usage: yarn resolve-vp-issuer-key --raw-vc "<sd-jwt rawVc>" [--issuer http://issuer.zenithcomp.co.th:455] [--write-env]')
     console.error('   or: yarn resolve-vp-issuer-key --raw-vc-file path/to/rawVc.txt [--write-env]')
     process.exit(1)
   }

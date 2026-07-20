@@ -16,7 +16,7 @@ Implemented local endpoints mirror the mobile wallet's allowed SDK boundary:
 
 The backend does not resolve credential offers, exchange OID4VCI tokens, sign PoP JWTs, or request credentials from Issuers.
 
-For Phase 2A NFC proximity work, a separate standalone development issuer now lives under `mdoc-issuer/README.md`. It is not mounted under `/wallet-api/*` and should be run independently from the Wallet Backend.
+mDOC / OID4VCI issuance for proximity work uses the customer Issuer (e.g. `http://issuer.zenithcomp.co.th:455`), not a local mock issuer.
 
 ## Setup
 
@@ -63,39 +63,9 @@ yarn dev
 
 The API listens on `0.0.0.0:4000` so a phone on the same LAN can reach it. Keep this local development server off public networks.
 
-## VPN Issuer/Verifier Proxy for Physical Android Testing
+### Production configuration
 
-If the Issuer or Verifier is reachable from the Windows PC through VPN but the phone is not on the office Wi-Fi/VPN, run the local backend as a development proxy. The mobile app still performs OID4VCI/OID4VP on-device; only HTTP transport to the configured development host is forwarded by the local backend through the PC network.
-
-For full runbooks covering both USB + PC VPN proxy mode and direct office Wi-Fi mode, see `../docs/ANDROID_NETWORK_TESTING.md`.
-
-Server `server/.env`:
-
-```env
-ENABLE_DEV_ISSUER_PROXY=true
-ISSUER_PROXY_TARGET=https://<issuer-host-reachable-from-pc-vpn>
-ENABLE_DEV_VERIFIER_PROXY=true
-VERIFIER_PROXY_TARGET=http://192.100.10.48
-```
-
-Root app `.env` for USB testing with `adb reverse`:
-
-```env
-EXPO_PUBLIC_WALLET_API_BASE_URL=http://127.0.0.1:4000
-EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET=https://<issuer-host-reachable-from-pc-vpn>
-EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL=http://127.0.0.1:4000/dev-issuer-proxy
-EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://192.100.10.48
-EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET=http://192.100.10.48
-EXPO_PUBLIC_DEV_VERIFIER_PROXY_BASE_URL=http://127.0.0.1:4000/dev-verifier-proxy
-```
-
-Then connect the Android phone by USB and run:
-
-```powershell
-adb reverse tcp:4000 tcp:4000
-```
-
-Restart the Expo dev server after changing root `.env`, then scan the original Issuer or Verifier QR. Requests whose URL starts with `EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET` are rewritten to `/dev-issuer-proxy/*`; requests whose URL starts with `EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET` are rewritten to `/dev-verifier-proxy/*`. Do not enable these proxies in production.
+Production startup rejects the development JWT placeholder, loopback database hosts, development mail addresses, missing public presentation URLs, malformed endpoints, and non-HTTPS external URLs. Configure `JWT_SECRET`, database values, `WALLET_API_ALLOWED_ORIGINS`, `PUBLIC_BASE_URL`, and the relevant Issuer/Verifier URLs explicitly in the deployment environment. Startup errors identify only the invalid configuration key.
 
 ## Mobile App
 
@@ -113,11 +83,4 @@ Use the Windows LAN IP, not `localhost`, when testing from a physical phone. Do 
 Set-Location server
 yarn tsc
 yarn test
-```
-
-Standalone mDOC issuer verification:
-
-```powershell
-Set-Location server
-yarn mdoc-issuer:dev
 ```

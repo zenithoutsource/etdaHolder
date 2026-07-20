@@ -24,12 +24,12 @@ describe('devRenewalOffer', () => {
   test('builds credential_offer_uri from issuer offer id', () => {
     const offerUri = parseIssuerCredentialOfferResponse(
       { id: 'renewal-offer-1' },
-      'http://192.100.10.46',
+      'http://issuer.zenithcomp.co.th:455',
     )
 
     expect(offerUri).toContain('credential_offer_uri=')
     expect(offerUri).toContain(
-      encodeURIComponent('http://192.100.10.46/openid4vc/credentialOffer?id=renewal-offer-1'),
+      encodeURIComponent('http://issuer.zenithcomp.co.th:455/openid4vc/credentialOffer?id=renewal-offer-1'),
     )
     expect(isParseableCredentialOfferUri(offerUri)).toBe(true)
   })

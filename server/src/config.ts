@@ -11,10 +11,12 @@ export type Ed25519PublicJwk = {
 }
 
 function readVerifierPresentationBaseUrl(): string {
-  return normalizeBaseUrl(
-    readOptionalString('VERIFIER_PRESENTATION_BASE_URL')
-      ?? readOptionalString('PRESENTATION_GATEWAY_BASE_URL')
-      ?? 'http://localhost:4000',
+  return readProductionUrl(
+    'VERIFIER_PRESENTATION_BASE_URL',
+    readOptionalString('PRESENTATION_GATEWAY_BASE_URL')
+      ?? readOptionalString('PUBLIC_BASE_URL')
+      ?? (process.env.NODE_ENV !== 'production' ? 'http://localhost:4000' : undefined),
+    true,
   )
 }
 
@@ -43,6 +45,8 @@ export type ServerConfig = {
   vpSessionTtlMs: number
   vpIssuerPublicKeyJwk?: Ed25519PublicJwk
   presentationSessionTtlMs: number
+  issuerBaseUrl: string
+  publicBaseUrl: string
   verifierPresentationBaseUrl: string
   /** @deprecated Alias of verifierPresentationBaseUrl — kept for backward compatibility. */
   presentationGatewayBaseUrl: string
@@ -76,6 +80,43 @@ function readOptionalString(name: string): string | undefined {
   return value && value.length > 0 ? value : undefined
 }
 
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === 'production'
+}
+
+function isLoopbackHost(host: string): boolean {
+  return new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']).has(host.toLowerCase())
+}
+
+function readProductionUrl(name: string, fallback?: string, required = false): string {
+  const value = readOptionalString(name) ?? fallback
+  if (!value) {
+    if (isProductionRuntime() && required) {
+      throw new Error(`ConfigInvalid: ${name}`)
+    }
+    return ''
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(`ConfigInvalid: ${name}`)
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error(`ConfigInvalid: ${name}`)
+  }
+  if (isProductionRuntime() && parsed.protocol !== 'https:') {
+    throw new Error(`ConfigInvalid: ${name} must use HTTPS`)
+  }
+  if (isProductionRuntime() && isLoopbackHost(parsed.hostname)) {
+    throw new Error(`ConfigInvalid: ${name} cannot use a loopback host`)
+  }
+
+  return normalizeBaseUrl(parsed.toString())
+}
+
 function readBoolean(name: string, fallback: string): boolean {
   const value = (process.env[name] ?? fallback).trim().toLowerCase()
   if (value === 'true' || value === '1' || value === 'yes') return true
@@ -92,6 +133,34 @@ export function readConfig(): ServerConfig {
     throw new Error('ConfigInvalid: JWT_SECRET')
   }
 
+  if (isProductionRuntime()) {
+    for (const name of ['PORT', 'WALLET_API_ALLOWED_ORIGINS', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'MAIL_FROM']) {
+      if (!process.env[name]?.trim()) {
+        throw new Error(`ConfigInvalid: ${name}`)
+      }
+    }
+  }
+
+  const dbHost = readString('DB_HOST', '127.0.0.1')
+  if (isProductionRuntime() && isLoopbackHost(dbHost)) {
+    throw new Error('ConfigInvalid: DB_HOST cannot use a loopback host')
+  }
+
+  const mailFrom = readString('MAIL_FROM', 'wallet-noreply@localhost')
+  if (isProductionRuntime() && mailFrom.toLowerCase().includes('localhost')) {
+    throw new Error('ConfigInvalid: MAIL_FROM cannot use a development address')
+  }
+
+  const verifierPresentationBaseUrl = readVerifierPresentationBaseUrl()
+  const publicBaseUrl = readProductionUrl(
+    'PUBLIC_BASE_URL',
+    verifierPresentationBaseUrl
+      || readOptionalString('VERIFIER_PRESENTATION_BASE_URL')
+      || readOptionalString('PRESENTATION_GATEWAY_BASE_URL')
+      || readOptionalString('EXPO_PUBLIC_WALLET_API_BASE_URL'),
+    true,
+  )
+
   return {
     port: readPort('PORT', '4000'),
     allowedOrigins: readString('WALLET_API_ALLOWED_ORIGINS', 'http://localhost:19006,http://localhost:8081')
@@ -99,7 +168,7 @@ export function readConfig(): ServerConfig {
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
     db: {
-      host: readString('DB_HOST', '127.0.0.1'),
+      host: dbHost,
       port: readPort('DB_PORT', '3306'),
       database: readString('DB_NAME', 'etda_wallet'),
       user: readString('DB_USER', 'root'),
@@ -114,14 +183,16 @@ export function readConfig(): ServerConfig {
       smtpSecure: readBoolean('SMTP_SECURE', 'false'),
       smtpUser: readOptionalString('SMTP_USER'),
       smtpPassword: readOptionalString('SMTP_PASSWORD'),
-      fromAddress: readString('MAIL_FROM', 'wallet-noreply@localhost'),
+      fromAddress: mailFrom,
       fromName: readString('MAIL_FROM_NAME', 'Wallet'),
     },
     vpSessionTtlMs: readIntegerInRange('VP_SESSION_TTL_MS', '300000', 30_000, 3_600_000),
     vpIssuerPublicKeyJwk: readIssuerPublicKeyJwk(),
     presentationSessionTtlMs: readIntegerInRange('PRESENTATION_SESSION_TTL_MS', '300000', 30_000, 3_600_000),
-    verifierPresentationBaseUrl: readVerifierPresentationBaseUrl(),
-    presentationGatewayBaseUrl: readVerifierPresentationBaseUrl(),
+    issuerBaseUrl: readProductionUrl('ISSUER_BASE_URL'),
+    publicBaseUrl,
+    verifierPresentationBaseUrl,
+    presentationGatewayBaseUrl: verifierPresentationBaseUrl,
     presentationIssuerJwksCacheMs: readIntegerInRange('PRESENTATION_ISSUER_JWKS_CACHE_MS', '3600000', 60_000, 86_400_000),
   }
 }

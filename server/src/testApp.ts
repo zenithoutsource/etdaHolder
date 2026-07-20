@@ -5,7 +5,6 @@ import type { ErrorRequestHandler, RequestHandler } from 'express'
 import { readConfig } from './config'
 import { authRouter } from './routes/auth'
 import { credentialsRouter } from './routes/credentials'
-import { devIssuerProxyRouter, devVerifierProxyRouter } from './routes/devIssuerProxy'
 import { devWalletRouter } from './routes/devWallet'
 import { vpSessionRouter } from './routes/vpSession'
 import { presentationGatewayRouter } from './routes/presentationGateway'
@@ -101,13 +100,6 @@ export function createTestApp(): express.Express {
 
   app.use('/dev', express.json({ limit: '1mb' }), vpSessionRouter)
   app.use('/v1', express.json({ limit: '1mb' }), presentationGatewayRouter)
-
-  if (process.env.ENABLE_DEV_ISSUER_PROXY === 'true') {
-    app.use('/dev-issuer-proxy', devIssuerProxyRouter)
-  }
-  if (process.env.ENABLE_DEV_VERIFIER_PROXY === 'true') {
-    app.use('/dev-verifier-proxy', devVerifierProxyRouter)
-  }
 
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: false, limit: '1mb' }))

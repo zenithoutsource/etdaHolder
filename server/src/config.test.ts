@@ -64,4 +64,70 @@ describe('server config', () => {
     delete process.env.VP_ISSUER_PUBLIC_KEY_PATH
     expect(readConfig().vpIssuerPublicKeyJwk).toBeUndefined()
   })
+
+  test('rejects placeholder JWT secret in production', () => {
+    process.env = {
+      ...process.env,
+      NODE_ENV: 'production',
+      JWT_SECRET: 'local-dev-change-me',
+      DB_HOST: 'db.example',
+      DB_NAME: 'wallet',
+      DB_USER: 'wallet-user',
+      DB_PASSWORD: 'database-password',
+      WALLET_API_ALLOWED_ORIGINS: 'https://wallet.example',
+    }
+
+    expect(() => readConfig()).toThrow('ConfigInvalid: JWT_SECRET')
+  })
+
+  test('rejects loopback database host in production', () => {
+    process.env = {
+      ...process.env,
+      NODE_ENV: 'production',
+      JWT_SECRET: 'production-secret',
+      DB_HOST: '127.0.0.1',
+      DB_NAME: 'wallet',
+      DB_USER: 'wallet-user',
+      DB_PASSWORD: 'database-password',
+      WALLET_API_ALLOWED_ORIGINS: 'https://wallet.example',
+    }
+
+    expect(() => readConfig()).toThrow('ConfigInvalid: DB_HOST')
+  })
+
+  test('rejects HTTP verifier endpoint in production', () => {
+    process.env = {
+      ...process.env,
+      NODE_ENV: 'production',
+      JWT_SECRET: 'production-secret',
+      DB_HOST: 'db.example',
+      DB_NAME: 'wallet',
+      DB_USER: 'wallet-user',
+      DB_PASSWORD: 'database-password',
+      WALLET_API_ALLOWED_ORIGINS: 'https://wallet.example',
+      MAIL_FROM: 'wallet@example.com',
+      VERIFIER_PRESENTATION_BASE_URL: 'http://verifier.example',
+    }
+
+    expect(() => readConfig()).toThrow('ConfigInvalid: VERIFIER_PRESENTATION_BASE_URL')
+  })
+
+  test('rejects missing required database password in production', () => {
+    process.env = {
+      ...process.env,
+      NODE_ENV: 'production',
+      JWT_SECRET: 'production-secret',
+      PORT: '4000',
+      WALLET_API_ALLOWED_ORIGINS: 'https://wallet.example',
+      DB_HOST: 'db.example',
+      DB_PORT: '3306',
+      DB_NAME: 'wallet',
+      DB_USER: 'wallet-user',
+      DB_PASSWORD: '',
+      MAIL_FROM: 'wallet@example.com',
+      VERIFIER_PRESENTATION_BASE_URL: 'https://verifier.example',
+    }
+
+    expect(() => readConfig()).toThrow('ConfigInvalid: DB_PASSWORD')
+  })
 })
