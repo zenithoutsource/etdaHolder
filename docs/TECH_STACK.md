@@ -72,7 +72,6 @@ Rule of thumb used across the codebase: **libraries for transport and platform p
 | Database | MySQL (`mysql2` `^3.11.5`) |
 | Auth | `jsonwebtoken`, `bcrypt` |
 | Email | `nodemailer` |
-| Encoding | `cbor` (mdoc/CBOR issuer support) |
 | API docs | `swagger-ui-express` |
 | Testing | Jest `29.7.0` + `ts-jest`, `supertest` |
 

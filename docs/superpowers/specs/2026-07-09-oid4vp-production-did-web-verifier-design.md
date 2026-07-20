@@ -30,7 +30,7 @@ Close the gap between **development** OID4VP trust (`redirect_uri:` + LAN Verifi
 
 | Layer | Development today | Production target |
 |-------|-------------------|-------------------|
-| `client_id` | `redirect_uri:http://192.100.10.48/openid4vc/verify/...` | `decentralized_identifier:did:web:<verifier-host>` |
+| `client_id` | `redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/...` | `decentralized_identifier:did:web:<verifier-host>` |
 | Request Object | Unsigned JWT accepted (`redirect_uri` scheme) | EdDSA-signed JAR required |
 | Trust source | Env `EXPO_PUBLIC_VERIFIER_API_BASE_URL` → auto `redirect_uri` entry | Env `EXPO_PUBLIC_VERIFIER_DID_WEB_*` → `decentralized_identifier` entry |
 | Key resolution | N/A (unsigned) | Pinned `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK` **or** `did.json` fetch via `didWebResolver.ts` |

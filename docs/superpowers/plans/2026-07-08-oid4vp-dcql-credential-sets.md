@@ -831,11 +831,11 @@ test('resolves DCQL credential_sets OR when wallet holds only the second alterna
       new Response(
         unsignedRequestJwt({
           response_type: 'vp_token',
-          client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+          client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
           response_mode: 'direct_post',
           state: 'request-123',
           nonce: 'request-123',
-          response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+          response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
           dcql_query: {
             credentials: [
               {

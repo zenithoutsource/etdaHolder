@@ -32,6 +32,8 @@ EXPO_PUBLIC_SKIP_PUSH_REGISTRATION=true
 
 **Tip:** With USB + `adb reverse tcp:4000 tcp:4000`, `http://localhost:4000` can work on device because the app rewrites loopback to the Metro host in dev. `yarn setup` picks your LAN IP when available.
 
+Development may use localhost or LAN HTTP endpoints. Release builds require explicit HTTPS Wallet API and Broker URLs and reject missing or loopback endpoint values. Never copy development defaults or placeholder secrets into a production environment.
+
 Verify env files later:
 
 ```powershell

@@ -108,7 +108,7 @@ Verify: `rg "openid4vp" android/app/src/main/AndroidManifest.xml` shows intent f
 - [ ] **Step 3: Document manual test in TASKS.md session note**
 
 ```bash
-adb shell am start -a android.intent.action.VIEW -d "openid4vp://authorize?client_id=redirect_uri:http://192.100.10.48/openid4vc/verify/test&request_uri=http://192.100.10.48/openid4vc/request/test"
+adb shell am start -a android.intent.action.VIEW -d "openid4vp://authorize?client_id=redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/test&request_uri=http://verifier.zenithcomp.co.th:455/openid4vc/request/test"
 ```
 
 Expected: app opens Scan tab, enters presentation resolving phase.

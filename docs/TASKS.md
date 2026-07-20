@@ -1,11 +1,19 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-17 (OID4VP SD-JWT selective disclosure)
+
+- SD-JWT DCQL presentations now filter disclosure segments to the claims requested by the Verifier before raw submission or KB-JWT signing; dual-format SD-JWT entries use the same filtering path.
+- Added malformed-disclosure fail-closed handling and focused coverage for filtered, unfiltered, KB-bound, raw, and dual-format paths.
+- `EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE` remains envelope-only; `EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING=false` remains the normal validation setting.
+- Verification: all OID4VP tests passed (18 suites / 126 tests); `yarn tsc --noEmit` passed; `yarn lint` passed with 22 existing warnings and no errors.
+
 ### Session 2026-07-17 (document card unification)
 
 - Completed the full-width `DocumentCardLayout` banner geometry and aligned Driving Licence, ID Card, and Transcript wallet detail cards plus VC receive previews to the shared banner/hero/two-column/divider presentation.
 - Preserved the fixed Driving Licence reference card, dynamic Thai ID and Transcript values, distinct Thai ID confirmation phase, receive callbacks, and below-card accept/confirm buttons.
 - Restored Revoke/Delete visibility for active credentials with stale or non-blocking renewal metadata; actions remain hidden during wallet-key rotation and visible renewal/inactive ribbon contexts.
 - Verification: consolidated focused Jest passed (9 suites, 43 tests); `yarn tsc --noEmit` passed; `yarn lint` passed with 22 existing warnings and no errors.
+- Follow-up: the document-title banner now uses the primary color across the full width; focused card tests passed.
 
 ### Session 2026-07-17 (production configuration hardening)
 

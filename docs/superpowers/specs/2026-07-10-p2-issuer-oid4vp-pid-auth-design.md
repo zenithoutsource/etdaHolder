@@ -84,7 +84,7 @@ A signed VP or SD-JWT+KB response uses the Keychain Ed25519 sign-time gate. The 
 
 ## Manual Validation (E2E — when Issuer API is live)
 
-Prerequisites: Issuer at `http://192.100.10.46` (or production host) sends a real `openid4vp://` Authorization Request with PID DCQL and a working `response_uri`.
+Prerequisites: Issuer at `http://issuer.zenithcomp.co.th:455` (or production host) sends a real `openid4vp://` Authorization Request with PID DCQL and a working `response_uri`.
 
 1. Set issuer OID4VP trust env in `.env.development.local` (see `.env.development.local.example`):
    - `EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID` — must match Issuer `client_id` (with or without `decentralized_identifier:` prefix)

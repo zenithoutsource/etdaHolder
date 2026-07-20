@@ -18,7 +18,7 @@ todos:
     content: "Update docs/TASKS.md: handler ready, E2E blocked on real Issuer API"
     status: completed
   - id: e2e-issuer
-    content: "E2E: live Issuer openid4vp + response_uri on 192.100.10.46 (customer team)"
+    content: "E2E: live Issuer openid4vp + response_uri on issuer.zenithcomp.co.th:455 (customer team)"
     status: pending
 ---
 
