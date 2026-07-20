@@ -30,6 +30,6 @@ describe('ScanSuccessPanel', () => {
     expect(screen.getByText(/เอกสาร :/)).toBeTruthy()
     expect(screen.getByText(/หน่วยงานที่รับรอง :/)).toBeTruthy()
     expect(screen.getByText(/Academic Transcript/)).toBeTruthy()
-    expect(screen.getByText(/Bangkok University/)).toBeTruthy()
+    expect(screen.getByText(/Chulalongkorn University/)).toBeTruthy()
   })
 })
