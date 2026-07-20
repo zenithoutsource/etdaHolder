@@ -13,11 +13,13 @@ changes._
 
 ## Scope and boundaries
 
-- **In scope**: companion AID path (SELECT → GET CAPABILITIES → BEGIN COMPANION →
+- **In scope (companion leg)**: companion AID path (SELECT → GET CAPABILITIES → BEGIN COMPANION →
   GET RESPONSE chaining → SD-JWT/KB-JWT verify).
-- **Not in scope**: the ISO 18013-5 mDOC data leg — it is stubbed
-  (`ExpoMdocProximityModule.approvePresentation` rejects "not wired until NFC engagement is
-  available"). Do not attempt mDOC transfer.
+- **In scope (mDOC leg — validated 2026-07-16)**: ISO 18013-5 mDOC presentation with doctype
+  `org.iso.18013.5.1.mDL` on ACR1311U-N2 + Samsung A26. Recorded as **PASS** in
+  `docs/TASKS.md` Session 2026-07-16.
+- **Still stubbed in app bridge**: `ExpoMdocProximityModule.approvePresentation` rejects until the
+  validated native session path is wired through the RN module.
 - **Bluetooth is not a phone concern**: the ACR1311U-N2's Bluetooth link is reader ↔ host-PC
   only and invisible to the wallet. The A26 talks to the reader purely over NFC/HCE. There is
   no BLE pairing to test on the phone.
@@ -49,8 +51,7 @@ byte value as fixed once settled). Tracked as a separate one-line change per fil
       as a PC/SC reader (`pcsc_scan` on Linux/macOS, or Device Manager → Smart card readers on
       Windows).
 - [ x ] Install a PC/SC APDU sender for hand-driving APDUs: `pyscard` (Python) or
-      `pcsc-tools scriptor`. No repo code is needed — `tools/acr1311u-n2/companion_probe.ts` is
-      a stub (ACS SDK not wired) and serves only as a constants reference.
+      `pcsc-tools scriptor`. Prefer `tools/acr1311u-n2/probe_companion.py` for SELECT + GET CAPABILITIES.
 
 ## Part B — A26 wallet arm
 
@@ -110,6 +111,16 @@ Sequence from spec §8/§11. SELECT uses the canonical 9-byte AID.
   claims, or key material (CLAUDE.md redaction rule + spec §10).
 - Do not paste captured presentations, nonces, or claims into the results table. Use
   `__DEV__`-guarded console blocks if raw payload inspection is temporarily needed.
+
+## Part F — ISO 18013-5 mDOC leg (ACR1311U-N2)
+
+| Field | Value |
+|---|---|
+| Doctype | `org.iso.18013.5.1.mDL` |
+| Reader | ACR1311U-N2 |
+| Phone | Samsung A26 (dev build) |
+| Result | **PASS** (2026-07-16) |
+| Notes | mDOC data leg validated on physical reader; app `approvePresentation` bridge still pending |
 
 ## Interpreting the outcome
 

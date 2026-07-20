@@ -9,6 +9,16 @@ class ExpoMdocProximityModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ExpoMdocProximity")
 
+    OnCreate {
+      ProximityEventDispatcher.emitter = { eventName, payload ->
+        sendEvent(eventName, payload)
+      }
+    }
+
+    OnDestroy {
+      ProximityEventDispatcher.emitter = null
+    }
+
     Events(
       "onDeviceEngaged",
       "onRequestReceived",
@@ -63,6 +73,8 @@ class ExpoMdocProximityModule : Module() {
         val companionSdJwt = config["companionSdJwt"] as? String
         val armWindowMs = (config["armWindowMs"] as? Number)?.toLong() ?: 60_000L
 
+        val context = requireContext()
+
         CompanionSession.arm(
           ProximityArmState(
             credentialId = credentialId,
@@ -79,6 +91,10 @@ class ExpoMdocProximityModule : Module() {
             "onCompanionSignRequested",
             mapOf("nonceBase64Url" to android.util.Base64.encodeToString(nonce, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)),
           )
+        }
+
+        if (MdocProximityEngine.hasMdoc(context, credentialId) && approvedFields.isNotEmpty()) {
+          MdocProximityEngine.preparePresentationEngine(context)
         }
 
         promise.resolve(null)
@@ -116,11 +132,15 @@ class ExpoMdocProximityModule : Module() {
     }
 
     AsyncFunction("approvePresentation") { requestedFields: List<String>, promise: Promise ->
-      promise.reject(
-        MdocProximityErrors.PROXIMITY_NOT_READY,
-        "approvePresentation is not wired until NFC engagement is available",
-        null,
-      )
+      try {
+        val context = requireContext()
+        MdocProximityEngine.approvePresentation(context, requestedFields)
+        promise.resolve(null)
+      } catch (error: MdocProximityException) {
+        promise.reject(error.code, error.message, error)
+      } catch (error: Exception) {
+        promise.reject(MdocProximityErrors.PROXIMITY_NOT_READY, error.message, error)
+      }
     }
 
     AsyncFunction("denyPresentation") {

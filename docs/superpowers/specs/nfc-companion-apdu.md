@@ -213,7 +213,7 @@ presentation = concat(resp.data)
 verify_sd_jwt_kb(presentation, nonce, aud="urn:etda:companion:nfc:v1")
 ```
 
-Physical script location (to be added): `tools/acr1311u-n2/companion_probe.ts`
+Physical script: `tools/acr1311u-n2/probe_companion.py` (PC/SC smoke test).
 
 ## 12. Acceptance Criteria
 

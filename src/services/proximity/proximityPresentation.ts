@@ -15,6 +15,7 @@ export type ProximityPresentationErrorCode =
   | 'PROXIMITY_NOT_READY'
   | 'CREDENTIAL_NOT_FOUND'
   | 'PRESENTATION_ACTIVE'
+  | 'PRESENTATION_INACTIVE'
   | 'UNKNOWN'
 
 export class ProximityPresentationError extends Error {
@@ -54,6 +55,8 @@ function mapNativeError(error: unknown): ProximityPresentationError {
       return new ProximityPresentationError('CREDENTIAL_NOT_FOUND', 'No credential available for proximity')
     case 'PRESENTATION_ACTIVE':
       return new ProximityPresentationError('PRESENTATION_ACTIVE', 'A proximity presentation is already active')
+    case 'PRESENTATION_INACTIVE':
+      return new ProximityPresentationError('PROXIMITY_NOT_READY', message)
     case 'PROXIMITY_NOT_READY':
       return new ProximityPresentationError('PROXIMITY_NOT_READY', message)
     default:

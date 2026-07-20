@@ -21,14 +21,6 @@ import { filterPresentableCredentials } from '../../src/services/credentials/cre
 import { submitRenewalRequest } from '../../src/services/credentials/credentialRenewalService'
 import { readStoredCredentials } from '../../src/services/credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../../src/services/debug/walletLogger'
-import {
-  NfcDisabledError,
-  NfcReadCancelledError,
-  NfcUnsupportedError,
-  NfcUnsupportedTagError,
-  cancelNfcRead,
-  readSingleNfcPayload,
-} from '../../src/services/nfc/nfcTagService'
 import { isCredentialOfferDeeplink, isPresentationRequestDeeplink, isSupportedWalletDeeplink, useDeeplinkStore } from '../../src/store/deeplinkStore'
 import { recordSuccessfulPresentation } from '../../src/services/history/presentationHistory'
 import { recordOid4vpPresentationFailure } from '../../src/services/history/walletHistoryRecording'
@@ -51,7 +43,6 @@ type ScanPhase =
   | { tag: 'scanning' }
   | { tag: 'resolving' }
   | { tag: 'renewing' }
-  | { tag: 'readingNfc' }
   | { tag: 'presentationFacePrepare'; request: ResolvedPresentationRequest; nextStep: 'consent' | 'result'; verifierName?: string; response?: VerifierResponse }
   | { tag: 'presentationConsent'; request: ResolvedPresentationRequest }
   | { tag: 'presentationInfo'; request: ResolvedPresentationRequest; verifierName: string; response: VerifierResponse }
@@ -68,22 +59,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 const RESOLVE_TIMEOUT_MS = 20_000
 const PRESENT_TIMEOUT_MS = 30_000
-
-function toNfcFriendlyError(error: unknown): string {
-  if (error instanceof NfcDisabledError) {
-    return 'Please enable NFC in Settings and try again.'
-  }
-
-  if (error instanceof NfcUnsupportedError) {
-    return 'NFC is not supported on this device.'
-  }
-
-  if (error instanceof NfcUnsupportedTagError) {
-    return 'This NFC tag is not supported by the wallet.'
-  }
-
-  return 'Unable to read NFC tag. Please try again.'
-}
 
 export default function ScanScreen() {
   useScreenCaptureGuard()
@@ -111,12 +86,7 @@ export default function ScanScreen() {
       lastDeeplinkRef.current = null
     }
     generationRef.current++
-    setPhase((prev) => {
-      if (prev.tag === 'readingNfc') {
-        void cancelNfcRead()
-      }
-      return { tag: 'scanning' }
-    })
+    setPhase({ tag: 'scanning' })
     processingRef.current = false
     logWalletStep('scan', 'scanner-reset', { generation: generationRef.current })
   }, [setDismissedDeeplinkUri])
@@ -238,43 +208,6 @@ export default function ScanScreen() {
   useEffect(() => {
     if (incomingUrl) handleDeeplink(incomingUrl, 'incoming')
   }, [incomingUrl, handleDeeplink])
-
-  const handleNfcPress = useCallback(async () => {
-    if (processingRef.current) {
-      logWalletStep('scan', 'nfc-ignored-processing')
-      return
-    }
-
-    const gen = generationRef.current
-    processingRef.current = true
-    setPhase({ tag: 'readingNfc' })
-    logWalletStep('scan', 'nfc-button-pressed')
-
-    try {
-      const payload = await readSingleNfcPayload()
-      logWalletStep('scan', 'nfc-payload-read', { kind: payload.kind })
-      if (generationRef.current !== gen) return
-
-      if (payload.kind === 'credential-offer') {
-        setPendingDeeplinkUri(payload.uri)
-        resetScanner()
-        return
-      }
-
-      processingRef.current = false
-      await handleBarcodeRef.current(payload.uri)
-    } catch (err) {
-      if (err instanceof NfcReadCancelledError) {
-        logWalletStep('scan', 'nfc-cancelled')
-        if (generationRef.current === gen) resetScanner()
-        return
-      }
-
-      logWalletError('scan', 'nfc-read-failed', err)
-      processingRef.current = false
-      if (generationRef.current === gen) setPhase({ tag: 'error', message: toNfcFriendlyError(err) })
-    }
-  }, [resetScanner, setPendingDeeplinkUri])
 
   async function approvePresentation(request: ResolvedPresentationRequest) {
     if (isSubmitting) return
@@ -458,13 +391,10 @@ export default function ScanScreen() {
     )
   }
 
-  const isLoading =
-    phase.tag === 'resolving' || phase.tag === 'readingNfc' || phase.tag === 'renewing'
+  const isLoading = phase.tag === 'resolving' || phase.tag === 'renewing'
   const loadingLabel =
-    phase.tag === 'readingNfc'
-      ? 'Hold Near NFC Tag'
-      : phase.tag === 'renewing'
-        ? 'Renewing Credential'
+    phase.tag === 'renewing'
+      ? 'Renewing Credential'
       : phase.tag === 'resolving'
         ? 'Reading Request'
         : 'Scan QR code'
@@ -478,9 +408,6 @@ export default function ScanScreen() {
         loadingLabel={loadingLabel}
         onBarcode={(data) => {
           void handleBarcode(data)
-        }}
-        onNfcPress={() => {
-          void handleNfcPress()
         }}
         onCancel={resetScanner}
       />

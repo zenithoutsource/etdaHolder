@@ -34,6 +34,10 @@ object CompanionApduHandler {
     val state = CompanionSession.readArmState()
       ?: return sw(0x6A, 0x82)
 
+    if (!CompanionSession.isMdocExchangeComplete()) {
+      return sw(0x69, 0x85)
+    }
+
     val modes = if (state.sharingMode == "dual-format") {
       listOf("mdoc-only", "dual-format")
     } else {
@@ -53,6 +57,10 @@ object CompanionApduHandler {
   private fun handleBeginCompanion(commandApdu: ByteArray): ByteArray {
     val state = CompanionSession.readArmState()
       ?: return sw(0x6A, 0x82)
+
+    if (!CompanionSession.isMdocExchangeComplete()) {
+      return sw(0x69, 0x85)
+    }
 
     if (commandApdu.size < 5) return sw(0x6F, 0x00)
     val lc = commandApdu[4].toInt() and 0xFF
@@ -78,7 +86,7 @@ object CompanionApduHandler {
     if (response == null) {
       CompanionSession.onCompanionSignRequested?.invoke(request.nonce)
       Log.w(TAG, "[begin-companion] companion KB signing pending JS bridge")
-      return sw(0x69, 0x85)
+      return sw(0x61, 0x00)
     }
 
     return success(response)
