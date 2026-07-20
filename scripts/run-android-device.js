@@ -30,9 +30,11 @@ function run(command, args, options = {}) {
 
 function runInherited(command, args, options = {}) {
   const { env: optionEnv, ...rest } = options;
+  const needsShell = process.platform === 'win32' && /\.(bat|cmd)$/i.test(command);
   const result = spawnSync(command, args, {
     cwd: projectRoot,
     stdio: 'inherit',
+    shell: needsShell,
     ...rest,
     env: resolveGradleEnvironment(optionEnv),
   });
@@ -193,15 +195,11 @@ if (!fs.existsSync(gradlew)) {
 }
 
 console.log(`Using physical Android device: ${selectedDevice.name} (${selectedDevice.serial})`);
-runInherited(gradlew, [
-  'app:assembleDebug',
-  '-x',
-  'lint',
-  '-x',
-  'test',
-  '--configure-on-demand',
-  `-PreactNativeDevServerPort=${defaultPort}`,
-]);
+runInherited(
+  gradlew,
+  ['app:assembleDebug', '-x', 'lint', '-x', 'test', '--configure-on-demand', `-PreactNativeDevServerPort=${defaultPort}`],
+  { cwd: path.join(projectRoot, 'android') }
+);
 
 if (!fs.existsSync(apkPath)) {
   console.error(`Android APK was not found at ${apkPath}.`);

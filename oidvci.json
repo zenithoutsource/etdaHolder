@@ -1,6 +1,6 @@
 {
-  "issuer": "http://192.100.10.46",
-  "pushed_authorization_request_endpoint": "http://192.100.10.46/par",
+  "issuer": "http://issuer.zenithcomp.co.th:455",
+  "pushed_authorization_request_endpoint": "http://issuer.zenithcomp.co.th:455/par",
   "scopes_supported": [
     "openid"
   ],
@@ -23,14 +23,14 @@
   "id_token_signing_alg_values_supported": [
     "ES256"
   ],
-  "credential_issuer": "http://192.100.10.46",
+  "credential_issuer": "http://issuer.zenithcomp.co.th:455",
   "authorization_servers": [
-    "http://192.100.10.46"
+    "http://issuer.zenithcomp.co.th:455"
   ],
-  "credential_endpoint": "http://192.100.10.46/credential",
-  "token_endpoint": "http://192.100.10.46/token",
-  "batch_credential_endpoint": "http://192.100.10.46/batch_credential",
-  "deferred_credential_endpoint": "http://192.100.10.46/credential_deferred",
+  "credential_endpoint": "http://issuer.zenithcomp.co.th:455/credential",
+  "token_endpoint": "http://issuer.zenithcomp.co.th:455/token",
+  "batch_credential_endpoint": "http://issuer.zenithcomp.co.th:455/batch_credential",
+  "deferred_credential_endpoint": "http://issuer.zenithcomp.co.th:455/credential_deferred",
   "credential_configurations_supported": {
     "CTWalletSamePreAuthorisedInTime_jwt_vc_json": {
       "id": "CTWalletSamePreAuthorisedInTime_jwt_vc_json",
@@ -3068,7 +3068,7 @@
     },
     "TranscriptCredential_dc+sd-jwt": {
       "format": "dc+sd-jwt",
-      "vct": "http://192.100.10.46/credentials/TranscriptCredential",
+      "vct": "http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential",
       "cryptographic_binding_methods_supported": [
         "jwk",
         "did"
@@ -3143,7 +3143,7 @@
     },
     "BootCampCredential_dc+sd-jwt": {
       "format": "dc+sd-jwt",
-      "vct": "http://192.100.10.46/credentials/BootCampCredential",
+      "vct": "http://issuer.zenithcomp.co.th:455/credentials/BootCampCredential",
       "cryptographic_binding_methods_supported": [
         "jwk",
         "did"
