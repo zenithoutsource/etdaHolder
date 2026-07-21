@@ -199,6 +199,7 @@ object WalletKeystoreDiagnostics {
   private fun isSupportedEd25519Recipe(recipe: Map<String, Any?>): Boolean {
     return recipe["publicKeyLooksEd25519"] == true &&
       recipe["signVerifyOk"] == true &&
+      recipe["signatureBytes"] == 64 &&
       recipe["hardwareBacked"] == true
   }
 
@@ -283,7 +284,6 @@ object WalletKeystoreDiagnostics {
 
   private fun looksLikeEd25519PublicKey(publicKey: PublicKey): Boolean {
     val encoded = publicKey.encoded
-    if (encoded.size == 32) return true
     if (!containsEd25519Oid(encoded)) return false
     if (encoded.size < 35) return false
     val bsOffset = encoded.size - 35
