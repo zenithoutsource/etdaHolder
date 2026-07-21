@@ -35,6 +35,8 @@ object WalletKeystoreDiagnostics {
   private data class SignatureProbeResult(
     val verified: Boolean,
     val signatureBytes: Int,
+    val errorClass: String? = null,
+    val errorMessage: String? = null,
   )
 
   fun probe(context: AppContext): Map<String, Any?> {
@@ -180,6 +182,10 @@ object WalletKeystoreDiagnostics {
 
       result["signVerifyOk"] = signatureProbe.verified
       result["signatureBytes"] = signatureProbe.signatureBytes
+      if (signatureProbe.errorClass != null) {
+        result["errorClass"] = signatureProbe.errorClass
+        result["errorMessage"] = signatureProbe.errorMessage
+      }
       result["keyInfoAlgorithm"] = keyInfoResult?.second
       result["securityLevel"] = securityLevel
       result["securityLevelLabel"] = securityLevelLabel(securityLevel)
@@ -258,19 +264,34 @@ object WalletKeystoreDiagnostics {
     publicKey: PublicKey,
     signatureAlgorithm: String,
   ): SignatureProbeResult {
-    return try {
-      val message = "wallet-keystore-diagnostic".toByteArray(Charsets.UTF_8)
-      val signatureBytes = Signature.getInstance(signatureAlgorithm).apply {
+    val message = "wallet-keystore-diagnostic".toByteArray(Charsets.UTF_8)
+    val signatureBytes = try {
+      Signature.getInstance(signatureAlgorithm).apply {
         initSign(privateKey)
         update(message)
       }.sign()
+    } catch (e: Exception) {
+      return SignatureProbeResult(
+        verified = false,
+        signatureBytes = 0,
+        errorClass = e.javaClass.simpleName,
+        errorMessage = e.message,
+      )
+    }
+
+    return try {
       val verified = Signature.getInstance(signatureAlgorithm).apply {
         initVerify(publicKey)
         update(message)
       }.verify(signatureBytes)
       SignatureProbeResult(verified = verified, signatureBytes = signatureBytes.size)
-    } catch (_: Exception) {
-      SignatureProbeResult(verified = false, signatureBytes = 0)
+    } catch (e: Exception) {
+      SignatureProbeResult(
+        verified = false,
+        signatureBytes = signatureBytes.size,
+        errorClass = e.javaClass.simpleName,
+        errorMessage = e.message,
+      )
     }
   }
 

@@ -170,6 +170,11 @@ The feature flags advertise Curve25519 hardware-keystore and StrongBox capabilit
 
 Both recipes failed before a public key, Ed25519 OID, signature, or `KeyInfo.securityLevel` could be produced. The same null evidence fields, sanitized exception classes/messages, and unsupported classifications were observed across two fresh cold launches using fresh aliases.
 
+The compact R10 and R11 summaries below were each identical across both runs:
+
+- **R10 default:** requested algorithm `EC`; spec `ECGenParameterSpec(ed25519)`; purposes `SIGN | VERIFY`; digest `NONE`; StrongBox not requested. Result fields: `generatedKeyAlgorithm=null`, `publicKeyAlgorithm=null`, `publicKeyEncodedBytes=null`, `publicKeySpkiPrefix=null`, `publicKeyLooksEd25519=null`, `signVerifyOk=null`, `signatureBytes=null`, `securityLevel=null`, `securityLevelLabel=null`, and `hardwareBacked=null`. Sanitized exception: `errorClass=IllegalArgumentException`; `errorMessage=private key algorithm does not match algorithm of public key in end entity certificate (at index 0)`.
+- **R11 StrongBox:** requested algorithm `EC`; spec `ECGenParameterSpec(ed25519)`; purposes `SIGN | VERIFY`; digest `NONE`; StrongBox requested. Result fields: `generatedKeyAlgorithm=null`, `publicKeyAlgorithm=null`, `publicKeyEncodedBytes=null`, `publicKeySpkiPrefix=null`, `publicKeyLooksEd25519=null`, `signVerifyOk=null`, `signatureBytes=null`, `securityLevel=null`, `securityLevelLabel=null`, and `hardwareBacked=null`. Sanitized exception: `errorClass=InvalidAlgorithmParameterException`; `errorMessage=Unsupported StrongBox EC: ed25519`.
+
 The installed diagnostic APK was an arm64-only debug build matching the handset ABI. The Windows multi-ABI build hit a documented `armeabi-v7a` Prefab path-length failure; rebuilding for `arm64-v8a` completed successfully and the APK installed successfully. This build-host limitation is not a device capability result.
 
 Remote attestation was not performed because neither recipe produced a candidate key. No attestation conclusion is claimed for this device.
@@ -196,8 +201,8 @@ For production evidence, generate the candidate with a server-provided random at
 |---|---|
 | Ed25519 sign/verify fails | Unsupported |
 | Sign/verify passes, security level is `SOFTWARE` or unavailable | Protocol-capable but not hardware-backed |
-| Sign/verify passes, security level is `TRUSTED_ENVIRONMENT` | Hardware-backed Ed25519 in TEE |
-| Sign/verify passes, security level is `STRONGBOX` | StrongBox/Knox Vault-backed Ed25519 |
+| Ed25519 OID/SPKI evidence is present, independent verification succeeds with an exactly 64-byte signature, and security level is `TRUSTED_ENVIRONMENT` | Hardware-backed Ed25519 in TEE |
+| Ed25519 OID/SPKI evidence is present, independent verification succeeds with an exactly 64-byte signature, and security level is `STRONGBOX` | StrongBox/Knox Vault-backed Ed25519 |
 | Hardware result plus valid off-device attestation | Production-grade evidence for that tested device/firmware |
 
 ## 7. iOS boundary
