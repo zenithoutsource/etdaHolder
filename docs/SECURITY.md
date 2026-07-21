@@ -89,6 +89,8 @@ The `server/` backend is development-only and is not the production Wallet Backe
 
 ## 5. Bundle and Build Security
 
+- Android application backup and restore is disabled through `expo.android.allowBackup = false`. Wallet Keychain entries, encrypted MMKV files, and their device-bound Android Keystore keys must not cross an installation boundary independently; a reinstall starts a new wallet and requires credential reissuance.
+- The existing PIN fallback is only a same-install recovery mechanism; it does not make the Ed25519 signing seed portable or authorize restoring wallet storage across installations.
 - MSW must not be included in production EAS builds.
 - Production source maps must not be committed or shipped.
 - API base URLs and local secrets belong in ignored `.env` files.
