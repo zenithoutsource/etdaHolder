@@ -14,6 +14,7 @@ export type KeystoreKeygenRecipeResult = {
   publicKeySpkiPrefix?: string
   publicKeyLooksEd25519?: boolean
   signVerifyOk?: boolean
+  signatureBytes?: number
   keyInfoAlgorithm?: string | null
   securityLevel?: number
   securityLevelLabel?: string
