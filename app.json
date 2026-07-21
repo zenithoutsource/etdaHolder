@@ -43,6 +43,7 @@
     "plugins": [
       "expo-router",
       "./plugins/with-android-long-paths.js",
+      "./plugins/with-android-backup-rules.js",
       "./modules/expo-mdoc-proximity/app.plugin.js",
       "expo-camera",
       "expo-notifications",
