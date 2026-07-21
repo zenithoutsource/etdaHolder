@@ -32,6 +32,13 @@ object WalletKeystoreDiagnostics {
   private const val TAG = "WalletKeystoreDiag"
   private const val HARDWARE_KEYSTORE_CURVE_25519_VERSION = 200
 
+  private data class SignatureProbeResult(
+    val verified: Boolean,
+    val signatureBytes: Int,
+    val errorClass: String? = null,
+    val errorMessage: String? = null,
+  )
+
   fun probe(context: AppContext): Map<String, Any?> {
     val reactContext = context.reactContext ?: throw Exceptions.ReactContextLost()
     val packageManager = reactContext.packageManager
@@ -39,7 +46,7 @@ object WalletKeystoreDiagnostics {
     recipes.forEach { recipe ->
       Log.i(
         TAG,
-        "[${recipe["label"]}] requested=${recipe["requestedAlgorithm"]} alg=${recipe["generatedKeyAlgorithm"]} publicAlg=${recipe["publicKeyAlgorithm"]} spki=${recipe["publicKeyEncodedBytes"]}b [${recipe["publicKeySpkiPrefix"]}...] ed25519=${recipe["publicKeyLooksEd25519"]} signVerify=${recipe["signVerifyOk"]} secLevel=${recipe["securityLevelLabel"]} hardware=${recipe["hardwareBacked"]} error=${recipe["errorClass"]}:${recipe["errorMessage"]}",
+        "[${recipe["label"]}] requested=${recipe["requestedAlgorithm"]} alg=${recipe["generatedKeyAlgorithm"]} publicAlg=${recipe["publicKeyAlgorithm"]} spki=${recipe["publicKeyEncodedBytes"]}b [${recipe["publicKeySpkiPrefix"]}...] ed25519=${recipe["publicKeyLooksEd25519"]} signVerify=${recipe["signVerifyOk"]} sigBytes=${recipe["signatureBytes"]} secLevel=${recipe["securityLevelLabel"]} hardware=${recipe["hardwareBacked"]} error=${recipe["errorClass"]}:${recipe["errorMessage"]}",
       )
     }
 
@@ -101,6 +108,23 @@ object WalletKeystoreDiagnostics {
         digests = arrayOf(KeyProperties.DIGEST_SHA256),
         signatureAlgorithm = "SHA256withECDSA",
       ),
+      diagnosticRecipe(
+        "R10-CTS-EC-ed25519-default",
+        "EC",
+        ECGenParameterSpec("ed25519"),
+        KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+        digests = arrayOf(KeyProperties.DIGEST_NONE),
+        signatureAlgorithm = ED25519,
+      ),
+      diagnosticRecipe(
+        "R11-CTS-EC-ed25519-sb",
+        "EC",
+        ECGenParameterSpec("ed25519"),
+        KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+        strongBoxBacked = true,
+        digests = arrayOf(KeyProperties.DIGEST_NONE),
+        signatureAlgorithm = ED25519,
+      ),
     )
   }
 
@@ -150,7 +174,18 @@ object WalletKeystoreDiagnostics {
       result["publicKeyEncodedBytes"] = spki.size
       result["publicKeySpkiPrefix"] = spki.take(8).joinToString("") { "%02x".format(it) }
       result["publicKeyLooksEd25519"] = pubKey?.let { looksLikeEd25519PublicKey(it) } ?: false
-      result["signVerifyOk"] = if (privKey != null && pubKey != null) canSignAndVerify(privKey, pubKey, signatureAlgorithm) else false
+      val signatureProbe = if (privKey != null && pubKey != null) {
+        probeSignature(privKey, pubKey, signatureAlgorithm)
+      } else {
+        SignatureProbeResult(verified = false, signatureBytes = 0)
+      }
+
+      result["signVerifyOk"] = signatureProbe.verified
+      result["signatureBytes"] = signatureProbe.signatureBytes
+      if (signatureProbe.errorClass != null) {
+        result["errorClass"] = signatureProbe.errorClass
+        result["errorMessage"] = signatureProbe.errorMessage
+      }
       result["keyInfoAlgorithm"] = keyInfoResult?.second
       result["securityLevel"] = securityLevel
       result["securityLevelLabel"] = securityLevelLabel(securityLevel)
@@ -170,6 +205,7 @@ object WalletKeystoreDiagnostics {
   private fun isSupportedEd25519Recipe(recipe: Map<String, Any?>): Boolean {
     return recipe["publicKeyLooksEd25519"] == true &&
       recipe["signVerifyOk"] == true &&
+      recipe["signatureBytes"] == 64 &&
       recipe["hardwareBacked"] == true
   }
 
@@ -223,19 +259,39 @@ object WalletKeystoreDiagnostics {
     }
   }
 
-  private fun canSignAndVerify(privateKey: PrivateKey, publicKey: PublicKey, signatureAlgorithm: String): Boolean {
-    return try {
-      val message = "wallet-keystore-diagnostic".toByteArray(Charsets.UTF_8)
-      val signatureBytes = Signature.getInstance(signatureAlgorithm).apply {
+  private fun probeSignature(
+    privateKey: PrivateKey,
+    publicKey: PublicKey,
+    signatureAlgorithm: String,
+  ): SignatureProbeResult {
+    val message = "wallet-keystore-diagnostic".toByteArray(Charsets.UTF_8)
+    val signatureBytes = try {
+      Signature.getInstance(signatureAlgorithm).apply {
         initSign(privateKey)
         update(message)
       }.sign()
-      Signature.getInstance(signatureAlgorithm).apply {
+    } catch (e: Exception) {
+      return SignatureProbeResult(
+        verified = false,
+        signatureBytes = 0,
+        errorClass = e.javaClass.simpleName,
+        errorMessage = e.message,
+      )
+    }
+
+    return try {
+      val verified = Signature.getInstance(signatureAlgorithm).apply {
         initVerify(publicKey)
         update(message)
       }.verify(signatureBytes)
-    } catch (_: Exception) {
-      false
+      SignatureProbeResult(verified = verified, signatureBytes = signatureBytes.size)
+    } catch (e: Exception) {
+      SignatureProbeResult(
+        verified = false,
+        signatureBytes = signatureBytes.size,
+        errorClass = e.javaClass.simpleName,
+        errorMessage = e.message,
+      )
     }
   }
 
@@ -249,7 +305,6 @@ object WalletKeystoreDiagnostics {
 
   private fun looksLikeEd25519PublicKey(publicKey: PublicKey): Boolean {
     val encoded = publicKey.encoded
-    if (encoded.size == 32) return true
     if (!containsEd25519Oid(encoded)) return false
     if (encoded.size < 35) return false
     val bsOffset = encoded.size - 35

@@ -1,5 +1,17 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-21 (Galaxy Ed25519 hardware-keystore physical validation)
+
+- Physical validation used Galaxy S24 Ultra model `SM-S928B` on build fingerprint `samsung/e3qxxx/e3q:16/BP4A.251205.006/S928BXXS6DZE1:user/release-keys`, Android 16 / API 36, security patch 2026-05-05.
+- The device reports `android.hardware.hardware_keystore` version 200 and `android.hardware.strongbox_keystore` present. These feature flags are preflight signals, not proof that the requested Ed25519 recipe succeeds.
+- Canonical default recipe (`EC` / AndroidKeyStore, curve `ed25519`, `SIGN | VERIFY`, digest `NONE`, no StrongBox): **unsupported through the tested public AndroidKeyStore recipe**. Generation did not complete before public-key, Ed25519 OID, signature, or `KeyInfo.securityLevel` evidence could be produced.
+- Canonical StrongBox recipe (the same parameters with StrongBox requested): **unsupported through the tested public AndroidKeyStore recipe**. StrongBox rejected EC Ed25519 before public-key, Ed25519 OID, signature, or `KeyInfo.securityLevel` evidence could be produced.
+- Two fresh cold launches with fresh aliases returned identical null evidence fields, sanitized exception classes/messages, and unsupported classifications for both recipes. Remote attestation was not performed because neither recipe produced a candidate key.
+- Native diagnostic compilation completed as part of the successful arm64-v8a debug assembly; the arm64 APK built and installed successfully on the physical device.
+- The installed diagnostic APK was arm64-only because the Windows multi-ABI build hit a documented `armeabi-v7a` Prefab path-length failure. This is a build-host limitation, not a device capability result.
+- Repository verification: `yarn.cmd lint` exited 0 with no warnings or errors emitted; `yarn.cmd tsc --noEmit` exited 0; `yarn.cmd test src/services/crypto --runInBand` reported no matching tests (708 files checked, 0 matches) and exited 1 as anticipated for this hardware-only diagnostic.
+- ADR 0008 remains active. Galaxy A26 physical validation is still pending; no S24 result is generalized to that device or to other firmware.
+
 ### Session 2026-07-17 (OID4VP SD-JWT selective disclosure)
 
 - SD-JWT DCQL presentations now filter disclosure segments to the claims requested by the Verifier before raw submission or KB-JWT signing; dual-format SD-JWT entries use the same filtering path.
