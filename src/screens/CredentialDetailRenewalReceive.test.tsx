@@ -122,7 +122,7 @@ describe('CredentialDetailScreen renewal receive action', () => {
     }
   })
 
-  test('keeps renewal-ready detail focus passive until the Holder presses Receive new document', async () => {
+  test('keeps renewal-ready detail focus passive', async () => {
     mockRenewalStatus = { ...mockRenewalStatus!, readyOfferUri: '  openid-credential-offer://ready  ' }
 
     render(<CredentialDetailScreen />)
@@ -131,13 +131,25 @@ describe('CredentialDetailScreen renewal receive action', () => {
       expect(mockRefreshAndCompleteRenewals).toHaveBeenCalled()
     })
     expect(mockClaimReadyRenewal).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Receive new document' })).toBeTruthy()
+  })
+
+  test('claims a ready renewal only after the Holder presses Receive new document', async () => {
+    mockRenewalStatus = { ...mockRenewalStatus!, readyOfferUri: '  openid-credential-offer://ready  ' }
+
+    render(<CredentialDetailScreen />)
+
+    await waitFor(() => {
+      expect(mockRefreshAndCompleteRenewals).toHaveBeenCalled()
+    })
+    mockRefresh.mockClear()
 
     fireEvent.press(screen.getByRole('button', { name: 'Receive new document' }))
 
     await waitFor(() => {
       expect(mockClaimReadyRenewal).toHaveBeenCalledWith('credential-1')
+      expect(mockRefresh).toHaveBeenCalled()
     })
-    expect(mockRefresh).toHaveBeenCalled()
   })
 
   test('shows renewal processing while the explicit receive claim is pending', async () => {
