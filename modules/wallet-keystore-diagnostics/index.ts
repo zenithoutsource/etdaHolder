@@ -1,7 +1,10 @@
 import { requireOptionalNativeModule } from 'expo-modules-core'
 
+export type KeystoreRecipeStatus = 'EXECUTED' | 'SKIPPED_FEATURE_ABSENT'
+
 export type KeystoreKeygenRecipeResult = {
   label: string
+  status: KeystoreRecipeStatus
   requestedAlgorithm: string
   requestedPurposes: number
   algorithmParameterSpec: string | null
@@ -19,8 +22,13 @@ export type KeystoreKeygenRecipeResult = {
   securityLevel?: number
   securityLevelLabel?: string
   hardwareBacked?: boolean
+  errorStage?: 'GENERATION' | 'ENTRY_READ' | 'RESULT_INSPECTION' | 'SIGN' | 'VERIFY'
   errorClass?: string
   errorMessage?: string | null
+  aliasCleanupErrorClass?: string
+  aliasCleanupErrorMessage?: string | null
+  keyInfoErrorClass?: string
+  keyInfoErrorMessage?: string | null
 }
 
 export type KeystoreKeygenDiagnostics = {
@@ -30,6 +38,7 @@ export type KeystoreKeygenDiagnostics = {
   hasCurve25519HardwareKeystore: boolean
   hasStrongBoxKeystore: boolean
   hardwareEd25519Supported: boolean
+  strongBoxEd25519Supported: boolean
   recipes: KeystoreKeygenRecipeResult[]
 }
 
