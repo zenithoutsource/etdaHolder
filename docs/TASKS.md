@@ -1,5 +1,20 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-23 (VP claim selection on Info — implemented)
+
+- **Implemented:** Consent read-only → Info (Approve by Wallet) hosts selectable **รายการที่ร้องขอ** → submit on **ยอมรับ** → Success. Flow B per `docs/superpowers/specs/2026-07-23-vp-claim-selection-on-info-design.md`.
+- Plan: `docs/superpowers/plans/2026-07-23-vp-claim-selection-on-info.md` — Tasks 1–7 complete (review-row toggles, read-only Consent, Info selection + accept gate, Scan + My QR flow routing).
+- Components: `PresentationDisclosureList`, `PresentationRequestedItemsCard`, `PresentationInfoPanel`, `PresentationConsentPanel`, `app/(tabs)/scan.tsx`, `Oid4VpDisclosureFlow`.
+- Verification: focused VP suite reports 74 passing tests and 3 assertion failures in `PresentationRequestedItemsCard.test.tsx` / `PresentationDisclosureList.test.tsx` (helper-copy mismatch and mandatory badge text expected as `จำเป็น` while the component renders `*`); `yarn lint` exited 0. Root `yarn tsc --noEmit` still reports pre-existing errors in `app/callback.tsx` and `src/services/vci/exchangeService.ts`; VP-related `claimDisclosurePolicy.ts` `selective` Pick type is fixed in this slice.
+- **Remaining:** physical-device walkthrough (Consent → Info toggle → sign/submit → Success) on dev build.
+
+### Session 2026-07-23 (Windows native-build path length)
+
+- Routed `yarn android` through the existing Expo wrapper so Cursor sandbox builds use the short `C:\gradle` user-home path instead of a Gradle cache path exceeding Ninja's Windows 260-character limit.
+- Added a regression test that locks the package script to the short-path wrapper.
+- Removed and regenerated the stale `react-native-screens` and `expo-modules-core` `.cxx` intermediates that retained absolute references to the former Cursor cache.
+- Verification: focused wrapper regression test passed; arm64 `app:assembleDebug` completed successfully.
+
 ### Session 2026-07-21 (Galaxy Ed25519 hardware-keystore physical validation)
 
 - Physical validation used Galaxy S24 Ultra model `SM-S928B` on build fingerprint `samsung/e3qxxx/e3q:16/BP4A.251205.006/S928BXXS6DZE1:user/release-keys`, Android 16 / API 36, security patch 2026-05-05.
