@@ -1,17 +1,28 @@
 import {
   installWalletApiFetch,
+  isWalletApiFetchInput,
   normalizeWalletApiBaseUrl,
   resolveNativeDevLoopbackBaseUrl,
   resolveWalletApiUrl,
 } from './installWalletApiFetch'
+import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
+
+jest.mock('../services/debug/walletLogger', () => ({
+  logWalletError: jest.fn(),
+  logWalletStep: jest.fn(),
+}))
 
 describe('wallet API fetch installer', () => {
   const realFetch = globalThis.fetch
   const originalEnv = process.env
+  const logWalletErrorMock = logWalletError as jest.MockedFunction<typeof logWalletError>
+  const logWalletStepMock = logWalletStep as jest.MockedFunction<typeof logWalletStep>
 
   afterEach(() => {
     globalThis.fetch = realFetch
     process.env = { ...originalEnv }
+    logWalletErrorMock.mockClear()
+    logWalletStepMock.mockClear()
   })
 
   test('normalizes trailing slash from base URL', () => {
@@ -46,6 +57,11 @@ describe('wallet API fetch installer', () => {
     expect(resolveWalletApiUrl('https://issuer.example.com/.well-known/openid-configuration')).toBe(
       'https://issuer.example.com/.well-known/openid-configuration',
     )
+  })
+
+  test('identifies generated wallet API paths only', () => {
+    expect(isWalletApiFetchInput('/wallet-api/auth/login')).toBe(true)
+    expect(isWalletApiFetchInput('https://exp.host/--/api/v2/push/updateDeviceToken')).toBe(false)
   })
 
   test('patched fetch prefixes generated SDK paths', async () => {
@@ -109,5 +125,47 @@ describe('wallet API fetch installer', () => {
     expect(response.status).toBe(400)
     expect(response.headers.get('Content-Type')).toBe('application/json')
     expect(JSON.parse(body)).toEqual({ message: 'Bad Request' })
+  })
+
+  test('does not log Expo push aborts as wallet SDK fetch failures', async () => {
+    const abortError = new Error('Aborted')
+    abortError.name = 'AbortError'
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => {
+      throw abortError
+    })
+
+    installWalletApiFetch({
+      baseUrl: 'http://localhost:3001',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    await expect(
+      fetch('https://exp.host/--/api/v2/push/updateDeviceToken', { method: 'POST' }),
+    ).rejects.toBe(abortError)
+
+    expect(logWalletErrorMock).not.toHaveBeenCalled()
+    expect(logWalletStepMock).not.toHaveBeenCalled()
+  })
+
+  test('logs wallet API AbortError as fetch-aborted, not fetch-failed', async () => {
+    const abortError = new Error('Aborted')
+    abortError.name = 'AbortError'
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => {
+      throw abortError
+    })
+
+    installWalletApiFetch({
+      baseUrl: 'http://localhost:3001',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    await expect(fetch('/wallet-api/auth/login', { method: 'POST' })).rejects.toBe(abortError)
+
+    expect(logWalletErrorMock).not.toHaveBeenCalled()
+    expect(logWalletStepMock).toHaveBeenCalledWith(
+      'sdk',
+      'fetch-aborted',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 })

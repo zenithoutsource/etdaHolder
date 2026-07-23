@@ -61,6 +61,17 @@ export function resolveWalletApiUrl(input: FetchInput, baseUrl = getConfiguredWa
   return `${normalizeWalletApiBaseUrl(baseUrl)}${input}`
 }
 
+/** True for generated SDK relative paths that this installer rewrites to the wallet backend. */
+export function isWalletApiFetchInput(input: FetchInput): boolean {
+  return typeof input === 'string' && input.startsWith(WALLET_API_PREFIX)
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const name = 'name' in error && typeof error.name === 'string' ? error.name : ''
+  return name === 'AbortError'
+}
+
 function describeUrlForLog(raw: string): Record<string, unknown> {
   try {
     const parsed = new URL(raw)
@@ -140,31 +151,43 @@ export function installWalletApiFetch(options: InstallWalletApiFetchOptions = {}
   setFetchImplementation((async (input: FetchInput, init?: FetchInit) => {
     const resolvedInput = resolveWalletApiUrl(input, baseUrl)
     const requestMethod = init?.method ?? (typeof Request !== 'undefined' && input instanceof Request ? input.method : 'GET')
-    logWalletStep('sdk', 'fetch-start', {
-      method: requestMethod,
-      input: describeFetchInputForLog(input),
-      resolvedInput: describeFetchInputForLog(resolvedInput),
-    })
+    const trackAsWalletApi = isWalletApiFetchInput(input)
+    if (trackAsWalletApi) {
+      logWalletStep('sdk', 'fetch-start', {
+        method: requestMethod,
+        input: describeFetchInputForLog(input),
+        resolvedInput: describeFetchInputForLog(resolvedInput),
+      })
+    }
     try {
       const response = await fetchImpl(resolvedInput, init)
-      logWalletStep('sdk', 'fetch-complete', {
-        method: requestMethod,
-        input: describeFetchInputForLog(input),
-        resolvedInput: describeFetchInputForLog(resolvedInput),
-        status: response.status,
-        ok: response.ok,
-        contentType: response.headers.get('Content-Type') ?? undefined,
-      })
+      if (trackAsWalletApi) {
+        logWalletStep('sdk', 'fetch-complete', {
+          method: requestMethod,
+          input: describeFetchInputForLog(input),
+          resolvedInput: describeFetchInputForLog(resolvedInput),
+          status: response.status,
+          ok: response.ok,
+          contentType: response.headers.get('Content-Type') ?? undefined,
+        })
+      }
 
-      return typeof input === 'string' && input.startsWith(WALLET_API_PREFIX)
-        ? normalizeWalletApiResponse(response)
-        : response
+      return trackAsWalletApi ? normalizeWalletApiResponse(response) : response
     } catch (error) {
-      logWalletError('sdk', 'fetch-failed', error, {
-        method: requestMethod,
-        input: describeFetchInputForLog(input),
-        resolvedInput: describeFetchInputForLog(resolvedInput),
-      })
+      // Non-wallet traffic (Issuer, Verifier, Expo push, etc.) shares this global
+      // fetch indirection; do not attribute its failures to the wallet SDK logger.
+      if (trackAsWalletApi) {
+        const details = {
+          method: requestMethod,
+          input: describeFetchInputForLog(input),
+          resolvedInput: describeFetchInputForLog(resolvedInput),
+        }
+        if (isAbortError(error)) {
+          logWalletStep('sdk', 'fetch-aborted', details)
+        } else {
+          logWalletError('sdk', 'fetch-failed', error, details)
+        }
+      }
       throw error
     }
   }) as FetchFn)
