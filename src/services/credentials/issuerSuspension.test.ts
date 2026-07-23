@@ -33,7 +33,7 @@ function mockStorage(initialValues: Record<string, string> = {}) {
 
 const transcriptRecord: VerifiableCredentialRecord = {
   id: 'transcript-1',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: 'header.payload.signature',
   claims: {},
   issuedAt: '2026-06-25T00:00:00.000Z',

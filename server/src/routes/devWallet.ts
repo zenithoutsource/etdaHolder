@@ -157,7 +157,7 @@ export function readNotificationCopy(
     ? 'Thai National ID'
     : credentialType === 'DLTDrivingLicence'
       ? 'Driving Licence'
-      : credentialType === 'BangkokUniversityTranscript'
+      : credentialType === 'ChulalongkornUniversityTranscript'
         ? 'Academic Transcript'
         : credentialType
 
@@ -612,7 +612,7 @@ function mapCredentialTypeToDcqlTypeValue(credentialType: string): string {
       return 'IDCardCredential'
     case 'DLTDrivingLicence':
       return 'DrivingLicence'
-    case 'BangkokUniversityTranscript':
+    case 'ChulalongkornUniversityTranscript':
     case 'UniversityTranscript':
       return 'Transcript'
     default:

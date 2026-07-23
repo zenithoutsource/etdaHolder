@@ -8,7 +8,7 @@ import type { ResolvedCredentialOffer, VerifiableCredentialRecord } from '../vci
 
 const sdJwtRecord: VerifiableCredentialRecord = {
   id: 'vc-transcript',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: 'issuer.jwt~disclosure~',
   claims: { student_id: 'S-001' },
   issuedAt: '2026-01-01T00:00:00.000Z',
@@ -83,7 +83,7 @@ test('acquireDualFormatForPreview returns SD-JWT and pending mDOC without storin
         if (format === 'mso_mdoc') {
           return {
             id: 'mdoc-hash',
-            type: 'BangkokUniversityTranscript',
+            type: 'ChulalongkornUniversityTranscript',
             rawVc: 'mdoc:AQIDBA',
             claims: { doctype: 'th.go.etda.transcript' },
             issuedAt: '2026-01-01T00:00:00.000Z',
@@ -133,7 +133,7 @@ test('claimDualFormatCredential links both formats under one logical credential'
         if (format === 'mso_mdoc') {
           return {
             id: 'mdoc-hash',
-            type: 'BangkokUniversityTranscript',
+            type: 'ChulalongkornUniversityTranscript',
             rawVc: 'mdoc:AQIDBA',
             claims: { doctype: 'th.go.etda.transcript' },
             issuedAt: '2026-01-01T00:00:00.000Z',

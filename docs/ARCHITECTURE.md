@@ -141,7 +141,7 @@ Credential rendering is config-driven:
 
 - `ThaiNationalID`
 - `DLTDrivingLicence`
-- `BangkokUniversityTranscript`
+- `ChulalongkornUniversityTranscript`
 
 No issuer-specific card components should be added. Extend schemas instead.
 

@@ -45,10 +45,10 @@ describe('maybeConsumeSingleUseCredential', () => {
     expect(readCredentialLifecycleStatus('med-1')?.status).toBe('used')
   })
 
-  test('does not consume BangkokUniversityTranscript', () => {
+  test('does not consume ChulalongkornUniversityTranscript', () => {
     const result = maybeConsumeSingleUseCredential({
       credentialId: 'transcript-1',
-      credentialType: 'BangkokUniversityTranscript',
+      credentialType: 'ChulalongkornUniversityTranscript',
     })
 
     expect(result).toEqual({ consumed: false })

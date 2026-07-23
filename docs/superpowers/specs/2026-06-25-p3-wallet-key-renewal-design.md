@@ -49,7 +49,7 @@ UI reference: `docs/ui-reference/P3/`
 |---|---|
 | Expiry meaning | **Wallet `did:key` expired** (device-level), not document `expiresAt` alone |
 | v1 approach | Real key rotation + dev issuer renewal loop (reuse OID4VCI claim path) |
-| Document scope | All stored credential types in v1 (`ThaiNationalID`, `DLTDrivingLicence`, `BangkokUniversityTranscript`) |
+| Document scope | All stored credential types in v1 (`ThaiNationalID`, `DLTDrivingLicence`, `ChulalongkornUniversityTranscript`) |
 | Signing model | One Keychain-protected Ed25519 wallet key (ADR 0008); rotation changes Holder DID globally |
 | Submit vs claim | **Async:** `submitRenewalRequest` on holder tap; **auto-claim** on focus poll when server is `offer-ready` |
 | One-shot submit | Applies after issuer **HTTP 201** only; network failure before 201 → stay `renewal-required`, retry allowed |

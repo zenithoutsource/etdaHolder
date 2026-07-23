@@ -6,12 +6,12 @@ import {
 } from './readerProfiles'
 
 test('resolves reference profiles from the generic registry', () => {
-  const dual = getReaderProfileForDocumentType('BangkokUniversityTranscript', 'dual-format')
+  const dual = getReaderProfileForDocumentType('ChulalongkornUniversityTranscript', 'dual-format')
   expect(dual?.vendorId).toBe('reference')
   expect(dual?.companion?.transportPluginId).toBe('etda-companion-v1')
   expect(readerProfileUsesCompanion(dual!)).toBe(true)
 
-  const mdocOnly = getReaderProfileForDocumentType('BangkokUniversityTranscript', 'mdoc-only')
+  const mdocOnly = getReaderProfileForDocumentType('ChulalongkornUniversityTranscript', 'mdoc-only')
   expect(mdocOnly?.profileId).toBe('etda-transcript-mdoc-only')
   expect(readerProfileUsesCompanion(mdocOnly!)).toBe(false)
 })

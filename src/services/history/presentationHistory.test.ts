@@ -182,7 +182,7 @@ describe('presentationHistory', () => {
 
     recordSuccessfulPresentation({
       credentialId: 'transcript-1',
-      credentialType: 'BangkokUniversityTranscript',
+      credentialType: 'ChulalongkornUniversityTranscript',
       verifierName: 'University',
       documentType: 'Academic Transcript',
       disclosedClaims: ['GPA'],

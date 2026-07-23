@@ -32,7 +32,7 @@ This spec is UX + data-flow focused. It does not change core architecture rules:
 
 ### 2.1 Case 1 (Holder-initiated Revoke/Delete)
 
-Applies to every stored credential type (ThaiNationalID, DLTDrivingLicence, BangkokUniversityTranscript, and future supported types).
+Applies to every stored credential type (ThaiNationalID, DLTDrivingLicence, ChulalongkornUniversityTranscript, and future supported types).
 
 1. Holder opens credential detail.
 2. Holder taps `⋮`.

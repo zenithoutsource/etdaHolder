@@ -24,7 +24,7 @@ const getCredentialStorageMock = getCredentialStorage as jest.Mock
 
 const transcriptRecord: VerifiableCredentialRecord = {
   id: 'transcript-1',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: 'header.payload.signature',
   claims: {},
   issuedAt: '2026-06-08T00:00:00.000Z',

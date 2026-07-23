@@ -79,7 +79,7 @@ New file: `src/config/issuerPortalUrls.ts`
 export type IssuerPortalCredentialType =
   | 'ThaiNationalID'
   | 'DLTDrivingLicence'
-  | 'BangkokUniversityTranscript'
+  | 'ChulalongkornUniversityTranscript'
 
 export function resolveIssuerPortalUrl(
   credentialType: IssuerPortalCredentialType,

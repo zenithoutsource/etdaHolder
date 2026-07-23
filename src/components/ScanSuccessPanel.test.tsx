@@ -11,7 +11,7 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
 
 const record: VerifiableCredentialRecord = {
   id: 'credential-1',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   issuedAt: '2026-06-09T00:00:00.000Z',
   rawVc: 'vc',
   claims: {

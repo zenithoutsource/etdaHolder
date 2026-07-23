@@ -55,7 +55,7 @@ singleUse?: boolean
 | `MedicalCertificate` (ใบรับรองแพทย์) | `true` | Only document type that consumes on first successful presentation (P6 Case 3) |
 | `ThaiNationalID` | `false` | Reusable ID; `id_card/P6.md` omits Case 3 |
 | `DLTDrivingLicence` | `false` | Reusable licence |
-| `BangkokUniversityTranscript` | `false` | Transcript is not single-use in product scope |
+| `ChulalongkornUniversityTranscript` | `false` | Transcript is not single-use in product scope |
 
 **Note:** `MedicalCertificate` schema added in Slice 1 with `singleUse: true` (minimal card config). Hook is active only for credentials stored with `type: MedicalCertificate`.
 

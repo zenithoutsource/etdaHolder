@@ -3,7 +3,7 @@ import { validateCrossFormatConsistency } from './logicalCredentialConsistency'
 test('flags issued-at skew beyond configured threshold as warning', () => {
   const result = validateCrossFormatConsistency({
     issuer: 'https://issuer.example.com',
-    documentType: 'BangkokUniversityTranscript',
+    documentType: 'ChulalongkornUniversityTranscript',
     sdJwt: {
       format: 'dc+sd-jwt',
       credentialConfigurationId: 'TranscriptCredential_dc+sd-jwt',

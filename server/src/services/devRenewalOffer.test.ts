@@ -9,7 +9,7 @@ describe('devRenewalOffer', () => {
   test('maps wallet credential types to issuer document types', () => {
     expect(mapCredentialTypeToIssuerDocumentType('ThaiNationalID')).toBe('IdCard')
     expect(mapCredentialTypeToIssuerDocumentType('DLTDrivingLicence')).toBe('DriverLicense')
-    expect(mapCredentialTypeToIssuerDocumentType('BangkokUniversityTranscript')).toBe('Transcript')
+    expect(mapCredentialTypeToIssuerDocumentType('ChulalongkornUniversityTranscript')).toBe('Transcript')
     expect(mapCredentialTypeToIssuerDocumentType('Unknown')).toBeUndefined()
   })
 

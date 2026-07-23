@@ -56,7 +56,7 @@ const renewedThaiIdRecord: VerifiableCredentialRecord = {
 
 const transcriptRecord: VerifiableCredentialRecord = {
   id: 'transcript-1',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: 'vc',
   claims: {},
   issuedAt: '2026-06-09T00:00:00.000Z',
@@ -129,7 +129,7 @@ describe('credentialGuard', () => {
     expect(hasUsablePidCredential([thaiIdRecord], cleanupStatuses)).toBe(true)
     expect(readPidGateStatus([thaiIdRecord], cleanupStatuses)).toBe('ready')
     expect(
-      canRequestCredentialType('BangkokUniversityTranscript', [thaiIdRecord], cleanupStatuses),
+      canRequestCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], cleanupStatuses),
     ).toBe(true)
   })
 
@@ -194,7 +194,7 @@ describe('credentialGuard', () => {
       expect(readPidGateStatus([thaiIdRecord], {})).toBe('renewal-required')
       expect(canRequestCredentialType('ThaiNationalID', [thaiIdRecord], {})).toBe(true)
       expect(
-        canRequestCredentialType('BangkokUniversityTranscript', [thaiIdRecord], {}),
+        canRequestCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], {}),
       ).toBe(false)
     } finally {
       getCredentialStorage().remove(`credential:suspension:${thaiIdRecord.id}`)
@@ -208,7 +208,7 @@ describe('credentialGuard', () => {
       expect(hasUsablePidCredential([thaiIdRecord], {})).toBe(false)
       expect(canRequestCredentialType('ThaiNationalID', [thaiIdRecord], {})).toBe(true)
       expect(
-        canRequestCredentialType('BangkokUniversityTranscript', [thaiIdRecord], {}),
+        canRequestCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], {}),
       ).toBe(false)
     } finally {
       clearCredentialLifecycleStatus(thaiIdRecord.id)

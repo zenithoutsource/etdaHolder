@@ -121,7 +121,7 @@ export default function CredentialDetailScreen() {
   const display = credential
     ? readCredentialDetailDisplay(credential)
     : undefined;
-  const isTranscript = credential?.type === "BangkokUniversityTranscript";
+  const isTranscript = credential?.type === "ChulalongkornUniversityTranscript";
   const thaiIdCredential = credentials.find((record) => record.type === "ThaiNationalID");
   const thaiIdHolderProfile = useMemo(
     () => (thaiIdCredential ? readCredentialHolderProfile(thaiIdCredential) : undefined),

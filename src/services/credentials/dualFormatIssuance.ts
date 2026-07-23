@@ -388,7 +388,7 @@ function readDocumentTypeFromOffer(offer: ResolvedCredentialOffer): string {
   const vct = typeof configuration?.rawConfiguration?.vct === 'string'
     ? configuration.rawConfiguration.vct
     : undefined
-  if (vct?.toLowerCase().includes('transcript')) return 'BangkokUniversityTranscript'
+  if (vct?.toLowerCase().includes('transcript')) return 'ChulalongkornUniversityTranscript'
 
   const docType = configuration ? readMdocDocTypeFromConfig(configuration) : undefined
   if (docType?.toLowerCase().includes('mdl') || docType?.toLowerCase().includes('driving')) {

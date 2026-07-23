@@ -79,7 +79,7 @@ Session-by-session progress, verification runs, and next steps live in `docs/TAS
 - `docs/ui-reference/home.html` is the current design reference for the Wallet home tab.
 - `app/(tabs)/index.tsx` uses React Native primitives and NativeWind classes.
 - `CardSchemaConfig` lives in `src/config/cardSchemas.ts`.
-- Initial card configs are ThaID, DLT Driving Licence, and Bangkok University Transcript.
+- Initial card configs are ThaID, DLT Driving Licence, and Chulalongkorn University Transcript.
 - `CredentialCard` renders from config; do not create issuer-specific card components.
 - `VerifiableCredentialRecord.type` maps to `CardSchemaConfig` through `getCardSchema()`.
 - QR scanner uses `expo-camera` `CameraView`; NFC NDEF issuance is deferred for lack of device verification.

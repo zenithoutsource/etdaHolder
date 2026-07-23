@@ -15,11 +15,11 @@ function makeResolvedOffer(overrides: Partial<ResolvedCredentialOffer> = {}): Re
     issuer: 'https://issuer.example.com',
     credentialOffer: {} as ResolvedCredentialOffer['credentialOffer'],
     issuerMetadata: {} as ResolvedCredentialOffer['issuerMetadata'],
-    issuerDisplay: { name: 'Bangkok University' },
+    issuerDisplay: { name: 'Chulalongkorn University' },
     credentialConfigurations: [
       {
-        id: 'BangkokUniversityTranscript',
-        requestId: 'BangkokUniversityTranscript',
+        id: 'ChulalongkornUniversityTranscript',
+        requestId: 'ChulalongkornUniversityTranscript',
         format: 'dc+sd-jwt',
         display: { name: 'Academic Transcript' },
         rawConfiguration: ({
@@ -41,7 +41,7 @@ function makeResolvedOffer(overrides: Partial<ResolvedCredentialOffer> = {}): Re
 test('readOfferConfirmationPreview uses resolved offer metadata and expected claim labels', () => {
   const preview = readOfferConfirmationPreview(makeResolvedOffer())
 
-  expect(preview.issuerName).toBe('Bangkok University')
+  expect(preview.issuerName).toBe('Chulalongkorn University')
   expect(preview.credentialName).toBe('Academic Transcript')
   expect(preview.format).toBe('dc+sd-jwt')
   expect(preview.informationItems).toEqual([
@@ -105,7 +105,7 @@ test('claimConfirmedOffer claims and stores only after confirmation with tx_code
   const offer = makeResolvedOffer()
   const record: VerifiableCredentialRecord = {
     id: 'record-1',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: 'header.payload.signature',
     claims: {},
     issuedAt: '2026-06-04T00:00:00.000Z',
@@ -120,7 +120,7 @@ test('claimConfirmedOffer claims and stores only after confirmation with tx_code
 test('readCredentialInformationRows shows actual credential values from the acquired record', () => {
   const record: VerifiableCredentialRecord = {
     id: 'record-1',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: 'header.payload.signature',
     claims: {
       givenName: 'Ada',
@@ -148,7 +148,7 @@ test('readCredentialInformationRows shows actual credential values from the acqu
 test('readCredentialPreviewDisplay shows actual values for the scan confirmation screen', () => {
   const record: VerifiableCredentialRecord = {
     id: 'record-1',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: 'header.payload.signature',
     claims: {
       studentId: 'BU-123',

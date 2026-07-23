@@ -5,7 +5,7 @@ import * as credentialDisplay from '../services/credentials/credentialDisplay'
 
 const record = {
   id: 'transcript-preview',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: 'vc',
   issuedAt: '2026-07-17T00:00:00.000Z',
   expiresAt: '2030-11-28T00:00:00.000Z',

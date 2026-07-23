@@ -14,7 +14,7 @@ jest.mock('../storage/storage', () => ({
 function record(overrides: Partial<VerifiableCredentialRecord> = {}): VerifiableCredentialRecord {
   return {
     id: 'transcript-1',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: 'header.payload.signature',
     claims: {},
     issuedAt: '2026-07-17T00:00:00.000Z',
@@ -50,7 +50,7 @@ describe('credential issuer name', () => {
   test.each([
     ['ThaiNationalID', 'Department of Provincial Administration'],
     ['DLTDrivingLicence', 'Department of Land Transport'],
-    ['BangkokUniversityTranscript', 'Chulalongkorn University'],
+    ['ChulalongkornUniversityTranscript', 'Chulalongkorn University'],
   ])('uses the configured issuer name for %s', (type, expectedName) => {
     expect(
       readCredentialIssuerName(

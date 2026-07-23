@@ -46,7 +46,7 @@ Delivered:
 
 - Wallet home tab translated from `docs/ui-reference/home.html`, then re-translated to the `the wallet.html` reference for Wallet Home, Credential Detail, Scan, My QR, and History Log.
 - Bottom tab shell: Wallet, My QR, Scan, History Log.
-- Dynamic `CardSchemaConfig` format in `src/config/cardSchemas.ts`, covering ThaID, DLT Driving Licence, and Bangkok University Transcript.
+- Dynamic `CardSchemaConfig` format in `src/config/cardSchemas.ts`, covering ThaID, DLT Driving Licence, and Chulalongkorn University Transcript.
 - Generic `CredentialCard` / config-driven detail and summary rendering (`readCredentialSummaryDisplay`, `readCredentialDetailDisplay`).
 - Stored credential hook (`useStoredCredentials`) with explicit `storage-not-ready` state.
 - QR scanner using `expo-camera`, with resolve → Holder Confirmation (data preview) → confirm → save flow.

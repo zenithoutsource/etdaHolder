@@ -24,7 +24,7 @@ const thaiIdRecord: VerifiableCredentialRecord = {
 
 const transcriptRecord: VerifiableCredentialRecord = {
   id: 'transcript-1',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: 'issuer.jwt~disclosure~',
   claims: {},
   issuedAt: '2026-01-01T00:00:00.000Z',
