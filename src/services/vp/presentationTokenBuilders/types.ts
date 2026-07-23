@@ -12,6 +12,7 @@ export type ApprovedPresentationResponse = {
 
 export type PresentationTokenBuildContext = {
   request: ResolvedPresentationRequest
+  selectedClaimKeys?: readonly string[]
   signSdJwtKbPresentationToken: typeof signSdJwtKbPresentationToken
   signPresentationVpToken: typeof signPresentationVpToken
   readTokenMode: typeof readPresentationTokenMode

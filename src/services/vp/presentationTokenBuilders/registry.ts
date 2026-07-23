@@ -31,11 +31,12 @@ export function registerPresentationTokenBuilder(builder: PresentationTokenBuild
 
 export async function buildApprovedPresentationResponse(
   request: ResolvedPresentationRequest,
-  dependencies: Partial<Pick<PresentationTokenBuildContext, 'signSdJwtKbPresentationToken' | 'signPresentationVpToken' | 'readTokenMode' | 'buildDualFormatDcqlVpToken'>> = {},
+  dependencies: Partial<Pick<PresentationTokenBuildContext, 'signSdJwtKbPresentationToken' | 'signPresentationVpToken' | 'readTokenMode' | 'buildDualFormatDcqlVpToken' | 'selectedClaimKeys'>> = {},
   builders: PresentationTokenBuilder[] = defaultBuilders,
 ): Promise<ApprovedPresentationResponse> {
   const context: PresentationTokenBuildContext = {
     request,
+    ...(dependencies.selectedClaimKeys ? { selectedClaimKeys: dependencies.selectedClaimKeys } : {}),
     signSdJwtKbPresentationToken: dependencies.signSdJwtKbPresentationToken ?? defaultSignSdJwtKbPresentationToken,
     signPresentationVpToken: dependencies.signPresentationVpToken ?? defaultSignPresentationVpToken,
     readTokenMode: dependencies.readTokenMode ?? readPresentationTokenMode,

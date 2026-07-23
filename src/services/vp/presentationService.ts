@@ -1,7 +1,7 @@
-import { readCredentialHolderProfile } from '../credentials/credentialDisplay'
-import { readClaimText } from '../credentials/claimFormatting'
+import { readCredentialHolderProfile, readDisplayValue } from '../credentials/credentialDisplay'
+import { readClaimText, stringifyClaim } from '../credentials/claimFormatting'
 import { isIssuerOid4VpClientId, isIssuerOid4VpResponseUri } from '../../config/trustedVerifiers'
-import { getCardSchema } from '../../config/cardSchemas'
+import { getCardSchema, findDisplayFieldForClaimKey, resolvePresentationDisclosureLabel } from '../../config/cardSchemas'
 import {
   isSdJwtKbDisabledForTesting,
   readVerifierDcqlVpTokenShape,
@@ -9,7 +9,10 @@ import {
 } from '../../config/runtimeFlags'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { decodeJwtPayload, isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
-import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { enrichDisclosuresWithPolicy } from './claimDisclosurePolicy'
+import type { FetchIssuerMetadata, VerifiableCredentialRecord } from '../vci/exchangeService'
+import { fetchIssuerMetadata, readCredentialClaimMap } from '../vci/exchangeService'
+import { parseClientId } from './clientIdScheme'
 import { parseAuthorizationRequestBody } from './authorizationRequestJar'
 import {
   assertNoSetDcqlCardinality,
@@ -34,6 +37,8 @@ export type PresentationDisclosure = {
   key: string
   label: string
   value: string
+  mandatory?: boolean
+  selective?: boolean
 }
 
 export type PresentationDefinitionField = {
@@ -106,6 +111,7 @@ export type PresentationSubmission = {
 export type ResolvePresentationRequestOptions = {
   trustedVerifiers: TrustedVerifier[]
   fetchImpl?: typeof fetch
+  fetchIssuerMetadata?: FetchIssuerMetadata
 }
 
 export type SubmitPresentationResponseOptions = {
@@ -117,6 +123,7 @@ export type SubmitPresentationResponseOptions = {
 export type VerifierResponse = {
   status: string
   message?: string
+  redirectUri?: string
 }
 
 export type PresentationTokenMode = 'signed-vp-jwt' | 'raw-credential' | 'sd-jwt-kb'
@@ -130,7 +137,7 @@ type PresentationTokenModeOptions =
 
 const SUPPORTED_RESPONSE_MODE = 'direct_post'
 const THAI_ID_TYPE = 'ThaiNationalID'
-const TRANSCRIPT_TYPE = 'BangkokUniversityTranscript'
+const TRANSCRIPT_TYPE = 'ChulalongkornUniversityTranscript'
 const DRIVING_LICENCE_TYPE = 'DLTDrivingLicence'
 const BIRTH_DATE_PATHS = new Set(['$.birthDate', '$.birthdate', '$.birth_date', '$.dateOfBirth', '$.date_of_birth', '$.dob'])
 const BIRTH_DATE_KEYS = ['birthDate', 'birthdate', 'birth_date', 'dateOfBirth', 'date_of_birth', 'dob']
@@ -333,9 +340,16 @@ export async function resolvePresentationRequest(
   }
 
   const dcqlClaimDisclosures = effectiveDcqlQuery ? readDcqlClaimDisclosures(matchedCredential, effectiveDcqlQuery) : undefined
-  const disclosures = presentationDefinition
+  const rawDisclosures = presentationDefinition
     ? readBirthDateDisclosures(matchedCredential)
     : dcqlClaimDisclosures ?? [readCredentialDisclosure(matchedCredential)]
+  const disclosures = await enrichDisclosuresWithPolicy(matchedCredential, rawDisclosures, {
+    fetchIssuerMetadata: options.fetchIssuerMetadata ?? fetchIssuerMetadata,
+    ...(matchedCredential.issuerUrl ? { issuerUrl: matchedCredential.issuerUrl } : {}),
+    ...(matchedCredential.credentialConfigurationId
+      ? { credentialConfigurationId: matchedCredential.credentialConfigurationId }
+      : {}),
+  })
   const resolvedRequest: ResolvedPresentationRequest = {
     requestUri: rawRequestUri,
     clientId,
@@ -473,10 +487,115 @@ export async function submitPresentationResponse(
     )
   }
 
+  const redirectUri = readVerifierReturnUrl(parsedBody, request)
+
   return {
     status: readString(parsedBody.status) ?? 'verified',
     ...(readString(parsedBody.message) ? { message: readString(parsedBody.message) } : {}),
+    ...(redirectUri ? { redirectUri } : {}),
   }
+}
+
+export function readVerifierReturnUrl(
+  parsedBody: unknown,
+  request: Pick<ResolvedPresentationRequest, 'clientId' | 'state' | 'responseUri' | 'verifier'>,
+): string | undefined {
+  // Reference / Scan Verifier API (direct_post to /openid4vc/verify/*): stay in Wallet.
+  if (isOpenId4VcApiEndpointUrl(request.responseUri)) {
+    return undefined
+  }
+
+  const fromBody = readString(isRecord(parsedBody) ? parsedBody.redirect_uri : undefined)
+  if (
+    fromBody &&
+    isHolderPortalReturnUrl(fromBody, request.responseUri) &&
+    isAllowlistedReturnUrl(fromBody, request.verifier.allowedOrigins)
+  ) {
+    return fromBody
+  }
+
+  const parsedClientId = parseClientId(request.clientId)
+  if (parsedClientId.scheme !== 'redirect_uri') return undefined
+
+  try {
+    if (!isHolderPortalReturnUrl(parsedClientId.originalClientId, request.responseUri)) {
+      return undefined
+    }
+
+    const url = new URL(parsedClientId.originalClientId)
+    if (request.state) {
+      url.searchParams.set('state', request.state)
+    }
+    const candidate = url.toString()
+    return isAllowlistedReturnUrl(candidate, request.verifier.allowedOrigins) ? candidate : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const OPENID4VC_API_PATH_PREFIXES = ['/openid4vc/verify', '/openid4vc/request'] as const
+
+/** Host:port + pathname key for endpoint equality (ignores scheme and trailing slashes). */
+export function readNormalizedEndpointKey(url: string): string | undefined {
+  try {
+    const parsed = new URL(url)
+    const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
+    const pathname = parsed.pathname.replace(/\/+$/, '') || '/'
+    return `${parsed.hostname.toLowerCase()}:${port}${pathname}`
+  } catch {
+    return undefined
+  }
+}
+
+/** Holder portal return URLs must differ from the direct_post response_uri API endpoint. */
+export function isDirectPostResponseEndpoint(candidateUrl: string, responseUri: string): boolean {
+  const candidateKey = readNormalizedEndpointKey(candidateUrl)
+  const responseKey = readNormalizedEndpointKey(responseUri)
+  return Boolean(candidateKey && responseKey && candidateKey === responseKey)
+}
+
+export function isOpenId4VcApiEndpointUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.replace(/\/+$/, '') || '/'
+    return OPENID4VC_API_PATH_PREFIXES.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+  } catch {
+    return false
+  }
+}
+
+/** True when URL is a genuine Holder portal callback, not a direct_post or OID4VC API route. */
+export function isHolderPortalReturnUrl(candidateUrl: string, responseUri: string): boolean {
+  if (isDirectPostResponseEndpoint(candidateUrl, responseUri)) return false
+  if (isOpenId4VcApiEndpointUrl(candidateUrl)) return false
+
+  if (isOpenId4VcApiEndpointUrl(responseUri)) {
+    try {
+      const pathname = new URL(candidateUrl).pathname.replace(/\/+$/, '') || '/'
+      if (pathname === '/') return false
+    } catch {
+      return false
+    }
+  }
+
+  return true
+}
+
+function readComparableOrigin(raw: string): string | undefined {
+  try {
+    const url = new URL(raw)
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80')
+    return `${url.hostname.toLowerCase()}:${port}`
+  } catch {
+    return undefined
+  }
+}
+
+export function isAllowlistedReturnUrl(returnUrl: string, allowedOrigins: readonly string[]): boolean {
+  const returnOrigin = readComparableOrigin(returnUrl)
+  if (!returnOrigin) return false
+  return allowedOrigins.some((allowed) => readComparableOrigin(allowed) === returnOrigin)
 }
 
 function formatVpTokenForResponse(request: ResolvedPresentationRequest, vpToken: string): string {
@@ -794,7 +913,8 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
   if (claimsQueries.length === 0) return undefined
 
   const schema = getCardSchema(record.type)
-  const normalizedClaimKeys = new Map(Object.keys(record.claims).map((key) => [normalizeClaimKey(key), key]))
+  const claims = readCredentialClaimMap(record)
+  const normalizedClaimKeys = new Map(Object.keys(claims).map((key) => [normalizeClaimKey(key), key]))
 
   const disclosures: PresentationDisclosure[] = []
   for (const claimQuery of claimsQueries) {
@@ -802,19 +922,25 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
     if (!requestedKey) continue
 
     const normalizedRequestedKey = normalizeClaimKey(requestedKey)
-    const matchedKey = normalizedClaimKeys.get(normalizedRequestedKey)
-    if (!matchedKey) continue
+    const field = findDisplayFieldForClaimKey(schema.displayFields, requestedKey)
 
-    const value = readClaimText(record.claims, [matchedKey])
+    const lookupKeys = field
+      ? [field.key, ...(field.aliases ?? [])]
+      : [normalizedClaimKeys.get(normalizedRequestedKey) ?? requestedKey]
+
+    const value = field ? readDisplayValue(claims, field) : readClaimText(claims, lookupKeys)
     if (value === undefined) continue
 
-    const field = schema.displayFields.find(
-      (displayField) =>
-        normalizeClaimKey(displayField.key) === normalizedRequestedKey ||
-        (displayField.aliases ?? []).some((alias) => normalizeClaimKey(alias) === normalizedRequestedKey),
-    )
+    const matchedKey =
+      lookupKeys.find((key) => readClaimText(claims, [key]) !== undefined) ??
+      normalizedClaimKeys.get(normalizedRequestedKey) ??
+      requestedKey
 
-    disclosures.push({ key: matchedKey, label: field?.presentationLabel ?? field?.label ?? requestedKey, value })
+    disclosures.push({
+      key: matchedKey,
+      label: resolvePresentationDisclosureLabel(record.type, matchedKey),
+      value,
+    })
   }
 
   return disclosures.length > 0 ? disclosures : undefined

@@ -22,7 +22,11 @@ export function PresentationInfoPanel({ request, onConfirm }: Props) {
         <PresentationCredentialSummaryCard record={request.matchedCredential} />
         <PresentationApprovalDeviceCard registeredAt={getWalletKeyRegisteredAt()} />
         <PresentationPopCard signature={credentialSignature} />
-        <PresentationRequestedItemsCard disclosures={request.disclosures} onAccept={onConfirm} />
+        <PresentationRequestedItemsCard
+          documentType={request.matchedCredential.type}
+          disclosures={request.disclosures}
+          onAccept={onConfirm}
+        />
       </ScrollView>
     </View>
   )

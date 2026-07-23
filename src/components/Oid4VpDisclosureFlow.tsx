@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from './AppButton'
 import { FacePreparePanel } from './FacePreparePanel'
-import { PresentationConsentPanel } from './PresentationConsentPanel'
+import { PresentationConsentPanel, readInitialSelectedClaimKeys, readSelectedDisclosureLabels } from './PresentationConsentPanel'
 import { PresentationInfoPanel } from './PresentationInfoPanel'
 import { PresentationResultPanel } from './PresentationResultPanel'
 import { PresentationStepScaffold } from './PresentationStepScaffold'
@@ -63,6 +63,7 @@ type Props = {
 export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onDone, onCancel }: Props) {
   const [phase, setPhase] = useState<FlowPhase>({ tag: 'resolving' })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedClaimKeys, setSelectedClaimKeys] = useState<Set<string>>(() => new Set())
   const generationRef = useRef(0)
 
   useEffect(() => {
@@ -112,7 +113,10 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
         logWalletStep('my-qr', 'presentation-biometric-skipped-signed-mode', describePresentationForLog(request))
       }
 
-      if (generationRef.current === gen) setPhase({ tag: 'consent', request })
+      if (generationRef.current === gen) {
+        setSelectedClaimKeys(readInitialSelectedClaimKeys(request.disclosures))
+        setPhase({ tag: 'consent', request })
+      }
     } catch (err) {
       logWalletError('my-qr', 'presentation-biometric-failed', err)
       recordWalletInitiatedPresentationFailure({
@@ -124,13 +128,19 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
     }
   }, [])
 
-  const approvePresentation = useCallback(async (request: ResolvedPresentationRequest) => {
+  const approvePresentation = useCallback(async (
+    request: ResolvedPresentationRequest,
+    holderSelectedClaimKeys: ReadonlySet<string>,
+  ) => {
     if (isSubmitting) return
     setIsSubmitting(true)
     const gen = generationRef.current
+    const disclosedLabels = readSelectedDisclosureLabels(request.disclosures, holderSelectedClaimKeys)
     try {
       logWalletStep('my-qr', 'presentation-approve-start', describePresentationForLog(request))
-      const { vpToken, presentationSubmission } = await createApprovedPresentationResponse(request)
+      const { vpToken, presentationSubmission } = await createApprovedPresentationResponse(request, {
+        selectedClaimKeys: [...holderSelectedClaimKeys],
+      })
       const response = await withTimeout(
         submitPresentationResponse(request, { vpToken, presentationSubmission }),
         PRESENT_TIMEOUT_MS,
@@ -145,7 +155,7 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
         credentialId: request.matchedCredential.id,
         documentType: getCardSchema(request.matchedCredential.type).title,
         partyName: request.verifier.name,
-        disclosedClaims: request.disclosures.map((disclosure) => disclosure.label),
+        disclosedClaims: disclosedLabels,
         channel: 'wallet',
       })
       maybeConsumeSingleUseCredential({
@@ -164,8 +174,9 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
         disclosedClaims: request.disclosures.map((disclosure) => disclosure.label),
       })
       const raw = err instanceof Error ? err.message : String(err)
-      setIsSubmitting(false)
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
+    } finally {
+      setIsSubmitting(false)
     }
   }, [isSubmitting])
 
@@ -195,12 +206,21 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
       <PresentationStepScaffold onBack={onCancel}>
         <PresentationConsentPanel
           request={phase.request}
+          selectedClaimKeys={selectedClaimKeys}
+          onToggleClaim={(claimKey) => {
+            setSelectedClaimKeys((previous) => {
+              const next = new Set(previous)
+              if (next.has(claimKey)) next.delete(claimKey)
+              else next.add(claimKey)
+              return next
+            })
+          }}
           onAccept={() => {
             logWalletStep('my-qr', 'presentation-user-accepted', describePresentationForLog(phase.request))
-            void approvePresentation(phase.request)
+            void approvePresentation(phase.request, selectedClaimKeys)
           }}
           onReject={() => declinePresentation(phase.request)}
-          disabled={isSubmitting}
+          submitting={isSubmitting}
         />
       </PresentationStepScaffold>
     )

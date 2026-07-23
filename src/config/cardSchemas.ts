@@ -5,6 +5,11 @@ export type DisplayField = {
   presentationLabel?: string;
   aliases?: string[];
   staticValue?: string;
+  /** OID4VP Holder disclosure policy fallback when Issuer metadata is unavailable. */
+  presentationDisclosure?: {
+    md?: boolean;
+    sd?: boolean;
+  };
 };
 
 export type IssuanceVerificationConfig = {
@@ -241,7 +246,7 @@ const SCHEMAS: CardSchemaConfig[] = [
     ],
   },
   {
-    type: "BangkokUniversityTranscript",
+    type: "ChulalongkornUniversityTranscript",
     title: "Academic Transcript",
     documentTitle: "TRANSCRIPT",
     issuerName: "Chulalongkorn University",
@@ -256,6 +261,7 @@ const SCHEMAS: CardSchemaConfig[] = [
         label: "Full Name",
         presentationLabel: "ชื่อ-นามสกุล",
         aliases: ["full_name", "name"],
+        presentationDisclosure: { md: true },
       },
       {
         key: "birthDate",
@@ -274,24 +280,35 @@ const SCHEMAS: CardSchemaConfig[] = [
         label: "Student ID",
         presentationLabel: "รหัสนักศึกษา",
         aliases: ["student_id", "studentID", "student_number", "studentNumber"],
+        presentationDisclosure: { md: true },
       },
       {
         key: "degree",
         label: "Degree",
         presentationLabel: "วุฒิการศึกษา",
         aliases: ["degreeName", "degree_name", "program", "programName"],
+        presentationDisclosure: { md: true },
       },
       {
         key: "faculty",
         label: "Faculty",
         presentationLabel: "คณะ / สาขาวิชา",
         aliases: ["facultyName", "faculty_name", "school", "schoolName"],
+        presentationDisclosure: { md: true },
       },
       {
         key: "gpa",
         label: "GPA",
         presentationLabel: "เกรดเฉลี่ย",
         aliases: ["GPAX", "gradePointAverage", "grade_point_average"],
+        presentationDisclosure: { sd: true },
+      },
+      {
+        key: "grades",
+        label: "Grades",
+        presentationLabel: "ผลการเรียน",
+        aliases: ["grade_list", "gradeList"],
+        presentationDisclosure: { sd: true },
       },
       {
         key: "graduationYear",
@@ -304,6 +321,7 @@ const SCHEMAS: CardSchemaConfig[] = [
           "graduationDate",
           "graduation_date",
         ],
+        presentationDisclosure: { sd: true },
       },
       {
         key: "institutionName",
@@ -315,6 +333,7 @@ const SCHEMAS: CardSchemaConfig[] = [
           "universityName",
           "university_name",
         ],
+        presentationDisclosure: { md: true, sd: false },
       },
       {
         key: "expiryDate",
@@ -412,6 +431,35 @@ const SCHEMA_MAP = new Map<string, CardSchemaConfig>(
   SCHEMAS.map((s) => [s.type, s]),
 );
 
+export function normalizeClaimLabelKey(value: string): string {
+  return value.replace(/[\s_\-.]/g, "").toLowerCase();
+}
+
+export function findDisplayFieldForClaimKey(
+  fields: DisplayField[],
+  claimKey: string,
+): DisplayField | undefined {
+  const normalizedKey = normalizeClaimLabelKey(claimKey);
+  return fields.find(
+    (field) =>
+      normalizeClaimLabelKey(field.key) === normalizedKey ||
+      (field.aliases ?? []).some(
+        (alias) => normalizeClaimLabelKey(alias) === normalizedKey,
+      ),
+  );
+}
+
+export function resolvePresentationDisclosureLabel(
+  documentType: string,
+  claimKey: string,
+): string {
+  const field = findDisplayFieldForClaimKey(
+    getCardSchema(documentType).displayFields,
+    claimKey,
+  );
+  return field?.presentationLabel ?? field?.label ?? claimKey;
+}
+
 export function getCardSchema(type: string): CardSchemaConfig {
   return SCHEMA_MAP.get(type) ?? FALLBACK_SCHEMA;
 }
@@ -427,7 +475,7 @@ export function getCardSchemaForConfigurationId(
 
   const normalized = configurationId.toLowerCase();
   if (normalized.includes("transcript"))
-    return getCardSchema("BangkokUniversityTranscript");
+    return getCardSchema("ChulalongkornUniversityTranscript");
   if (
     normalized.includes("medical") ||
     normalized.includes("medicine") ||

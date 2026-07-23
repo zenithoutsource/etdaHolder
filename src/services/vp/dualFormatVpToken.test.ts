@@ -14,7 +14,7 @@ const baseRequest: ResolvedPresentationRequest = {
   },
   matchedCredential: {
     id: 'credential-1',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
     claims: { vct: 'Transcript' },
     issuedAt: '2026-06-01T10:00:00.000Z',

@@ -1,13 +1,32 @@
 import { isDualFormatDcqlRequest } from '../dualFormatPresentationMatch'
+import { resolveEffectiveDisclosureKeys } from '../claimDisclosurePolicy'
 import { buildPresentationSubmission, readPresentationTokenAudience, type ResolvedPresentationRequest } from '../presentationService'
 import { selectSdJwtDisclosures } from '../sdJwtSelectiveDisclosure'
 import type { PresentationTokenBuilder } from './types'
 
-function readRequestedClaimKeys(request: ResolvedPresentationRequest): readonly string[] | undefined {
-  const claims = request.dcqlQuery?.credentials.flatMap((credential) => credential.claims ?? []) ?? []
-  if (claims.length === 0) return undefined
+function readEffectiveClaimKeys(context: {
+  request: ResolvedPresentationRequest
+  selectedClaimKeys?: readonly string[]
+}): readonly string[] | undefined {
+  const { request, selectedClaimKeys } = context
+  if (!request.dcqlQuery) return undefined
 
-  return request.disclosures.map((disclosure) => disclosure.key)
+  const dcqlClaimKeys = request.dcqlQuery.credentials.flatMap(
+    (credential) => credential.claims?.flatMap((claim) => (claim.path[0] ? [claim.path[0]] : [])) ?? [],
+  )
+
+  if (!selectedClaimKeys) {
+    if (dcqlClaimKeys.length === 0) return undefined
+    return request.disclosures.map((disclosure) => disclosure.key)
+  }
+
+  return resolveEffectiveDisclosureKeys(
+    request.disclosures.map((disclosure) => ({
+      key: disclosure.key,
+      mandatory: disclosure.mandatory ?? false,
+    })),
+    new Set(selectedClaimKeys),
+  )
 }
 
 export const dualFormatDcqlPresentationBuilder: PresentationTokenBuilder = {
@@ -16,6 +35,7 @@ export const dualFormatDcqlPresentationBuilder: PresentationTokenBuilder = {
   build: async (context) => {
     const vpToken = await context.buildDualFormatDcqlVpToken(context.request, {
       signSdJwtKb: context.signSdJwtKbPresentationToken,
+      selectedClaimKeys: readEffectiveClaimKeys(context),
     })
     return { vpToken }
   },
@@ -32,7 +52,7 @@ export const standardDcqlPresentationBuilder: PresentationTokenBuilder = {
       return {
         vpToken: selectSdJwtDisclosures(
           context.request.matchedCredential.rawVc,
-          readRequestedClaimKeys(context.request),
+          readEffectiveClaimKeys(context),
         ),
       }
     }
@@ -43,7 +63,7 @@ export const standardDcqlPresentationBuilder: PresentationTokenBuilder = {
         nonce: context.request.nonce,
         sdJwt: selectSdJwtDisclosures(
           context.request.matchedCredential.rawVc,
-          readRequestedClaimKeys(context.request),
+          readEffectiveClaimKeys(context),
         ),
       })
       return { vpToken }

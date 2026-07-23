@@ -24,7 +24,7 @@ test('matches dual-format requests against the SD-JWT record only', () => {
 
   const record: VerifiableCredentialRecord = {
     id: 'credential-1',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: 'issuer.sd.jwt~disclosure~',
     claims: { vct: 'Transcript' },
     issuedAt: '2026-06-01T10:00:00.000Z',

@@ -91,6 +91,8 @@ jest.mock('./PresentationConsentPanel', () => {
         </Pressable>
       </>
     ),
+    readInitialSelectedClaimKeys: () => new Set(['credential']),
+    readSelectedDisclosureLabels: () => ['ชื่อ'],
   }
 })
 

@@ -12,7 +12,7 @@ test('selects dual-format DCQL builder before standard DCQL', async () => {
       verifier: { clientId: 'client', name: 'Verifier', allowedOrigins: ['https://verifier.example'] },
       matchedCredential: {
         id: 'cred-1',
-        type: 'BangkokUniversityTranscript',
+        type: 'ChulalongkornUniversityTranscript',
         rawVc: 'sd.jwt~',
         claims: {},
         issuedAt: '2026-01-01T00:00:00.000Z',

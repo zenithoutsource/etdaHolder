@@ -38,7 +38,7 @@ const baseRequest: ResolvedPresentationRequest = {
   },
   matchedCredential: {
     id: 'credential-1',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: rawCredential,
     claims: {},
     issuedAt: '2026-06-01T10:00:00.000Z',
@@ -108,9 +108,9 @@ describe('presentationApproval', () => {
   test('returns raw credential presentation tokens without a second biometric prompt', async () => {
     const confirmBiometric = jest.fn().mockResolvedValue(undefined)
 
-    const response = await createApprovedPresentationResponse(requestWithDcql(false), {
+    const response = await createApprovedPresentationResponse(requestWithDcql(false), {}, {
       confirmBiometric,
-    })
+    } as never)
 
     expect(confirmBiometric).not.toHaveBeenCalled()
     expect(response).toEqual({ vpToken: rawCredential, presentationSubmission: undefined })
@@ -136,9 +136,9 @@ describe('presentationApproval', () => {
       },
     }
 
-    const response = await createApprovedPresentationResponse(request, {
+    const response = await createApprovedPresentationResponse(request, {}, {
       confirmBiometric: jest.fn(),
-    })
+    } as never)
 
     expect(response).toEqual({
       vpToken: filteredSdJwt,
@@ -150,7 +150,7 @@ describe('presentationApproval', () => {
     const confirmBiometric = jest.fn()
     const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
 
-    const response = await createApprovedPresentationResponse(requestWithDcql(true), {
+    const response = await createApprovedPresentationResponse(requestWithDcql(true), {}, {
       confirmBiometric,
       signSdJwtKbPresentationToken,
     })
@@ -185,12 +185,45 @@ describe('presentationApproval', () => {
     }
     const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
 
-    await createApprovedPresentationResponse(request, { signSdJwtKbPresentationToken })
+    await createApprovedPresentationResponse(request, {}, { signSdJwtKbPresentationToken })
 
     expect(signSdJwtKbPresentationToken).toHaveBeenCalledWith({
       audience: request.clientId,
       nonce: request.nonce,
       sdJwt: filteredSdJwt,
+    })
+  })
+
+  test('passes holder-selected SD-JWT disclosure keys to the signer', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...requestWithDcql(true),
+      disclosures: [
+        { key: 'name', label: 'Name', value: 'Alice', mandatory: false, selective: true },
+        { key: 'age', label: 'Age', value: '25', mandatory: true, selective: false },
+      ],
+      matchedCredential: {
+        ...baseRequest.matchedCredential,
+        rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
+      },
+      dcqlQuery: {
+        credentials: [
+          {
+            id: 'transcript_credential',
+            format: 'dc+sd-jwt',
+            claims: [{ path: ['name'] }, { path: ['age'] }],
+            require_cryptographic_holder_binding: true,
+          },
+        ],
+      },
+    }
+    const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
+
+    await createApprovedPresentationResponse(request, { selectedClaimKeys: ['age'] }, { signSdJwtKbPresentationToken })
+
+    expect(signSdJwtKbPresentationToken).toHaveBeenCalledWith({
+      audience: request.clientId,
+      nonce: request.nonce,
+      sdJwt: 'issuer.sd.jwt~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
     })
   })
 
@@ -211,7 +244,7 @@ describe('presentationApproval', () => {
         vpToken: '{"transcript_sd_jwt":["sd-jwt~kb.jwt"],"transcript_mdoc":["mdoc"]}',
       })
 
-    const response = await createApprovedPresentationResponse(request, {
+    const response = await createApprovedPresentationResponse(request, {}, {
       buildApprovedPresentationResponse,
     })
 
@@ -229,7 +262,7 @@ describe('presentationApproval', () => {
     }
     const signPresentationVpToken = jest.fn().mockResolvedValue('vp.jwt')
 
-    const response = await createApprovedPresentationResponse(request, {
+    const response = await createApprovedPresentationResponse(request, {}, {
       signPresentationVpToken,
     })
 

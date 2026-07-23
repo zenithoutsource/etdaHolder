@@ -6,7 +6,7 @@ import { isExactDualFormatPair } from './dualFormatPresentationMatch'
 import type { DcqlClaimsQuery, DcqlCredentialQuery, DcqlQuery } from './presentationService'
 
 const THAI_ID_TYPE = 'ThaiNationalID'
-const TRANSCRIPT_TYPE = 'BangkokUniversityTranscript'
+const TRANSCRIPT_TYPE = 'ChulalongkornUniversityTranscript'
 const DRIVING_LICENCE_TYPE = 'DLTDrivingLicence'
 
 const SUPPORTED_DCQL_FORMATS = new Set(['jwt_vc_json', 'jwt_vc', 'dc+sd-jwt', 'vc+sd-jwt'])

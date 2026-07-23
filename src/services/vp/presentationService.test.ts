@@ -1,8 +1,12 @@
 import {
   buildPresentationSubmission,
+  isDirectPostResponseEndpoint,
+  isHolderPortalReturnUrl,
   isOid4VpAuthorizationRequest,
+  isOpenId4VcApiEndpointUrl,
   readPresentationTokenMode,
   readPresentationTokenAudience,
+  readVerifierReturnUrl,
   resolvePresentationRequest,
   submitPresentationResponse,
 } from './presentationService'
@@ -15,6 +19,22 @@ function unsignedJwt(payload: Record<string, unknown>): string {
     btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 
   return `${encode({ alg: 'none', typ: 'oauth-authz-req+jwt' })}.${encode(payload)}.`
+}
+
+function disclosure(
+  entry: {
+    key: string
+    label: string
+    value: string
+    mandatory?: boolean
+    selective?: boolean
+  },
+) {
+  return {
+    mandatory: false,
+    selective: true,
+    ...entry,
+  }
 }
 
 const thaiIdRecord: VerifiableCredentialRecord = {
@@ -34,7 +54,7 @@ const thaiIdRecord: VerifiableCredentialRecord = {
 
 const transcriptRecord: VerifiableCredentialRecord = {
   id: 'transcript-1',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: `${unsignedJwt({
     iss: 'https://issuer.example.com',
     vct: 'http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential',
@@ -172,7 +192,7 @@ describe('presentationService', () => {
 
     expect(request.verifier.name).toBe('Entertainment Venue')
     expect(request.matchedCredential.id).toBe('thai-id-1')
-    expect(request.disclosures).toEqual([{ key: 'age', label: 'อายุ', value: '25' }])
+    expect(request.disclosures).toEqual([disclosure({ key: 'age', label: 'อายุ', value: '25' })])
   })
 
   test('resolves presentation_definition_uri after trusting the verifier', async () => {
@@ -206,7 +226,7 @@ describe('presentationService', () => {
     })
 
     expect(request.matchedCredential.id).toBe('thai-id-1')
-    expect(request.disclosures).toEqual([{ key: 'age', label: 'อายุ', value: '25' }])
+    expect(request.disclosures).toEqual([disclosure({ key: 'age', label: 'อายุ', value: '25' })])
     expect(fetchMock).toHaveBeenCalledWith(
       'https://verifier.example.com/pd/age-over-20.json',
       expect.objectContaining({ headers: { Accept: 'application/json' } }),
@@ -306,7 +326,9 @@ describe('presentationService', () => {
     expect(request.verifier.name).toBe('Verifier API')
     expect(request.responseUri).toBe('http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123')
     expect(request.matchedCredential.id).toBe('thai-id-1')
-    expect(request.disclosures).toEqual([{ key: 'credential', label: 'Credential', value: 'Thai National ID' }])
+    expect(request.disclosures).toEqual([
+      disclosure({ key: 'credential', label: 'Credential', value: 'Thai National ID' }),
+    ])
   })
 
   test('resolves DCQL credential_sets OR when wallet holds only the first alternative', async () => {
@@ -452,16 +474,16 @@ describe('presentationService', () => {
     })
 
     expect(request.disclosures).toEqual([
-      { key: 'id_number', label: 'เลขบัตรประจำตัวประชาชน', value: '1234567890123' },
-      { key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' },
-      { key: 'birthdate', label: 'วันเดือนปีเกิด', value: '2001-05-15' },
-      { key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' },
-      { key: 'religion', label: 'ศาสนา', value: 'Buddhist' },
-      { key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' },
+      disclosure({ key: 'id_number', label: 'เลขบัตรประจำตัวประชาชน', value: '1234567890123' }),
+      disclosure({ key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' }),
+      disclosure({ key: 'birthdate', label: 'วันเดือนปีเกิด', value: '2001-05-15' }),
+      disclosure({ key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' }),
+      disclosure({ key: 'religion', label: 'ศาสนา', value: 'Buddhist' }),
+      disclosure({ key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' }),
     ])
   })
 
-  test('uses schema presentation labels for DCQL BangkokUniversityTranscript requested claim paths', async () => {
+  test('uses schema presentation labels for DCQL ChulalongkornUniversityTranscript requested claim paths', async () => {
     const transcriptWithVerifierClaims: VerifiableCredentialRecord = {
       ...transcriptRecord,
       claims: {
@@ -470,7 +492,7 @@ describe('presentationService', () => {
         faculty: 'Engineering',
         gpa: '3.75',
         graduation_date: '2026-05-31',
-        institution_name: 'Bangkok University',
+        institution_name: 'Chulalongkorn University',
         degree: 'Bachelor of Engineering',
       },
     }
@@ -519,13 +541,55 @@ describe('presentationService', () => {
     })
 
     expect(request.disclosures).toEqual([
-      { key: 'student_id', label: 'รหัสนักศึกษา', value: '6512345678' },
-      { key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' },
-      { key: 'faculty', label: 'คณะ / สาขาวิชา', value: 'Engineering' },
-      { key: 'gpa', label: 'เกรดเฉลี่ย', value: '3.75' },
-      { key: 'graduation_date', label: 'วันสำเร็จการศึกษา', value: '2026-05-31' },
-      { key: 'institution_name', label: 'ชื่อสถาบัน', value: 'Bangkok University' },
-      { key: 'degree', label: 'วุฒิการศึกษา', value: 'Bachelor of Engineering' },
+      disclosure({ key: 'student_id', label: 'รหัสนักศึกษา', value: '6512345678', mandatory: true, selective: false }),
+      disclosure({ key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี', mandatory: true, selective: false }),
+      disclosure({ key: 'faculty', label: 'คณะ / สาขาวิชา', value: 'Engineering', mandatory: true, selective: false }),
+      disclosure({ key: 'gpa', label: 'เกรดเฉลี่ย', value: '3.75' }),
+      disclosure({ key: 'graduation_date', label: 'วันสำเร็จการศึกษา', value: '2026-05-31' }),
+      disclosure({ key: 'institution_name', label: 'ชื่อสถาบัน', value: 'Chulalongkorn University', mandatory: true, selective: false }),
+      disclosure({ key: 'degree', label: 'วุฒิการศึกษา', value: 'Bachelor of Engineering', mandatory: true, selective: false }),
+    ])
+  })
+
+  test('uses schema presentation labels when DCQL requests student_id but claims store studentId', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'transcript_credential',
+                  format: 'dc+sd-jwt',
+                  meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
+                  claims: [{ path: ['student_id'] }],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const request = await resolvePresentationRequest(verifierRequestUri(), [transcriptRecord], {
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      ],
+    })
+
+    expect(request.disclosures).toEqual([
+      { key: 'studentId', label: 'รหัสนักศึกษา', value: '6512345678', mandatory: true, selective: false },
     ])
   })
 
@@ -708,7 +772,9 @@ describe('presentationService', () => {
     })
 
     expect(request.matchedCredential.id).toBe('transcript-1')
-    expect(request.disclosures).toEqual([{ key: 'credential', label: 'Credential', value: 'Academic Transcript' }])
+    expect(request.disclosures).toEqual([
+      disclosure({ key: 'credential', label: 'Credential', value: 'Academic Transcript' }),
+    ])
     expect(infoSpy).toHaveBeenCalledWith(
       '[wallet:oid4vp] resolved-request-debug',
       expect.objectContaining({
@@ -1215,6 +1281,99 @@ describe('presentationService', () => {
     }
   })
 
+  test('does not surface redirectUri when verifier POST body returns an API endpoint redirect', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'verified',
+            redirect_uri: 'https://verifier.zenithcomp.co.th:455/',
+          }),
+          { status: 200 },
+        ),
+    )
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+              },
+            }),
+            { status: 200 },
+          ),
+      ) as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      ],
+    })
+
+    const result = await submitPresentationResponse(request, {
+      vpToken: 'vp.jwt',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    expect(result.redirectUri).toBeUndefined()
+    expect(result.status).toBe('verified')
+  })
+
+  test('does not surface redirectUri for Verifier API direct_post even when body returns a portal path', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'verified',
+            redirect_uri: 'https://verifier.zenithcomp.co.th:455/portal/callback?session=1',
+          }),
+          { status: 200 },
+        ),
+    )
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+              },
+            }),
+            { status: 200 },
+          ),
+      ) as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      ],
+    })
+
+    const result = await submitPresentationResponse(request, {
+      vpToken: 'vp.jwt',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    expect(result.redirectUri).toBeUndefined()
+  })
+
   test('surfaces Verifier error descriptions from direct_post failures', async () => {
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
       async () =>
@@ -1236,6 +1395,184 @@ describe('presentationService', () => {
     await expect(
       submitPresentationResponse(request, { vpToken: 'vp.jwt', fetchImpl: fetchMock as unknown as typeof fetch }),
     ).rejects.toThrow('PresentationSubmissionFailed: HTTP 400: invalid_request - Present VP is invalid')
+  })
+})
+
+describe('readVerifierReturnUrl', () => {
+  const verifier = {
+    clientId: 'redirect_uri:https://verifier.example.com/cb',
+    name: 'Verifier',
+    allowedOrigins: ['https://verifier.example.com'],
+  }
+
+  test('returns redirect_uri from verifier response body when allowlisted', () => {
+    const url = readVerifierReturnUrl(
+      { redirect_uri: 'https://verifier.example.com/done?session=1' },
+      {
+        clientId: verifier.clientId,
+        state: 'state-1',
+        responseUri: 'https://verifier.example.com/oid4vp/direct-post',
+        verifier,
+      },
+    )
+
+    expect(url).toBe('https://verifier.example.com/done?session=1')
+  })
+
+  test('falls back to redirect_uri client_id with state when it is a portal callback', () => {
+    const url = readVerifierReturnUrl(
+      {},
+      {
+        clientId: 'redirect_uri:https://verifier.example.com/portal/callback',
+        state: 'state-1',
+        responseUri: 'https://verifier.example.com/oid4vp/direct-post',
+        verifier,
+      },
+    )
+
+    expect(url).toBe('https://verifier.example.com/portal/callback?state=state-1')
+  })
+
+  test('does not open redirect_uri client_id when it matches the direct_post response_uri', () => {
+    const url = readVerifierReturnUrl(
+      {},
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return verifier POST redirect_uri when it matches response_uri under http/https mismatch', () => {
+    const url = readVerifierReturnUrl(
+      {
+        redirect_uri: 'https://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+      },
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:https://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return verifier POST redirect_uri when it points at the verifier site root', () => {
+    const url = readVerifierReturnUrl(
+      {
+        redirect_uri: 'https://verifier.zenithcomp.co.th:455/',
+      },
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:https://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return redirect_uri client_id when it is an openid4vc verify API path', () => {
+    const url = readVerifierReturnUrl(
+      {},
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return verifier POST redirect_uri when it points at another openid4vc request endpoint', () => {
+    const url = readVerifierReturnUrl(
+      {
+        redirect_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/request/request-123',
+      },
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return portal callback redirect for Verifier API direct_post flows', () => {
+    const url = readVerifierReturnUrl(
+      {
+        redirect_uri: 'https://verifier.zenithcomp.co.th:455/portal/callback?session=1',
+      },
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:https://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+})
+
+describe('verifier return URL helpers', () => {
+  test('isDirectPostResponseEndpoint treats http and https as equivalent', () => {
+    expect(
+      isDirectPostResponseEndpoint(
+        'https://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+      ),
+    ).toBe(true)
+  })
+
+  test('isOpenId4VcApiEndpointUrl detects verify and request routes', () => {
+    expect(isOpenId4VcApiEndpointUrl('http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123')).toBe(true)
+    expect(isOpenId4VcApiEndpointUrl('http://verifier.zenithcomp.co.th:455/openid4vc/request/request-123')).toBe(true)
+    expect(isOpenId4VcApiEndpointUrl('https://verifier.zenithcomp.co.th:455/portal/callback')).toBe(false)
+  })
+
+  test('isHolderPortalReturnUrl rejects API endpoints and verifier root for verify direct_post flows', () => {
+    const responseUri = 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123'
+    expect(isHolderPortalReturnUrl('https://verifier.zenithcomp.co.th:455/', responseUri)).toBe(false)
+    expect(isHolderPortalReturnUrl('https://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123', responseUri)).toBe(
+      false,
+    )
+    expect(isHolderPortalReturnUrl('https://verifier.zenithcomp.co.th:455/portal/callback', responseUri)).toBe(true)
   })
 })
 

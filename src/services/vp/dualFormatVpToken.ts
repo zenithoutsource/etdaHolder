@@ -13,6 +13,7 @@ import { selectSdJwtDisclosures } from './sdJwtSelectiveDisclosure'
 export type DualFormatVpTokenDependencies = {
   signSdJwtKb?: typeof signSdJwtKbPresentationToken
   readMdocEntry?: typeof readMdocVpTokenEntry
+  selectedClaimKeys?: readonly string[]
 }
 
 export async function buildDualFormatDcqlVpToken(
@@ -36,6 +37,7 @@ export async function buildDualFormatDcqlVpToken(
       audience,
       signSdJwtKb,
       readMdocEntry,
+      selectedClaimKeys: dependencies.selectedClaimKeys,
     })
     entries[credentialQuery.id] = shape === 'object_string' ? token : [token]
   }
@@ -54,17 +56,20 @@ async function buildDcqlCredentialToken(input: {
   audience: string
   signSdJwtKb: typeof signSdJwtKbPresentationToken
   readMdocEntry: typeof readMdocVpTokenEntry
+  selectedClaimKeys?: readonly string[]
 }): Promise<string> {
   const format = input.credentialQuery.format
 
   if (format === 'dc+sd-jwt' || format === 'vc+sd-jwt') {
+    const claimKeys =
+      input.selectedClaimKeys ??
+      input.credentialQuery.claims?.flatMap((claim) => (claim.path[0] ? [claim.path[0]] : [])) ??
+      input.request.disclosures.map((disclosure) => disclosure.key)
+
     return input.signSdJwtKb({
       audience: input.audience,
       nonce: input.request.nonce,
-      sdJwt: selectSdJwtDisclosures(
-        input.request.matchedCredential.rawVc,
-        input.credentialQuery.claims?.flatMap((claim) => claim.path[0] ? [claim.path[0]] : []),
-      ),
+      sdJwt: selectSdJwtDisclosures(input.request.matchedCredential.rawVc, claimKeys),
     })
   }
 

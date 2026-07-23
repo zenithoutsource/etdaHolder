@@ -9,16 +9,17 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
 })
 
 describe('PresentationRequestedItemsCard', () => {
-  test('renders only the user-facing disclosure list', () => {
+  test('renders schema presentation labels for requested disclosures', () => {
     render(
       <PresentationRequestedItemsCard
-        disclosures={[{ key: 'credential', label: 'Credential', value: 'Academic Transcript' }]}
+        documentType="ChulalongkornUniversityTranscript"
+        disclosures={[{ key: 'gpa', label: 'GPA', value: '3.75' }]}
         onAccept={jest.fn()}
       />,
     )
 
-    expect(screen.getByText('Credential')).toBeTruthy()
-    expect(screen.getByText('Academic Transcript')).toBeTruthy()
+    expect(screen.getByText('เกรดเฉลี่ย')).toBeTruthy()
+    expect(screen.getByText('3.75')).toBeTruthy()
     expect(screen.queryByText('Verifier Request')).toBeNull()
   })
 })

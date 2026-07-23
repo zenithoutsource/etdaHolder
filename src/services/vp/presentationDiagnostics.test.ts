@@ -89,7 +89,7 @@ test('describes SD-JWT KB presentation metadata without full token contents', ()
       },
       matchedCredential: {
         id: 'credential-1',
-        type: 'BangkokUniversityTranscript',
+        type: 'ChulalongkornUniversityTranscript',
         rawVc: issuerJwt,
         claims: {},
         issuedAt: '2026-06-12T00:00:00.000Z',

@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
 import { FacePreparePanel } from '../../src/components/FacePreparePanel'
-import { PresentationConsentPanel } from '../../src/components/PresentationConsentPanel'
+import { PresentationConsentPanel, readInitialSelectedClaimKeys, readSelectedDisclosureLabels } from '../../src/components/PresentationConsentPanel'
 import { PresentationInfoPanel } from '../../src/components/PresentationInfoPanel'
 import { PresentationResultPanel } from '../../src/components/PresentationResultPanel'
 import { PresentationStepScaffold } from '../../src/components/PresentationStepScaffold'
@@ -66,6 +66,7 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions()
   const [phase, setPhase] = useState<ScanPhase>({ tag: 'scanning' })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedClaimKeys, setSelectedClaimKeys] = useState<Set<string>>(() => new Set())
   const processingRef = useRef(false)
   const generationRef = useRef(0)
   const handleBarcodeRef = useRef<(uri: string) => Promise<void>>(async () => undefined)
@@ -79,6 +80,9 @@ export default function ScanScreen() {
   const vpGeneration = useDeeplinkStore((s) => s.vpGeneration)
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
+  const phaseRef = useRef(phase)
+  phaseRef.current = phase
+
   const resetScanner = useCallback(() => {
     const dismissedVpUri = lastDeeplinkRef.current
     if (dismissedVpUri && isPresentationRequestDeeplink(dismissedVpUri)) {
@@ -88,8 +92,20 @@ export default function ScanScreen() {
     generationRef.current++
     setPhase({ tag: 'scanning' })
     processingRef.current = false
+    setIsSubmitting(false)
     logWalletStep('scan', 'scanner-reset', { generation: generationRef.current })
   }, [setDismissedDeeplinkUri])
+
+  const isActivePresentationPhase = useCallback((current: ScanPhase) => {
+    return (
+      current.tag === 'presentationFacePrepare' ||
+      current.tag === 'presentationConsent' ||
+      current.tag === 'presentationInfo' ||
+      current.tag === 'presentationSuccess' ||
+      current.tag === 'resolving' ||
+      current.tag === 'renewing'
+    )
+  }, [])
 
   useFocusEffect(
     useCallback(() => {
@@ -124,9 +140,13 @@ export default function ScanScreen() {
         return undefined
       }
 
+      if (isActivePresentationPhase(phaseRef.current)) {
+        return undefined
+      }
+
       resetScanner()
       return undefined
-    }, [renewCredentialId, resetScanner, router]),
+    }, [renewCredentialId, resetScanner, router, isActivePresentationPhase]),
   )
 
   async function handleBarcode(uri: string) {
@@ -209,11 +229,15 @@ export default function ScanScreen() {
     if (incomingUrl) handleDeeplink(incomingUrl, 'incoming')
   }, [incomingUrl, handleDeeplink])
 
-  async function approvePresentation(request: ResolvedPresentationRequest) {
+  async function approvePresentation(
+    request: ResolvedPresentationRequest,
+    holderSelectedClaimKeys: ReadonlySet<string>,
+  ) {
     if (isSubmitting) return
     setIsSubmitting(true)
     const gen = generationRef.current
     let presentationDebug: string | undefined
+    const disclosedLabels = readSelectedDisclosureLabels(request.disclosures, holderSelectedClaimKeys)
     try {
       logWalletStep('scan', 'presentation-approve-start', describePresentationForLog(request))
       const presentationTokenMode = readPresentationTokenMode(request)
@@ -223,8 +247,11 @@ export default function ScanScreen() {
         presentationTokenMode,
         audience: presentationAudience,
         presentationSubmissionPresent: Boolean(request.presentationDefinition),
+        selectedClaimCount: holderSelectedClaimKeys.size,
       })
-      const { vpToken, presentationSubmission } = await createApprovedPresentationResponse(request)
+      const { vpToken, presentationSubmission } = await createApprovedPresentationResponse(request, {
+        selectedClaimKeys: [...holderSelectedClaimKeys],
+      })
       logWalletStep('scan', 'presentation-token-created', {
         ...describePresentationForLog(request),
         presentationTokenMode,
@@ -247,20 +274,34 @@ export default function ScanScreen() {
         credentialType: request.matchedCredential.type,
         verifierName: request.verifier.name,
         documentType: getCardSchema(request.matchedCredential.type).title,
-        disclosedClaims: request.disclosures.map((disclosure) => disclosure.label),
+        disclosedClaims: disclosedLabels,
       })
       logWalletStep('scan', 'presentation-history-recorded', describePresentationForLog(request))
 
+      if (response.redirectUri) {
+        logWalletStep('scan', 'presentation-return-uri-open', {
+          ...describePresentationForLog(request),
+          returnUriOrigin: new URL(response.redirectUri).origin,
+        })
+        void Linking.openURL(response.redirectUri)
+      }
+
       if (generationRef.current === gen) {
-        setPhase({ tag: 'presentationInfo', request, verifierName: request.verifier.name, response })
+        setPhase({
+          tag: 'presentationInfo',
+          request,
+          verifierName: request.verifier.name,
+          response,
+        })
       }
     } catch (err) {
       logWalletError('scan', 'presentation-approve-failed', err, describePresentationForLog(request))
       recordOid4vpPresentationFailure(request, err)
       const raw = err instanceof Error ? err.message : String(err)
       const diagnosticRaw = presentationDebug ? `${raw}\n\n${presentationDebug}` : raw
-      setIsSubmitting(false)
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(diagnosticRaw) })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -283,6 +324,8 @@ export default function ScanScreen() {
       }
       if (generationRef.current !== gen) return
       if (preparePhase.nextStep === 'consent') {
+        setIsSubmitting(false)
+        setSelectedClaimKeys(readInitialSelectedClaimKeys(preparePhase.request.disclosures))
         setPhase({ tag: 'presentationConsent', request: preparePhase.request })
       } else {
         setPhase({
@@ -338,9 +381,18 @@ export default function ScanScreen() {
       <PresentationStepScaffold onBack={resetScanner}>
         <PresentationConsentPanel
           request={phase.request}
+          selectedClaimKeys={selectedClaimKeys}
+          onToggleClaim={(claimKey) => {
+            setSelectedClaimKeys((previous) => {
+              const next = new Set(previous)
+              if (next.has(claimKey)) next.delete(claimKey)
+              else next.add(claimKey)
+              return next
+            })
+          }}
           onAccept={() => {
             logWalletStep('scan', 'presentation-user-accepted', describePresentationForLog(phase.request))
-            void approvePresentation(phase.request)
+            void approvePresentation(phase.request, selectedClaimKeys)
           }}
           onReject={() => {
             logWalletStep('scan', 'presentation-user-declined', describePresentationForLog(phase.request))
@@ -349,12 +401,12 @@ export default function ScanScreen() {
               credentialId: phase.request.matchedCredential.id,
               documentType: getCardSchema(phase.request.matchedCredential.type).title,
               partyName: phase.request.verifier.name,
-              disclosedClaims: phase.request.disclosures.map((disclosure) => disclosure.label),
+              disclosedClaims: readSelectedDisclosureLabels(phase.request.disclosures, selectedClaimKeys),
               channel: 'oid4vp',
             })
             resetScanner()
           }}
-          disabled={isSubmitting}
+          submitting={isSubmitting}
         />
       </PresentationStepScaffold>
     )
@@ -367,7 +419,13 @@ export default function ScanScreen() {
           request={phase.request}
           onConfirm={() => {
             logWalletStep('scan', 'presentation-info-confirmed', describePresentationForLog(phase.request))
-            setPhase({ tag: 'presentationFacePrepare', request: phase.request, nextStep: 'result', verifierName: phase.verifierName, response: phase.response })
+            setPhase({
+              tag: 'presentationFacePrepare',
+              request: phase.request,
+              nextStep: 'result',
+              verifierName: phase.verifierName,
+              response: phase.response,
+            })
           }}
         />
       </PresentationStepScaffold>

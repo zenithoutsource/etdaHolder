@@ -1,4 +1,4 @@
-import { getCardSchema, getCardSchemaForConfigurationId, getAllCardSchemas } from './cardSchemas'
+import { getCardSchema, getCardSchemaForConfigurationId, getAllCardSchemas, resolvePresentationDisclosureLabel } from './cardSchemas'
 
 import { THEME } from './themeColors'
 
@@ -23,9 +23,9 @@ describe('getCardSchema', () => {
     expect(getCardSchemaForConfigurationId('TestMdocDrivingLicence').type).toBe('DLTDrivingLicence')
   })
 
-  test('returns BangkokUniversityTranscript schema', () => {
-    const schema = getCardSchema('BangkokUniversityTranscript')
-    expect(schema.type).toBe('BangkokUniversityTranscript')
+  test('returns ChulalongkornUniversityTranscript schema', () => {
+    const schema = getCardSchema('ChulalongkornUniversityTranscript')
+    expect(schema.type).toBe('ChulalongkornUniversityTranscript')
     expect(schema.title).toBe('Academic Transcript')
     expect(schema.displayFields.some((f) => f.key === 'gpa')).toBe(true)
   })
@@ -52,12 +52,17 @@ describe('getCardSchema', () => {
     }
   })
 
+  test('resolvePresentationDisclosureLabel returns Thai presentation labels from schema aliases', () => {
+    expect(resolvePresentationDisclosureLabel('ThaiNationalID', 'full_name')).toBe('ชื่อ-นามสกุล')
+    expect(resolvePresentationDisclosureLabel('ChulalongkornUniversityTranscript', 'gpa')).toBe('เกรดเฉลี่ย')
+  })
+
   test('getAllCardSchemas returns registered card types', () => {
     const schemas = getAllCardSchemas()
     expect(schemas.length).toBeGreaterThanOrEqual(3)
     const types = schemas.map((s) => s.type)
     expect(types).toContain('ThaiNationalID')
     expect(types).toContain('DLTDrivingLicence')
-    expect(types).toContain('BangkokUniversityTranscript')
+    expect(types).toContain('ChulalongkornUniversityTranscript')
   })
 })

@@ -32,6 +32,7 @@ export async function confirmPresentationBiometric(): Promise<void> {
 
 export async function createApprovedPresentationResponse(
   request: ResolvedPresentationRequest,
+  options: { selectedClaimKeys?: readonly string[] } = {},
   dependencies: Partial<CreateApprovedPresentationResponseDependencies> = {},
 ): Promise<ApprovedPresentationResponse> {
   const {
@@ -43,6 +44,7 @@ export async function createApprovedPresentationResponse(
   return buildResponse(request, {
     signSdJwtKbPresentationToken,
     signPresentationVpToken,
+    ...(options.selectedClaimKeys ? { selectedClaimKeys: options.selectedClaimKeys } : {}),
   })
 }
 
