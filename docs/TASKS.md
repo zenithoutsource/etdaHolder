@@ -12,6 +12,56 @@
 - Repository verification: `yarn.cmd lint` exited 0 with no warnings or errors emitted; `yarn.cmd tsc --noEmit` exited 0; `yarn.cmd test src/services/crypto --runInBand` reported no matching tests (708 files checked, 0 matches) and exited 1 as anticipated for this hardware-only diagnostic.
 - ADR 0008 remains active. Galaxy A26 physical validation is still pending; no S24 result is generalized to that device or to other firmware.
 
+### Session 2026-07-21 (Galaxy Ed25519 hardware-keystore research)
+
+- Reassessed hardware-backed Ed25519 on Galaxy A26 and S24 Ultra in `docs/eddsa/eddsa-hardware-keystore-research.md` using Android/AOSP, Samsung Knox, Apple, and evaluated-library primary sources.
+- Found the prior S24 Ultra `EC`-key observation inconclusive: Android KeyMint represents Curve25519 through EC internally, and the canonical Android 13/14 recipe is `EC` + `ECGenParameterSpec("ed25519")` + `DIGEST_NONE`; the direct `Ed25519` generator alias arrived with Android 15.
+- Production decision remains ADR 0008 until both physical devices are rerun with SPKI/OID validation, Ed25519 sign/verify, `KeyInfo.securityLevel`, StrongBox and TEE attempts, and preferably off-device key-attestation validation.
+- Verification: documentation/source review only; no runtime code changed and no device was available for this slice.
+
+### Session 2026-07-20 (consent disclosure gesture-handler regression)
+
+- Switched the selectable consent-row `Pressable` back to React Native primitives; the component does not require gesture-handler gestures and was rendering outside a `GestureHandlerRootView`.
+- Added regression coverage preventing `PresentationDisclosureList` from importing gesture-handler for row presses.
+- Verification: focused disclosure-list tests passed; lint passed with existing warnings; root type-check remains blocked by the existing `claimDisclosurePolicy.ts` `selective` type error.
+
+### Session 2026-07-20 (OID4VP consent metadata policy)
+
+- Preserved Issuer claim metadata as independent `mandatory` and `sd` flags for the wallet consent screen.
+- Mandatory claims are selected and locked; optional `sd:true` claims can be selected or deselected; `sd:false` claims remain locked.
+- Verification: focused consent/policy tests passed (19 tests); lint passed with existing warnings. Root type-check remains blocked by an existing missing `documentType` prop in `src/components/PresentationRequestedItemsCard.test.tsx`.
+
+### Session 2026-07-22 (Same-device issuance — offer URI callback)
+
+- **PM update:** Issuer returns **issuance URI** on `walletapp://callback` — **not** Wallet-managed OAuth `authorization_code`.
+- Portal: `/Account/Login?ReturnUrl=walletapp://callback&documentType=...` → parse `credential_offer_uri` / `uri` / direct `openid-credential-offer://` → existing claim screen.
+- Removed Home/Scan wiring for auth-code orchestrator; optional `openid4vp://` callback routes to Scan.
+- Verification: focused portal/callback tests.
+
+### Session 2026-07-22 (Portal issuance E2E — design approved)
+
+- **E2E milestone:** IdCard + Transcript + Driving Licence via portal login; Issuer does PID VP in browser; Wallet receives `walletapp://callback?credential_offer_uri=https://...` only.
+- Spec: `docs/superpowers/specs/2026-07-22-portal-issuance-e2e-design.md` (acceptance matrix, Issuer contract, joint sign-off).
+- Issuer handoff: `docs/superpowers/specs/2026-07-22-portal-issuance-issuer-handoff.md`.
+- Plan: `docs/superpowers/plans/2026-07-22-portal-issuance-e2e.md`.
+- **Wallet open:** native prebuild done (`walletapp` in AndroidManifest); device install + E2E matrix (Section 6 of spec) pending adb device.
+- **Issuer open (agreed/in progress):** deploy wrapped callback redirect + sample URLs per `documentType`.
+
+### Session 2026-07-20 (Same-device authorization code issuance — design)
+
+- **Pattern A locked:** step 4 stores OAuth `code` from walletapp; step 13 `POST /token` reuses that code (after PID VP for DL/transcript). Legacy offer deeplink still supported.
+- Design spec: `docs/superpowers/specs/2026-07-20-same-device-authorization-code-issuance-design.md` (updated 2026-07-22 for Account/Login portal).
+- Canvas: `canvases/same-device-vc-issuance.canvas.tsx` (target flow v2).
+- **Blocked (E2E only):** Issuer OAuth registration (`client_id`, callback whitelist).
+
+### Session 2026-07-20 (Same-device VP Holder selective disclosure)
+
+- Implemented Holder-driven SD-JWT claim toggles on the existing Scan/My QR consent panel: `md` claims stay locked on when requested; `sd` claims are toggleable before accept.
+- Persist Issuer `credential_metadata` claim policy at OID4VCI claim (`claimDisclosurePolicy` on `VerifiableCredentialRecord`); resolve at presentation via stored policy → live Issuer fetch → `cardSchemas` → default selective.
+- Wired holder selection into SD-JWT disclosure filtering and dual-format SD-JWT entries; added hybrid same-device return via allowlisted `redirect_uri` after successful `direct_post`.
+- Spec: `docs/superpowers/specs/2026-07-20-same-device-vp-holder-selective-disclosure-design.md`.
+- Verification: focused VP/consent/policy tests; `yarn tsc --noEmit`; `yarn lint`.
+
 ### Session 2026-07-17 (OID4VP SD-JWT selective disclosure)
 
 - SD-JWT DCQL presentations now filter disclosure segments to the claims requested by the Verifier before raw submission or KB-JWT signing; dual-format SD-JWT entries use the same filtering path.
@@ -312,7 +362,7 @@ Status: In progress.
 [x] Define `CardSchemaConfig`
 [x] Add ThaID schema
 [x] Add DLT Driving Licence schema
-[x] Add Bangkok University Transcript schema
+[x] Add Chulalongkorn University Transcript schema
 [x] Build generic `CredentialCard`
 [x] Wire `VerifiableCredentialRecord.type` to `getCardSchema()`
 [x] Add credential detail route with configured fields and extra disclosed claims
@@ -513,7 +563,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Local backend covers Wallet Account register/login/logout, authenticated wallet listing, and credential import.
 - SDK base URL adapter added via `src/sdk/installWalletApiFetch.ts`.
 - Root `.env` should set `EXPO_PUBLIC_WALLET_API_BASE_URL=http://<windows-lan-ip>:4000` for physical device testing.
-- Transcript QR flow uses OID4VCI `dc+sd-jwt` and maps to `BangkokUniversityTranscript`.
+- Transcript QR flow uses OID4VCI `dc+sd-jwt` and maps to `ChulalongkornUniversityTranscript`.
 - Credential response extraction accepts compact credentials from top-level `credential`, `credentials[].credential`, or direct string `credentials[]`.
 - Wallet home displays stored Transcript as a summary card when no ID Card is present.
 - Transcript document row opens `/credential/[id]`.
@@ -616,7 +666,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Added a development Verifier proxy for USB + PC VPN testing: matching Verifier calls are rewritten through `/dev-verifier-proxy/*` so the phone can scan Verifier QR codes even when only the PC can reach `http://verifier.zenithcomp.co.th:455`.
 - Hardened Verifier submission after `Present VP is invalid`: DCQL `vp_token` is now encoded as a credential-query-id response object, Verifier error descriptions surface in Scan, JWT VP tokens include `jti`/`nbf`/`exp`, and the Wallet blocks submission when the stored ThaiNationalID format does not match the Verifier's requested DCQL format. Current known mismatch: the Issuer flow in this repo uses `IDCard_dc+sd-jwt`, while the supplied Verifier requests `jwt_vc_json`; the Verifier should request `format: "dc+sd-jwt"` with `meta.vct_values: ["IDCardCredential"]`.
 - Wallet DCQL parsing now supports `meta.vct_values` for SD-JWT VC requests, so it accepts the corrected `dc+sd-jwt` Verifier request against a stored SD-JWT ThaiNationalID.
-- Pivoted the first practical Verifier flow to Transcript while IDCard format is pending: the live Verifier now emits `transcript_credential` with `format: "dc+sd-jwt"` and `meta.vct_values: ["http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential"]`; the Wallet now matches that to stored `BangkokUniversityTranscript` credentials.
+- Pivoted the first practical Verifier flow to Transcript while IDCard format is pending: the live Verifier now emits `transcript_credential` with `format: "dc+sd-jwt"` and `meta.vct_values: ["http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential"]`; the Wallet now matches that to stored `ChulalongkornUniversityTranscript` credentials.
 - Fixed Transcript Verifier submission shape: DCQL `dc+sd-jwt` / `vc+sd-jwt` requests no longer wrap the credential in a signed JWT VP. They now default to SD-JWT+KB when holder binding is required and submit raw compact SD-JWT only when the Verifier explicitly sets `require_cryptographic_holder_binding: false`; Presentation Exchange requests still use the hardware-signed JWT VP token.
 - Tightened DCQL SD-JWT matching: a stored credential must now match both the requested format and the requested `meta.vct_values` before the Wallet submits it. This prevents sending a Transcript issued with a different `vct` (for example Issuer `issuer.zenithcomp.co.th:455`) to a Verifier request that asks for `http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential`, which the Verifier rejects as `Present VP is invalid`.
 - Added actionable Wallet diagnostics for DCQL SD-JWT metadata mismatches: the Scan error now shows the requested `vct_values` and the stored credential's actual `vct`, so Verifier configuration can be corrected without guessing.
@@ -648,7 +698,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Fixed first-login PIN setup bypass after killing and reopening the app: authenticated native startup now checks whether a Wallet PIN exists and routes back to `/pin-setup` when setup was not completed, instead of entering Wallet Home directly.
 - Presentation request debugging now logs the resolved OID4VP Verifier request in development as pretty JSON, including expanded `dcql_query.credentials`, client/response URIs, nonce/state, matched credential, disclosures, and the disclosure fallback reason. The requested-items UI remains the user-facing disclosure summary.
 - OID4VP requested-item labels now use schema-defined presentation labels for ThaiNationalID DCQL claim paths such as `id_number`, `full_name`, `birthdate`, `expiry_date`, `religion`, and `photo`, instead of showing raw Verifier path names when a stored claim matches.
-- Extended OID4VP requested-item presentation labels to BangkokUniversityTranscript and DLTDrivingLicence DCQL claim paths, added Driving Licence DCQL type matching, and changed the P5 age-over-20 approval row to show `อายุ` with a derived age instead of displaying date of birth.
+- Extended OID4VP requested-item presentation labels to ChulalongkornUniversityTranscript and DLTDrivingLicence DCQL claim paths, added Driving Licence DCQL type matching, and changed the P5 age-over-20 approval row to show `อายุ` with a derived age instead of displaying date of birth.
 - Fixed revoked/deleted credential presentation eligibility: active local P6 lifecycle statuses are now filtered out before OID4VP Verifier matching, so scanning a Verifier QR for a revoked document no longer reaches the Holder approval/data-to-send screen or posts a stale credential to the Verifier.
 - Fixed stale Scan-tab credential state after reissue: saving a newly scanned credential now refreshes `useStoredCredentials()` immediately, so a subsequent Verifier scan in the same Scan screen uses the newly issued credential instead of the pre-reissue/revoked snapshot.
 - Tightened the same reissue/debug path at the QR boundary: OID4VP Verifier QR handling now reads the latest credential records directly from encrypted storage at scan time before lifecycle filtering, avoiding a React render-timing race where the camera could match an old credential snapshot immediately after reissue.
