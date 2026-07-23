@@ -53,12 +53,14 @@ export const WALLET_HOME_COPY = {
     'เอกสารใน Wallet ของคุณหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
   portalMisconfiguredTitle: 'ไม่สามารถเปิดหน้าขอเอกสารได้',
   portalMisconfiguredMessage: 'ยังไม่ได้ตั้งค่า Issuer portal สำหรับเอกสารประเภทนี้',
-  portalDismissedTitle: 'รอรับเอกสาร',
-  portalDismissedMessage:
-    'เมื่อ Issuer อนุมัติแล้ว คุณจะได้รับเอกสารใน Wallet หรือสแกน QR จาก Issuer',
-  portalDismissedScanAction: 'ไป Scan',
   portalErrorTitle: 'ไม่สามารถเปิดหน้าขอเอกสารได้',
   portalErrorMessage: 'กรุณาลองใหม่อีกครั้ง',
+  portalEmptyOfferTitle: 'Issuer ไม่ได้ส่ง credential offer',
+  portalEmptyOfferMessage:
+    'เข้าสู่ระบบสำเร็จแล้ว แต่ redirect กลับมาไม่มี credential_offer_uri — แจ้งทีม Issuer ให้ส่ง walletapp://callback?credential_offer_uri=https://...',
+  portalPidVpRequiredTitle: 'ยืนยันตัวตนด้วย ThaID',
+  portalPidVpRequiredMessage:
+    'เมื่อ Issuer ส่งคำขอยืนยันตัวตน (OID4VP) ให้เปิดแท็บ Scan เพื่อให้ความยินยอมและส่ง PID',
   staleExpiryNotificationTitle: 'สถานะเอกสารอัปเดตแล้ว',
   staleExpiryNotificationMessage:
     'การแจ้งเตือนนี้ไม่ตรงกับสถานะปัจจุบันของเอกสาร กรุณาตรวจสอบวันหมดอายุอีกครั้ง',

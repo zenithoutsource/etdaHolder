@@ -5,7 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { PinUnlockPrompt } from "../src/components/PinUnlockPrompt";
 import { isBiometricDisabledForTesting } from "../src/config/runtimeFlags";
-import { setWalletPin, verifyWalletPin } from "../src/services/auth/walletPin";
+import { hasWalletPin, setWalletPin, verifyWalletPin } from "../src/services/auth/walletPin";
 import {
   confirmWalletUnlockBiometric,
   isWalletUnlockBiometricCancellation,
@@ -15,6 +15,11 @@ import {
   logWalletStep,
 } from "../src/services/debug/walletLogger";
 import { useAuthStore } from "../src/store/authStore";
+import {
+  readPendingCredentialOfferRoute,
+  readPendingPresentationRoute,
+  useDeeplinkStore,
+} from "../src/store/deeplinkStore";
 
 const BIOMETRIC_TIMEOUT_MS = 15_000;
 
@@ -46,11 +51,38 @@ export default function PinLockScreen() {
     biometricAttemptRef.current += 1;
   }, []);
 
+  const routeAfterUnlock = useCallback(() => {
+    const { pendingUri, dismissedUri } = useDeeplinkStore.getState();
+    const isAuthenticated = useAuthStore.getState().isAuthenticated;
+    const pinExists = Platform.OS !== "web" && hasWalletPin();
+    const routeInput = {
+      pendingUri,
+      dismissedUri,
+      isAuthenticated,
+      platform: Platform.OS,
+      hasWalletPin: pinExists,
+    };
+
+    const pendingOfferRoute = readPendingCredentialOfferRoute(routeInput);
+    if (pendingOfferRoute) {
+      logWalletStep("wallet-unlock", "pin-lock-route-pending-offer");
+      router.replace(pendingOfferRoute);
+      return;
+    }
+
+    const pendingPresentationRoute = readPendingPresentationRoute(routeInput);
+    if (pendingPresentationRoute) {
+      logWalletStep("wallet-unlock", "pin-lock-route-pending-presentation");
+      router.replace(pendingPresentationRoute);
+    }
+  }, [router]);
+
   const completeUnlock = useCallback(() => {
     cancelBiometricAttempt();
     logWalletStep("wallet-unlock", "pin-lock-unlock-complete");
     setPinVerified(true);
-  }, [cancelBiometricAttempt, setPinVerified]);
+    routeAfterUnlock();
+  }, [cancelBiometricAttempt, routeAfterUnlock, setPinVerified]);
 
   const handleBiometricUnlock = useCallback(async () => {
     if (Platform.OS === "web") return;

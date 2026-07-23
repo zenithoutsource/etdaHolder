@@ -1,5 +1,10 @@
 import type { PlatformOSType } from 'react-native'
 
+import {
+  readPendingCredentialOfferRoute,
+  readPendingPresentationRoute,
+} from '../../store/deeplinkStore'
+
 type PostLoginRouteInput = {
   platform: PlatformOSType
   hasWalletPin: boolean
@@ -14,6 +19,11 @@ type StartupRouteInput = {
   isResumePinCheckPending?: boolean
 }
 
+type WalletAccessRedirectInput = StartupRouteInput & {
+  pendingUri?: string | null
+  dismissedUri?: string | null
+}
+
 export type WalletRoute = '/(tabs)' | '/auth' | '/pin-setup' | '/pin-lock'
 
 export const PIN_UNLOCK_FLOW_SEGMENTS = new Set(['pin-lock', 'forgot-pin'])
@@ -24,7 +34,7 @@ export function readPostLoginRoute(input: PostLoginRouteInput): WalletRoute {
 }
 
 const UNAUTHENTICATED_PUBLIC_SEGMENTS = new Set(['auth', 'login', 'register', 'forgot-pin'])
-const AUTHENTICATED_AUTH_FLOW_SEGMENTS = new Set(['auth', 'login', 'pin-setup', 'forgot-pin', 'pin-lock'])
+const AUTHENTICATED_AUTH_FLOW_SEGMENTS = new Set(['auth', 'login', 'pin-setup', 'forgot-pin', 'pin-lock', 'callback'])
 
 function requiresPinUnlock(input: StartupRouteInput): boolean {
   return input.platform !== 'web' && input.hasWalletPin && !input.isPinVerified
@@ -63,7 +73,24 @@ export function segmentToWalletRoute(segment: string | undefined): WalletRoute |
   return undefined
 }
 
-export function readWalletAccessRedirect(input: StartupRouteInput): WalletRoute | undefined {
+function hasPendingPostUnlockDeeplinkRoute(input: WalletAccessRedirectInput): boolean {
+  if (!input.pendingUri) return false
+
+  const routeInput = {
+    pendingUri: input.pendingUri,
+    dismissedUri: input.dismissedUri ?? null,
+    isAuthenticated: input.isAuthenticated,
+    platform: input.platform,
+    hasWalletPin: input.hasWalletPin,
+  }
+
+  return Boolean(
+    readPendingCredentialOfferRoute(routeInput)
+      || readPendingPresentationRoute(routeInput),
+  )
+}
+
+export function readWalletAccessRedirect(input: WalletAccessRedirectInput): WalletRoute | undefined {
   const targetRoute = readStartupRoute(input)
   if (!targetRoute) return undefined
 
@@ -75,6 +102,16 @@ export function readWalletAccessRedirect(input: StartupRouteInput): WalletRoute 
   if (currentRoute === targetRoute) return undefined
 
   if (targetRoute === '/pin-lock' && input.currentSegment === 'forgot-pin') {
+    return undefined
+  }
+
+  // pin-lock.tsx routes to credential-offer/scan after unlock; avoid racing Redirect to tabs.
+  if (
+    targetRoute === '/(tabs)'
+    && input.currentSegment === 'pin-lock'
+    && input.isPinVerified
+    && hasPendingPostUnlockDeeplinkRoute(input)
+  ) {
     return undefined
   }
 

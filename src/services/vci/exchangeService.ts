@@ -21,6 +21,7 @@ import {
 } from '../crypto/crypto'
 import { getCardSchema } from '../../config/cardSchemas'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
+import { stringifyClaim } from '../credentials/claimFormatting'
 import { readNormalizedDocumentExpiry } from '../credentials/credentialDocumentExpiresAt'
 import { notifyCredentialsChanged } from '../credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
@@ -44,6 +45,7 @@ import {
   readString,
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
+import { parseClaimDisclosurePolicyFromCredentialMetadata } from '../vp/claimDisclosurePolicy'
 import { assertIssuerDidWebCredentialSignature } from './issuerDidWebVerify'
 import { storeMdocCredential } from '../proximity/mdocStorage'
 import { readCredentialIssuerName } from '../credentials/credentialIssuer'
@@ -55,6 +57,7 @@ const CREDENTIAL_SUSPENSION_KEY_PREFIX = 'credential:suspension:'
 const CREDENTIAL_RENEWAL_KEY_PREFIX = 'credential:renewal:'
 const PRE_AUTHORIZED_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:pre-authorized_code'
 const PRE_AUTHORIZED_CODE_KEY = 'pre-authorized_code'
+const AUTHORIZATION_CODE_GRANT = 'authorization_code'
 
 export type FetchIssuerMetadata = (issuer: string) => Promise<IssuerMetadataV1_0_15>
 
@@ -93,6 +96,11 @@ export type ResolveOfferOptions = {
   fetchIssuerMetadata?: FetchIssuerMetadata
 }
 
+export type ClaimDisclosurePolicyEntry = {
+  md: boolean
+  sd: boolean
+}
+
 export type VerifiableCredentialRecord = {
   id: string
   type: string
@@ -101,6 +109,9 @@ export type VerifiableCredentialRecord = {
   issuedAt: string
   expiresAt?: string
   issuerName?: string
+  claimDisclosurePolicy?: Record<string, ClaimDisclosurePolicyEntry>
+  issuerUrl?: string
+  credentialConfigurationId?: string
 }
 
 export type CredentialStorage = {
@@ -118,6 +129,7 @@ export type SignProof = (
 export type AcquireAccessTokenInput = {
   resolvedOffer: ResolvedCredentialOffer
   tx_code?: string
+  authorizationCodeExchange?: AuthorizationCodeExchangeInput
 }
 
 export type AcquireAccessTokenResult = {
@@ -147,6 +159,16 @@ export type ClaimCredentialOptions = {
   dependencies?: Partial<ClaimCredentialDependencies>
   /** Reuse a pre-authorized access token (dual-format second credential request). */
   reuseToken?: AcquireAccessTokenResult
+  /** Authorization Code grant exchange (same-device issuance). */
+  authorizationCodeExchange?: AuthorizationCodeExchangeInput
+}
+
+export type AuthorizationCodeExchangeInput = {
+  authorizationCode: string
+  codeVerifier: string
+  redirectUri: string
+  clientId: string
+  tokenEndpoint?: string
 }
 
 export type AcquireCredentialRecordOptions = ClaimCredentialOptions
@@ -207,6 +229,64 @@ export async function resolveOffer(offerUri: string, options: ResolveOfferOption
   }
 }
 
+export async function resolveAuthorizationCodeIssuance(input: {
+  issuer: string
+  credentialConfigurationIds: readonly string[]
+  fetchIssuerMetadata?: FetchIssuerMetadata
+}): Promise<ResolvedCredentialOffer> {
+  logWalletStep('oid4vci', 'resolve-auth-code-issuance-start', {
+    issuer: input.issuer,
+    configurationIds: [...input.credentialConfigurationIds],
+  })
+
+  const issuerMetadata = await (input.fetchIssuerMetadata ?? fetchIssuerMetadata)(input.issuer)
+  assertIssuerMetadata(input.issuer, issuerMetadata)
+  const credentialConfigurations = resolveCredentialConfigurationsByIds(
+    [...input.credentialConfigurationIds],
+    issuerMetadata,
+  )
+
+  const resolved: ResolvedCredentialOffer = {
+    offerUri: 'same-device-authorization-code://local',
+    issuer: input.issuer,
+    credentialOffer: {
+      credential_offer: {
+        credential_issuer: input.issuer,
+        credential_configuration_ids: [...input.credentialConfigurationIds],
+        grants: {
+          authorization_code: {},
+        },
+      },
+      supportedFlows: ['authorization_code'],
+      version: 1,
+    } as CredentialOfferRequestWithBaseUrl,
+    issuerMetadata,
+    issuerDisplay: toCredentialDisplay(issuerMetadata.display),
+    credentialConfigurations,
+    supportedFlows: ['authorization_code'],
+    version: 1,
+  }
+
+  logWalletStep('oid4vci', 'resolve-auth-code-issuance-complete', {
+    issuer: input.issuer,
+    configurationIds: credentialConfigurations.map((configuration) => configuration.id),
+    formats: credentialConfigurations.map((configuration) => configuration.format),
+  })
+
+  return resolved
+}
+
+export async function claimCredentialWithAuthorizationCode(
+  resolvedOffer: ResolvedCredentialOffer,
+  authorizationCodeExchange: AuthorizationCodeExchangeInput,
+  options: ClaimCredentialOptions = {},
+): Promise<VerifiableCredentialRecord> {
+  return claimCredential(resolvedOffer, {
+    ...options,
+    authorizationCodeExchange,
+  })
+}
+
 export async function fetchIssuerMetadata(issuer: string): Promise<IssuerMetadataV1_0_15> {
   const metadataUrl = getIssuerMetadataUrl(issuer)
   logWalletStep('oid4vci', 'issuer-metadata-fetch-start', { issuer, metadataUrl })
@@ -261,8 +341,8 @@ export async function acquireCredentialRecord(
     throw new Error('TransactionCodeRequired: tx_code is required')
   }
 
-  if (!resolvedOffer.preAuthorizedCode) {
-    throw new Error('CredentialFlowUnsupported: Pre-Authorized Code flow is required')
+  if (!resolvedOffer.preAuthorizedCode && !options.authorizationCodeExchange) {
+    throw new Error('CredentialFlowUnsupported: Pre-Authorized Code or Authorization Code exchange is required')
   }
 
   assertSupportedCredentialFormat(resolvedOffer)
@@ -280,7 +360,11 @@ export async function acquireCredentialRecord(
     reuseToken: Boolean(options.reuseToken),
   })
   const token = options.reuseToken
-    ?? await dependencies.acquireAccessToken({ resolvedOffer, tx_code: options.tx_code })
+    ?? await dependencies.acquireAccessToken({
+      resolvedOffer,
+      tx_code: options.tx_code,
+      authorizationCodeExchange: options.authorizationCodeExchange,
+    })
   logWalletStep('oid4vci', 'access-token-acquired', {
     issuer: resolvedOffer.issuer,
     cNoncePresent: Boolean(token.cNonce),
@@ -672,13 +756,11 @@ function assertIssuerMetadata(issuer: string, metadata: IssuerMetadataV1_0_15): 
   }
 }
 
-function resolveCredentialConfigurations(
-  credentialOffer: CredentialOfferRequestWithBaseUrl,
+function resolveCredentialConfigurationsByIds(
+  offeredIds: string[],
   issuerMetadata: IssuerMetadataV1_0_15,
 ): OfferedCredentialConfiguration[] {
-  const offeredIds = credentialOffer.credential_offer?.credential_configuration_ids
-
-  if (!offeredIds?.length) {
+  if (!offeredIds.length) {
     throw new Error('CredentialOfferInvalid: credential_configuration_ids is required')
   }
 
@@ -699,6 +781,19 @@ function resolveCredentialConfigurations(
       rawConfiguration,
     }
   })
+}
+
+function resolveCredentialConfigurations(
+  credentialOffer: CredentialOfferRequestWithBaseUrl,
+  issuerMetadata: IssuerMetadataV1_0_15,
+): OfferedCredentialConfiguration[] {
+  const offeredIds = credentialOffer.credential_offer?.credential_configuration_ids
+
+  if (!offeredIds?.length) {
+    throw new Error('CredentialOfferInvalid: credential_configuration_ids is required')
+  }
+
+  return resolveCredentialConfigurationsByIds(offeredIds, issuerMetadata)
 }
 
 type MatchedCredentialConfiguration = {
@@ -989,7 +1084,7 @@ function normalizeCredentialRecord(
   const type = readCredentialType(claims, vc, resolvedOffer)
   const issuerName =
     resolvedOffer?.issuerDisplay?.name?.trim() ||
-    (type === 'BangkokUniversityTranscript'
+    (type === 'ChulalongkornUniversityTranscript'
       ? getCardSchema(type).issuerName
       : resolvedOffer?.issuer)
   const expiresAt = readNormalizedDocumentExpiry({
@@ -999,6 +1094,9 @@ function normalizeCredentialRecord(
     ...(readNumber(claims.exp) !== undefined ? { jwtExp: readNumber(claims.exp) } : {}),
   })
 
+  const configuration = resolvedOffer?.credentialConfigurations[0]
+  const claimDisclosurePolicy = parseClaimDisclosurePolicyFromCredentialMetadata(configuration?.rawConfiguration)
+
   return {
     id,
     type,
@@ -1007,14 +1105,19 @@ function normalizeCredentialRecord(
     issuedAt,
     ...(expiresAt ? { expiresAt } : {}),
     ...(issuerName ? { issuerName } : {}),
+    ...(claimDisclosurePolicy ? { claimDisclosurePolicy } : {}),
+    ...(resolvedOffer?.issuer ? { issuerUrl: resolvedOffer.issuer } : {}),
+    ...(configuration?.id ? { credentialConfigurationId: configuration.id } : {}),
   }
 }
 
 export function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies {
   return {
-    acquireAccessToken: async ({ resolvedOffer, tx_code }) => {
+    acquireAccessToken: async ({ resolvedOffer, tx_code, authorizationCodeExchange }) => {
       try {
-        const response = await requestPreAuthorizedAccessToken(resolvedOffer, tx_code)
+        const response = authorizationCodeExchange
+          ? await requestAuthorizationCodeAccessToken(resolvedOffer, authorizationCodeExchange)
+          : await requestPreAuthorizedAccessToken(resolvedOffer, tx_code)
 
         const accessToken = readString(response.access_token)
         const cNonce = readString(response.c_nonce)
@@ -1139,6 +1242,54 @@ async function requestPreAuthorizedAccessToken(
     const description = readString(responseBody.error_description)
     throw new Error(description ? `${error ?? 'token_error'} - ${description}` : error ?? `HTTP ${response.status}`)
   }
+
+  return responseBody
+}
+
+async function requestAuthorizationCodeAccessToken(
+  resolvedOffer: ResolvedCredentialOffer,
+  exchange: AuthorizationCodeExchangeInput,
+): Promise<Record<string, unknown>> {
+  const tokenEndpoint = exchange.tokenEndpoint
+    ?? readString(readRecord(resolvedOffer.issuerMetadata)?.token_endpoint)
+    ?? await discoverAuthorizationServerTokenEndpoint(resolvedOffer.issuerMetadata)
+    ?? `${resolvedOffer.issuer.replace(/\/$/, '')}/token`
+  const body = new URLSearchParams()
+  body.set('grant_type', AUTHORIZATION_CODE_GRANT)
+  body.set('code', exchange.authorizationCode)
+  body.set('code_verifier', exchange.codeVerifier)
+  body.set('redirect_uri', exchange.redirectUri)
+  body.set('client_id', exchange.clientId)
+
+  logWalletStep('oid4vci', 'authorization-code-token-request-start', {
+    issuer: resolvedOffer.issuer,
+    tokenEndpoint,
+  })
+
+  const response = await fetch(tokenEndpoint, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  })
+  const responseBody = await readJsonResponseBody(response)
+
+  if (!response.ok) {
+    const error = readString(responseBody.error)
+    const description = readString(responseBody.error_description)
+    logWalletError('oid4vci', 'authorization-code-token-request-failed', new Error(error ?? `HTTP ${response.status}`), {
+      issuer: resolvedOffer.issuer,
+      status: response.status,
+    })
+    throw new Error(description ? `${error ?? 'token_error'} - ${description}` : error ?? `HTTP ${response.status}`)
+  }
+
+  logWalletStep('oid4vci', 'authorization-code-token-request-complete', {
+    issuer: resolvedOffer.issuer,
+    cNoncePresent: Boolean(readString(responseBody.c_nonce)),
+  })
 
   return responseBody
 }
@@ -1636,6 +1787,27 @@ function decodeCredentialClaims(rawVc: string): Record<string, unknown> {
   return flattenCredentialSubject(decodeJwtPayload(rawVc))
 }
 
+export function readCredentialClaimMap(record: VerifiableCredentialRecord): Record<string, unknown> {
+  let decoded: Record<string, unknown> = {}
+  try {
+    decoded = decodeCredentialClaims(record.rawVc)
+  } catch {
+    return { ...record.claims }
+  }
+
+  const merged = { ...decoded, ...record.claims }
+  for (const [key, value] of Object.entries(record.claims)) {
+    if (stringifyClaim(value).trim().length === 0 && key in decoded) {
+      const decodedText = stringifyClaim(decoded[key]).trim()
+      if (decodedText.length > 0) {
+        merged[key] = decoded[key]
+      }
+    }
+  }
+
+  return merged
+}
+
 function isCompactSdJwt(rawVc: string): boolean {
   return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
 }
@@ -1776,7 +1948,7 @@ function canonicalCredentialType(type: string): string {
   const normalized = type.toLowerCase()
 
   if (normalized.includes('transcript')) {
-    return 'BangkokUniversityTranscript'
+    return 'ChulalongkornUniversityTranscript'
   }
 
   if (normalized.includes('driving') || normalized.includes('licence') || normalized.includes('license')) {

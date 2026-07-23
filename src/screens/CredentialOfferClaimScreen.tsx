@@ -79,6 +79,7 @@ const credentialImages: Record<string, ImageSourcePropType> = {
 
 const RESOLVE_TIMEOUT_MS = 20_000
 const ACQUIRE_TIMEOUT_MS = 30_000
+const MISSING_OFFER_GRACE_MS = 1_500
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout>
@@ -104,9 +105,13 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   const router = useRouter()
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
+  const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
+  const offerGeneration = useDeeplinkStore((s) => s.offerGeneration)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
   const activeOfferUriRef = useRef<string | null>(null)
   const expiredCleanupPromptedRef = useRef<string | null>(null)
+  const lastStartedOfferRef = useRef<string | null>(null)
+  const missingOfferCheckRef = useRef(0)
 
   useEffect(() => {
     if (phase.tag !== 'success') return
@@ -271,23 +276,40 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     }
   }, [acquireForPreview])
 
-  useEffect(() => {
-    const pending = initialOfferUri ?? useDeeplinkStore.getState().consumePendingDeeplinkUri()
-    if (pending) {
-      initialUrlCheckedRef.current = true
-      generationRef.current++
-      setTxCode('')
-      void handleOfferUri(pending)
-      return
+  const beginOffer = useCallback((uri: string) => {
+    if (!isCredentialOfferDeeplink(uri)) return false
+    if (uri === dismissedDeeplinkUri) return false
+    if (uri === lastStartedOfferRef.current) return false
+
+    missingOfferCheckRef.current += 1
+    lastStartedOfferRef.current = uri
+    activeOfferUriRef.current = uri
+    if (useDeeplinkStore.getState().pendingUri === uri) {
+      useDeeplinkStore.getState().consumePendingDeeplinkUri()
     }
+    generationRef.current += 1
+    setTxCode('')
+    setPhase({ tag: 'initializing' })
+    void handleOfferUri(uri)
+    return true
+  }, [dismissedDeeplinkUri, handleOfferUri])
+
+  const hasIncomingPendingOffer = Boolean(
+    pendingDeeplinkUri
+      && isCredentialOfferDeeplink(pendingDeeplinkUri)
+      && pendingDeeplinkUri !== dismissedDeeplinkUri,
+  )
+
+  useEffect(() => {
+    if (initialOfferUri && beginOffer(initialOfferUri)) return
+
+    if (pendingDeeplinkUri && beginOffer(pendingDeeplinkUri)) return
 
     const directOffer = incomingUrl && isCredentialOfferDeeplink(incomingUrl) && incomingUrl !== directUrlHandledRef.current ? incomingUrl : null
     if (directOffer) {
       initialUrlCheckedRef.current = true
       directUrlHandledRef.current = directOffer
-      generationRef.current++
-      setTxCode('')
-      void handleOfferUri(directOffer)
+      beginOffer(directOffer)
       return
     }
 
@@ -295,33 +317,51 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     initialUrlCheckedRef.current = true
 
     let isMounted = true
+    const checkId = missingOfferCheckRef.current + 1
+    missingOfferCheckRef.current = checkId
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
+
+    const showMissingOfferError = () => {
+      if (!isMounted || missingOfferCheckRef.current !== checkId) return
+      if (lastStartedOfferRef.current) return
+      const pending = useDeeplinkStore.getState().pendingUri
+      if (
+        pending
+        && isCredentialOfferDeeplink(pending)
+        && pending !== useDeeplinkStore.getState().dismissedUri
+      ) {
+        return
+      }
+      setPhase({ tag: 'error', message: 'No credential offer link is pending.' })
+    }
+
     void Linking.getInitialURL()
       .then((initialUrl) => {
-        if (!isMounted) return
+        if (!isMounted || missingOfferCheckRef.current !== checkId) return
         const initialOffer = initialUrl && isCredentialOfferDeeplink(initialUrl) ? initialUrl : null
-        if (!initialOffer) {
-          setPhase({ tag: 'error', message: 'No credential offer link is pending.' })
+        if (initialOffer) {
+          directUrlHandledRef.current = initialOffer
+          beginOffer(initialOffer)
           return
         }
-        directUrlHandledRef.current = initialOffer
-        generationRef.current++
-        setTxCode('')
-        void handleOfferUri(initialOffer)
+        graceTimer = setTimeout(showMissingOfferError, MISSING_OFFER_GRACE_MS)
       })
       .catch((err) => {
         logWalletError('deeplink', 'initial-url-read-failed', err)
-        if (isMounted) {
-          setPhase({ tag: 'error', message: 'No credential offer link is pending.' })
-        }
+        if (!isMounted || missingOfferCheckRef.current !== checkId) return
+        graceTimer = setTimeout(showMissingOfferError, MISSING_OFFER_GRACE_MS)
       })
 
     return () => {
       isMounted = false
+      if (graceTimer) clearTimeout(graceTimer)
     }
-  }, [handleOfferUri, incomingUrl, initialOfferUri, pendingDeeplinkUri])
+  }, [beginOffer, incomingUrl, initialOfferUri, pendingDeeplinkUri, offerGeneration])
 
   function resetToWalletHome() {
-    generationRef.current++
+    generationRef.current += 1
+    missingOfferCheckRef.current += 1
+    lastStartedOfferRef.current = null
     const uriToDismiss = activeOfferUriRef.current ?? incomingUrl
     if (uriToDismiss) setDismissedDeeplinkUri(uriToDismiss)
     onClose?.()
@@ -404,7 +444,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       )
     }
 
-    if (phase.record.type === 'BangkokUniversityTranscript') {
+    if (phase.record.type === 'ChulalongkornUniversityTranscript') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={resetToWalletHome} />
@@ -557,6 +597,19 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   }
 
   if (phase.tag === 'error') {
+    if (hasIncomingPendingOffer) {
+      return (
+        <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
+          <WalletHeader onBack={resetToWalletHome} />
+          <View className="flex-1 items-center justify-center bg-surface-soft p-6">
+            <ActivityIndicator color={THEME.navy} />
+            <Text className="mt-3 text-center text-[15px] font-semibold text-navy-deep">Opening Credential Offer</Text>
+            <Text className="mt-2 text-center text-[13px] text-gray500">Loading...</Text>
+          </View>
+        </SafeAreaView>
+      )
+    }
+
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
         <Text className="mb-5 text-center text-[14px] text-red-600">{phase.message}</Text>

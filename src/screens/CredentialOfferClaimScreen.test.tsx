@@ -236,6 +236,90 @@ describe('CredentialOfferClaimScreen', () => {
     expect(mockRouterBack).toHaveBeenCalled()
   })
 
+  it('reopens a fresh offer after the user dismisses the claim screen and requests again', async () => {
+    const firstOfferUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer-1'
+    const secondOfferUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer-2'
+    useDeeplinkStore.getState().setPendingDeeplinkUri(firstOfferUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID' }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledWith(firstOfferUri)
+    })
+
+    resolveOfferMock.mockClear()
+    await act(async () => {
+      useDeeplinkStore.getState().setDismissedDeeplinkUri(firstOfferUri)
+      useDeeplinkStore.getState().setIncomingDeeplinkUri(secondOfferUri)
+    })
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledWith(secondOfferUri)
+    })
+  })
+
+  it('reopens the same offer after back navigation clears the started-offer guard', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer'
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockRejectedValue(new Error('Issuer offline'))
+
+    render(<CredentialOfferClaimScreen />)
+
+    await screen.findByText('Back to Wallet')
+    fireEvent.press(screen.getByText('Back to Wallet'))
+
+    resolveOfferMock.mockClear()
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID' }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+
+    await act(async () => {
+      useDeeplinkStore.getState().setIncomingDeeplinkUri(offerUri)
+    })
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
+    })
+  })
+
+  it('waits for a pending offer before showing the missing-offer error', async () => {
+    jest.useFakeTimers()
+    linkingMock.getInitialURL.mockResolvedValue(null)
+
+    render(<CredentialOfferClaimScreen />)
+
+    await act(async () => {
+      useDeeplinkStore.getState().setIncomingDeeplinkUri(
+        'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer',
+      )
+    })
+
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID' }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000)
+    })
+
+    expect(screen.queryByText('No credential offer link is pending.')).toBeNull()
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalled()
+    })
+
+    jest.useRealTimers()
+  })
+
   it('returns to the tab shell when no navigation history exists', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer'
     useUrlMock.mockReturnValue(offerUri)

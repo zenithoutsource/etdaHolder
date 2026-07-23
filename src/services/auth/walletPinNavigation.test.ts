@@ -343,5 +343,26 @@ describe('walletPinNavigation', () => {
     })).toBeUndefined()
   })
 
+  test('readWalletAccessRedirect defers tabs redirect when portal offer waits after pin unlock', () => {
+    expect(readWalletAccessRedirect({
+      isAuthenticated: true,
+      isPinVerified: true,
+      currentSegment: 'pin-lock',
+      platform: 'android',
+      hasWalletPin: true,
+      pendingUri: 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer',
+    })).toBeUndefined()
+  })
+
+  test('does not redirect away from callback while it stores the pending offer for pin unlock', () => {
+    expect(readStartupRoute({
+      isAuthenticated: true,
+      isPinVerified: false,
+      currentSegment: 'callback',
+      platform: 'android',
+      hasWalletPin: true,
+    })).toBeUndefined()
+  })
+
 })
 

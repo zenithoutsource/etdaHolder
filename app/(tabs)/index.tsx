@@ -43,6 +43,14 @@ import { readWalletKeyExpiryLane } from "../../src/services/crypto/walletKeyExpi
 import { readWalletKeyRotationRecord } from "../../src/services/crypto/walletKeyRotation";
 import { isIssuerPortalCredentialType } from "../../src/config/issuerPortalUrls";
 import { openCredentialRequestPortal } from "../../src/services/credentials/openCredentialRequestPortal";
+import {
+  consumeLastPortalReturn,
+  formatPortalReturnDiagnostic,
+} from "../../src/services/credentials/lastPortalReturn";
+import {
+  isCredentialOfferDeeplink,
+  useDeeplinkStore,
+} from "../../src/store/deeplinkStore";
 import { isCredentialExpiringSoon } from "../../src/services/credentials/credentialDocumentExpiry";
 import {
   readCredentialLifecycleStatuses,
@@ -107,7 +115,7 @@ const documentMenuItems: DocumentMenuItem[] = [
     label: "Transcript",
     icon: require("../../assets/images/transcript.png"),
     iconStyle: { width: 40, height: 40 },
-    credentialType: "BangkokUniversityTranscript",
+    credentialType: "ChulalongkornUniversityTranscript",
   },
   {
     label: "Medical certificate",
@@ -311,6 +319,10 @@ export default function WalletHomeScreen() {
       router.push("/(tabs)/credential-offer");
       return;
     }
+    if (result.status === "presentation_request") {
+      router.push("/(tabs)/scan");
+      return;
+    }
     if (result.status === "misconfigured") {
       showDialog({
         title: WALLET_HOME_COPY.portalMisconfiguredTitle,
@@ -329,18 +341,33 @@ export default function WalletHomeScreen() {
       });
       return;
     }
-    showDialog({
-      title: WALLET_HOME_COPY.portalDismissedTitle,
-      message: WALLET_HOME_COPY.portalDismissedMessage,
-      icon: "info",
-      actions: [
-        { label: WALLET_HOME_COPY.cancel, variant: "secondary" },
-        {
-          label: WALLET_HOME_COPY.portalDismissedScanAction,
-          onPress: () => router.push("/(tabs)/scan"),
-        },
-      ],
-    });
+    if (result.status === "empty_offer") {
+      showDialog({
+        title: WALLET_HOME_COPY.portalEmptyOfferTitle,
+        message: __DEV__
+          ? `${WALLET_HOME_COPY.portalEmptyOfferMessage}\n\n${result.diagnostic}`
+          : WALLET_HOME_COPY.portalEmptyOfferMessage,
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+      return;
+    }
+    const pendingOffer = useDeeplinkStore.getState().pendingUri;
+    if (pendingOffer && isCredentialOfferDeeplink(pendingOffer)) {
+      router.push("/(tabs)/credential-offer");
+      return;
+    }
+    const lastReturn = consumeLastPortalReturn();
+    if (lastReturn?.outcome === "empty-callback" || lastReturn?.outcome === "unrecognized") {
+      showDialog({
+        title: WALLET_HOME_COPY.portalEmptyOfferTitle,
+        message: __DEV__
+          ? `${WALLET_HOME_COPY.portalEmptyOfferMessage}\n\n${formatPortalReturnDiagnostic(lastReturn)}`
+          : WALLET_HOME_COPY.portalEmptyOfferMessage,
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+    }
   }
 
   async function handleRenewalRequest(credentialId: string) {

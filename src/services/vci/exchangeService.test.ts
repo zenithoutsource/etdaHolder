@@ -615,7 +615,7 @@ test('saveCredentialRecord clears a stale local lifecycle status for a reissued 
   saveCredentialRecord(
     {
       id: 'transcript-1',
-      type: 'BangkokUniversityTranscript',
+      type: 'ChulalongkornUniversityTranscript',
       rawVc: 'new.header.payload',
       claims: {},
       issuedAt: '2026-06-08T11:00:00.000Z',
@@ -654,7 +654,7 @@ test('saveCredentialRecord clears a stale issuer suspension status for a reissue
   saveCredentialRecord(
     {
       id: 'transcript-1',
-      type: 'BangkokUniversityTranscript',
+      type: 'ChulalongkornUniversityTranscript',
       rawVc: 'new.header.payload',
       claims: {},
       issuedAt: '2026-06-25T11:00:00.000Z',
@@ -671,7 +671,7 @@ test('saveCredentialRecord clears a stale issuer suspension status for a reissue
 test('saveCredentialRecord replaces older local records of the same credential type', () => {
   const oldRecord: VerifiableCredentialRecord = {
     id: 'old-transcript',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: unsignedJwt({
       cnf: {
         kid: 'did:key:zHolder#zHolder',
@@ -715,7 +715,7 @@ test('saveCredentialRecord replaces older local records of the same credential t
   saveCredentialRecord(
     {
       id: 'new-transcript',
-      type: 'BangkokUniversityTranscript',
+      type: 'ChulalongkornUniversityTranscript',
       rawVc: unsignedJwt({
         cnf: {
           kid: 'did:key:zHolder#zHolder',
@@ -784,7 +784,7 @@ async function transcriptSdJwtContract(): Promise<VerifiableCredentialRecord> {
   })
 
   if (record.id !== 'transcript-1') throw new Error('transcript id mismatch')
-  if (record.type !== 'BangkokUniversityTranscript') throw new Error('transcript type mismatch')
+  if (record.type !== 'ChulalongkornUniversityTranscript') throw new Error('transcript type mismatch')
   if (record.rawVc !== credential) throw new Error('transcript raw credential mismatch')
   if (record.claims.studentId !== 'BU-123') throw new Error('studentId disclosure missing')
   if (record.claims.gpa !== '3.91') throw new Error('gpa disclosure missing')

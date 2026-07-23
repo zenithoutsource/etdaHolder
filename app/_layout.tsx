@@ -4,6 +4,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Redirect, Stack, useRouter, useSegments } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
+import * as WebBrowser from 'expo-web-browser';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, Text, View } from 'react-native';
@@ -40,6 +41,7 @@ import {
   readPendingPresentationRoute,
   useDeeplinkStore,
 } from '@/src/store/deeplinkStore';
+import { storePendingFromIssuanceCallbackUrl } from '@/src/services/credentials/resolveIssuanceCallbackResult';
 import { useNotificationRouteStore } from '@/src/store/notificationRouteStore';
 
 import { THEME } from '../src/config/themeColors'
@@ -49,6 +51,7 @@ export const unstable_settings = {
 };
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+WebBrowser.maybeCompleteAuthSession();
 installWalletApiFetch();
 
 function toErrorMessage(error: unknown): string {
@@ -480,6 +483,10 @@ export default function RootLayout() {
   useEffect(() => {
     if (startupState.status !== 'ready') return;
 
+    if (incomingUrl) {
+      storePendingFromIssuanceCallbackUrl(incomingUrl);
+    }
+
     if (incomingUrl && isSupportedWalletDeeplink(incomingUrl) && incomingUrl !== lastRoutedDeeplinkRef.current) {
       const startupRoute = readStartupRoute({
         isAuthenticated,
@@ -488,15 +495,22 @@ export default function RootLayout() {
         platform: Platform.OS,
         hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
       });
-      if (startupRoute !== '/auth' && startupRoute !== '/pin-setup' && startupRoute !== '/pin-lock' && currentSegment !== 'forgot-pin') {
+      if (
+        startupRoute !== '/auth'
+        && startupRoute !== '/pin-setup'
+        && startupRoute !== '/pin-lock'
+        && currentSegment !== 'forgot-pin'
+        && currentSegment !== 'callback'
+      ) {
         lastRoutedDeeplinkRef.current = incomingUrl;
         routeDeeplink(incomingUrl, { store: true });
-      } else {
+      } else if (isSupportedWalletDeeplink(incomingUrl)) {
         setPendingDeeplinkUri(incomingUrl);
       }
     }
 
     const subscription = Linking.addEventListener('url', ({ url }) => {
+      storePendingFromIssuanceCallbackUrl(url);
       if (!isSupportedWalletDeeplink(url)) return;
       setIncomingDeeplinkUri(url);
       routeDeeplink(url);
@@ -577,6 +591,8 @@ export default function RootLayout() {
     platform: Platform.OS,
     hasWalletPin: walletPinExists,
     isResumePinCheckPending,
+    pendingUri: pendingDeeplinkUri,
+    dismissedUri: dismissedDeeplinkUri,
   });
 
   if (accessRedirect && __DEV__) {
@@ -601,6 +617,7 @@ export default function RootLayout() {
           <Stack.Screen name="forgot-pin" options={{ headerShown: false }} />
           <Stack.Screen name="pin-setup" options={{ headerShown: false }} />
           <Stack.Screen name="pin-lock" options={{ headerShown: false }} />
+          <Stack.Screen name="callback" options={{ headerShown: false }} />
         </Stack>
         <StatusBar style={isTabRoute ? 'light' : 'dark'} backgroundColor="transparent" translucent />
       </AppDialogProvider>
