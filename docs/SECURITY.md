@@ -50,6 +50,7 @@ The public JWK shape is `{ "kty": "OKP", "crv": "Ed25519", "x": "<base64url(raw_
 - Production storage must use hardware-backed Keychain constraints when available.
 - A PIN-wrapped copy of the MMKV encryption key may be stored in unencrypted meta storage only for startup recovery after the user cancels the Keychain biometric prompt. This uses PBKDF2-SHA256 and AES-256-GCM, contains no raw PIN or raw MMKV key, and is a UX/security tradeoff with offline PIN-guessing risk if device storage is extracted.
 - Session data is stored in Keychain, not AsyncStorage.
+- Android application backup and restore is disabled (`expo.android.allowBackup = false`). Wallet Keychain entries, encrypted MMKV files, and their device-bound Android Keystore keys must not cross an installation boundary independently; a reinstall starts a new wallet and requires credential reissuance.
 
 ### Forbidden
 
