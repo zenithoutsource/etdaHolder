@@ -43,6 +43,7 @@ server/.codex-server.log
 .claude/reviews/
 .claude/*.local.json
 .superpowers/
+.worktrees/
 .cursor/
 ~$*
 **/~$*
@@ -65,3 +66,5 @@ modules/**/.cxx/
 google-services.json
 etda-wallet-firebase-adminsdk-fbsvc-5c08da928e.json
 .cursor/plans/
+.zed/
+android/
