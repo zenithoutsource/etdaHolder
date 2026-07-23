@@ -11,8 +11,6 @@ import { THEME } from '../config/themeColors'
 
 type Props = {
   request: ResolvedPresentationRequest
-  selectedClaimKeys: ReadonlySet<string>
-  onToggleClaim: (claimKey: string) => void
   onAccept: () => void
   onReject: () => void
   submitting?: boolean
@@ -53,22 +51,27 @@ export function hasSelectedClaims(
   return resolveEffectiveDisclosureKeys(disclosures, selectedClaimKeys).length > 0
 }
 
+function readReadOnlyConsentItems(
+  disclosures: PresentationDisclosure[],
+  documentType?: string,
+) {
+  return disclosures.map((disclosure) => ({
+    key: disclosure.key,
+    label: documentType
+      ? resolvePresentationDisclosureLabel(documentType, disclosure.key)
+      : disclosure.label,
+    value: disclosure.value,
+    selected: true,
+    toggleable: false as const,
+  }))
+}
+
 export function PresentationConsentPanel({
   request,
-  selectedClaimKeys,
-  onToggleClaim,
   onAccept,
   onReject,
   submitting,
 }: Props) {
-  const acceptDisabled = !hasSelectedClaims(request.disclosures, selectedClaimKeys)
-
-  const handleToggleClaim = (claimKey: string) => {
-    const disclosure = request.disclosures.find((entry) => entry.key === claimKey)
-    if (!disclosure || !isToggleablePresentationDisclosure(disclosure)) return
-    onToggleClaim(claimKey)
-  }
-
   return (
     <View className="flex-1 bg-white px-6 pt-8">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-8 items-center">
@@ -84,9 +87,8 @@ export function PresentationConsentPanel({
 
         <View className="mt-5 w-full">
           <PresentationDisclosureList
-            items={readConsentItems(request.disclosures, selectedClaimKeys, request.matchedCredential.type)}
+            items={readReadOnlyConsentItems(request.disclosures, request.matchedCredential.type)}
             variant="consent"
-            onToggle={handleToggleClaim}
           />
         </View>
 
@@ -99,15 +101,14 @@ export function PresentationConsentPanel({
           variant="solid-block"
           label="รับทราบและยินยอมส่งข้อมูล"
           onPress={onAccept}
-          disabled={acceptDisabled}
           loading={submitting}
           className="mt-8 w-full py-4"
         />
         <AppButton
-          variant="icon-circle"
+          variant="outline-block"
           label="ไม่ยินยอม"
           onPress={onReject}
-          className="mt-3 w-full rounded-xl border border-gray300 bg-white py-4"
+          className="mt-3 w-full rounded-full border-gray300 py-4"
           textClassName="text-[15px] font-bold text-slate750"
         />
       </ScrollView>

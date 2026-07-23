@@ -640,13 +640,13 @@ describe('presentationService', () => {
 
     expect(request.matchedCredential.id).toBe('driving-licence-1')
     expect(request.disclosures).toEqual([
-      { key: 'licence_number', label: 'เลขที่ใบอนุญาตขับรถ', value: 'DLT-123456' },
-      { key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' },
-      { key: 'birthdate', label: 'วันเดือนปีเกิด', value: '2001-05-15' },
-      { key: 'licence_class', label: 'ประเภทใบอนุญาต', value: 'Private Car' },
-      { key: 'issue_date', label: 'วันที่ออกใบอนุญาต', value: '2026-01-01' },
-      { key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' },
-      { key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' },
+      disclosure({ key: 'licence_number', label: 'เลขที่ใบอนุญาตขับรถ', value: 'DLT-123456' }),
+      disclosure({ key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' }),
+      disclosure({ key: 'birthdate', label: 'วันเดือนปีเกิด', value: '2001-05-15' }),
+      disclosure({ key: 'licence_class', label: 'ประเภทใบอนุญาต', value: 'Private Car' }),
+      disclosure({ key: 'issue_date', label: 'วันที่ออกใบอนุญาต', value: '2026-01-01' }),
+      disclosure({ key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' }),
+      disclosure({ key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' }),
     ])
   })
 

@@ -44,4 +44,41 @@ describe('PresentationDisclosureList', () => {
     fireEvent.press(screen.getByText('รหัสนักศึกษา'))
     expect(onToggle).toHaveBeenCalledTimes(1)
   })
+
+  test('review variant toggles selectable rows without changing row chrome', () => {
+    const onToggle = jest.fn()
+    render(
+      <PresentationDisclosureList
+        variant="review"
+        onToggle={onToggle}
+        items={[
+          { key: 'gpa', label: 'เกรดเฉลี่ย', value: '3.75', selected: true, toggleable: true },
+          { key: 'student_id', label: 'รหัส', value: '123', selected: true, toggleable: false },
+        ]}
+      />,
+    )
+
+    fireEvent.press(screen.getByLabelText('เกรดเฉลี่ย'))
+    expect(onToggle).toHaveBeenCalledWith('gpa')
+
+    fireEvent.press(screen.getByText('รหัส'))
+    expect(onToggle).toHaveBeenCalledTimes(1)
+  })
+
+  test('review variant renders mandatory rows with lock badge and no checkbox role', () => {
+    render(
+      <PresentationDisclosureList
+        variant="review"
+        onToggle={jest.fn()}
+        items={[
+          { key: 'national_id', label: 'เลขบัตรประชาชน', value: '1234567890123', selected: true, toggleable: false },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('จำเป็น')).toBeTruthy()
+    expect(screen.getByTestId('mandatory-badge-national_id')).toBeTruthy()
+    expect(screen.getByLabelText('เลขบัตรประชาชน, จำเป็น')).toBeTruthy()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+  })
 })

@@ -98,7 +98,7 @@ export function collectClaimPolicyLookupKeys(documentType: string, claimKey: str
 }
 
 export function resolveEffectiveDisclosureKeys(
-  disclosures: ReadonlyArray<Pick<PresentationDisclosure, 'key' | 'mandatory'>>,
+  disclosures: readonly Pick<PresentationDisclosure, 'key' | 'mandatory' | 'selective'>[],
   holderSelectedKeys: ReadonlySet<string>,
 ): string[] {
   const keys: string[] = []

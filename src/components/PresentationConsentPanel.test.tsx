@@ -1,5 +1,4 @@
 import { fireEvent, render, screen } from '@testing-library/react-native'
-import { useState } from 'react'
 
 import {
   PresentationConsentPanel,
@@ -7,6 +6,12 @@ import {
   readInitialSelectedClaimKeys,
 } from './PresentationConsentPanel'
 import type { ResolvedPresentationRequest } from '../services/vp/presentationService'
+
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
+  return function MockMaterialCommunityIcons() {
+    return null
+  }
+})
 
 const request: ResolvedPresentationRequest = {
   requestUri: 'openid4vp://authorize',
@@ -37,86 +42,33 @@ describe('PresentationConsentPanel', () => {
     expect(readInitialSelectedClaimKeys(request.disclosures)).toEqual(new Set(['national_id', 'religion']))
   })
 
-  test('disables accept when no claims will be disclosed', () => {
-    const selectiveOnlyRequest: ResolvedPresentationRequest = {
-      ...request,
-      disclosures: [{ key: 'religion', label: 'Religion', value: 'Buddhist', mandatory: false, selective: true }],
-    }
-
+  test('renders all disclosure rows as locked consent items', () => {
     render(
-      <PresentationConsentPanel
-        request={selectiveOnlyRequest}
-        selectedClaimKeys={new Set()}
-        onToggleClaim={jest.fn()}
-        onAccept={jest.fn()}
-        onReject={jest.fn()}
-      />,
+      <PresentationConsentPanel request={request} onAccept={jest.fn()} onReject={jest.fn()} />,
     )
 
-    expect(screen.getByText('รับทราบและยินยอมส่งข้อมูล')).toBeDisabled()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.getByText('เลขบัตรประจำตัวประชาชน')).toBeTruthy()
   })
 
-  test('calls onToggleClaim for selective rows', () => {
-    const onToggleClaim = jest.fn()
+  test('primary button calls onAccept without requiring claim selection state', () => {
+    const onAccept = jest.fn()
     render(
-      <PresentationConsentPanel
-        request={request}
-        selectedClaimKeys={new Set(['religion'])}
-        onToggleClaim={onToggleClaim}
-        onAccept={jest.fn()}
-        onReject={jest.fn()}
-      />,
+      <PresentationConsentPanel request={request} onAccept={onAccept} onReject={jest.fn()} />,
     )
 
-    fireEvent.press(screen.getByRole('checkbox'))
-    expect(onToggleClaim).toHaveBeenCalledWith('religion')
+    fireEvent.press(screen.getByText('รับทราบและยินยอมส่งข้อมูล'))
+    expect(onAccept).toHaveBeenCalledTimes(1)
   })
 
-  test('does not call onToggleClaim for mandatory rows', () => {
-    const onToggleClaim = jest.fn()
+  test('calls onReject when holder declines', () => {
+    const onReject = jest.fn()
     render(
-      <PresentationConsentPanel
-        request={request}
-        selectedClaimKeys={new Set(['religion'])}
-        onToggleClaim={onToggleClaim}
-        onAccept={jest.fn()}
-        onReject={jest.fn()}
-      />,
+      <PresentationConsentPanel request={request} onAccept={jest.fn()} onReject={onReject} />,
     )
 
-    fireEvent.press(screen.getByText('เลขบัตรประจำตัวประชาชน'))
-    expect(onToggleClaim).not.toHaveBeenCalled()
-  })
-
-  test('unchecks selective rows when holder toggles them off', () => {
-    function ToggleHarness() {
-      const [selectedClaimKeys, setSelectedClaimKeys] = useState(
-        () => new Set(['religion']),
-      )
-
-      return (
-        <PresentationConsentPanel
-          request={request}
-          selectedClaimKeys={selectedClaimKeys}
-          onToggleClaim={(claimKey) => {
-            setSelectedClaimKeys((previous) => {
-              const next = new Set(previous)
-              if (next.has(claimKey)) next.delete(claimKey)
-              else next.add(claimKey)
-              return next
-            })
-          }}
-          onAccept={jest.fn()}
-          onReject={jest.fn()}
-        />
-      )
-    }
-
-    render(<ToggleHarness />)
-
-    expect(screen.getByRole('checkbox')).toHaveAccessibilityState({ checked: true })
-    fireEvent.press(screen.getByRole('checkbox'))
-    expect(screen.getByRole('checkbox')).toHaveAccessibilityState({ checked: false })
+    fireEvent.press(screen.getByText('ไม่ยินยอม'))
+    expect(onReject).toHaveBeenCalledTimes(1)
   })
 
   test('isToggleablePresentationDisclosure ignores truthy mandatory-like values', () => {

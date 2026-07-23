@@ -43,9 +43,9 @@ type ScanPhase =
   | { tag: 'scanning' }
   | { tag: 'resolving' }
   | { tag: 'renewing' }
-  | { tag: 'presentationFacePrepare'; request: ResolvedPresentationRequest; nextStep: 'consent' | 'result'; verifierName?: string; response?: VerifierResponse }
+  | { tag: 'presentationFacePrepare'; request: ResolvedPresentationRequest }
   | { tag: 'presentationConsent'; request: ResolvedPresentationRequest }
-  | { tag: 'presentationInfo'; request: ResolvedPresentationRequest; verifierName: string; response: VerifierResponse }
+  | { tag: 'presentationInfo'; request: ResolvedPresentationRequest }
   | { tag: 'presentationSuccess'; request: ResolvedPresentationRequest; verifierName: string; response: VerifierResponse }
   | { tag: 'error'; message: string }
 
@@ -177,7 +177,7 @@ export default function ScanScreen() {
           'ScanTimeout: resolving presentation request timed out',
         )
         logWalletStep('scan', 'presentation-resolved', describePresentationForLog(request))
-        if (generationRef.current === gen) setPhase({ tag: 'presentationFacePrepare', request, nextStep: 'consent' })
+        if (generationRef.current === gen) setPhase({ tag: 'presentationFacePrepare', request })
       } catch (err) {
         logWalletError('scan', 'presentation-resolve-failed', err, describeUriForLog(uri))
         const raw = err instanceof Error ? err.message : String(err)
@@ -241,6 +241,11 @@ export default function ScanScreen() {
     try {
       logWalletStep('scan', 'presentation-approve-start', describePresentationForLog(request))
       const presentationTokenMode = readPresentationTokenMode(request)
+      if (presentationTokenMode === 'raw-credential') {
+        logWalletStep('scan', 'presentation-biometric-start', describePresentationForLog(request))
+        await confirmPresentationBiometric()
+        logWalletStep('scan', 'presentation-biometric-complete', describePresentationForLog(request))
+      }
       const presentationAudience = readPresentationTokenAudience(request)
       logWalletStep('scan', 'presentation-token-mode', {
         ...describePresentationForLog(request),
@@ -288,7 +293,7 @@ export default function ScanScreen() {
 
       if (generationRef.current === gen) {
         setPhase({
-          tag: 'presentationInfo',
+          tag: 'presentationSuccess',
           request,
           verifierName: request.verifier.name,
           response,
@@ -307,40 +312,22 @@ export default function ScanScreen() {
 
   async function confirmPresentationFacePrepare(preparePhase: Extract<ScanPhase, { tag: 'presentationFacePrepare' }>) {
     const gen = generationRef.current
-    try {
-      // Signed presentation modes (vp-token / sd-jwt-kb) already get a mandatory
-      // Keychain biometric gate at sign time (crypto.ts signJwtLikeObject). Running
-      // the app-level biometric check here too asks the user twice for one approval.
-      // raw-credential mode never signs, so it still needs this as its only gate.
-      const needsAppLevelBiometric =
-        preparePhase.nextStep !== 'consent' || readPresentationTokenMode(preparePhase.request) === 'raw-credential'
+    if (generationRef.current !== gen) return
+    setSelectedClaimKeys(readInitialSelectedClaimKeys(preparePhase.request.disclosures))
+    setPhase({ tag: 'presentationConsent', request: preparePhase.request })
+  }
 
-      if (needsAppLevelBiometric) {
-        logWalletStep('scan', 'presentation-biometric-start', describePresentationForLog(preparePhase.request))
-        await confirmPresentationBiometric()
-        logWalletStep('scan', 'presentation-biometric-complete', describePresentationForLog(preparePhase.request))
-      } else {
-        logWalletStep('scan', 'presentation-biometric-skipped-signed-mode', describePresentationForLog(preparePhase.request))
-      }
-      if (generationRef.current !== gen) return
-      if (preparePhase.nextStep === 'consent') {
-        setIsSubmitting(false)
-        setSelectedClaimKeys(readInitialSelectedClaimKeys(preparePhase.request.disclosures))
-        setPhase({ tag: 'presentationConsent', request: preparePhase.request })
-      } else {
-        setPhase({
-          tag: 'presentationSuccess',
-          request: preparePhase.request,
-          verifierName: preparePhase.verifierName!,
-          response: preparePhase.response!,
-        })
-      }
-    } catch (err) {
-      logWalletError('scan', 'presentation-biometric-failed', err, describePresentationForLog(preparePhase.request))
-      recordOid4vpPresentationFailure(preparePhase.request, err)
-      const raw = err instanceof Error ? err.message : String(err)
-      if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
-    }
+  function handlePresentationInfoBack(request: ResolvedPresentationRequest) {
+    logWalletStep('scan', 'presentation-user-declined', describePresentationForLog(request))
+    appendWalletHistoryEvent({
+      kind: 'presentation-declined',
+      credentialId: request.matchedCredential.id,
+      documentType: getCardSchema(request.matchedCredential.type).title,
+      partyName: request.verifier.name,
+      disclosedClaims: readSelectedDisclosureLabels(request.disclosures, selectedClaimKeys),
+      channel: 'oid4vp',
+    })
+    resetScanner()
   }
 
   function goToWalletHome() {
@@ -381,6 +368,36 @@ export default function ScanScreen() {
       <PresentationStepScaffold onBack={resetScanner}>
         <PresentationConsentPanel
           request={phase.request}
+          onAccept={() => {
+            logWalletStep('scan', 'presentation-consent-acknowledged', describePresentationForLog(phase.request))
+            setSelectedClaimKeys(readInitialSelectedClaimKeys(phase.request.disclosures))
+            setPhase({ tag: 'presentationInfo', request: phase.request })
+          }}
+          onReject={() => {
+            logWalletStep('scan', 'presentation-user-declined', describePresentationForLog(phase.request))
+            appendWalletHistoryEvent({
+              kind: 'presentation-declined',
+              credentialId: phase.request.matchedCredential.id,
+              documentType: getCardSchema(phase.request.matchedCredential.type).title,
+              partyName: phase.request.verifier.name,
+              disclosedClaims: readSelectedDisclosureLabels(
+                phase.request.disclosures,
+                readInitialSelectedClaimKeys(phase.request.disclosures),
+              ),
+              channel: 'oid4vp',
+            })
+            resetScanner()
+          }}
+        />
+      </PresentationStepScaffold>
+    )
+  }
+
+  if (phase.tag === 'presentationInfo') {
+    return (
+      <PresentationStepScaffold title="Wallet" onBack={() => handlePresentationInfoBack(phase.request)}>
+        <PresentationInfoPanel
+          request={phase.request}
           selectedClaimKeys={selectedClaimKeys}
           onToggleClaim={(claimKey) => {
             setSelectedClaimKeys((previous) => {
@@ -390,43 +407,11 @@ export default function ScanScreen() {
               return next
             })
           }}
-          onAccept={() => {
+          onConfirm={() => {
             logWalletStep('scan', 'presentation-user-accepted', describePresentationForLog(phase.request))
             void approvePresentation(phase.request, selectedClaimKeys)
           }}
-          onReject={() => {
-            logWalletStep('scan', 'presentation-user-declined', describePresentationForLog(phase.request))
-            appendWalletHistoryEvent({
-              kind: 'presentation-declined',
-              credentialId: phase.request.matchedCredential.id,
-              documentType: getCardSchema(phase.request.matchedCredential.type).title,
-              partyName: phase.request.verifier.name,
-              disclosedClaims: readSelectedDisclosureLabels(phase.request.disclosures, selectedClaimKeys),
-              channel: 'oid4vp',
-            })
-            resetScanner()
-          }}
           submitting={isSubmitting}
-        />
-      </PresentationStepScaffold>
-    )
-  }
-
-  if (phase.tag === 'presentationInfo') {
-    return (
-      <PresentationStepScaffold title="Wallet" onBack={resetScanner}>
-        <PresentationInfoPanel
-          request={phase.request}
-          onConfirm={() => {
-            logWalletStep('scan', 'presentation-info-confirmed', describePresentationForLog(phase.request))
-            setPhase({
-              tag: 'presentationFacePrepare',
-              request: phase.request,
-              nextStep: 'result',
-              verifierName: phase.verifierName,
-              response: phase.response,
-            })
-          }}
         />
       </PresentationStepScaffold>
     )

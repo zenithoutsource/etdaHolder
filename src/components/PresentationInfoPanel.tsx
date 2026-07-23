@@ -10,10 +10,19 @@ import { PresentationRequestedItemsCard } from './PresentationRequestedItemsCard
 
 type Props = {
   request: ResolvedPresentationRequest
+  selectedClaimKeys: ReadonlySet<string>
+  onToggleClaim: (claimKey: string) => void
   onConfirm: () => void
+  submitting?: boolean
 }
 
-export function PresentationInfoPanel({ request, onConfirm }: Props) {
+export function PresentationInfoPanel({
+  request,
+  selectedClaimKeys,
+  onToggleClaim,
+  onConfirm,
+  submitting,
+}: Props) {
   const credentialSignature = readCompactTokenSignature(request.matchedCredential.rawVc) ?? 'Signature unavailable'
 
   return (
@@ -25,7 +34,10 @@ export function PresentationInfoPanel({ request, onConfirm }: Props) {
         <PresentationRequestedItemsCard
           documentType={request.matchedCredential.type}
           disclosures={request.disclosures}
+          selectedClaimKeys={selectedClaimKeys}
+          onToggleClaim={onToggleClaim}
           onAccept={onConfirm}
+          submitting={submitting}
         />
       </ScrollView>
     </View>

@@ -140,7 +140,7 @@ beforeEach(() => {
 })
 
 describe('Oid4VpDisclosureFlow', () => {
-  test('runs resolve → consent accept → submit → info → success on the wallet channel', async () => {
+  test('runs resolve → consent → info accept → submit → success on the wallet channel', async () => {
     mockResolve.mockResolvedValue(buildRequest())
 
     render(
@@ -162,25 +162,25 @@ describe('Oid4VpDisclosureFlow', () => {
 
     fireEvent.press(screen.getByText('scan-face'))
     await flush()
-    // signed mode → app-level biometric skipped
     expect(mockBiometric).not.toHaveBeenCalled()
     expect(screen.getByText('consent-accept')).toBeTruthy()
 
     fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    expect(mockCreateResponse).not.toHaveBeenCalled()
+    expect(screen.getByText('info-confirm')).toBeTruthy()
+
+    fireEvent.press(screen.getByText('info-confirm'))
     await flush()
     expect(mockCreateResponse).toHaveBeenCalledTimes(1)
     expect(mockSubmit).toHaveBeenCalledTimes(1)
     expect(mockRecordSuccess).toHaveBeenCalledWith(
       expect.objectContaining({ channel: 'wallet', partyName: 'ผู้ตรวจสอบทดสอบ', credentialId: 'cred-1' }),
     )
-    expect(screen.getByText('info-confirm')).toBeTruthy()
-
-    fireEvent.press(screen.getByText('info-confirm'))
-    await flush()
     expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
   })
 
-  test('raw-credential mode requires the app-level biometric gate', async () => {
+  test('raw-credential mode requires the app-level biometric gate at info accept', async () => {
     mockResolve.mockResolvedValue(buildRequest())
     mockReadMode.mockReturnValue('raw-credential')
     mockBiometric.mockResolvedValue(undefined)
@@ -197,9 +197,13 @@ describe('Oid4VpDisclosureFlow', () => {
     await flush()
     fireEvent.press(screen.getByText('scan-face'))
     await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    expect(mockBiometric).not.toHaveBeenCalled()
 
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
     expect(mockBiometric).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('consent-accept')).toBeTruthy()
   })
 
   test('records a wallet-channel decline and cancels when the user rejects', async () => {
