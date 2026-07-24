@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Text } from 'react-native'
@@ -6,9 +7,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Oid4VpDisclosureFlow } from '../components/Oid4VpDisclosureFlow'
 import { useScreenCaptureGuard } from '../hooks/useScreenCaptureGuard'
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
-import { logWalletStep } from '../services/debug/walletLogger'
+import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
+import { resolvePresentationRequestUri } from '../services/credentials/resolvePresentationRequestUri'
 import { describeUriForLog } from '../services/scan/scanLogDescriptors'
 import { isPresentationRequestDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
+
+const MISSING_REQUEST_GRACE_MS = 1_500
 
 type Props = {
   initialRequestUri?: string | null
@@ -18,13 +22,17 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   useScreenCaptureGuard()
   const router = useRouter()
   const { credentials } = useStoredCredentials()
+  const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
   const vpGeneration = useDeeplinkStore((s) => s.vpGeneration)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
   const activeRequestUriRef = useRef<string | null>(null)
   const lastStartedRequestRef = useRef<string | null>(null)
+  const initialUrlCheckedRef = useRef(false)
+  const directUrlHandledRef = useRef<string | null>(null)
   const [requestUri, setRequestUri] = useState<string | null>(null)
+  const [missingRequestError, setMissingRequestError] = useState<string | null>(null)
 
   const beginRequest = useCallback((uri: string) => {
     if (!isPresentationRequestDeeplink(uri)) return false
@@ -33,6 +41,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
 
     lastStartedRequestRef.current = uri
     activeRequestUriRef.current = uri
+    setMissingRequestError(null)
     setRequestUri(uri)
     if (uri === useDeeplinkStore.getState().pendingUri) {
       useDeeplinkStore.getState().consumePendingDeeplinkUri()
@@ -44,7 +53,55 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   useEffect(() => {
     if (initialRequestUri && beginRequest(initialRequestUri)) return
     if (pendingDeeplinkUri && beginRequest(pendingDeeplinkUri)) return
-  }, [beginRequest, initialRequestUri, pendingDeeplinkUri, vpGeneration])
+
+    const directRequest = resolvePresentationRequestUri(incomingUrl)
+    if (directRequest && directRequest !== directUrlHandledRef.current && beginRequest(directRequest)) {
+      initialUrlCheckedRef.current = true
+      directUrlHandledRef.current = directRequest
+      return
+    }
+
+    if (initialUrlCheckedRef.current) return
+    initialUrlCheckedRef.current = true
+
+    let isMounted = true
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
+
+    const showMissingRequestError = () => {
+      if (!isMounted || lastStartedRequestRef.current) return
+      const pending = useDeeplinkStore.getState().pendingUri
+      if (
+        pending
+        && isPresentationRequestDeeplink(pending)
+        && pending !== useDeeplinkStore.getState().dismissedUri
+      ) {
+        return
+      }
+      setMissingRequestError('No presentation request link is pending.')
+    }
+
+    void Linking.getInitialURL()
+      .then((initialUrl) => {
+        if (!isMounted || lastStartedRequestRef.current) return
+        const initialRequest = resolvePresentationRequestUri(initialUrl)
+        if (initialRequest) {
+          directUrlHandledRef.current = initialRequest
+          beginRequest(initialRequest)
+          return
+        }
+        graceTimer = setTimeout(showMissingRequestError, MISSING_REQUEST_GRACE_MS)
+      })
+      .catch((err) => {
+        logWalletError('deeplink', 'initial-url-read-failed', err)
+        if (!isMounted || lastStartedRequestRef.current) return
+        graceTimer = setTimeout(showMissingRequestError, MISSING_REQUEST_GRACE_MS)
+      })
+
+    return () => {
+      isMounted = false
+      if (graceTimer) clearTimeout(graceTimer)
+    }
+  }, [beginRequest, incomingUrl, initialRequestUri, pendingDeeplinkUri, vpGeneration])
 
   const finish = useCallback(() => {
     const uriToDismiss = activeRequestUriRef.current
@@ -56,6 +113,14 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     setRequestUri(null)
     router.replace('/(tabs)')
   }, [router, setDismissedDeeplinkUri])
+
+  if (missingRequestError) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
+        <Text className="text-center text-sm text-gray600">{missingRequestError}</Text>
+      </SafeAreaView>
+    )
+  }
 
   if (!requestUri) {
     return (

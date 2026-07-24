@@ -1,4 +1,4 @@
-import { redirectIssuanceCallbackPath } from '@/src/services/credentials/redirectIssuanceCallbackPath'
+import { redirectWalletSystemPath } from '@/src/services/credentials/redirectIssuanceCallbackPath'
 
 export function redirectSystemPath({
   path,
@@ -6,5 +6,5 @@ export function redirectSystemPath({
   path: string
   initial: boolean
 }): string {
-  return redirectIssuanceCallbackPath(path)
+  return redirectWalletSystemPath(path)
 }

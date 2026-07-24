@@ -1,4 +1,5 @@
 const ISSUANCE_CALLBACK_HOSTS = new Set(['callback'])
+const PRESENTATION_REQUEST_ROUTE = '/(tabs)/presentation-request'
 
 /**
  * Map Issuer portal return URLs (walletapp://callback?credential_offer_uri=...)
@@ -23,6 +24,24 @@ export function redirectIssuanceCallbackPath(path: string): string {
     }
   } catch {
     return path
+  }
+
+  return path
+}
+
+/**
+ * Map wallet system deeplinks to Expo Router paths (+native-intent).
+ */
+export function redirectWalletSystemPath(path: string): string {
+  const callbackPath = redirectIssuanceCallbackPath(path)
+  if (callbackPath !== path) return callbackPath
+
+  try {
+    if (!path) return path
+    const url = new URL(path)
+    if (url.protocol === 'openid4vp:') return PRESENTATION_REQUEST_ROUTE
+  } catch {
+    if (path.startsWith('openid4vp://')) return PRESENTATION_REQUEST_ROUTE
   }
 
   return path

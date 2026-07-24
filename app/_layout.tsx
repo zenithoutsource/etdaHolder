@@ -90,7 +90,6 @@ export default function RootLayout() {
   const isPinVerified = useAuthStore((s) => s.isPinVerified);
   const isAuthenticatedRef = useRef(isAuthenticated);
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri);
-  const setIncomingDeeplinkUri = useDeeplinkStore((s) => s.setIncomingDeeplinkUri);
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri);
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri);
   const router = useRouter();
@@ -505,41 +504,45 @@ export default function RootLayout() {
   useEffect(() => {
     if (startupState.status !== 'ready') return;
 
-    if (incomingUrl) {
-      storePendingFromIssuanceCallbackUrl(incomingUrl);
-    }
+    const resolveRouteUri = (url: string) => {
+      const parsed = storePendingFromIssuanceCallbackUrl(url);
+      if (parsed.kind !== 'unsupported') return parsed.uri;
+      return isSupportedWalletDeeplink(url) ? url : null;
+    };
 
-    if (incomingUrl && isSupportedWalletDeeplink(incomingUrl) && incomingUrl !== lastRoutedDeeplinkRef.current) {
-      const startupRoute = readStartupRoute({
-        isAuthenticated,
-        isPinVerified,
-        currentSegment,
-        platform: Platform.OS,
-        hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
-      });
-      if (
-        startupRoute !== '/auth'
-        && startupRoute !== '/pin-setup'
-        && startupRoute !== '/pin-lock'
-        && currentSegment !== 'forgot-pin'
-        && currentSegment !== 'callback'
-      ) {
-        lastRoutedDeeplinkRef.current = incomingUrl;
-        routeDeeplink(incomingUrl, { store: true });
-      } else if (isSupportedWalletDeeplink(incomingUrl)) {
-        setPendingDeeplinkUri(incomingUrl);
+    if (incomingUrl) {
+      const routeUri = resolveRouteUri(incomingUrl);
+      if (routeUri && routeUri !== lastRoutedDeeplinkRef.current) {
+        const startupRoute = readStartupRoute({
+          isAuthenticated,
+          isPinVerified,
+          currentSegment,
+          platform: Platform.OS,
+          hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
+        });
+        if (
+          startupRoute !== '/auth'
+          && startupRoute !== '/pin-setup'
+          && startupRoute !== '/pin-lock'
+          && currentSegment !== 'forgot-pin'
+          && currentSegment !== 'callback'
+        ) {
+          lastRoutedDeeplinkRef.current = routeUri;
+          routeDeeplink(routeUri, { store: true });
+        } else {
+          setPendingDeeplinkUri(routeUri);
+        }
       }
     }
 
     const subscription = Linking.addEventListener('url', ({ url }) => {
-      storePendingFromIssuanceCallbackUrl(url);
-      if (!isSupportedWalletDeeplink(url)) return;
-      setIncomingDeeplinkUri(url);
-      routeDeeplink(url);
+      const routeUri = resolveRouteUri(url);
+      if (!routeUri) return;
+      routeDeeplink(routeUri);
     });
 
     return () => { subscription.remove(); };
-  }, [startupState.status, incomingUrl, isAuthenticated, isPinVerified, currentSegment, router, routeDeeplink, setPendingDeeplinkUri, setIncomingDeeplinkUri]);
+  }, [startupState.status, incomingUrl, isAuthenticated, isPinVerified, currentSegment, router, routeDeeplink, setPendingDeeplinkUri]);
 
   useEffect(() => {
     if (startupState.status !== 'ready' || !pendingDeeplinkUri || !isPinVerified) {
