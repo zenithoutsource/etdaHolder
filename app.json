@@ -22,6 +22,7 @@
     "android": {
       "allowBackup": false,
       "googleServicesFile": "./google-services.json",
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -44,6 +45,7 @@
     "plugins": [
       "expo-router",
       "./plugins/with-android-long-paths.js",
+      "./plugins/with-android-backup-rules.js",
       "./modules/expo-mdoc-proximity/app.plugin.js",
       "expo-camera",
       "expo-notifications",

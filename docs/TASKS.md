@@ -99,6 +99,15 @@
 - Wired holder selection into SD-JWT disclosure filtering and dual-format SD-JWT entries; added hybrid same-device return via allowlisted `redirect_uri` after successful `direct_post`.
 - Spec: `docs/superpowers/specs/2026-07-20-same-device-vp-holder-selective-disclosure-design.md`.
 - Verification: focused VP/consent/policy tests; `yarn tsc --noEmit`; `yarn lint`.
+ ### Session 2026-07-21 (Android wallet backup/restore remediation)
+
+- Confirmed the startup failure root cause: Android had restored wallet Keychain/MMKV files after reinstall while the device-bound Keystore key needed to decrypt the restored Keychain entry was unavailable or no longer matched, surfacing the Keychain verification/`AEADBadTagException` failure before wallet storage could initialize.
+- Disabled application backup at the Expo configuration boundary with `expo.android.allowBackup = false`; a clean Android prebuild generated `<application android:allowBackup="false">`, and the installed fixed package returned zero `ALLOW_BACKUP` flag matches after installation (the old install returned two).
+- Task 1 focused verification passed: 3 Jest suites / 31 tests. Project TypeScript remains blocked by pre-existing out-of-scope `server/src/**` dependency/type diagnostics, and project lint remains blocked by the pre-existing 45 errors / 52 warnings; neither project-wide gate is recorded as passing.
+- The unchanged pinned `installDebug --console=plain` completed on the authorized SM-S928B with exit 0 and `BUILD SUCCESSFUL in 18m 44s`; only after that result and the zero-match installed-package flag check did the explicitly authorized package-local clear run and return `Success`.
+- The post-clear cold start generated a new storage key (`keychain-generate-key`), completed storage initialization, generated a new Ed25519 wallet key, reached `prepare-wallet-ready`, and loaded an empty new-wallet state (`session-load-empty`, history `eventCount: 0`, credentials `credentialCount: 0`). The clean post-launch window contained zero `E_CRYPTO_FAILED`, `CryptoFailedException`, or `AEADBadTagException` matches.
+- The SM-S928B result is incident remediation evidence only. It does not satisfy production validation on the required Galaxy A26 plus ACR1311U-N2 reader pairing.
+- The authorized clear irreversibly removed the previous device-local credentials and Holder DID binding. Reissue test credentials under the newly generated Holder DID before further OID4VCI/OID4VP validation.
 
 ### Session 2026-07-17 (OID4VP SD-JWT selective disclosure)
 
