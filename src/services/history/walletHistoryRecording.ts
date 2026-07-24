@@ -12,13 +12,14 @@ import { readCredentialIssuerName } from '../credentials/credentialIssuer'
 export function recordOid4vpPresentationFailure(
   request: ResolvedPresentationRequest,
   error: unknown,
+  disclosedClaims: string[],
 ): void {
   appendWalletHistoryEvent({
     kind: 'presentation-failed',
     credentialId: request.matchedCredential.id,
     documentType: getCardSchema(request.matchedCredential.type).title,
     partyName: request.verifier.name,
-    disclosedClaims: request.disclosures.map((disclosure) => disclosure.label),
+    disclosedClaims,
     channel: 'oid4vp',
     reasonCode: classifyPresentationFailure(error),
   })

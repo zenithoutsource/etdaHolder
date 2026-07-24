@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Text } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -12,9 +13,10 @@ import { TRUSTED_VERIFIERS } from '../config/trustedVerifiers'
 import { getCardSchema } from '../config/cardSchemas'
 import { filterPresentableCredentials } from '../services/credentials/credentialLifecycle'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
+import { recordSuccessfulPresentation } from '../services/history/presentationHistory'
 import { appendWalletHistoryEvent } from '../services/history/walletEventLog'
 import { recordWalletPresentationSuccess } from '../services/history/recordWalletPresentationSuccess'
-import { recordWalletInitiatedPresentationFailure } from '../services/history/walletHistoryRecording'
+import { recordOid4vpPresentationFailure, recordWalletInitiatedPresentationFailure } from '../services/history/walletHistoryRecording'
 import { maybeConsumeSingleUseCredential } from '../services/credentials/singleUseCredentialConsumption'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 import { toFriendlyError } from '../services/scan/scanFriendlyErrors'
@@ -49,17 +51,24 @@ type FlowPhase =
 type Props = {
   authorizationRequestUri: string
   credentials: VerifiableCredentialRecord[]
+  historyChannel?: 'oid4vp' | 'wallet'
+  logScope?: 'presentation-request' | 'my-qr'
   onDone: () => void
   onCancel: () => void
 }
 
 /**
- * Shared OID4VP disclosure UX. Reuses the same consent/face/info/result panels as the
- * Scan flow, but is driven by an already-resolved authorization request URI (e.g. the
- * one the Wallet Broker deposits for a My QR engagement) and records history on the
- * wallet-initiated channel.
+ * Shared OID4VP disclosure UX. Reuses the same consent/face/info/result panels for
+ * Verifier-initiated (oid4vp) and wallet-initiated (My QR) presentation flows.
  */
-export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onDone, onCancel }: Props) {
+export function Oid4VpDisclosureFlow({
+  authorizationRequestUri,
+  credentials,
+  historyChannel = 'wallet',
+  logScope = 'my-qr',
+  onDone,
+  onCancel,
+}: Props) {
   const [phase, setPhase] = useState<FlowPhase>({ tag: 'resolving' })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedClaimKeys, setSelectedClaimKeys] = useState<Set<string>>(() => new Set())
@@ -72,7 +81,7 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
     void (async () => {
       try {
         const presentableCredentials = filterPresentableCredentials(credentials)
-        logWalletStep('my-qr', 'presentation-credentials-loaded', {
+        logWalletStep(logScope, 'presentation-credentials-loaded', {
           presentableCount: presentableCredentials.length,
         })
         const request = await withTimeout(
@@ -80,12 +89,12 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
             trustedVerifiers: TRUSTED_VERIFIERS,
           }),
           RESOLVE_TIMEOUT_MS,
-          'MyQrTimeout: resolving presentation request timed out',
+          `${logScope}Timeout: resolving presentation request timed out`,
         )
-        logWalletStep('my-qr', 'presentation-resolved', describePresentationForLog(request))
+        logWalletStep(logScope, 'presentation-resolved', describePresentationForLog(request))
         if (generationRef.current === gen) setPhase({ tag: 'facePrepare', request })
       } catch (err) {
-        logWalletError('my-qr', 'presentation-resolve-failed', err)
+        logWalletError(logScope, 'presentation-resolve-failed', err)
         const raw = err instanceof Error ? err.message : String(err)
         if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
       }
@@ -94,7 +103,7 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
     return () => {
       generationRef.current++
     }
-  }, [authorizationRequestUri, credentials])
+  }, [authorizationRequestUri, credentials, logScope])
 
   const confirmFacePrepare = useCallback((request: ResolvedPresentationRequest) => {
     setSelectedClaimKeys(readInitialSelectedClaimKeys(request.disclosures))
@@ -108,13 +117,17 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
     if (isSubmitting) return
     setIsSubmitting(true)
     const gen = generationRef.current
-    const disclosedLabels = readSelectedDisclosureLabels(request.disclosures, holderSelectedClaimKeys)
+    const disclosedLabels = readSelectedDisclosureLabels(
+      request.disclosures,
+      holderSelectedClaimKeys,
+      request.matchedCredential.type,
+    )
     try {
-      logWalletStep('my-qr', 'presentation-approve-start', describePresentationForLog(request))
+      logWalletStep(logScope, 'presentation-approve-start', describePresentationForLog(request))
       if (readPresentationTokenMode(request) === 'raw-credential') {
-        logWalletStep('my-qr', 'presentation-biometric-start', describePresentationForLog(request))
+        logWalletStep(logScope, 'presentation-biometric-start', describePresentationForLog(request))
         await confirmPresentationBiometric()
-        logWalletStep('my-qr', 'presentation-biometric-complete', describePresentationForLog(request))
+        logWalletStep(logScope, 'presentation-biometric-complete', describePresentationForLog(request))
       }
       const { vpToken, presentationSubmission } = await createApprovedPresentationResponse(request, {
         selectedClaimKeys: [...holderSelectedClaimKeys],
@@ -122,57 +135,87 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
       const response = await withTimeout(
         submitPresentationResponse(request, { vpToken, presentationSubmission }),
         PRESENT_TIMEOUT_MS,
-        'MyQrTimeout: presenting credential timed out',
+        `${logScope}Timeout: presenting credential timed out`,
       )
-      logWalletStep('my-qr', 'presentation-submit-complete', {
+      logWalletStep(logScope, 'presentation-submit-complete', {
         ...describePresentationForLog(request),
         responseStatus: response.status,
       })
 
-      recordWalletPresentationSuccess({
-        credentialId: request.matchedCredential.id,
-        documentType: getCardSchema(request.matchedCredential.type).title,
-        partyName: request.verifier.name,
-        disclosedClaims: disclosedLabels,
-        channel: 'wallet',
-      })
-      maybeConsumeSingleUseCredential({
-        credentialId: request.matchedCredential.id,
-        credentialType: request.matchedCredential.type,
-      })
-      logWalletStep('my-qr', 'presentation-history-recorded', describePresentationForLog(request))
+      if (historyChannel === 'oid4vp') {
+        recordSuccessfulPresentation({
+          credentialId: request.matchedCredential.id,
+          credentialType: request.matchedCredential.type,
+          verifierName: request.verifier.name,
+          documentType: getCardSchema(request.matchedCredential.type).title,
+          disclosedClaims: disclosedLabels,
+        })
+      } else {
+        recordWalletPresentationSuccess({
+          credentialId: request.matchedCredential.id,
+          documentType: getCardSchema(request.matchedCredential.type).title,
+          partyName: request.verifier.name,
+          disclosedClaims: disclosedLabels,
+          channel: 'wallet',
+        })
+        maybeConsumeSingleUseCredential({
+          credentialId: request.matchedCredential.id,
+          credentialType: request.matchedCredential.type,
+        })
+      }
+      logWalletStep(logScope, 'presentation-history-recorded', describePresentationForLog(request))
+
+      if (historyChannel === 'oid4vp' && response.redirectUri) {
+        logWalletStep(logScope, 'presentation-return-uri-open', {
+          ...describePresentationForLog(request),
+          returnUriOrigin: new URL(response.redirectUri).origin,
+        })
+        void Linking.openURL(response.redirectUri)
+      }
 
       if (generationRef.current === gen) {
         setPhase({ tag: 'success', verifierName: request.verifier.name })
       }
     } catch (err) {
-      logWalletError('my-qr', 'presentation-approve-failed', err)
-      recordWalletInitiatedPresentationFailure({
-        record: request.matchedCredential,
-        disclosedClaims: request.disclosures.map((disclosure) => disclosure.label),
-      })
+      logWalletError(logScope, 'presentation-approve-failed', err)
+      if (historyChannel === 'oid4vp') {
+        recordOid4vpPresentationFailure(request, err, disclosedLabels)
+      } else {
+        recordWalletInitiatedPresentationFailure({
+          record: request.matchedCredential,
+          disclosedClaims: disclosedLabels,
+        })
+      }
       const raw = err instanceof Error ? err.message : String(err)
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
     } finally {
       setIsSubmitting(false)
     }
-  }, [isSubmitting])
+  }, [historyChannel, isSubmitting, logScope])
 
-  const declinePresentation = useCallback((request: ResolvedPresentationRequest) => {
-    logWalletStep('my-qr', 'presentation-user-declined', describePresentationForLog(request))
+  const declinePresentation = useCallback((
+    request: ResolvedPresentationRequest,
+    holderSelectedKeys?: ReadonlySet<string>,
+  ) => {
+    logWalletStep(logScope, 'presentation-user-declined', describePresentationForLog(request))
+    const disclosedClaims = holderSelectedKeys
+      ? readSelectedDisclosureLabels(
+          request.disclosures,
+          holderSelectedKeys,
+          request.matchedCredential.type,
+        )
+      : []
+
     appendWalletHistoryEvent({
       kind: 'presentation-declined',
       credentialId: request.matchedCredential.id,
       documentType: getCardSchema(request.matchedCredential.type).title,
       partyName: request.verifier.name,
-      disclosedClaims: readSelectedDisclosureLabels(
-        request.disclosures,
-        readInitialSelectedClaimKeys(request.disclosures),
-      ),
-      channel: 'wallet',
+      disclosedClaims,
+      channel: historyChannel,
     })
     onCancel()
-  }, [onCancel])
+  }, [historyChannel, logScope, onCancel])
 
   if (phase.tag === 'facePrepare') {
     return (
@@ -188,7 +231,7 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
         <PresentationConsentPanel
           request={phase.request}
           onAccept={() => {
-            logWalletStep('my-qr', 'presentation-consent-acknowledged', describePresentationForLog(phase.request))
+            logWalletStep(logScope, 'presentation-consent-acknowledged', describePresentationForLog(phase.request))
             setSelectedClaimKeys(readInitialSelectedClaimKeys(phase.request.disclosures))
             setPhase({ tag: 'info', request: phase.request })
           }}
@@ -200,7 +243,7 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
 
   if (phase.tag === 'info') {
     return (
-      <PresentationStepScaffold title="Wallet" onBack={() => declinePresentation(phase.request)}>
+      <PresentationStepScaffold title="Wallet" onBack={() => declinePresentation(phase.request, selectedClaimKeys)}>
         <PresentationInfoPanel
           request={phase.request}
           selectedClaimKeys={selectedClaimKeys}
@@ -213,7 +256,7 @@ export function Oid4VpDisclosureFlow({ authorizationRequestUri, credentials, onD
             })
           }}
           onConfirm={() => {
-            logWalletStep('my-qr', 'presentation-user-accepted', describePresentationForLog(phase.request))
+            logWalletStep(logScope, 'presentation-user-accepted', describePresentationForLog(phase.request))
             void approvePresentation(phase.request, selectedClaimKeys)
           }}
           submitting={isSubmitting}
