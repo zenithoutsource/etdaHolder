@@ -1,5 +1,5 @@
-import { isDualFormatDcqlRequest } from '../dualFormatPresentationMatch'
 import { resolveEffectiveDisclosureKeys } from '../claimDisclosurePolicy'
+import { isDualFormatDcqlRequest } from '../dualFormatPresentationMatch'
 import { buildPresentationSubmission, readPresentationTokenAudience, type ResolvedPresentationRequest } from '../presentationService'
 import { selectSdJwtDisclosures } from '../sdJwtSelectiveDisclosure'
 import type { PresentationTokenBuilder } from './types'
@@ -23,7 +23,8 @@ function readEffectiveClaimKeys(context: {
   return resolveEffectiveDisclosureKeys(
     request.disclosures.map((disclosure) => ({
       key: disclosure.key,
-      mandatory: disclosure.mandatory ?? false,
+      mandatory: disclosure.mandatory === true,
+      selective: disclosure.selective !== false,
     })),
     new Set(selectedClaimKeys),
   )
@@ -65,6 +66,7 @@ export const standardDcqlPresentationBuilder: PresentationTokenBuilder = {
           context.request.matchedCredential.rawVc,
           readEffectiveClaimKeys(context),
         ),
+        credentialId: context.request.matchedCredential.id,
       })
       return { vpToken }
     }
@@ -82,6 +84,7 @@ export const presentationExchangeBuilder: PresentationTokenBuilder = {
       audience,
       nonce: context.request.nonce,
       verifiableCredential: context.request.matchedCredential.rawVc,
+      credentialId: context.request.matchedCredential.id,
     })
     return {
       vpToken,

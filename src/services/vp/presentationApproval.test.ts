@@ -160,6 +160,7 @@ describe('presentationApproval', () => {
       audience: baseRequest.clientId,
       nonce: 'nonce-123',
       sdJwt: rawCredential,
+      credentialId: baseRequest.matchedCredential.id,
     })
     expect(response).toEqual({ vpToken: 'sd-jwt~kb.jwt', presentationSubmission: undefined })
   })
@@ -191,6 +192,7 @@ describe('presentationApproval', () => {
       audience: request.clientId,
       nonce: request.nonce,
       sdJwt: filteredSdJwt,
+      credentialId: request.matchedCredential.id,
     })
   })
 
@@ -224,6 +226,44 @@ describe('presentationApproval', () => {
       audience: request.clientId,
       nonce: request.nonce,
       sdJwt: 'issuer.sd.jwt~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
+      credentialId: request.matchedCredential.id,
+    })
+  })
+
+  test('holder-selected keys exclude optional selective claims but keep selective:false locked claims', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...requestWithDcql(true),
+      disclosures: [
+        { key: 'name', label: 'Name', value: 'Alice', mandatory: false, selective: true },
+        { key: 'gpa', label: 'GPA', value: '3.75', mandatory: false, selective: true },
+        { key: 'institution_name', label: 'Institution', value: 'CU', mandatory: false, selective: false },
+      ],
+      matchedCredential: {
+        ...baseRequest.matchedCredential,
+        type: 'ChulalongkornUniversityTranscript',
+        rawVc:
+          'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWdwYSIsImdwYSIsIjMuNzUiXQ~WyJzYWx0LWluc3QiLCJpbnN0aXR1dGlvbl9uYW1lIiwiQ1UiXQ~',
+      },
+      dcqlQuery: {
+        credentials: [
+          {
+            id: 'transcript_credential',
+            format: 'dc+sd-jwt',
+            claims: [{ path: ['name'] }, { path: ['gpa'] }, { path: ['institution_name'] }],
+            require_cryptographic_holder_binding: true,
+          },
+        ],
+      },
+    }
+    const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
+
+    await createApprovedPresentationResponse(request, { selectedClaimKeys: ['name'] }, { signSdJwtKbPresentationToken })
+
+    expect(signSdJwtKbPresentationToken).toHaveBeenCalledWith({
+      audience: request.clientId,
+      nonce: request.nonce,
+      sdJwt: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWluc3QiLCJpbnN0aXR1dGlvbl9uYW1lIiwiQ1UiXQ~',
+      credentialId: request.matchedCredential.id,
     })
   })
 
@@ -270,6 +310,7 @@ describe('presentationApproval', () => {
       audience: baseRequest.clientId,
       nonce: 'nonce-123',
       verifiableCredential: rawCredential,
+      credentialId: baseRequest.matchedCredential.id,
     })
     expect(response).toEqual({
       vpToken: 'vp.jwt',
