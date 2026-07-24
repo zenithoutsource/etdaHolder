@@ -1,5 +1,28 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-24 (Presentation history disclosed-claims fix — implemented)
+
+- **Spec:** `docs/superpowers/specs/2026-07-24-presentation-history-disclosed-claims-design.md`
+- **Plan:** `docs/superpowers/plans/2026-07-24-presentation-history-disclosed-claims.md`
+- **Done:** `resolveDisclosedClaimLabels()` shared with VP `resolveEffectiveDisclosureKeys`; fixed `readEffectiveClaimKeys` selective flags; `Oid4VpDisclosureFlow` success/failure/decline record holder-effective claims only; consent decline logs `disclosedClaims: []`.
+- **Verification:** `claimDisclosurePolicy.test.ts`, `presentationApproval.test.ts`, `Oid4VpDisclosureFlow.test.tsx` (deselect GPA → history excludes เกรดเฉลี่ย).
+
+### Session 2026-07-24 (Same-device VP — walletapp callback intake — design approved)
+
+- **Spec:** `docs/superpowers/specs/2026-07-24-same-device-vp-wallet-callback-design.md` (approved 2026-07-24)
+- **Goal:** Verifier portal → `walletapp://callback?authorization_request_uri=…` → `/(tabs)/presentation-request` (no camera) → reuse `Oid4VpDisclosureFlow` + existing panels; Scan hands off VP QR to same route.
+- **Status:** Implemented (2026-07-24). Verifier portal → `walletapp://callback` → `/(tabs)/presentation-request` → `Oid4VpDisclosureFlow` (`historyChannel: oid4vp`). Scan VP QR hands off to same route.
+- **Related:** VC callback pattern (`2026-07-20-same-device-authorization-code-issuance-design.md`), VP selective disclosure (`2026-07-20` / `2026-07-23` specs).
+
+### Session 2026-07-24 (v2 per-credential signing keys — in progress)
+
+- **Spec:** `docs/superpowers/specs/2026-07-24-per-credential-signing-keys-design.md`
+- **Plan:** `docs/superpowers/plans/2026-07-24-per-credential-signing-keys.md`
+- **ADR:** `docs/adr/0010-per-credential-signing-keys.md` (supersedes ADR 0009)
+- **Branch:** `feature/per-credential-signing-keys-v2`
+- **Done:** policy config, credential key registry, per-credential signing, `k_attest`, WP dev mock client, activation gate, OID4VCI pending-key claim, VP credential-scoped signing, P3/P6 key destroy hooks, backend sync per-credential DID.
+- **Remaining:** physical-device validation with WP attest + Galaxy A26; optional `walletInitiatedPresentation.ts` slice if My QR broker path needs a dedicated module.
+
 ### Session 2026-07-23 (VP claim selection on Info — implemented)
 
 - **Implemented:** Consent read-only → Info (Approve by Wallet) hosts selectable **รายการที่ร้องขอ** → submit on **ยอมรับ** → Success. Flow B per `docs/superpowers/specs/2026-07-23-vp-claim-selection-on-info-design.md`.
