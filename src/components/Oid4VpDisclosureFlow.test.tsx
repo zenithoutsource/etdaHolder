@@ -10,9 +10,7 @@ jest.mock('../services/debug/walletLogger', () => ({
 
 jest.mock('../config/trustedVerifiers', () => ({ TRUSTED_VERIFIERS: [] }))
 
-jest.mock('../config/cardSchemas', () => ({
-  getCardSchema: () => ({ title: 'บัตรประชาชน' }),
-}))
+jest.mock('../config/cardSchemas', () => jest.requireActual('../config/cardSchemas'))
 
 jest.mock('../services/credentials/credentialLifecycle', () => ({
   filterPresentableCredentials: (records: unknown[]) => records,
@@ -79,8 +77,10 @@ jest.mock('./FacePreparePanel', () => {
 })
 
 jest.mock('./PresentationConsentPanel', () => {
+  const actual = jest.requireActual('./PresentationConsentPanel')
   const { Pressable, Text } = require('react-native')
   return {
+    ...actual,
     PresentationConsentPanel: ({ onAccept, onReject }: { onAccept: () => void; onReject: () => void }) => (
       <>
         <Pressable onPress={onAccept}>
@@ -91,18 +91,27 @@ jest.mock('./PresentationConsentPanel', () => {
         </Pressable>
       </>
     ),
-    readInitialSelectedClaimKeys: () => new Set(['credential']),
-    readSelectedDisclosureLabels: () => ['ชื่อ'],
   }
 })
 
 jest.mock('./PresentationInfoPanel', () => {
   const { Pressable, Text } = require('react-native')
   return {
-    PresentationInfoPanel: ({ onConfirm }: { onConfirm: () => void }) => (
-      <Pressable onPress={onConfirm}>
-        <Text>info-confirm</Text>
-      </Pressable>
+    PresentationInfoPanel: ({
+      onConfirm,
+      onToggleClaim,
+    }: {
+      onConfirm: () => void
+      onToggleClaim: (claimKey: string) => void
+    }) => (
+      <>
+        <Pressable onPress={() => onToggleClaim('gpa')}>
+          <Text>toggle-gpa-off</Text>
+        </Pressable>
+        <Pressable onPress={onConfirm}>
+          <Text>info-confirm</Text>
+        </Pressable>
+      </>
     ),
   }
 })
@@ -120,7 +129,10 @@ function buildRequest() {
   return {
     matchedCredential: credential,
     verifier: { name: 'ผู้ตรวจสอบทดสอบ' },
-    disclosures: [{ label: 'ชื่อ' }, { label: 'เลขบัตร' }],
+    disclosures: [
+      { key: 'name', label: 'ชื่อ', value: 'Test', mandatory: false, selective: true },
+      { key: 'national_id', label: 'เลขบัตร', value: '1', mandatory: true, selective: false },
+    ],
     presentationDefinition: {},
   }
 }
@@ -225,7 +237,11 @@ describe('Oid4VpDisclosureFlow', () => {
     fireEvent.press(screen.getByText('consent-reject'))
 
     expect(mockAppendHistory).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'presentation-declined', channel: 'wallet' }),
+      expect.objectContaining({
+        kind: 'presentation-declined',
+        channel: 'wallet',
+        disclosedClaims: [],
+      }),
     )
     expect(onCancel).toHaveBeenCalledTimes(1)
     expect(mockSubmit).not.toHaveBeenCalled()
@@ -245,5 +261,49 @@ describe('Oid4VpDisclosureFlow', () => {
 
     await flush()
     expect(screen.getByText('VerifierUntrusted')).toBeTruthy()
+  })
+
+  test('records only effective disclosed claims when holder deselects optional GPA', async () => {
+    const transcriptCredential = {
+      id: 'transcript-1',
+      type: 'ChulalongkornUniversityTranscript',
+      rawVc: 'issuer.jwt~',
+      claims: {},
+      issuedAt: '2026-01-01T00:00:00.000Z',
+    } as unknown as VerifiableCredentialRecord
+
+    mockResolve.mockResolvedValue({
+      matchedCredential: transcriptCredential,
+      verifier: { name: 'Verifier' },
+      disclosures: [
+        { key: 'student_id', label: 'รหัสนักศึกษา', value: '6512345678', mandatory: true, selective: false },
+        { key: 'gpa', label: 'เกรดเฉลี่ย', value: '3.75', mandatory: false, selective: true },
+      ],
+    })
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[transcriptCredential]}
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('scan-face'))
+    await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    fireEvent.press(screen.getByText('toggle-gpa-off'))
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
+
+    expect(mockRecordSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disclosedClaims: ['รหัสนักศึกษา'],
+      }),
+    )
+    expect(mockRecordSuccess.mock.calls[0]?.[0]?.disclosedClaims).not.toContain('เกรดเฉลี่ย')
   })
 })
