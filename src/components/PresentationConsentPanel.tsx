@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from 'react-native'
 
 import type { PresentationDisclosure, ResolvedPresentationRequest } from '../services/vp/presentationService'
 import { resolvePresentationDisclosureLabel } from '../config/cardSchemas'
-import { resolveEffectiveDisclosureKeys } from '../services/vp/claimDisclosurePolicy'
+import { resolveDisclosedClaimLabels, resolveEffectiveDisclosureKeys } from '../services/vp/claimDisclosurePolicy'
 import { AppButton } from './AppButton'
 import { PresentationDisclosureList } from './PresentationDisclosureList'
 
@@ -132,13 +132,14 @@ export function readInitialSelectedClaimKeys(disclosures: PresentationDisclosure
 export function readSelectedDisclosureLabels(
   disclosures: PresentationDisclosure[],
   selectedClaimKeys: ReadonlySet<string>,
+  documentType?: string,
 ): string[] {
-  return disclosures
-    .filter(
-      (disclosure) =>
-        isMandatoryPresentationDisclosure(disclosure) ||
-        disclosure.selective === false ||
-        selectedClaimKeys.has(disclosure.key),
-    )
-    .map((disclosure) => disclosure.label)
+  if (!documentType) {
+    const effectiveKeys = new Set(resolveEffectiveDisclosureKeys(disclosures, selectedClaimKeys))
+    return disclosures
+      .filter((disclosure) => effectiveKeys.has(disclosure.key))
+      .map((disclosure) => disclosure.label)
+  }
+
+  return resolveDisclosedClaimLabels(disclosures, selectedClaimKeys, documentType)
 }
