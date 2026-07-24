@@ -8,6 +8,7 @@ import {
   readClaimPolicyFromCardSchema,
   readPolicyFlags,
   resolveClaimDisclosurePolicyEntry,
+  resolveDisclosedClaimLabels,
   resolveEffectiveDisclosureKeys,
 } from './claimDisclosurePolicy'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
@@ -238,5 +239,51 @@ describe('claimDisclosurePolicy', () => {
     ]
 
     expect(resolveEffectiveDisclosureKeys(disclosures, new Set())).toEqual(['institution_name'])
+  })
+
+  test('resolveDisclosedClaimLabels returns localized labels for effective keys only', () => {
+    const disclosures: PresentationDisclosure[] = [
+      { key: 'student_id', label: 'Student ID', value: '6512345678', mandatory: true, selective: false },
+      { key: 'gpa', label: 'GPA', value: '3.75', mandatory: false, selective: true },
+      { key: 'graduation_date', label: 'Graduation', value: '2026-05-31', mandatory: false, selective: true },
+    ]
+
+    const labels = resolveDisclosedClaimLabels(
+      disclosures,
+      new Set(['student_id']),
+      'ChulalongkornUniversityTranscript',
+    )
+
+    expect(labels).toEqual(['รหัสนักศึกษา'])
+    expect(labels).not.toContain('เกรดเฉลี่ย')
+  })
+
+  test('resolveDisclosedClaimLabels includes selective:false locked claims even when not toggled', () => {
+    const disclosures: PresentationDisclosure[] = [
+      { key: 'institution_name', label: 'Institution', value: 'CU', mandatory: false, selective: false },
+      { key: 'gpa', label: 'GPA', value: '3.75', mandatory: false, selective: true },
+    ]
+
+    const labels = resolveDisclosedClaimLabels(
+      disclosures,
+      new Set(),
+      'ChulalongkornUniversityTranscript',
+    )
+
+    expect(labels).toEqual(['ชื่อสถาบัน'])
+  })
+
+  test('resolveDisclosedClaimLabels key set matches resolveEffectiveDisclosureKeys', () => {
+    const disclosures: PresentationDisclosure[] = [
+      { key: 'student_id', label: 'Student ID', value: '1', mandatory: true, selective: false },
+      { key: 'gpa', label: 'GPA', value: '3.75', mandatory: false, selective: true },
+    ]
+    const selected = new Set(['student_id'])
+
+    const effectiveKeys = resolveEffectiveDisclosureKeys(disclosures, selected)
+    const labels = resolveDisclosedClaimLabels(disclosures, selected, 'ChulalongkornUniversityTranscript')
+
+    expect(labels).toHaveLength(effectiveKeys.length)
+    expect(labels.every((label) => typeof label === 'string' && label.length > 0)).toBe(true)
   })
 })

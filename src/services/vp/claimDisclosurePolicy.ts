@@ -114,6 +114,20 @@ export function resolveEffectiveDisclosureKeys(
   return keys
 }
 
+export function resolveDisclosedClaimLabels(
+  disclosures: readonly PresentationDisclosure[],
+  holderSelectedKeys: ReadonlySet<string>,
+  documentType: string,
+): string[] {
+  const effectiveKeys = new Set(
+    resolveEffectiveDisclosureKeys(disclosures, holderSelectedKeys),
+  )
+
+  return disclosures
+    .filter((disclosure) => effectiveKeys.has(disclosure.key))
+    .map((disclosure) => resolvePresentationDisclosureLabel(documentType, disclosure.key))
+}
+
 export function applyDisclosurePolicyFlags(
   record: VerifiableCredentialRecord,
   disclosures: PresentationDisclosure[],
