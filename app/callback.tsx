@@ -108,7 +108,9 @@ export default function IssuanceCallbackRoute() {
       offer: describeIssuanceCallbackForLog(parsed.uri),
     })
     router.replace(
-      parsed.kind === 'credential_offer' ? '/(tabs)/credential-offer' : '/(tabs)/scan',
+      parsed.kind === 'credential_offer'
+        ? '/(tabs)/credential-offer'
+        : '/(tabs)/presentation-request',
     )
   }, [
     incomingUrl,

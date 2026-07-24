@@ -13,6 +13,11 @@ const mockSetPinVerified = jest.fn()
 const mockVerifyWalletPin = jest.fn()
 const mockSetWalletPin = jest.fn()
 
+const mockAuthStoreState = {
+  isAuthenticated: false,
+  setPinVerified: mockSetPinVerified,
+}
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     push: mockRouterPush,
@@ -29,6 +34,7 @@ jest.mock('../config/runtimeFlags', () => ({
 jest.mock('../services/auth/walletPin', () => ({
   verifyWalletPin: (pin: string) => mockVerifyWalletPin(pin),
   setWalletPin: (pin: string) => mockSetWalletPin(pin),
+  hasWalletPin: jest.fn(() => true),
 }))
 
 jest.mock('../services/auth/walletUnlockBiometric', () => ({
@@ -42,8 +48,12 @@ jest.mock('../services/debug/walletLogger', () => ({
 }))
 
 jest.mock('../store/authStore', () => ({
-  useAuthStore: (selector: (state: { setPinVerified: typeof mockSetPinVerified }) => unknown) =>
-    selector({ setPinVerified: mockSetPinVerified }),
+  useAuthStore: Object.assign(
+    (selector: (state: typeof mockAuthStoreState) => unknown) => selector(mockAuthStoreState),
+    {
+      getState: () => mockAuthStoreState,
+    },
+  ),
 }))
 
 describe('PinLockScreen biometric unlock', () => {

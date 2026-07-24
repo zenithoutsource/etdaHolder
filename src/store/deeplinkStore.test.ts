@@ -73,13 +73,13 @@ describe('deeplinkStore', () => {
     expect(isPresentationRequestDeeplink('openid-credential-offer://?credential_offer={}')).toBe(false)
   })
 
-  it('routes pending VP deeplinks to scan when auth and PIN are ready', () => {
+  it('routes pending VP deeplinks to presentation-request when auth and PIN are ready', () => {
     expect(readPendingPresentationRoute({
       pendingUri: 'openid4vp://?response_type=vp_token',
       isAuthenticated: true,
       platform: 'android',
       hasWalletPin: true,
-    })).toBe('/(tabs)/scan')
+    })).toBe('/(tabs)/presentation-request')
   })
 
   it('increments vpGeneration when a VP deeplink is stored', () => {
@@ -87,7 +87,7 @@ describe('deeplinkStore', () => {
     expect(useDeeplinkStore.getState().vpGeneration).toBe(1)
   })
 
-  it('does not route a dismissed VP deeplink to scan', () => {
+  it('does not route a dismissed VP deeplink to presentation-request', () => {
     const pendingUri = 'openid4vp://?response_type=vp_token'
     useDeeplinkStore.getState().setDismissedDeeplinkUri(pendingUri)
 

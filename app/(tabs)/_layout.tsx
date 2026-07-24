@@ -113,6 +113,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="presentation-request"
+        options={{
+          href: null,
+          title: 'Wallet',
+        }}
+      />
+      <Tabs.Screen
         name="credential/[id]"
         options={{
           href: null,

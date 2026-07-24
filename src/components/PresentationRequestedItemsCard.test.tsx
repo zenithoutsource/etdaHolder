@@ -50,7 +50,7 @@ describe('PresentationRequestedItemsCard', () => {
       />,
     )
 
-    expect(screen.getByText('แตะรายการที่เลือกได้เพื่อส่งหรือไม่ส่ง')).toBeTruthy()
+    expect(screen.getByText('เลือกรายการเพื่อส่งตรวจสอบ')).toBeTruthy()
   })
 
   test('calls onToggleClaim for selectable review rows', () => {
@@ -80,9 +80,9 @@ describe('PresentationRequestedItemsCard', () => {
       />,
     )
 
-    expect(screen.getByText('จำเป็น')).toBeTruthy()
+    expect(screen.getByLabelText('จำเป็น')).toBeTruthy()
     expect(screen.getByTestId('mandatory-badge-national_id')).toBeTruthy()
     expect(screen.getByText('ยอมรับ')).not.toBeDisabled()
-    expect(screen.queryByText('แตะรายการที่เลือกได้เพื่อส่งหรือไม่ส่ง')).toBeNull()
+    expect(screen.queryByText('เลือกรายการเพื่อส่งตรวจสอบ')).toBeNull()
   })
 })

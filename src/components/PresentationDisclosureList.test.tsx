@@ -76,7 +76,7 @@ describe('PresentationDisclosureList', () => {
       />,
     )
 
-    expect(screen.getByText('จำเป็น')).toBeTruthy()
+    expect(screen.getByLabelText('จำเป็น')).toBeTruthy()
     expect(screen.getByTestId('mandatory-badge-national_id')).toBeTruthy()
     expect(screen.getByLabelText('เลขบัตรประชาชน, จำเป็น')).toBeTruthy()
     expect(screen.queryByRole('checkbox')).toBeNull()

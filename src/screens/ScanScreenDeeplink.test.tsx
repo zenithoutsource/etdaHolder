@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react-native'
+import { act, render, screen } from '@testing-library/react-native'
 import React from 'react'
 import { Text } from 'react-native'
 
@@ -19,10 +19,6 @@ jest.mock('expo-camera', () => ({
   useCameraPermissions: jest.fn(() => [{ granted: true }, jest.fn()]),
 }))
 
-jest.mock('expo-linking', () => ({
-  useURL: jest.fn(() => null),
-}))
-
 jest.mock('expo-router', () => {
   return {
     useRouter: () => mockRouter,
@@ -37,38 +33,13 @@ jest.mock('../components/WalletHeader', () => ({
   WalletHeader: () => mockReact.createElement(mockText, null, 'Scan Header'),
 }))
 
-jest.mock('../hooks/useStoredCredentials', () => ({
-  useStoredCredentials: () => ({
-    credentials: [],
-    refresh: jest.fn(),
-  }),
+jest.mock('../hooks/useScreenCaptureGuard', () => ({
+  useScreenCaptureGuard: jest.fn(),
 }))
 
 jest.mock('../services/debug/walletLogger', () => ({
   logWalletError: jest.fn(),
   logWalletStep: jest.fn(),
-}))
-
-jest.mock('../services/credentials/storedCredentials', () => ({
-  readStoredCredentials: jest.fn(() => []),
-}))
-
-jest.mock('../services/credentials/scannedCredentialSave', () => ({
-  saveScannedCredential: jest.fn(),
-}))
-
-jest.mock('../services/history/presentationHistory', () => ({
-  recordSuccessfulPresentation: jest.fn(),
-}))
-
-jest.mock('../services/vci/exchangeService', () => ({
-  acquireCredentialRecord: jest.fn(),
-  resolveOffer: jest.fn(),
-}))
-
-jest.mock('../services/vp/presentationApproval', () => ({
-  confirmPresentationBiometric: jest.fn(),
-  createApprovedPresentationResponse: jest.fn(),
 }))
 
 const cameraMock = jest.requireMock('expo-camera') as {
@@ -77,51 +48,20 @@ const cameraMock = jest.requireMock('expo-camera') as {
 }
 
 jest.mock('../services/vp/presentationService', () => ({
-  isOid4VpAuthorizationRequest: jest.fn(() => false),
-  readPresentationTokenAudience: jest.fn(),
-  readPresentationTokenMode: jest.fn(),
-  resolvePresentationRequest: jest.fn(),
-  submitPresentationResponse: jest.fn(),
+  isOid4VpAuthorizationRequest: jest.fn((uri: string) => uri.startsWith('openid4vp://')),
 }))
-
-const presentationServiceMock = jest.requireMock('../services/vp/presentationService') as {
-  isOid4VpAuthorizationRequest: jest.Mock
-  resolvePresentationRequest: jest.Mock
-}
 
 describe('ScanScreen deeplink handling', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockRouterReplace.mockClear()
     mockRouterPush.mockClear()
-    cameraMock.useCameraPermissions.mockReturnValue([{ granted: false }, jest.fn()])
+    cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
     useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
-    presentationServiceMock.isOid4VpAuthorizationRequest.mockReturnValue(false)
-    presentationServiceMock.resolvePresentationRequest.mockResolvedValue({
-      verifier: { name: 'Verifier' },
-      matchedCredential: { id: 'cred-1', type: 'ThaiNationalID' },
-      disclosures: [],
-      presentationDefinition: null,
-    })
   })
 
   it('stores pending credential offer URI without navigating from Scan', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Ftranscript-offer'
-
-    render(<ScanScreen />)
-
-    await act(async () => {
-      useDeeplinkStore.getState().setIncomingDeeplinkUri(offerUri)
-    })
-
-    expect(useDeeplinkStore.getState().pendingUri).toBe(offerUri)
-    expect(mockRouterPush).not.toHaveBeenCalled()
-    expect(screen.queryByText(`Claiming ${offerUri}`)).toBeNull()
-  })
-
-  it('stores scanned credential-offer QR in deeplink store for root layout routing', async () => {
-    cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
-    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-offer'
 
     render(<ScanScreen />)
 
@@ -134,20 +74,16 @@ describe('ScanScreen deeplink handling', () => {
     expect(screen.queryByText('Scan Success')).toBeNull()
   })
 
-  it('processes pending OID4VP deeplink into resolvePresentationRequest', async () => {
+  it('hands off scanned OID4VP QR to presentation-request route', async () => {
     const requestUri = 'openid4vp://?client_id=did%3Aweb%3Averifier.example&response_type=vp_token'
-    presentationServiceMock.isOid4VpAuthorizationRequest.mockImplementation((uri: string) => uri === requestUri)
-    cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
 
     render(<ScanScreen />)
 
     await act(async () => {
-      useDeeplinkStore.getState().setPendingDeeplinkUri(requestUri)
+      cameraMock.CameraView.mock.calls.at(-1)?.[0].onBarcodeScanned({ data: requestUri })
     })
 
-    await waitFor(() => {
-      expect(presentationServiceMock.resolvePresentationRequest).toHaveBeenCalled()
-    })
+    expect(useDeeplinkStore.getState().pendingUri).toBe(requestUri)
+    expect(mockRouterPush).toHaveBeenCalledWith('/(tabs)/presentation-request')
   })
-
 })

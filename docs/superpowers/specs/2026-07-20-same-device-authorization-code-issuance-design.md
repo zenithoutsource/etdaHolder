@@ -31,7 +31,7 @@ Issuer returns an **issuance URI** on `walletapp://callback`, e.g.:
 
 Wallet normalizes https/offer query values into `openid-credential-offer://` and routes to **`/(tabs)/credential-offer`**.
 
-Optional: Issuer may return **`openid4vp://`** on callback → Wallet routes to **Scan** for PID VP.
+Optional: Issuer may return **`openid4vp://`** on callback → Wallet routes to **`/(tabs)/presentation-request`** for PID VP (see `2026-07-24-same-device-vp-wallet-callback-design.md`).
 
 ## Not used on this path
 

@@ -60,6 +60,21 @@ describe('resolveIssuanceCallbackFromSources', () => {
       }),
     ).toEqual({ kind: 'unsupported' })
   })
+
+  test('parses presentation request from walletapp callback search params', () => {
+    expect(
+      resolveIssuanceCallbackFromSources({
+        linkingUrl: null,
+        searchParams: {
+          authorization_request_uri: 'https://verifier.example/request/abc',
+        },
+        returnUrl,
+      }),
+    ).toEqual({
+      kind: 'presentation_request',
+      uri: 'openid4vp://authorize?request_uri=https%3A%2F%2Fverifier.example%2Frequest%2Fabc',
+    })
+  })
 })
 
 describe('buildIssuanceCallbackUrlFromSearchParams', () => {
@@ -81,5 +96,15 @@ describe('storePendingFromIssuanceCallbackUrl', () => {
     expect(useDeeplinkStore.getState().pendingUri).toBe(
       'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer',
     )
+  })
+
+  test('stores normalized presentation request from walletapp callback before pin unlock', () => {
+    const embedded = 'openid4vp://authorize?client_id=verifier.example&response_type=vp_token'
+    storePendingFromIssuanceCallbackUrl(
+      `walletapp://callback?openid4vp=${encodeURIComponent(embedded)}`,
+    )
+
+    expect(useDeeplinkStore.getState().pendingUri).toBe(embedded)
+    expect(useDeeplinkStore.getState().vpGeneration).toBe(1)
   })
 })
