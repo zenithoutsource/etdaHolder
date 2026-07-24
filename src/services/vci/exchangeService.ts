@@ -1,54 +1,63 @@
 import {
-  CredentialOfferClient,
-  CredentialRequestClientBuilder,
+    CredentialOfferClient,
+    CredentialRequestClientBuilder,
 } from '@sphereon/oid4vci-client'
-import { createHash } from 'react-native-quick-crypto'
 import type {
-  CredentialConfigurationSupportedV1_0_15,
-  CredentialOfferRequestWithBaseUrl,
-  CredentialsSupportedDisplay,
-  IssuerMetadataV1_0_15,
-  MetadataDisplay,
-  OID4VCICredentialFormat,
-  OpenId4VCIVersion,
-  TxCode,
+    CredentialConfigurationSupportedV1_0_15,
+    CredentialOfferRequestWithBaseUrl,
+    CredentialsSupportedDisplay,
+    IssuerMetadataV1_0_15,
+    MetadataDisplay,
+    OID4VCICredentialFormat,
+    OpenId4VCIVersion,
+    TxCode,
 } from '@sphereon/oid4vci-common'
+import { createHash } from 'react-native-quick-crypto'
 
 import {
-  signProof as defaultSignProof,
-  getHolderDid,
-  type SignProofOptions,
-} from '../crypto/crypto'
+    base64UrlDecodeToString,
+    base64UrlToBytes,
+    decodeJwtPayloadStrict as decodeJwtPayload,
+    isRecord,
+    isSameJwk,
+    isSameKid,
+    readRecord,
+    readString,
+    toErrorMessage,
+} from '@/src/utils/jwtUtils'
 import { getCardSchema } from '../../config/cardSchemas'
-import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
+import {
+    importCredential as defaultImportCredential,
+} from '../../sdk/walletApi'
 import { stringifyClaim } from '../credentials/claimFormatting'
 import { readNormalizedDocumentExpiry } from '../credentials/credentialDocumentExpiresAt'
+import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
+import { readCredentialIssuerName } from '../credentials/credentialIssuer'
 import { notifyCredentialsChanged } from '../credentials/storedCredentials'
+import {
+    bindPendingKeyToCredential,
+    createPendingCredentialKey,
+    getCredentialHolderDid as getPerCredentialHolderDid,
+} from '../crypto/credentialSigningKey'
+import {
+    signProof as defaultSignProof,
+    getHolderDid,
+    type SignProofOptions,
+} from '../crypto/crypto'
+import {
+    isWalletCryptoV2Enabled,
+    readCachedWalletAttestations,
+} from '../crypto/walletCryptoActivation'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { appendWalletHistoryEvent } from '../history/walletEventLog'
 import {
-  recordBackendSyncHistory,
-  recordCredentialVerifyFailed,
+    recordBackendSyncHistory,
+    recordCredentialVerifyFailed,
 } from '../history/walletHistoryRecording'
-import {
-  importCredential as defaultImportCredential,
-} from '../../sdk/walletApi'
+import { storeMdocCredential } from '../proximity/mdocStorage'
 import { getCredentialStorage as getDefaultCredentialStorage } from '../storage/storage'
-import {
-  base64UrlDecodeToString,
-  base64UrlToBytes,
-  decodeJwtPayloadStrict as decodeJwtPayload,
-  isSameJwk,
-  isSameKid,
-  isRecord,
-  readRecord,
-  readString,
-  toErrorMessage,
-} from '@/src/utils/jwtUtils'
 import { parseClaimDisclosurePolicyFromCredentialMetadata } from '../vp/claimDisclosurePolicy'
 import { assertIssuerDidWebCredentialSignature } from './issuerDidWebVerify'
-import { storeMdocCredential } from '../proximity/mdocStorage'
-import { readCredentialIssuerName } from '../credentials/credentialIssuer'
 
 const CREDENTIAL_INDEX_KEY = 'credential:index'
 const CREDENTIAL_KEY_PREFIX = 'credential:'
@@ -143,6 +152,7 @@ export type RequestCredentialInput = {
   accessToken: string
   proof: string
   credentialIdentifier?: string
+  walletAttestations?: { wua: string; wia: string }
 }
 
 export type ClaimCredentialDependencies = {
@@ -171,7 +181,10 @@ export type AuthorizationCodeExchangeInput = {
   tokenEndpoint?: string
 }
 
-export type AcquireCredentialRecordOptions = ClaimCredentialOptions
+export type AcquireCredentialRecordOptions = ClaimCredentialOptions & {
+  /** Pending credential key id created by claimCredential when v2 crypto is enabled. */
+  pendingCredentialKeyId?: string
+}
 
 export type BackendSyncResult = {
   status: 201
@@ -186,6 +199,7 @@ export type ImportCredentialToBackend = (
 export type SyncCredentialToBackendDependencies = {
   importCredential: ImportCredentialToBackend
   getHolderDid: () => string
+  getCredentialHolderDid?: (credentialId: string) => string
 }
 
 export type SyncCredentialToBackendOptions = {
@@ -324,7 +338,12 @@ export async function claimCredential(
     ...createDefaultClaimCredentialDependencies(),
     ...options.dependencies,
   }
-  const record = await acquireCredentialRecord(resolvedOffer, { ...options, dependencies })
+
+  const record = await acquireCredentialRecord(resolvedOffer, {
+    ...options,
+    dependencies,
+  })
+
   await persistClaimedCredentialFormats(record, resolvedOffer, dependencies)
   logWalletStep('oid4vci', 'credential-save-start', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
   saveCredentialRecord(record, { getCredentialStorage: dependencies.getCredentialStorage })
@@ -372,7 +391,24 @@ export async function acquireCredentialRecord(
     reused: Boolean(options.reuseToken),
   })
   const proofKeyBinding = readProofKeyBinding(resolvedOffer.credentialConfigurations[0])
-  let proof = await dependencies.signProof(token.cNonce, resolvedOffer.issuer, {
+  let pendingCredentialKeyId = options.pendingCredentialKeyId
+  if (!pendingCredentialKeyId && isWalletCryptoV2Enabled()) {
+    pendingCredentialKeyId = await createPendingCredentialKey()
+  }
+  const walletAttestations = readWalletAttestationsForCredentialRequest()
+  const signProofForClaim = async (
+    nonce: string,
+    audience: string,
+    signOptions: SignProofOptions = {},
+  ) =>
+    dependencies.signProof(nonce, audience, {
+      ...signOptions,
+      ...(pendingCredentialKeyId && isWalletCryptoV2Enabled()
+        ? { credentialKeyId: pendingCredentialKeyId }
+        : {}),
+    })
+
+  let proof = await signProofForClaim(token.cNonce, resolvedOffer.issuer, {
     keyBinding: proofKeyBinding,
   })
   logWalletStep('oid4vci', 'proof-signed', {
@@ -398,6 +434,7 @@ export async function acquireCredentialRecord(
       accessToken: token.accessToken,
       proof,
       credentialIdentifier: token.credentialIdentifier,
+      ...(walletAttestations ? { walletAttestations } : {}),
     })
   } catch (error) {
     if (error instanceof DeferredIssuancePending) {
@@ -423,7 +460,7 @@ export async function acquireCredentialRecord(
     }
 
     logWalletError('oid4vci', 'credential-request-invalid-proof', error, { issuer: resolvedOffer.issuer, retry: true })
-    proof = await dependencies.signProof(error.cNonce, resolvedOffer.issuer, {
+    proof = await signProofForClaim(error.cNonce, resolvedOffer.issuer, {
       keyBinding: proofKeyBinding,
     })
     logWalletStep('oid4vci', 'proof-resigned', {
@@ -436,18 +473,30 @@ export async function acquireCredentialRecord(
       accessToken: token.accessToken,
       proof,
       credentialIdentifier: token.credentialIdentifier,
+      ...(walletAttestations ? { walletAttestations } : {}),
     })
   }
   logWalletStep('oid4vci', 'credential-response-received', { issuer: resolvedOffer.issuer, credentialBytes: rawVc.length })
 
   const configuration = resolvedOffer.credentialConfigurations[0]
-  if (configuration && isMsoMdocFormat(configuration.format)) {
-    return finalizeMdocCredentialRecord(rawVc, resolvedOffer, configuration)
-  }
+  const record =
+    configuration && isMsoMdocFormat(configuration.format)
+      ? await finalizeMdocCredentialRecord(rawVc, resolvedOffer, configuration)
+      : await finalizeCredentialRecord(rawVc, proof, resolvedOffer, {
+          fetchImpl: dependencies.fetchImpl,
+        })
 
-  return finalizeCredentialRecord(rawVc, proof, resolvedOffer, {
-    fetchImpl: dependencies.fetchImpl,
-  })
+  return bindV2CredentialKeyIfNeeded(pendingCredentialKeyId, record)
+}
+
+async function bindV2CredentialKeyIfNeeded(
+  pendingCredentialKeyId: string | undefined,
+  record: VerifiableCredentialRecord,
+): Promise<VerifiableCredentialRecord> {
+  if (pendingCredentialKeyId && isWalletCryptoV2Enabled()) {
+    await bindPendingKeyToCredential(pendingCredentialKeyId, record.id, record.type)
+  }
+  return record
 }
 
 async function finalizeCredentialRecord(
@@ -615,13 +664,17 @@ export async function syncCredentialToBackend(
     ...options.dependencies,
   }
 
+  const associatedDid = isWalletCryptoV2Enabled()
+    ? (dependencies.getCredentialHolderDid?.(record.id) ?? getPerCredentialHolderDid(record.id))
+    : dependencies.getHolderDid()
+
   let response: Awaited<ReturnType<ImportCredentialToBackend>>
   try {
     response = await dependencies.importCredential(
       options.walletId,
       {
         jwt: record.rawVc,
-        associated_did: dependencies.getHolderDid(),
+        associated_did: associatedDid,
       },
       {
         headers: {
@@ -1134,7 +1187,7 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
         throw new Error(`CredentialTokenExchangeFailed: ${toErrorMessage(error)}`)
       }
     },
-    requestCredential: async ({ resolvedOffer, accessToken, proof, credentialIdentifier }) => {
+    requestCredential: async ({ resolvedOffer, accessToken, proof, credentialIdentifier, walletAttestations }) => {
       try {
         const credentialConfiguration = resolvedOffer.credentialConfigurations[0]
 
@@ -1160,9 +1213,12 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
             : { credentialConfigurationId: credentialConfiguration.requestId }),
           version: resolvedOffer.version as OpenId4VCIVersion,
         })
-        const requestPayload = applyMsoMdocCredentialRequestFields(
-          credentialRequest as unknown as Record<string, unknown>,
-          credentialConfiguration,
+        const requestPayload = applyWalletAttestationFields(
+          applyMsoMdocCredentialRequestFields(
+            credentialRequest as unknown as Record<string, unknown>,
+            credentialConfiguration,
+          ),
+          walletAttestations,
         )
         const response = await credentialClient.acquireCredentialsUsingRequest(
           requestPayload as unknown as Parameters<typeof credentialClient.acquireCredentialsUsingRequest>[0],
@@ -1691,6 +1747,28 @@ function readProofKeyBinding(
 function readMdocDocType(configuration: OfferedCredentialConfiguration): string | undefined {
   const rawConfiguration = readRecord(configuration.rawConfiguration)
   return readString(rawConfiguration?.doctype) ?? readString(rawConfiguration?.docType)
+}
+
+function readWalletAttestationsForCredentialRequest(): { wua: string; wia: string } | undefined {
+  if (!isWalletCryptoV2Enabled()) return undefined
+
+  const cached = readCachedWalletAttestations()
+  if (!cached.wua?.value || !cached.wia?.value) return undefined
+
+  return { wua: cached.wua.value, wia: cached.wia.value }
+}
+
+function applyWalletAttestationFields(
+  credentialRequest: Record<string, unknown>,
+  walletAttestations?: { wua: string; wia: string },
+): Record<string, unknown> {
+  if (!walletAttestations) return credentialRequest
+
+  return {
+    ...credentialRequest,
+    wua: walletAttestations.wua,
+    wia: walletAttestations.wia,
+  }
 }
 
 function applyMsoMdocCredentialRequestFields(

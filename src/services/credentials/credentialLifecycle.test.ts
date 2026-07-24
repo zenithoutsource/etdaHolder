@@ -37,6 +37,16 @@ jest.mock('../storage/storage', () => ({
   getCredentialStorage: jest.fn(),
 }))
 
+jest.mock('../crypto/credentialSigningKey', () => {
+  const actual = jest.requireActual('../crypto/credentialSigningKey') as typeof import('../crypto/credentialSigningKey')
+  return {
+    ...actual,
+    destroyCredentialKey: jest.fn(async () => undefined),
+  }
+})
+
+import { destroyCredentialKey } from '../crypto/credentialSigningKey'
+
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
 
 function mockStorage(initialValues: Record<string, string> = {}) {
@@ -93,6 +103,7 @@ describe('credentialLifecycle', () => {
       'credential:lifecycle:transcript-1',
       JSON.stringify(status),
     )
+    expect(destroyCredentialKey).toHaveBeenCalledWith('transcript-1')
   })
 
   test('recordCredentialLifecycleAction appends revoked history event', () => {

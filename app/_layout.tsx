@@ -67,6 +67,10 @@ function toUserMessage(message: string): string {
     return 'ไม่สามารถเปิดพื้นที่จัดเก็บข้อมูลได้ กรุณาลองใหม่อีกครั้ง'
   if (message.includes('WalletKeyNotInitialized'))
     return 'ไม่สามารถสร้าง Wallet Key ได้ กรุณาลองใหม่อีกครั้ง'
+  if (message.includes('WalletCryptoLegacyWallet'))
+    return 'Wallet นี้ใช้ระบบคีย์เวอร์ชันเก่า กรุณาออกเอกสารใหม่ทั้งหมดเพื่อใช้งาน v2'
+  if (message.includes('WalletAttestRequestFailed'))
+    return 'ไม่สามารถยืนยัน Wallet กับผู้ให้บริการได้ กรุณาลองใหม่อีกครั้ง'
   if (message.includes('DeviceIntegrityCompromised'))
     return 'ไม่สามารถใช้งาน Wallet บนอุปกรณ์ที่ผ่านการ Root หรือ Jailbreak ได้'
   if (message.includes('WalletApiTransportSecurityRequired') || message.includes('WalletApiCertificatePinsRequired'))
@@ -298,6 +302,24 @@ export default function RootLayout() {
       await generateWalletKeyIfNeeded();
       if (!isCurrentRun()) return;
       logWalletStep('startup', 'wallet-key-ready');
+
+      const {
+        activateWalletCryptoV2,
+        detectLegacySingleKeyWallet,
+        isWalletCryptoV2Enabled,
+      } = await import('@/src/services/crypto/walletCryptoActivation');
+
+      if (detectLegacySingleKeyWallet()) {
+        logWalletStep('startup', 'wallet-crypto-v2-legacy-wallet-detected');
+        throw new Error('WalletCryptoLegacyWallet');
+      }
+
+      if (!isWalletCryptoV2Enabled()) {
+        await activateWalletCryptoV2();
+        if (!isCurrentRun()) return;
+        logWalletStep('startup', 'wallet-crypto-v2-activated');
+      }
+
       await loadSession();
       if (!isCurrentRun()) return;
 

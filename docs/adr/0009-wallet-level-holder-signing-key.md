@@ -1,6 +1,6 @@
 # ADR 0009 - Wallet-Level Holder Signing Key
 
-Status: Accepted
+Status: Superseded by [ADR 0010](./0010-per-credential-signing-keys.md)
 
 Date: 2026-07-08
 

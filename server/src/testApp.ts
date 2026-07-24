@@ -8,6 +8,7 @@ import { credentialsRouter } from './routes/credentials'
 import { devWalletRouter } from './routes/devWallet'
 import { vpSessionRouter } from './routes/vpSession'
 import { presentationGatewayRouter } from './routes/presentationGateway'
+import { walletProviderAttestRouter } from './routes/walletProviderAttest'
 import { pushTokensRouter } from './routes/pushTokens'
 import { walletsRouter } from './routes/wallets'
 
@@ -99,7 +100,7 @@ export function createTestApp(): express.Express {
   app.use(createCorsMiddleware())
 
   app.use('/dev', express.json({ limit: '1mb' }), vpSessionRouter)
-  app.use('/v1', express.json({ limit: '1mb' }), presentationGatewayRouter)
+  app.use('/v1', express.json({ limit: '1mb' }), presentationGatewayRouter, walletProviderAttestRouter)
 
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: false, limit: '1mb' }))

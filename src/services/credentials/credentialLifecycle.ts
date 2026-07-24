@@ -1,4 +1,5 @@
 import { getCardSchema } from '../../config/cardSchemas'
+import { destroyCredentialKey } from '../crypto/credentialSigningKey'
 import { appendWalletHistoryEvent } from '../history/walletEventLog'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
@@ -47,6 +48,8 @@ export function recordCredentialLifecycleAction(
     occurredAt: now.toISOString(),
   }
   getCredentialStorage().set(`${LIFECYCLE_KEY_PREFIX}${credentialId}`, JSON.stringify(status))
+
+  void destroyCredentialKey(credentialId).catch(() => undefined)
 
   const record = readStoredCredentialById(credentialId)
   if (record) {

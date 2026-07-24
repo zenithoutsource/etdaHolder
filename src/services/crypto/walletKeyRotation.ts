@@ -7,6 +7,7 @@ import {
   getWalletKeyRegisteredAt,
   hasWalletKey,
 } from './crypto'
+import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
 import { getMetaStorage } from '../storage/storage'
 import { readStoredCredentials } from '../credentials/storedCredentials'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
@@ -63,6 +64,14 @@ export async function rotateWalletKey(now = new Date()): Promise<{
   holderDid: string
   affectedCredentialIds: string[]
 }> {
+  if (isWalletCryptoV2Enabled()) {
+    logWalletStep('crypto', 'wallet-key-rotation-skipped-v2')
+    return {
+      holderDid: getHolderDid(),
+      affectedCredentialIds: [],
+    }
+  }
+
   // Only one previous Ed25519 seed is retained (single previous Keychain slot).
   // Rotating again while a prior rotation is still outstanding would overwrite
   // that seed and strand every credential still bound to it (they could no

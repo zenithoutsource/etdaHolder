@@ -18,7 +18,13 @@ import {
   rotateWalletKey,
 } from './walletKeyRotation'
 
-// rotateWalletKey iterates stored credentials to mark them renewal-required.
+import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
+
+jest.mock('./walletCryptoActivation', () => ({
+  isWalletCryptoV2Enabled: jest.fn(() => false),
+}))
+
+const isWalletCryptoV2EnabledMock = isWalletCryptoV2Enabled as jest.MockedFunction<typeof isWalletCryptoV2Enabled>
 // The guard tests only exercise the rotation-record gate, so an empty credential
 // set keeps them off the (uninitialized) credential MMKV storage.
 jest.mock('../credentials/storedCredentials', () => ({
@@ -40,6 +46,7 @@ describe('wallet key rotation dual-key retention', () => {
     getMetaStorage().clearAll()
     __resetStore()
     jest.clearAllMocks()
+    isWalletCryptoV2EnabledMock.mockReturnValue(false)
     process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING = 'true'
     let call = 0
     jest.mocked(randomBytes).mockImplementation((size: number) => {
@@ -82,7 +89,9 @@ describe('wallet key rotation dual-key retention', () => {
     jest.mocked(randomBytes).mockImplementationOnce(() => seedBytes(1))
     await generateWalletKeyIfNeeded()
 
+    jest.mocked(randomBytes).mockReset()
     jest.mocked(randomBytes).mockImplementationOnce(() => Buffer.alloc(16, 9))
+
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
 
     try {
@@ -190,5 +199,16 @@ describe('rotateWalletKey re-rotation guard', () => {
       expect.objectContaining({ holderDid: expect.any(String) }),
     )
     expect(readWalletKeyRotationRecord()).toBeDefined()
+  })
+
+  test('skips wallet-wide rotation when v2 crypto is enabled', async () => {
+    isWalletCryptoV2EnabledMock.mockReturnValue(true)
+    jest.mocked(randomBytes).mockImplementationOnce(() => seedBytes(7))
+    await generateWalletKeyIfNeeded()
+
+    const result = await rotateWalletKey(new Date('2026-06-29T00:00:00.000Z'))
+
+    expect(result.affectedCredentialIds).toEqual([])
+    expect(readWalletKeyRotationRecord()).toBeUndefined()
   })
 })

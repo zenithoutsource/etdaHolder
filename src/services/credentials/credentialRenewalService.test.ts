@@ -46,6 +46,14 @@ jest.mock('./renewalOid4VpPresentation', () => ({
   presentOldCredentialForRenewal: jest.fn().mockResolvedValue(undefined),
 }))
 
+jest.mock('../crypto/credentialSigningKey', () => ({
+  destroyCredentialKey: jest.fn(async () => undefined),
+}))
+
+import { destroyCredentialKey } from '../crypto/credentialSigningKey'
+
+const destroyCredentialKeyMock = destroyCredentialKey as jest.MockedFunction<typeof destroyCredentialKey>
+
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
 
 const presentOldCredentialForRenewalMock = presentOldCredentialForRenewal as jest.MockedFunction<
@@ -468,6 +476,7 @@ describe('refreshAndCompleteRenewals', () => {
     const replacementRecord = readCredentialRenewal(replacement.id)
     expect(replacementRecord?.state).toBe('renewed-active')
     expect(replacementRecord?.replacementCredentialId).toBeUndefined()
+    expect(destroyCredentialKeyMock).toHaveBeenCalledWith(mockCredential.id)
   })
 
   test('clears stale readiness after a failed claim before a resubmission becomes ready', async () => {
@@ -803,5 +812,6 @@ describe('confirmOldCredentialCleanup', () => {
     expect(readCredentialRenewal(oldCredential.id)).toBeUndefined()
     expect(readCredentialRenewal(newCredential.id)).toBeUndefined()
     expect(findCleanupPendingForCredentialType('ThaiNationalID')).toBeUndefined()
+    expect(destroyCredentialKeyMock).toHaveBeenCalledWith(oldCredential.id)
   })
 })

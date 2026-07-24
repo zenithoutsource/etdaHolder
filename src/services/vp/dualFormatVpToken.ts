@@ -1,12 +1,12 @@
 import { readVerifierDcqlVpTokenShape } from '@/src/config/runtimeFlags'
 import { signSdJwtKbPresentationToken } from '../crypto/crypto'
 import { logWalletStep } from '../debug/walletLogger'
-import { readMdocVpTokenEntry } from './mdocVpTokenEntry'
 import { isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
+import { readMdocVpTokenEntry } from './mdocVpTokenEntry'
 import {
-  readPresentationTokenAudience,
-  type DcqlCredentialQuery,
-  type ResolvedPresentationRequest,
+    readPresentationTokenAudience,
+    type DcqlCredentialQuery,
+    type ResolvedPresentationRequest,
 } from './presentationService'
 import { selectSdJwtDisclosures } from './sdJwtSelectiveDisclosure'
 
@@ -70,6 +70,7 @@ async function buildDcqlCredentialToken(input: {
       audience: input.audience,
       nonce: input.request.nonce,
       sdJwt: selectSdJwtDisclosures(input.request.matchedCredential.rawVc, claimKeys),
+      credentialId: input.request.matchedCredential.id,
     })
   }
 

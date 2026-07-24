@@ -51,6 +51,7 @@ export type ServerConfig = {
   /** @deprecated Alias of verifierPresentationBaseUrl — kept for backward compatibility. */
   presentationGatewayBaseUrl: string
   presentationIssuerJwksCacheMs: number
+  walletAttestTtlMs: number
 }
 
 function readString(name: string, fallback?: string): string {
@@ -194,6 +195,7 @@ export function readConfig(): ServerConfig {
     verifierPresentationBaseUrl,
     presentationGatewayBaseUrl: verifierPresentationBaseUrl,
     presentationIssuerJwksCacheMs: readIntegerInRange('PRESENTATION_ISSUER_JWKS_CACHE_MS', '3600000', 60_000, 86_400_000),
+    walletAttestTtlMs: readIntegerInRange('WALLET_ATTEST_TTL_MS', '86400000', 60_000, 86_400_000),
   }
 }
 

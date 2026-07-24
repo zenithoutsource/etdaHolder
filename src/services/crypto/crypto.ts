@@ -10,6 +10,12 @@ import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getMetaStorage } from '../storage/storage'
 import { readWalletKeyDeviceDiagnostics } from './walletKeyDeviceDiagnostics'
 import { notifyWalletKeyRegistrationChanged } from './walletKeyExpiryWatch'
+import {
+  getCredentialSigningHolderDid,
+  readCredentialSigningPublicJwk,
+  signWithCredentialKey,
+} from './credentialSigningKey'
+import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
 
 hashes.sha512 = sha512
 
@@ -364,6 +370,7 @@ export function getWalletKeyRegisteredAt(): string | undefined {
 }
 
 /** Returns the Holder DID derived from the cached Ed25519 public key. Sync, no biometric. */
+/** @deprecated Use getCredentialHolderDid(credentialId) for protocol signing in v2 crypto. */
 export function getHolderDid(): string {
   return ed25519PublicKeyToDidKey(readStoredEd25519PublicKey())
 }
@@ -412,6 +419,8 @@ function readStoredEd25519PublicKey(): Uint8Array {
  */
 export type SignProofOptions = {
   keyBinding?: 'did-kid' | 'jwk'
+  /** Pending or bound credential key id for v2 per-credential PoP signing. */
+  credentialKeyId?: string
 }
 
 export async function signProof(
@@ -420,17 +429,31 @@ export async function signProof(
   options: SignProofOptions = {},
 ): Promise<string> {
   const keyBinding = options.keyBinding ?? 'did-kid'
+  const credentialKeyId = options.credentialKeyId
+  const useCredentialKey = Boolean(credentialKeyId && isWalletCryptoV2Enabled())
+
   const header =
     keyBinding === 'jwk'
       ? {
           alg: 'EdDSA' as const,
           typ: 'openid4vci-proof+jwt' as const,
-          jwk: getPublicKeyJwk(),
-          // Non-IANA JOSE param: Ed25519 COSE_Key CBOR for cose_key-binding issuers.
-          cose_key: getHolderCoseKeyBase64Url(),
+          jwk: useCredentialKey
+            ? await readCredentialSigningPublicJwk(credentialKeyId!)
+            : getPublicKeyJwk(),
+          cose_key: useCredentialKey
+            ? base64UrlEncode(
+                encodeEd25519CoseKey(
+                  getPublicKeyFromCredentialSigningJwk(
+                    await readCredentialSigningPublicJwk(credentialKeyId!),
+                  ),
+                ),
+              )
+            : getHolderCoseKeyBase64Url(),
         }
-      : (() => {
-          const did = getHolderDid()
+      : await (async () => {
+          const did = useCredentialKey
+            ? await getCredentialSigningHolderDid(credentialKeyId!)
+            : getHolderDid()
           const kid = `${did}#${did.slice('did:key:'.length)}`
           return { alg: 'EdDSA' as const, typ: 'openid4vci-proof+jwt' as const, kid }
         })()
@@ -442,8 +465,10 @@ export async function signProof(
           iat: Math.floor(Date.now() / 1000),
           nonce,
         }
-      : (() => {
-          const did = getHolderDid()
+      : await (async () => {
+          const did = useCredentialKey
+            ? await getCredentialSigningHolderDid(credentialKeyId!)
+            : getHolderDid()
           return {
             iss: did,
             sub: did,
@@ -457,13 +482,14 @@ export async function signProof(
     alg: header.alg,
     typ: header.typ,
     keyBinding,
+    credentialKeyId: useCredentialKey ? credentialKeyId : undefined,
     kid: 'kid' in header ? header.kid : undefined,
     jwkCrv: 'jwk' in header ? header.jwk.crv : undefined,
     coseKeyPresent: 'cose_key' in header,
     audience,
     noncePresent: Boolean(nonce),
   })
-  return signJwtLikeObject(header, payload, 'proof')
+  return signJwtLikeObject(header, payload, 'proof', 'active', credentialKeyId)
 }
 
 /** RFC 8152 COSE_Key for the holder Ed25519 public key, base64url-encoded CBOR. */
@@ -496,6 +522,91 @@ function encodeEd25519CoseKey(publicKey: Uint8Array): Uint8Array {
   out[i++] = 0x20
   out.set(publicKey, i)
   return out
+}
+
+function base64UrlToUint8Array(value: string): Uint8Array {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+  return base64ToUint8Array(padded)
+}
+
+function getPublicKeyFromCredentialSigningJwk(jwk: JsonWebKey): Uint8Array {
+  if (typeof jwk.x !== 'string') throw new Error('InvalidCredentialSigningJwk')
+  const publicKey = base64UrlToUint8Array(jwk.x)
+  assertEd25519PublicKeyLength(publicKey)
+  return publicKey
+}
+
+async function signPresentationVpTokenWithCredentialKey(
+  input: PresentationVpTokenInput,
+): Promise<string> {
+  const credentialId = input.credentialId
+  if (!credentialId) throw new Error('CredentialKeyNotFound')
+
+  const did = await getCredentialSigningHolderDid(credentialId)
+  const kid = `${did}#${did.slice('did:key:'.length)}`
+  const now = Math.floor(Date.now() / 1000)
+
+  const header = { alg: 'EdDSA', typ: 'JWT', kid }
+  const payload = {
+    iss: did,
+    sub: did,
+    jti: `urn:uuid:${createUuid()}`,
+    aud: input.audience,
+    nbf: now,
+    iat: now,
+    exp: now + 300,
+    nonce: input.nonce,
+    vp: {
+      '@context': ['https://www.w3.org/2018/credentials/v1'],
+      type: ['VerifiablePresentation'],
+      holder: did,
+      verifiableCredential: [input.verifiableCredential],
+    },
+  }
+
+  logWalletStep('crypto', 'sign-vp-token-credential-start', {
+    credentialId,
+    kid,
+    audience: input.audience,
+    noncePresent: Boolean(input.nonce),
+    credentialBytes: input.verifiableCredential.length,
+  })
+  return signJwtLikeObject(header, payload, 'vp', 'active', credentialId)
+}
+
+async function signSdJwtKbPresentationTokenWithCredentialKey(
+  input: SdJwtKbPresentationTokenInput,
+): Promise<string> {
+  const credentialId = input.credentialId
+  if (!credentialId) throw new Error('CredentialKeyNotFound')
+
+  const did = await getCredentialSigningHolderDid(credentialId)
+  const jwk = await readCredentialSigningPublicJwk(credentialId)
+  const kid = `${did}#${did.slice('did:key:'.length)}`
+  const cnfKid = assertSdJwtHolderBinding(input.sdJwt, { jwk, kid })
+
+  const now = Math.floor(Date.now() / 1000)
+  const sdJwtWithoutKb = normalizeSdJwtWithoutKb(input.sdJwt)
+  const sdHash = base64UrlEncode(createHash('sha256').update(new TextEncoder().encode(sdJwtWithoutKb)).digest())
+
+  const header = { alg: 'EdDSA', typ: 'kb+jwt', kid: cnfKid ?? kid }
+  const payload = {
+    nonce: input.nonce,
+    aud: input.audience,
+    iat: now,
+    sd_hash: sdHash,
+  }
+
+  logWalletStep('crypto', 'sign-sd-jwt-kb-credential-start', {
+    credentialId,
+    kid: header.kid,
+    audience: input.audience,
+    noncePresent: Boolean(input.nonce),
+    sdJwtBytes: input.sdJwt.length,
+  })
+  const kbJwt = await signJwtLikeObject(header, payload, 'kb', 'active', credentialId)
+  return `${sdJwtWithoutKb}${kbJwt}`
 }
 
 export type HolderStatusChangePopInput = {
@@ -537,12 +648,14 @@ export type PresentationVpTokenInput = {
   audience: string
   nonce: string
   verifiableCredential: string
+  credentialId?: string
 }
 
 export type SdJwtKbPresentationTokenInput = {
   audience: string
   nonce: string
   sdJwt: string
+  credentialId?: string
 }
 
 /**
@@ -550,6 +663,10 @@ export type SdJwtKbPresentationTokenInput = {
  * Biometric fires here on every presentation approval.
  */
 export async function signPresentationVpToken(input: PresentationVpTokenInput): Promise<string> {
+  if (input.credentialId && isWalletCryptoV2Enabled()) {
+    return signPresentationVpTokenWithCredentialKey(input)
+  }
+
   const did = getHolderDid()
   const kid = `${did}#${did.slice('did:key:'.length)}`
   const now = Math.floor(Date.now() / 1000)
@@ -645,6 +762,10 @@ async function signSdJwtKbPresentationTokenWithSeed(
   input: SdJwtKbPresentationTokenInput,
   seedKind: 'active' | 'previous',
 ): Promise<string> {
+  if (input.credentialId && isWalletCryptoV2Enabled() && seedKind === 'active') {
+    return signSdJwtKbPresentationTokenWithCredentialKey(input)
+  }
+
   const did = seedKind === 'previous' ? getPreviousHolderDid() : getHolderDid()
   if (!did) throw new Error(seedKind === 'previous' ? 'PreviousWalletKeyNotInitialized' : 'WalletKeyNotInitialized')
   const jwk = seedKind === 'previous' ? getPreviousPublicKeyJwk() : getPublicKeyJwk()
@@ -691,20 +812,25 @@ async function signJwtLikeObject(
   payload: Record<string, unknown>,
   tokenKind: string,
   seedKind: 'active' | 'previous' = 'active',
+  credentialKeyId?: string,
 ): Promise<string> {
   const headerB64 = base64UrlEncode(JSON.stringify(header))
   const payloadB64 = base64UrlEncode(JSON.stringify(payload))
   const signingInput = `${headerB64}.${payloadB64}`
   let signatureBytes: Uint8Array
   try {
-    const service = seedKind === 'previous' ? PREVIOUS_KEYCHAIN_SERVICE : KEYCHAIN_SERVICE
-    const promptTitle =
-      seedKind === 'previous' ? 'Sign with Previous Wallet Key' : 'Sign with Wallet Key'
-    const seed = await readStoredEd25519Seed(service, promptTitle)
-    if (!seed) {
-      throw new Error(seedKind === 'previous' ? 'PreviousWalletKeyNotInitialized' : 'WalletKeyNotInitialized')
+    if (credentialKeyId && isWalletCryptoV2Enabled()) {
+      signatureBytes = await signWithCredentialKey(credentialKeyId, new TextEncoder().encode(signingInput))
+    } else {
+      const service = seedKind === 'previous' ? PREVIOUS_KEYCHAIN_SERVICE : KEYCHAIN_SERVICE
+      const promptTitle =
+        seedKind === 'previous' ? 'Sign with Previous Wallet Key' : 'Sign with Wallet Key'
+      const seed = await readStoredEd25519Seed(service, promptTitle)
+      if (!seed) {
+        throw new Error(seedKind === 'previous' ? 'PreviousWalletKeyNotInitialized' : 'WalletKeyNotInitialized')
+      }
+      signatureBytes = sign(new TextEncoder().encode(signingInput), seed)
     }
-    signatureBytes = sign(new TextEncoder().encode(signingInput), seed)
   } catch (error) {
     if (isWalletKeySigningCancellation(error)) {
       logWalletStep('crypto', 'keychain-ed25519-sign-cancelled', { keyId: KEY_ID, tokenKind, seedKind })

@@ -1,4 +1,5 @@
 import { getHolderDid, getPreviousHolderDid } from '../crypto/crypto'
+import { destroyCredentialKey } from '../crypto/credentialSigningKey'
 import {
   clearCredentialRenewal,
   readCredentialRenewal,
@@ -292,6 +293,9 @@ async function completeRenewalClaim(
       credentialId,
       replacementCredentialId: replacement.id,
     })
+    await destroyCredentialKey(credentialId).catch((error) => {
+      logWalletError('renewal', 'destroy-old-credential-key-failed', error, { credentialId })
+    })
     recordCredentialRenewalCompleted(replacement)
   } catch (error) {
     logWalletError('renewal', 'claim-failed', error, { credentialId })
@@ -516,6 +520,9 @@ export async function confirmOldCredentialCleanup(credentialId: string): Promise
   clearRenewalCleanupBannerDismissal(credentialId)
   clearCredentialLifecycleStatus(credentialId)
   removeStoredCredential(credentialId)
+  await destroyCredentialKey(credentialId).catch((error) => {
+    logWalletError('credentials', 'destroy-old-credential-key-failed', error, { credentialId })
+  })
 
   if (replacementCredentialId) {
     clearCredentialRenewal(replacementCredentialId)

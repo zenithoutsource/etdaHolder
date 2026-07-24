@@ -45,6 +45,7 @@ test('buildDualFormatDcqlVpToken assembles per-query-id tokens', async () => {
   expect(signSdJwtKb).toHaveBeenCalledWith({
     audience: baseRequest.clientId,
     nonce: 'nonce-123',
+    credentialId: 'credential-1',
     sdJwt: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~',
   })
   expect(readMdocEntry).toHaveBeenCalledWith('credential-1')
