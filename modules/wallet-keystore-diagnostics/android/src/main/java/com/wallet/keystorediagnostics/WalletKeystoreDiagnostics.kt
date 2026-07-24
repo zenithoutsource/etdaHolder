@@ -31,10 +31,30 @@ object WalletKeystoreDiagnostics {
   private const val ED25519 = "Ed25519"
   private const val TAG = "WalletKeystoreDiag"
   private const val HARDWARE_KEYSTORE_CURVE_25519_VERSION = 200
+  private const val STATUS_EXECUTED = "EXECUTED"
+  private const val STATUS_SKIPPED_FEATURE_ABSENT = "SKIPPED_FEATURE_ABSENT"
+
+  private val STRICT_DEFAULT_ED25519_RECIPES = setOf(
+    "R7-Ed25519-digest-none",
+    "R10-CTS-EC-ed25519-default",
+  )
+
+  private val STRICT_STRONGBOX_ED25519_RECIPES = setOf(
+    "R11-CTS-EC-ed25519-sb",
+    "R12-Ed25519-digest-none-sb",
+  )
 
   private data class SignatureProbeResult(
     val verified: Boolean,
     val signatureBytes: Int,
+    val errorStage: String? = null,
+    val errorClass: String? = null,
+    val errorMessage: String? = null,
+  )
+
+  private data class KeyInfoProbeResult(
+    val keyInfo: KeyInfo? = null,
+    val algorithm: String? = null,
     val errorClass: String? = null,
     val errorMessage: String? = null,
   )
@@ -42,11 +62,15 @@ object WalletKeystoreDiagnostics {
   fun probe(context: AppContext): Map<String, Any?> {
     val reactContext = context.reactContext ?: throw Exceptions.ReactContextLost()
     val packageManager = reactContext.packageManager
-    val recipes = collectDiagnosticRecipes()
+    val hasStrongBoxKeystore = hasFeature(
+      packageManager,
+      PackageManager.FEATURE_STRONGBOX_KEYSTORE,
+    )
+    val recipes = collectDiagnosticRecipes(hasStrongBoxKeystore)
     recipes.forEach { recipe ->
       Log.i(
         TAG,
-        "[${recipe["label"]}] requested=${recipe["requestedAlgorithm"]} alg=${recipe["generatedKeyAlgorithm"]} publicAlg=${recipe["publicKeyAlgorithm"]} spki=${recipe["publicKeyEncodedBytes"]}b [${recipe["publicKeySpkiPrefix"]}...] ed25519=${recipe["publicKeyLooksEd25519"]} signVerify=${recipe["signVerifyOk"]} sigBytes=${recipe["signatureBytes"]} secLevel=${recipe["securityLevelLabel"]} hardware=${recipe["hardwareBacked"]} error=${recipe["errorClass"]}:${recipe["errorMessage"]}",
+        "[${recipe["label"]}] status=${recipe["status"]} requested=${recipe["requestedAlgorithm"]} alg=${recipe["generatedKeyAlgorithm"]} publicAlg=${recipe["publicKeyAlgorithm"]} spki=${recipe["publicKeyEncodedBytes"]}b [${recipe["publicKeySpkiPrefix"]}...] ed25519=${recipe["publicKeyLooksEd25519"]} signVerify=${recipe["signVerifyOk"]} sigBytes=${recipe["signatureBytes"]} secLevel=${recipe["securityLevelLabel"]} hardware=${recipe["hardwareBacked"]} error=${recipe["errorClass"]}:${recipe["errorMessage"]}",
       )
     }
 
@@ -59,8 +83,9 @@ object WalletKeystoreDiagnostics {
         "android.hardware.hardware_keystore",
         HARDWARE_KEYSTORE_CURVE_25519_VERSION,
       ),
-      "hasStrongBoxKeystore" to hasFeature(packageManager, PackageManager.FEATURE_STRONGBOX_KEYSTORE),
-      "hardwareEd25519Supported" to recipes.any(::isSupportedEd25519Recipe),
+      "hasStrongBoxKeystore" to hasStrongBoxKeystore,
+      "hardwareEd25519Supported" to supportsHardwareEd25519(recipes),
+      "strongBoxEd25519Supported" to supportsStrongBoxEd25519(recipes),
       "recipes" to recipes,
     )
   }
@@ -74,14 +99,14 @@ object WalletKeystoreDiagnostics {
     }
   }
 
-  private fun collectDiagnosticRecipes(): List<Map<String, Any?>> {
+  private fun collectDiagnosticRecipes(hasStrongBoxKeystore: Boolean): List<Map<String, Any?>> {
     return listOf(
       diagnosticRecipe("R1-Ed25519-sign", ED25519, null, KeyProperties.PURPOSE_SIGN, signatureAlgorithm = ED25519),
       diagnosticRecipe("R2-Ed25519-sign-verify", ED25519, null, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY, signatureAlgorithm = ED25519),
       diagnosticRecipe("R3-EC-ed25519lower", "EC", ECGenParameterSpec("ed25519"), KeyProperties.PURPOSE_SIGN, signatureAlgorithm = ED25519),
       diagnosticRecipe("R4-EC-Ed25519upper", "EC", ECGenParameterSpec("Ed25519"), KeyProperties.PURPOSE_SIGN, signatureAlgorithm = ED25519),
       diagnosticRecipe("R5-Ed25519-no-sb", ED25519, null, KeyProperties.PURPOSE_SIGN, strongBoxBacked = false, signatureAlgorithm = ED25519),
-      diagnosticRecipe("R6-Ed25519-sb", ED25519, null, KeyProperties.PURPOSE_SIGN, strongBoxBacked = true, signatureAlgorithm = ED25519),
+      diagnosticRecipe("R6-Ed25519-sb", ED25519, null, KeyProperties.PURPOSE_SIGN, strongBoxBacked = true, strongBoxFeatureAvailable = hasStrongBoxKeystore, signatureAlgorithm = ED25519),
       diagnosticRecipe(
         "R7-Ed25519-digest-none",
         ED25519,
@@ -105,6 +130,7 @@ object WalletKeystoreDiagnostics {
         ECGenParameterSpec("secp256r1"),
         KeyProperties.PURPOSE_SIGN,
         strongBoxBacked = true,
+        strongBoxFeatureAvailable = hasStrongBoxKeystore,
         digests = arrayOf(KeyProperties.DIGEST_SHA256),
         signatureAlgorithm = "SHA256withECDSA",
       ),
@@ -122,6 +148,17 @@ object WalletKeystoreDiagnostics {
         ECGenParameterSpec("ed25519"),
         KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
         strongBoxBacked = true,
+        strongBoxFeatureAvailable = hasStrongBoxKeystore,
+        digests = arrayOf(KeyProperties.DIGEST_NONE),
+        signatureAlgorithm = ED25519,
+      ),
+      diagnosticRecipe(
+        "R12-Ed25519-digest-none-sb",
+        ED25519,
+        null,
+        KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+        strongBoxBacked = true,
+        strongBoxFeatureAvailable = hasStrongBoxKeystore,
         digests = arrayOf(KeyProperties.DIGEST_NONE),
         signatureAlgorithm = ED25519,
       ),
@@ -134,6 +171,7 @@ object WalletKeystoreDiagnostics {
     algSpec: AlgorithmParameterSpec?,
     purposes: Int,
     strongBoxBacked: Boolean? = null,
+    strongBoxFeatureAvailable: Boolean = true,
     digests: Array<String>? = null,
     signatureAlgorithm: String,
   ): Map<String, Any?> {
@@ -146,7 +184,13 @@ object WalletKeystoreDiagnostics {
     )
     if (strongBoxBacked != null) result["requestedStrongBoxBacked"] = strongBoxBacked
     if (digests != null) result["requestedDigests"] = digests.toList()
+    if (shouldSkipStrongBoxRecipe(strongBoxBacked, strongBoxFeatureAvailable)) {
+      result["status"] = STATUS_SKIPPED_FEATURE_ABSENT
+      return result
+    }
+    result["status"] = STATUS_EXECUTED
 
+    var failureStage = "GENERATION"
     try {
       val specBuilder = KeyGenParameterSpec.Builder(alias, purposes).apply {
         if (algSpec != null) setAlgorithmParameterSpec(algSpec)
@@ -159,13 +203,15 @@ object WalletKeystoreDiagnostics {
         initialize(specBuilder.build())
         generateKeyPair()
       }
+      failureStage = "ENTRY_READ"
       val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
       val entry = ks.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
+      failureStage = "RESULT_INSPECTION"
       val privKey = entry?.privateKey
       val pubKey = entry?.certificate?.publicKey
       val spki = pubKey?.encoded ?: byteArrayOf()
       val keyInfoResult = privKey?.let { readKeyInfo(it, algorithm) }
-      val keyInfo = keyInfoResult?.first
+      val keyInfo = keyInfoResult?.keyInfo
       val securityLevel = readSecurityLevel(keyInfo)
 
       result["generatedKeyAlgorithm"] = privKey?.algorithm
@@ -183,47 +229,82 @@ object WalletKeystoreDiagnostics {
       result["signVerifyOk"] = signatureProbe.verified
       result["signatureBytes"] = signatureProbe.signatureBytes
       if (signatureProbe.errorClass != null) {
+        result["errorStage"] = signatureProbe.errorStage
         result["errorClass"] = signatureProbe.errorClass
         result["errorMessage"] = signatureProbe.errorMessage
       }
-      result["keyInfoAlgorithm"] = keyInfoResult?.second
+      result["keyInfoAlgorithm"] = keyInfoResult?.algorithm
+      if (keyInfoResult?.errorClass != null) {
+        result["keyInfoErrorClass"] = keyInfoResult.errorClass
+        result["keyInfoErrorMessage"] = keyInfoResult.errorMessage
+      }
       result["securityLevel"] = securityLevel
       result["securityLevelLabel"] = securityLevelLabel(securityLevel)
       result["hardwareBacked"] = isHardwareBackedSecurityLevel(securityLevel)
     } catch (e: Exception) {
+      result["errorStage"] = failureStage
       result["errorClass"] = e.javaClass.simpleName
       result["errorMessage"] = e.message
     } finally {
       try {
         KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(alias)
-      } catch (_: Exception) {
+      } catch (e: Exception) {
+        result["aliasCleanupErrorClass"] = e.javaClass.simpleName
+        result["aliasCleanupErrorMessage"] = e.message
+        Log.w(TAG, "[$label] alias cleanup failed: ${e.javaClass.simpleName}:${e.message}")
       }
     }
     return result
   }
 
+  internal fun shouldSkipStrongBoxRecipe(
+    requestedStrongBoxBacked: Boolean?,
+    hasStrongBoxKeystore: Boolean,
+  ): Boolean {
+    return requestedStrongBoxBacked == true && !hasStrongBoxKeystore
+  }
+
   private fun isSupportedEd25519Recipe(recipe: Map<String, Any?>): Boolean {
-    return recipe["publicKeyLooksEd25519"] == true &&
+    return recipe["status"] == STATUS_EXECUTED &&
+      recipe["publicKeyLooksEd25519"] == true &&
       recipe["signVerifyOk"] == true &&
       recipe["signatureBytes"] == 64 &&
       recipe["hardwareBacked"] == true
   }
 
-  private fun readKeyInfo(privateKey: PrivateKey, requestedAlgorithm: String): Pair<KeyInfo, String>? {
+  internal fun supportsHardwareEd25519(recipes: List<Map<String, Any?>>): Boolean {
+    return recipes.any { recipe ->
+      recipe["label"] in STRICT_DEFAULT_ED25519_RECIPES && isSupportedEd25519Recipe(recipe)
+    }
+  }
+
+  internal fun supportsStrongBoxEd25519(recipes: List<Map<String, Any?>>): Boolean {
+    return recipes.any { recipe ->
+      recipe["label"] in STRICT_STRONGBOX_ED25519_RECIPES &&
+        recipe["securityLevelLabel"] == "STRONGBOX" &&
+        isSupportedEd25519Recipe(recipe)
+    }
+  }
+
+  private fun readKeyInfo(privateKey: PrivateKey, requestedAlgorithm: String): KeyInfoProbeResult {
     val algorithms = listOf(ED25519, requestedAlgorithm, privateKey.algorithm).distinct()
+    var lastError: Exception? = null
     for (algorithm in algorithms) {
       try {
-        return Pair(
-          KeyFactory
+        return KeyInfoProbeResult(
+          keyInfo = KeyFactory
             .getInstance(algorithm, ANDROID_KEYSTORE)
             .getKeySpec(privateKey, KeyInfo::class.java),
-          algorithm,
+          algorithm = algorithm,
         )
-      } catch (_: Exception) {
-        // Some providers expose Ed25519 under its OID, so try every plausible name.
+      } catch (e: Exception) {
+        lastError = e
       }
     }
-    return null
+    return KeyInfoProbeResult(
+      errorClass = lastError?.javaClass?.simpleName ?: "KeyInfoUnavailable",
+      errorMessage = lastError?.message,
+    )
   }
 
   private fun readSecurityLevel(keyInfo: KeyInfo?): Int {
@@ -274,6 +355,7 @@ object WalletKeystoreDiagnostics {
       return SignatureProbeResult(
         verified = false,
         signatureBytes = 0,
+        errorStage = "SIGN",
         errorClass = e.javaClass.simpleName,
         errorMessage = e.message,
       )
@@ -289,6 +371,7 @@ object WalletKeystoreDiagnostics {
       SignatureProbeResult(
         verified = false,
         signatureBytes = signatureBytes.size,
+        errorStage = "VERIFY",
         errorClass = e.javaClass.simpleName,
         errorMessage = e.message,
       )
