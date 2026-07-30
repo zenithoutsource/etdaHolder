@@ -41,6 +41,7 @@ import {
 import { shouldOfferDocumentReissueCta } from "../../src/services/credentials/documentReissueCtaGate";
 import { readWalletKeyExpiryLane } from "../../src/services/crypto/walletKeyExpiryLane";
 import { readWalletKeyRotationRecord } from "../../src/services/crypto/walletKeyRotation";
+import { isWalletCryptoV2Enabled } from "../../src/services/crypto/walletCryptoActivation";
 import { isIssuerPortalCredentialType } from "../../src/config/issuerPortalUrls";
 import { openCredentialRequestPortal } from "../../src/services/credentials/openCredentialRequestPortal";
 import {
@@ -182,6 +183,7 @@ export default function WalletHomeScreen() {
   const walletKeyExpiryLane = readWalletKeyExpiryLane({
     keyExpired: walletKeyExpired,
     hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
+    walletCryptoV2Enabled: isWalletCryptoV2Enabled(),
   });
   const router = useRouter();
   const { showDialog } = useAppDialog();

@@ -48,6 +48,7 @@ import { WALLET_HOME_COPY, readWalletHomeBadgeLabel } from "../../../src/service
 import { shouldOfferDocumentReissueCta } from "../../../src/services/credentials/documentReissueCtaGate";
 import { readWalletKeyExpiryLane } from "../../../src/services/crypto/walletKeyExpiryLane";
 import { readWalletKeyRotationRecord } from "../../../src/services/crypto/walletKeyRotation";
+import { isWalletCryptoV2Enabled } from "../../../src/services/crypto/walletCryptoActivation";
 import {
   shouldHideCredentialActionMenu,
   shouldShowRenewedActiveBadge,
@@ -86,6 +87,7 @@ export default function CredentialDetailScreen() {
   const walletKeyExpiryLane = readWalletKeyExpiryLane({
     keyExpired: walletKeyExpired,
     hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
+    walletCryptoV2Enabled: isWalletCryptoV2Enabled(),
   });
   const { id, notificationEvent } = useLocalSearchParams<{ id: string; notificationEvent?: string }>();
   const router = useRouter();

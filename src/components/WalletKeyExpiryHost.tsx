@@ -15,6 +15,7 @@ import {
   readWalletKeyRotationRecord,
   rotateWalletKey,
 } from '@/src/services/crypto/walletKeyRotation'
+import { isWalletCryptoV2Enabled } from '@/src/services/crypto/walletCryptoActivation'
 
 export function readWalletKeyRotationFailureDialog(error: unknown): {
   title: string
@@ -98,6 +99,7 @@ export function WalletKeyExpiryHost() {
   const lane = readWalletKeyExpiryLane({
     keyExpired: isExpired,
     hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
+    walletCryptoV2Enabled: isWalletCryptoV2Enabled(),
   })
 
   useEffect(() => {
