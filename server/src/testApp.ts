@@ -3,6 +3,7 @@ import express from 'express'
 import type { ErrorRequestHandler, RequestHandler } from 'express'
 
 import { readConfig } from './config'
+import { installWalletSwagger } from './openapi/installWalletSwagger'
 import { authRouter } from './routes/auth'
 import { credentialsRouter } from './routes/credentials'
 import { devWalletRouter } from './routes/devWallet'
@@ -97,6 +98,7 @@ function createAuthRateLimiter(): RequestHandler {
 export function createTestApp(): express.Express {
   const app = express()
 
+  installWalletSwagger(app)
   app.use(createCorsMiddleware())
 
   app.use('/dev', express.json({ limit: '1mb' }), vpSessionRouter)
