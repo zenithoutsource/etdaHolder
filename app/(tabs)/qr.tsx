@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -11,13 +11,18 @@ import { useStoredCredentials } from '../../src/hooks/useStoredCredentials'
 import { useWalletInitiatedVpQrSession } from '../../src/hooks/useWalletInitiatedVpQrSession'
 import { readPidGateStatus } from '../../src/services/credentials/credentialGuard'
 import { openCredentialRequestPortal } from '../../src/services/credentials/openCredentialRequestPortal'
-import { resolvePidVpQrCredential } from '../../src/services/credentials/resolvePidVpQrCredential'
+import { resolveMyQrPresentationCredential } from '../../src/services/credentials/resolveMyQrPresentationCredential'
 import { WALLET_HOME_COPY } from '../../src/services/credentials/walletHomeCopy'
+import type { VerifiableCredentialRecord } from '../../src/services/vci/exchangeService'
+
+type ResolverStatus = 'loading' | 'ready' | 'missing'
 
 export default function MyQrScreen() {
   const router = useRouter()
   const { status, credentials } = useStoredCredentials()
   const [isFocused, setIsFocused] = useState(false)
+  const [presentationCredential, setPresentationCredential] = useState<VerifiableCredentialRecord | undefined>()
+  const [resolverStatus, setResolverStatus] = useState<ResolverStatus>('loading')
 
   useFocusEffect(
     useCallback(() => {
@@ -26,13 +31,34 @@ export default function MyQrScreen() {
     }, []),
   )
 
-  const pidCredential = useMemo(() => resolvePidVpQrCredential(credentials), [credentials])
+  useEffect(() => {
+    if (status !== 'ready') {
+      setPresentationCredential(undefined)
+      setResolverStatus('loading')
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      setResolverStatus('loading')
+      const resolved = await resolveMyQrPresentationCredential(credentials)
+      if (cancelled) return
+      setPresentationCredential(resolved)
+      setResolverStatus(resolved ? 'ready' : 'missing')
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [credentials, status])
+
   const pidGateStatus = useMemo(() => readPidGateStatus(credentials), [credentials])
+  const usesDrivingLicenceMyQr = presentationCredential?.type === 'DLTDrivingLicence'
 
   const { phase, qrUrl, minutes, seconds, authorizationRequestUri, startSession } =
     useWalletInitiatedVpQrSession({
-      credential: pidCredential,
-      active: isFocused && pidCredential !== undefined,
+      credential: presentationCredential,
+      active: isFocused && resolverStatus === 'ready' && presentationCredential !== undefined,
     })
 
   const handleRetry = useCallback(() => {
@@ -46,6 +72,10 @@ export default function MyQrScreen() {
   const handleRequestThaId = useCallback(() => {
     void openCredentialRequestPortal('ThaiNationalID')
   }, [])
+
+  const scanHint = usesDrivingLicenceMyQr
+    ? WALLET_HOME_COPY.myQrScanHintDrivingLicence
+    : WALLET_HOME_COPY.myQrScanHintDefault
 
   if (phase === 'request_ready' && authorizationRequestUri) {
     return (
@@ -74,7 +104,13 @@ export default function MyQrScreen() {
           </View>
         ) : null}
 
-        {status === 'ready' && !pidCredential && pidGateStatus === 'missing' ? (
+        {status === 'ready' && resolverStatus === 'loading' ? (
+          <View className="mt-12 items-center gap-3 px-4">
+            <Text className="text-center text-sm text-gray600">กำลังเตรียม QR…</Text>
+          </View>
+        ) : null}
+
+        {status === 'ready' && resolverStatus === 'missing' && !usesDrivingLicenceMyQr && pidGateStatus === 'missing' ? (
           <View className="mt-12 items-center gap-4 px-4">
             <Text className="text-center text-base font-semibold text-navy">{WALLET_HOME_COPY.pidRequiredTitle}</Text>
             <Text className="text-center text-sm leading-6 text-gray600">{WALLET_HOME_COPY.pidRequiredMessage}</Text>
@@ -88,7 +124,7 @@ export default function MyQrScreen() {
           </View>
         ) : null}
 
-        {status === 'ready' && !pidCredential && pidGateStatus === 'renewal-required' ? (
+        {status === 'ready' && resolverStatus === 'missing' && !usesDrivingLicenceMyQr && pidGateStatus === 'renewal-required' ? (
           <View className="mt-12 items-center gap-4 px-4">
             <Text className="text-center text-base font-semibold text-navy">
               {WALLET_HOME_COPY.renewThaIdRequiredTitle}
@@ -111,28 +147,18 @@ export default function MyQrScreen() {
           </View>
         ) : null}
 
-        {status === 'ready' && !pidCredential && pidGateStatus === 'ready' ? (
+        {status === 'ready' && resolverStatus === 'missing' && pidGateStatus === 'ready' ? (
           <View className="mt-12 items-center gap-4 px-4">
-            <Text className="text-center text-base font-semibold text-navy">ไม่สามารถแสดง QR ได้</Text>
-            <Text className="text-center text-sm leading-6 text-gray600">
-              เอกสาร ThaID ยังไม่พร้อมสำหรับการนำเสนอ
+            <Text className="text-center text-base font-semibold text-navy">
+              {WALLET_HOME_COPY.myQrNoEligibleDocumentTitle}
             </Text>
-            <AppButton
-              variant="outline-block"
-              label="ไปที่เอกสาร ThaID"
-              onPress={() => {
-                const thaiId = credentials.find((record) => record.type === 'ThaiNationalID')
-                if (thaiId) {
-                  router.push(`/(tabs)/credential/${thaiId.id}`)
-                }
-              }}
-              className="mt-2 rounded-xl px-6 py-3"
-              textClassName="text-center text-sm font-bold"
-            />
+            <Text className="text-center text-sm leading-6 text-gray600">
+              {WALLET_HOME_COPY.myQrNoEligibleDocumentMessage}
+            </Text>
           </View>
         ) : null}
 
-        {status === 'ready' && pidCredential ? (
+        {status === 'ready' && resolverStatus === 'ready' && presentationCredential ? (
           <View className="mt-8 w-full items-center">
             <WalletInitiatedVpQrPanel
               phase={phase === 'idle' ? 'loading' : phase}
@@ -144,7 +170,7 @@ export default function MyQrScreen() {
             />
             {phase === 'waiting_scan' ? (
               <Text className="mt-7 text-center text-[15px] font-semibold leading-7 text-wallet-navy">
-                สแกน QR Code ของฉัน{'\n'}เพื่อตรวจดูเอกสาร
+                {scanHint}
               </Text>
             ) : null}
           </View>

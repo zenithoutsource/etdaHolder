@@ -54,3 +54,36 @@ test('buildDualFormatDcqlVpToken assembles per-query-id tokens', async () => {
     transcript_mdoc: ['b64mdoc'],
   })
 })
+
+test('buildDualFormatDcqlVpToken assembles driving licence dual-format tokens', async () => {
+  const request: ResolvedPresentationRequest = {
+    ...baseRequest,
+    matchedCredential: {
+      id: 'dl-credential-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQm9iIl0~',
+      claims: { vct: 'Iso18013DriversLicenseCredential' },
+      issuedAt: '2026-06-01T10:00:00.000Z',
+    },
+    dcqlQuery: {
+      credentials: [
+        {
+          id: 'driving_licence_sd_jwt',
+          format: 'dc+sd-jwt',
+          meta: { vct_values: ['Iso18013DriversLicenseCredential'] },
+        },
+        { id: 'driving_licence_mdoc', format: 'mso_mdoc', meta: { type_values: ['org.iso.18013.5.1.mDL'] } },
+      ],
+    },
+  }
+
+  const readMdocEntry = jest.fn().mockResolvedValue('b64mdoc')
+  const vpToken = await buildDualFormatDcqlVpToken(request, {
+    signSdJwtKb: jest.fn().mockResolvedValue('sd-jwt~kb.jwt'),
+    readMdocEntry,
+  })
+
+  expect(readMdocEntry).toHaveBeenCalledWith('dl-credential-1')
+  expect(vpToken).toContain('driving_licence_mdoc')
+  expect(vpToken).toContain('driving_licence_sd_jwt')
+})

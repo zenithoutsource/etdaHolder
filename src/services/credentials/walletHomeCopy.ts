@@ -64,6 +64,10 @@ export const WALLET_HOME_COPY = {
   staleExpiryNotificationTitle: 'สถานะเอกสารอัปเดตแล้ว',
   staleExpiryNotificationMessage:
     'การแจ้งเตือนนี้ไม่ตรงกับสถานะปัจจุบันของเอกสาร กรุณาตรวจสอบวันหมดอายุอีกครั้ง',
+  myQrScanHintDrivingLicence: 'สแกน QR Code ของฉัน\nเพื่อตรวจสอบใบขับขี่',
+  myQrScanHintDefault: 'สแกน QR Code ของฉัน\nเพื่อตรวจดูเอกสาร',
+  myQrNoEligibleDocumentTitle: 'ไม่สามารถแสดง QR ได้',
+  myQrNoEligibleDocumentMessage: 'ยังไม่มีเอกสารที่พร้อมสำหรับการนำเสนอ',
 } as const
 
 export function readWalletHomeBadgeLabel(
