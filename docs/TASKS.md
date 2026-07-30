@@ -1,5 +1,19 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-30 (Wallet backend Swagger)
+
+- Added public Wallet Swagger UI at `/wallet-api/docs` and OpenAPI JSON at
+  `/wallet-api/openapi.json`; existing Broker Swagger remains unchanged.
+- Documented normal Auth, Wallet, Credential, and Push endpoints with Bearer
+  JWT authorization support; development routes and real sensitive examples
+  are excluded.
+- Verification: focused OpenAPI/Swagger tests, full server tests, server
+  TypeScript, root TypeScript, and lint.
+- Result: server TypeScript and tests pass; lint passes. Root TypeScript remains
+  blocked by five pre-existing `credentialSigningKey.test.ts`,
+  `walletAttestKey.test.ts`, and `exchangeService.ts` diagnostics outside this
+  documentation slice.
+
 ### Session 2026-07-30 (v2 legacy wallet-key expiry loop)
 
 - Fixed the expired-key modal reopening after **Create new key** under v2 crypto. Root cause: `rotateWalletKey()` correctly skips wallet-wide rotation for per-credential keys, but the legacy wallet-key TTL lane remained active and immediately made the modal eligible again.

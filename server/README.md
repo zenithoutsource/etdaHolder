@@ -18,6 +18,27 @@ The backend does not resolve credential offers, exchange OID4VCI tokens, sign Po
 
 mDOC / OID4VCI issuance for proximity work uses the customer Issuer (e.g. `http://issuer.zenithcomp.co.th:455`), not a local mock issuer.
 
+## API documentation
+
+The Wallet backend publishes public interactive documentation:
+
+- Swagger UI: `http://localhost:4000/wallet-api/docs`
+- OpenAPI JSON: `http://localhost:4000/wallet-api/openapi.json`
+
+On the shared HTTPS host, use:
+
+- Wallet Swagger UI: `https://wallet.zenithcomp.co.th:455/wallet-api/docs`
+- Broker Swagger UI: `https://wallet.zenithcomp.co.th:455/swagger/index.html`
+
+The Wallet documentation covers normal `/wallet-api/auth/*` and
+`/wallet-api/wallet/*` operations only. Development routes are intentionally
+excluded. Use Swagger **Authorize** with a Wallet login JWT for protected
+operations.
+
+The reverse proxy must preserve the complete `/wallet-api/*` path when
+forwarding requests to the Node process on port `4000`. The documentation is
+public; examples contain synthetic data only.
+
 ## Setup
 
 1. Start XAMPP MySQL.
