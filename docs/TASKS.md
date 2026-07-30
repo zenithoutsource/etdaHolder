@@ -13,6 +13,22 @@
   blocked by five pre-existing `credentialSigningKey.test.ts`,
   `walletAttestKey.test.ts`, and `exchangeService.ts` diagnostics outside this
   documentation slice.
+- Exact root `yarn.cmd tsc --noEmit` output (exit 2):
+
+  ```text
+  yarn run v1.22.22
+  $ C:\project\etdaWallet\.worktrees\wallet-backend-swagger\node_modules\.bin\tsc --noEmit
+  src/services/crypto/credentialSigningKey.test.ts(3,10): error TS2614: Module '"react-native-keychain"' has no exported member '__resetStore'. Did you mean to use 'import __resetStore from "react-native-keychain"' instead?
+  src/services/crypto/credentialSigningKey.test.ts(37,44): error TS2339: Property 'password' does not exist on type 'false | UserCredentials'.
+    Property 'password' does not exist on type 'false'.
+  src/services/crypto/credentialSigningKey.test.ts(66,54): error TS2339: Property 'password' does not exist on type 'false | UserCredentials'.
+    Property 'password' does not exist on type 'false'.
+  src/services/crypto/walletAttestKey.test.ts(2,10): error TS2614: Module '"react-native-keychain"' has no exported member '__resetStore'. Did you mean to use 'import __resetStore from "react-native-keychain"' instead?
+  src/services/vci/exchangeService.ts(266,22): error TS2352: Conversion of type '{ credential_offer: { credential_issuer: string; credential_configuration_ids: string[]; grants: { authorization_code: {}; }; }; supportedFlows: "authorization_code"[]; version: 1; }' to type 'CredentialOfferRequestWithBaseUrl' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+    Type '{ credential_offer: { credential_issuer: string; credential_configuration_ids: string[]; grants: { authorization_code: {}; }; }; supportedFlows: "authorization_code"[]; version: 1; }' is missing the following properties from type 'CredentialOfferRequestWithBaseUrl': scheme, baseUrl, userPinRequired, original_credential_offer
+  info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
+  error Command failed with exit code 2.
+  ```
 
 ### Session 2026-07-30 (v2 legacy wallet-key expiry loop)
 
