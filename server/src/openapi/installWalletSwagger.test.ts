@@ -8,7 +8,8 @@ describe('Wallet Swagger routes', () => {
 
     expect(response.status).toBe(200)
     expect(response.type).toBe('text/html')
-    expect(response.text).toContain('Swagger UI')
+    expect(response.text).toContain('<title>Wallet Backend API</title>')
+    expect(response.text).toContain('id="swagger-ui"')
   })
 
   test('serves the OpenAPI JSON document', async () => {

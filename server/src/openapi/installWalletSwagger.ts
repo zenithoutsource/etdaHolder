@@ -9,7 +9,6 @@ const swaggerUiServe = swaggerUi.serve as unknown as RequestHandler[]
 const createSwaggerUiPage = (): RequestHandler =>
   swaggerUi.setup(walletOpenApiDocument, {
     customSiteTitle: 'Wallet Backend API',
-    customCss: '/* Swagger UI */',
   }) as unknown as RequestHandler
 
 export function installWalletSwagger(app: Express): void {

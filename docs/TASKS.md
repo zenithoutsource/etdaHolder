@@ -9,6 +9,9 @@
   are excluded.
 - Verification: focused OpenAPI/Swagger tests, full server tests, server
   TypeScript, root TypeScript, and lint.
+- Pending deployment-gated shared-host smoke test: confirm Wallet Swagger UI
+  loads, Broker Swagger remains available, a synthetic push-token request
+  returns `200`, and the server logs `[push-notifications] token-registered`.
 - Result: server TypeScript and tests pass; lint passes. Root TypeScript remains
   blocked by five pre-existing `credentialSigningKey.test.ts`,
   `walletAttestKey.test.ts`, and `exchangeService.ts` diagnostics outside this
@@ -17,7 +20,7 @@
 
   ```text
   yarn run v1.22.22
-  $ C:\project\etdaWallet\.worktrees\wallet-backend-swagger\node_modules\.bin\tsc --noEmit
+  $ <repo>\node_modules\.bin\tsc --noEmit
   src/services/crypto/credentialSigningKey.test.ts(3,10): error TS2614: Module '"react-native-keychain"' has no exported member '__resetStore'. Did you mean to use 'import __resetStore from "react-native-keychain"' instead?
   src/services/crypto/credentialSigningKey.test.ts(37,44): error TS2339: Property 'password' does not exist on type 'false | UserCredentials'.
     Property 'password' does not exist on type 'false'.
