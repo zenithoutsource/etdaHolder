@@ -62,9 +62,12 @@ app-example
 
 # local Expo module build artifacts
 modules/**/android/build/
+modules/**/android/.gradle/
 modules/**/.cxx/
 google-services.json
 etda-wallet-firebase-adminsdk-fbsvc-5c08da928e.json
 .cursor/plans/
 .zed/
-android/
+.vscode/
+.claude/
+.agents/skills/
