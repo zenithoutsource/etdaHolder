@@ -11,7 +11,6 @@ object StoredMdocPresentationEngine : MdocPresentationEngine {
   private const val TAG = "StoredMdocEngine"
 
   private var armState: ProximityArmState? = null
-  private var engaged = false
 
   override fun start(state: ProximityArmState, mdocBytes: ByteArray) {
     if (mdocBytes.isEmpty()) {
@@ -21,27 +20,24 @@ object StoredMdocPresentationEngine : MdocPresentationEngine {
       throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "approvedMdocFields is required")
     }
     armState = state
-    engaged = false
     Log.d(TAG, "[mdoc-engine] started credential=${state.credentialId} approvedFields=${state.approvedMdocFields.size}")
   }
 
   override fun processApdu(commandApdu: ByteArray): ByteArray {
-    val state = armState ?: return sw(0x69, 0x85)
+    if (armState == null) return sw(0x69, 0x85)
 
-    if (!engaged) {
-      engaged = true
-      ProximityEventDispatcher.sendDeviceEngaged()
-      ProximityEventDispatcher.sendRequestReceived(state.approvedMdocFields)
+    val multipazResponse = MultipazMdocAdapter.processApdu(commandApdu)
+    if (multipazResponse != null) {
+      return multipazResponse
     }
 
-  // Multipaz-backed ISO 18013-5 NFC data retrieval replaces this fail-closed path.
-    Log.w(TAG, "[mdoc-engine] APDU not handled until Multipaz adapter is wired")
+    Log.w(TAG, "[mdoc-engine] Multipaz unavailable; failing closed")
     return sw(0x69, 0x85)
   }
 
   override fun stop() {
+    MultipazMdocAdapter.resetSession()
     armState = null
-    engaged = false
   }
 
   fun completePresentation(sharedFields: List<String>) {

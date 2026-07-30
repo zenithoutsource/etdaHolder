@@ -89,7 +89,7 @@ export function readProximityAvailability(): ProximityAvailability {
 
 export function isProximityPresentationSupported(): boolean {
   const availability = readProximityAvailability()
-  return availability.nfcSupported && availability.nfcEnabled
+  return availability.nfcSupported && availability.nfcEnabled && availability.presentationReady
 }
 
 export async function startProximityPresentation(

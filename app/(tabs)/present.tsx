@@ -29,6 +29,7 @@ export default function PresentScreen() {
   const status = useProximityStore((state) => state.status)
   const sharingMode = useProximityStore((state) => state.sharingMode)
   const sharedFields = useProximityStore((state) => state.sharedFields)
+  const deviceEngagementUri = useProximityStore((state) => state.deviceEngagementUri)
   const error = useProximityStore((state) => state.error)
   const openPresentation = useProximityStore((state) => state.openPresentation)
   const approvePresentation = useProximityStore((state) => state.approvePresentation)
@@ -119,7 +120,7 @@ export default function PresentScreen() {
         ) : null}
 
         {status === 'approved' || status === 'hce-armed' || status === 'engaged' ? (
-          <WaitingForTapPanel onCancel={handleDone} />
+          <WaitingForTapPanel deviceEngagementUri={deviceEngagementUri} onCancel={handleDone} />
         ) : null}
 
         {status === 'complete' && sharedFields ? (

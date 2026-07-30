@@ -23,8 +23,12 @@ class CompanionHostApduService : HostApduService() {
       }
 
       if (isSelectAid(commandApdu, COMPANION_AID)) {
-        if (CompanionSession.readArmState() == null) {
+        val armState = CompanionSession.readArmState()
+        if (armState == null) {
           return byteArrayOf(0x6A.toByte(), 0x82.toByte())
+        }
+        if (armState.sharingMode == "mdoc-only") {
+          return byteArrayOf(0x69.toByte(), 0x85.toByte())
         }
         if (!CompanionSession.isMdocExchangeComplete()) {
           return byteArrayOf(0x69.toByte(), 0x85.toByte())

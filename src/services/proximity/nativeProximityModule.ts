@@ -31,6 +31,8 @@ export type ProximityArmConfig = {
 
 type NativeProximityModule = {
   getAvailability: () => ProximityAvailability
+  getDeviceEngagementUri: () => string | null
+  installMdocDeviceKey: (seed: Uint8Array, publicKey: Uint8Array) => Promise<void>
   storeMdoc: (credentialId: string, docType: string, mdocBytes: Uint8Array) => Promise<void>
   hasMdoc: (credentialId: string) => Promise<boolean>
   readMdoc: (credentialId: string) => Promise<Uint8Array>

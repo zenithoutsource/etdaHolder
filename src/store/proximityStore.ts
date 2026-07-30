@@ -37,6 +37,7 @@ type ProximityState = {
   sharingMode: ReaderSharingMode
   approvedMdocFields: string[] | null
   sharedFields: string[] | null
+  deviceEngagementUri: string | null
   error: string | null
 }
 
@@ -53,6 +54,7 @@ const initialState: ProximityState = {
   sharingMode: 'mdoc-only',
   approvedMdocFields: null,
   sharedFields: null,
+  deviceEngagementUri: null,
   error: null,
 }
 
@@ -101,6 +103,7 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
       sharingMode,
       approvedMdocFields: null,
       sharedFields: null,
+      deviceEngagementUri: null,
       error: null,
     })
   },
@@ -186,7 +189,8 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
         mdocPayloadBytes: 0,
       })
 
-      set({ status: 'hce-armed' })
+      const deviceEngagementUri = requireNativeProximityModule().getDeviceEngagementUri()
+      set({ status: 'hce-armed', deviceEngagementUri })
     } catch (error) {
       logWalletError('proximity-store', 'arm failed', error)
       const credentialId = get().selectedCredentialId

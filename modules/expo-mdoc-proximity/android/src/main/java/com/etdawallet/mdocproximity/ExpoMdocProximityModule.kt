@@ -39,6 +39,14 @@ class ExpoMdocProximityModule : Module() {
       return@Function MdocProximityEngine.getAvailability(context)
     }
 
+    Function("getDeviceEngagementUri") {
+      MdocProximityEngine.getDeviceEngagementUri()
+    }
+
+    AsyncFunction("installMdocDeviceKey") { seed: ByteArray, publicKey: ByteArray ->
+      DeviceAuthBridge.install(seed, publicKey)
+    }
+
     AsyncFunction("storeMdoc") { credentialId: String, docType: String, mdocBytes: ByteArray ->
       val context = requireContext()
       MdocProximityEngine.storeMdoc(context, credentialId, docType, mdocBytes)

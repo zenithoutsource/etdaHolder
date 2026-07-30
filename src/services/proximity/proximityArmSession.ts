@@ -7,6 +7,7 @@ import { HCE_ARM_WINDOW_MS } from '@/src/config/dualFormatPolicy'
 import { readStoredCredentialById } from '@/src/services/credentials/storedCredentials'
 
 import { estimateCompanionPayloadBytes } from './companionPayloadSize'
+import { prepareMdocDeviceAuthForArm } from './deviceAuth'
 import { validateProximityArmPayload } from './proximityArmPolicy'
 import {
   ProximityPresentationError,
@@ -56,6 +57,10 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
     mdocPayloadBytes: input.mdocPayloadBytes ?? 0,
     companionPayloadBytes: companionPayloadBytes ?? 0,
   })
+
+  if (input.sharingMode === 'mdoc-only') {
+    await prepareMdocDeviceAuthForArm()
+  }
 
   await startProximityPresentation(input.credentialId, {
     onDeviceEngaged: () => undefined,

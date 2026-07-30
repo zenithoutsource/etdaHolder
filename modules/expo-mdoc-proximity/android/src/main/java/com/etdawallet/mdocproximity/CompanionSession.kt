@@ -37,6 +37,7 @@ object CompanionSession {
     mdocExchangeComplete.set(false)
     presentationApproved.set(false)
     onCompanionSignRequested = null
+    MultipazPresentmentSession.stop()
     MdocApduHandler.stop()
     Log.d(TAG, "[companion-arm] disarmed")
   }

@@ -42,6 +42,12 @@ const TRANSCRIPT_COMPANION_CLAIMS = [
   'graduation_date',
 ]
 
+const MDL_MDOC_FIELDS: ReaderProfileField[] = [
+  { namespace: 'org.iso.18013.5.1', identifier: 'family_name' },
+  { namespace: 'org.iso.18013.5.1', identifier: 'given_name' },
+  { namespace: 'org.iso.18013.5.1', identifier: 'birth_date' },
+]
+
 /** Built-in reader profiles. Extend this registry for additional vendors. */
 export const READER_PROFILES: ReaderProfile[] = [
   {
@@ -65,6 +71,15 @@ export const READER_PROFILES: ReaderProfile[] = [
     profileDisplayName: 'Transcript mDOC-only',
     sharingMode: 'mdoc-only',
     mdocFields: TRANSCRIPT_MDOC_FIELDS,
+  },
+  {
+    profileId: 'mdl-acr1311u-n2-mdoc-only',
+    vendorId: 'reference',
+    vendorDisplayName: 'Reference Verifier',
+    documentType: 'DLTDrivingLicence',
+    profileDisplayName: 'mDL (ACR1311U-N2, mdoc-only)',
+    sharingMode: 'mdoc-only',
+    mdocFields: MDL_MDOC_FIELDS,
   },
 ]
 

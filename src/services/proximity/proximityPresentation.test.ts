@@ -1,4 +1,13 @@
-import { ProximityPresentationError } from './proximityPresentation'
+jest.mock('react-native', () => ({
+  Platform: { OS: 'android' },
+}))
+
+jest.mock('./nativeProximityModule', () => ({
+  getNativeProximityModule: jest.fn(),
+}))
+
+import { ProximityPresentationError, isProximityPresentationSupported } from './proximityPresentation'
+import { getNativeProximityModule } from './nativeProximityModule'
 
 function mapNativeError(error: unknown): ProximityPresentationError {
   const code = typeof error === 'object' && error && 'code' in error
@@ -33,5 +42,33 @@ describe('proximityPresentation error mapping', () => {
     const error = mapNativeError(new Error('boom'))
     expect(error).toBeInstanceOf(ProximityPresentationError)
     expect(error.code).toBe('UNKNOWN')
+  })
+})
+
+describe('isProximityPresentationSupported', () => {
+  it('requires presentationReady in addition to NFC', () => {
+    jest.mocked(getNativeProximityModule).mockReturnValue({
+      getAvailability: () => ({
+        platform: 'android',
+        nfcSupported: true,
+        nfcEnabled: true,
+        presentationReady: false,
+      }),
+      getDeviceEngagementUri: () => null,
+    } as never)
+
+    expect(isProximityPresentationSupported()).toBe(false)
+
+    jest.mocked(getNativeProximityModule).mockReturnValue({
+      getAvailability: () => ({
+        platform: 'android',
+        nfcSupported: true,
+        nfcEnabled: true,
+        presentationReady: true,
+      }),
+      getDeviceEngagementUri: () => 'mdoc://example',
+    } as never)
+
+    expect(isProximityPresentationSupported()).toBe(true)
   })
 })

@@ -405,6 +405,22 @@ function readStoredEd25519PublicKey(): Uint8Array {
   return publicKey
 }
 
+/** Unlocks holder Ed25519 seed once for NFC mDOC device-auth during proximity arm. */
+export async function withUnlockedHolderSeedForProximity(
+  operation: (seed: Uint8Array, publicKey: Uint8Array) => Promise<void>,
+): Promise<void> {
+  const publicKey = readStoredEd25519PublicKey()
+  const seed = await readStoredEd25519Seed(KEYCHAIN_SERVICE, 'Present document via NFC')
+  if (!seed) {
+    throw new Error('WalletKeyNotInitialized')
+  }
+  try {
+    await operation(seed, publicKey)
+  } finally {
+    seed.fill(0)
+  }
+}
+
 /**
  * Builds and signs an OID4VCI Proof of Possession JWT.
  * Biometric fires here on every call (sign-time gate).

@@ -15,4 +15,7 @@ android {
 }
 
 dependencies {
+  implementation("org.multipaz:multipaz:0.100.0")
+  implementation("org.multipaz:multipaz-compose:0.100.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }
