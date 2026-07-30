@@ -1,5 +1,28 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-30 (v2 legacy wallet-key expiry loop)
+
+- Fixed the expired-key modal reopening after **Create new key** under v2 crypto. Root cause: `rotateWalletKey()` correctly skips wallet-wide rotation for per-credential keys, but the legacy wallet-key TTL lane remained active and immediately made the modal eligible again.
+- `readWalletKeyExpiryLane()` now resolves to `idle` whenever v2 crypto is enabled; Wallet Home, Credential Detail, and `WalletKeyExpiryHost` all supply the activation state so legacy expiry UI and document-reissue blocking do not apply to v2 wallets.
+- Added a focused regression for an expired legacy wallet key while v2 per-credential crypto is active.
+- Verification: focused expiry-host/lane tests pass (15 tests); lint exits 0 with 36 existing warnings. Root TypeScript remains blocked by the existing callback-route, Keychain test-mock, and OID4VCI offer-cast diagnostics outside this slice.
+
+### Session 2026-07-27 (My QR — Driving Licence dual-format OID4VP — implemented)
+
+- **Spec:** `docs/superpowers/specs/2026-07-27-my-qr-driving-licence-dual-format-design.md`
+- **Plan:** `docs/superpowers/plans/2026-07-27-my-qr-driving-licence-dual-format.md`
+- **Done:** `isMyQrDualFormatReady`, `resolveMyQrPresentationCredential` (driving-licence-first), My QR tab wiring, DLT dual-format VP token regression test.
+- **Paused:** mDL NFC v1 (Multipaz engagement) until My QR + Verifier E2E passes — see spec §8.
+- **Verifier E2E (manual):** Broker scan → DCQL dual-format (`dc+sd-jwt` + `mso_mdoc`) → `direct_post` success.
+- **Open:** Verifier `docType` for driving licence scan; canonical DCQL `vct_values`.
+- **Verification:** `isMyQrDualFormatReady.test.ts`, `resolveMyQrPresentationCredential.test.ts`, `dualFormatVpToken.test.ts` (9 tests passing).
+
+### Session 2026-07-27 (Multipaz Android manifest floor)
+
+- Fixed `:app:processDebugMainManifest` after Multipaz 0.100.0 introduced Android library floors above Expo's default API 24.
+- Added the Expo SDK 54-compatible `expo-build-properties` config plugin and set Android `minSdkVersion` to 29, matching the approved Android 10+ NFC/HCE support floor.
+- Verification: Android prebuild generated `android.minSdkVersion=29`; `:app:processDebugMainManifest --stacktrace`, `:expo-mdoc-proximity:compileDebugKotlin`, and the original arm64-v8a/armeabi-v7a `app:assembleDebug` command completed successfully. `yarn lint` exited 0 with 31 pre-existing warnings. Root `yarn tsc --noEmit` remains blocked by existing callback-route, Keychain test-mock typing, and OID4VCI offer-cast errors outside this slice.
+
 ### Session 2026-07-24 (Presentation history disclosed-claims fix — implemented)
 
 - **Spec:** `docs/superpowers/specs/2026-07-24-presentation-history-disclosed-claims-design.md`

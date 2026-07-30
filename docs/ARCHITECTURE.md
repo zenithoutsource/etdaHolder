@@ -53,13 +53,34 @@ Only HTTP 201 is a sync success. TanStack Query invalidation belongs in caller/U
 
 ## 3. Offer Delivery and Presentation Channels
 
+### Holder channel matrix
+
+Use this table to choose the correct flow. **Scan and deep links are online paths** (network to Issuer or Verifier). **NFC HCE is proximity presentation only** (tap a physical reader; no OID4VCI/OID4VP over NFC in v1).
+
+| User action | Entry | Protocol | Direction | Status |
+|-------------|-------|----------|-----------|--------|
+| Claim credential | Scan tab — `openid-credential-offer://` QR | OID4VCI | Receive VC | Implemented |
+| Claim credential | Deep link `walletapp://callback` (issuance) | OID4VCI | Receive VC | Implemented |
+| Claim credential | NFC NDEF tag (offer URI on tag) | OID4VCI | Receive VC | Deferred until test device |
+| Present to verifier (online) | Scan tab — `openid4vp://` QR | OID4VP | Send VP (SD-JWT) | Implemented |
+| Present to verifier (online) | Deep link `walletapp://callback` (VP) | OID4VP | Send VP | Implemented |
+| Present to verifier (online) | My QR tab | OID4VP (broker → `direct_post`) | Send VP | Implemented |
+| Present to reader (proximity) | Credential detail → NFC → engagement QR → tap | ISO 18013-5 mdoc (Android HCE, AID `A0000002480400`) | Send mdoc | In progress — see [`2026-07-27-mdl-mdoc-only-nfc-v1-design.md`](./superpowers/specs/2026-07-27-mdl-mdoc-only-nfc-v1-design.md) |
+
+**Not in scope:** [mdoc-web-verifier](https://github.com/stelauconseil/mdoc-web-verifier) and other BLE browser verifiers — production proximity validation uses Samsung A26 + ACR1311U-N2 (NFC), not Web Bluetooth.
+
+The **engagement QR** on the NFC present screen is for the **reader** to obtain `DeviceEngagement` before tap. It is not the same as a Scan-tab OID4VP or issuance QR.
+
+### Channel status (implementation)
+
 | Channel | Purpose | Status |
 |---|---|---|
-| QR Scan | Reads `openid-credential-offer://...` and routes to `resolveOffer()` | Implemented with `expo-camera` |
+| QR Scan (Scan tab) | Issuance offers **and** Verifier OID4VP requests | Implemented with `expo-camera` |
+| Deep link | Same-device issuance or VP (`walletapp://callback`) | Implemented |
 | NFC NDEF | Reads issuance offer URI from an NFC tag | Deferred until test device |
 | In-app SDK | Backend returns an offer URL | Supported boundary; UI wiring is incremental |
-| NFC Presentation | ISO 18013-5 mdoc proximity presentation | Decided by ADR 0003; native module TBD |
-| Online Presentation | OID4VP 1.0 remote/cross-device presentation | First QR/direct_post slice implemented for ThaiNationalID age-over-20 |
+| NFC Presentation | ISO 18013-5 mdoc proximity via `modules/expo-mdoc-proximity` | ADR 0003; v1 mDL mdoc-only slice in progress |
+| Online Presentation | OID4VP 1.0 remote/cross-device presentation | Implemented (Scan, deep link, My QR) |
 
 Presentation is separate from acquisition. OID4VP online presentation does not supersede ADR 0003 because it uses a different transport.
 

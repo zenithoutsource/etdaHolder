@@ -122,6 +122,31 @@ Sequence from spec §8/§11. SELECT uses the canonical 9-byte AID.
 | Result | **PASS** (2026-07-16) |
 | Notes | mDOC data leg validated on physical reader; app `approvePresentation` bridge still pending |
 
+## Part G — mDL mdoc-only v1 (holder E2E)
+
+**Spec:** [`2026-07-27-mdl-mdoc-only-nfc-v1-design.md`](../specs/2026-07-27-mdl-mdoc-only-nfc-v1-design.md)
+
+Prerequisites: Multipaz spike PASS; `presentationReady: true` on A26 dev build; reader profile `mdl-acr1311u-n2-mdoc-only`.
+
+1. Claim mDL `mso_mdoc` from customer issuer (`issuer.zenithcomp.co.th:455`).
+2. Wallet: DLT Driving Licence → NFC → consent (`family_name`, `given_name`, `birth_date`) → arm.
+3. Host: scan **Device Engagement QR** from `WaitingForTapPanel`.
+4. Tap A26 to ACR1311U-N2 (ISO mdoc AID `A0000002480400`).
+5. Reader sends `DeviceRequest` for the three fields.
+6. Verify encrypted `DeviceResponse`, issuer MSO signature, and device authentication (customer IACA on host).
+7. Negative: companion AID SELECT while `mdoc-only` armed → `6985`.
+8. Record PASS/FAIL below.
+
+| Field | Value |
+|---|---|
+| Wallet commit | |
+| Android version | |
+| Reader firmware | |
+| Engagement QR scanned | |
+| DeviceResponse verify | |
+| Companion blocked (`6985`) | |
+| **Overall PASS / FAIL** | |
+
 ## Interpreting the outcome
 
 Step 2 (`SELECT` → `9000`) is the decisive proof that the A26 HCE and the ACR1311U-N2
