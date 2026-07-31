@@ -431,20 +431,20 @@ const SCHEMA_MAP = new Map<string, CardSchemaConfig>(
   SCHEMAS.map((s) => [s.type, s]),
 );
 
-export function normalizeClaimLabelKey(value: string): string {
-  return value.replace(/[\s_\-.]/g, "").toLowerCase();
-}
+import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization';
+
+export { normalizeClaimKey as normalizeClaimLabelKey };
 
 export function findDisplayFieldForClaimKey(
   fields: DisplayField[],
   claimKey: string,
 ): DisplayField | undefined {
-  const normalizedKey = normalizeClaimLabelKey(claimKey);
+  const normalizedKey = normalizeClaimKey(claimKey);
   return fields.find(
     (field) =>
-      normalizeClaimLabelKey(field.key) === normalizedKey ||
+      normalizeClaimKey(field.key) === normalizedKey ||
       (field.aliases ?? []).some(
-        (alias) => normalizeClaimLabelKey(alias) === normalizedKey,
+        (alias) => normalizeClaimKey(alias) === normalizedKey,
       ),
   );
 }

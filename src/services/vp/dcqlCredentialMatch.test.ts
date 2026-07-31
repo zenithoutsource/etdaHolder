@@ -1,10 +1,12 @@
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import {
+  areVctValuesEquivalent,
   assertNoSetDcqlCardinality,
   assertSupportedDcqlCredentialQuery,
   assertSupportedDcqlRequest,
   canWalletSatisfyDcqlCredentialQuery,
   describeDcqlMatchFailure,
+  isCredentialCompatibleWithDcqlMetadata,
 } from './dcqlCredentialMatch'
 import type { DcqlCredentialQuery, DcqlQuery } from './presentationService'
 
@@ -169,6 +171,41 @@ describe('canWalletSatisfyDcqlCredentialQuery', () => {
 
     expect(canWalletSatisfyDcqlCredentialQuery(thaiIdRecord, credential)).toBe(false)
   })
+
+  test('satisfies requested photo via schema aliases such as portrait', () => {
+    const portraitRecord: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      claims: {
+        ...thaiIdRecord.claims,
+        portrait: 'https://example.com/portrait.jpg',
+      },
+    }
+    const credential: DcqlCredentialQuery = {
+      id: 'thai_id',
+      format: 'jwt_vc_json',
+      meta: { type_values: ['IDCardCredential'] },
+      claims: [{ path: ['photo'] }],
+    }
+
+    expect(canWalletSatisfyDcqlCredentialQuery(portraitRecord, credential)).toBe(true)
+  })
+
+  test('satisfies requested photo from SD-JWT disclosures when record.claims omits it', () => {
+    const photoDisclosure = 'WyJzYWx0IiwicGhvdG8iLCJodHRwczovL2V4YW1wbGUuY29tL3Bob3RvLmpwZyJd'
+    const sdJwtRecord: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      rawVc: `eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJ1cm46ZXhhbXBsZTppZGNhcmQifQ.signature~${photoDisclosure}`,
+      claims: { id_number: '1234567890123', birthdate: '2001-05-15' },
+    }
+    const credential: DcqlCredentialQuery = {
+      id: 'thai_id',
+      format: 'dc+sd-jwt',
+      meta: { vct_values: ['urn:example:idcard'] },
+      claims: [{ path: ['photo'] }],
+    }
+
+    expect(canWalletSatisfyDcqlCredentialQuery(sdJwtRecord, credential)).toBe(true)
+  })
 })
 
 describe('describeDcqlMatchFailure', () => {
@@ -225,5 +262,49 @@ describe('describeDcqlMatchFailure', () => {
     })
 
     expect(failure.failedGate).toBe('none')
+  })
+})
+
+describe('areVctValuesEquivalent', () => {
+  test('matches DrivingLicense and DrivingLicence on the same issuer origin', () => {
+    expect(
+      areVctValuesEquivalent(
+        'https://issuer.zenithcomp.co.th:455/credentials/DrivingLicense',
+        'https://issuer.zenithcomp.co.th:455/credentials/DrivingLicence',
+      ),
+    ).toBe(true)
+  })
+
+  test('does not match the same credential type across different origins', () => {
+    expect(
+      areVctValuesEquivalent(
+        'http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential',
+        'http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential',
+      ),
+    ).toBe(false)
+  })
+
+  test('does not match unrelated vct values', () => {
+    expect(areVctValuesEquivalent('urn:other:idcard', 'urn:example:idcard')).toBe(false)
+  })
+})
+
+describe('isCredentialCompatibleWithDcqlMetadata', () => {
+  test('accepts DrivingLicence stored vct when verifier requests DrivingLicense', () => {
+    const drivingLicenceRecord: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      id: 'driving-licence-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJodHRwczovL2lzc3Vlci56ZW5pdGhjb21wLmNvLnRoOjQ1NS9jcmVkZW50aWFscy9Ecml2aW5nTGljZW5jZSJ9.signature~ZGlzY2xvc3VyZQ',
+      claims: { vct: 'https://issuer.zenithcomp.co.th:455/credentials/DrivingLicence' },
+    }
+
+    expect(
+      isCredentialCompatibleWithDcqlMetadata(drivingLicenceRecord, {
+        id: 'driving_licence',
+        format: 'dc+sd-jwt',
+        meta: { vct_values: ['https://issuer.zenithcomp.co.th:455/credentials/DrivingLicense'] },
+      }),
+    ).toBe(true)
   })
 })

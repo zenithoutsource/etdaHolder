@@ -5,10 +5,13 @@ import {
   getCardSchema,
   resolvePresentationDisclosureLabel,
 } from '@/src/config/cardSchemas'
-import { decodeJwtPayload, readString } from '@/src/utils/jwtUtils'
+import { readString } from '@/src/utils/jwtUtils'
+import { readCredentialVct } from './credentialFormatUtils'
 import type { FetchIssuerMetadata } from '../vci/exchangeService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import type { PresentationDisclosure } from './presentationService'
+
+export { normalizeClaimKey as normalizeClaimPolicyKey } from '@/src/utils/claimKeyNormalization'
 
 export type ClaimDisclosurePolicyEntry = {
   md: boolean
@@ -18,9 +21,7 @@ export type ClaimDisclosurePolicyEntry = {
 
 export type ClaimDisclosurePolicyMap = Record<string, ClaimDisclosurePolicyEntry>
 
-export function normalizeClaimPolicyKey(value: string): string {
-  return value.replace(/[\s_.-]/g, '').toLowerCase()
-}
+import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 
 export function readPolicyFlags(entry: ClaimDisclosurePolicyEntry): {
   mandatory: boolean
@@ -51,7 +52,7 @@ export function readClaimPolicyFromCardSchema(
   claimKey: string,
 ): ClaimDisclosurePolicyEntry | undefined {
   const schema = getCardSchema(documentType)
-  const normalizedKey = normalizeClaimPolicyKey(claimKey)
+  const normalizedKey = normalizeClaimKey(claimKey)
   const field = findDisplayFieldForClaimKey(schema.displayFields, normalizedKey)
   const disclosure = field?.presentationDisclosure
   if (!disclosure) return undefined
@@ -82,15 +83,15 @@ export function resolveClaimDisclosurePolicyEntry(
 
 export function collectClaimPolicyLookupKeys(documentType: string, claimKey: string): string[] {
   const keys = new Set<string>()
-  keys.add(normalizeClaimPolicyKey(claimKey))
+  keys.add(normalizeClaimKey(claimKey))
 
   const schema = getCardSchema(documentType)
-  const normalizedClaimKey = normalizeClaimPolicyKey(claimKey)
+  const normalizedClaimKey = normalizeClaimKey(claimKey)
   const field = findDisplayFieldForClaimKey(schema.displayFields, normalizedClaimKey)
   if (field) {
-    keys.add(normalizeClaimPolicyKey(field.key))
+    keys.add(normalizeClaimKey(field.key))
     for (const alias of field.aliases ?? []) {
-      keys.add(normalizeClaimPolicyKey(alias))
+      keys.add(normalizeClaimKey(alias))
     }
   }
 
@@ -229,18 +230,6 @@ export function findCredentialConfigurationId(
   return undefined
 }
 
-function readCredentialVct(record: VerifiableCredentialRecord): string | undefined {
-  const claimVct = readString(record.claims.vct)
-  if (claimVct) return claimVct
-
-  try {
-    const issuerJwt = record.rawVc.split('~')[0] ?? record.rawVc
-    return readString(decodeJwtPayload(issuerJwt)?.vct)
-  } catch {
-    return undefined
-  }
-}
-
 function readClaimKeyFromMetadataPath(path: unknown): string | undefined {
   if (!Array.isArray(path) || path.length === 0) return undefined
   const leaf = path[path.length - 1]
@@ -254,7 +243,7 @@ function mergeClaimPolicyEntries(policy: ClaimDisclosurePolicyMap, claims: unkno
       const record = claimEntry as Record<string, unknown>
       const claimKey = readClaimKeyFromMetadataPath(record.path)
       if (!claimKey) continue
-      policy[normalizeClaimPolicyKey(claimKey)] = readPolicyFromMetadataClaim(record)
+      policy[normalizeClaimKey(claimKey)] = readPolicyFromMetadataClaim(record)
     }
     return
   }
@@ -263,7 +252,7 @@ function mergeClaimPolicyEntries(policy: ClaimDisclosurePolicyMap, claims: unkno
 
   for (const [claimKey, claimEntry] of Object.entries(claims as Record<string, unknown>)) {
     if (!claimEntry || typeof claimEntry !== 'object') continue
-    policy[normalizeClaimPolicyKey(claimKey)] = readPolicyFromMetadataClaim(claimEntry as Record<string, unknown>)
+    policy[normalizeClaimKey(claimKey)] = readPolicyFromMetadataClaim(claimEntry as Record<string, unknown>)
   }
 }
 

@@ -828,9 +828,14 @@ describe('presentationService', () => {
           },
         ],
       }),
-    ).rejects.toThrow(
-      'PresentationCredentialMetadataMismatch: requested vct_values [http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential]; stored vct [http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential]',
-    )
+    ).rejects.toMatchObject({
+      name: 'PresentationCredentialUnavailableError',
+      reason: 'metadata-mismatch',
+      requestedVctValues: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'],
+      requestedCredentialTypes: [],
+      message:
+        'PresentationCredentialMetadataMismatch: requested vct_values [http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential]; stored vct [http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential]',
+    })
   })
 
   test('uses raw credential presentation tokens for DCQL SD-JWT requests', async () => {

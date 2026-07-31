@@ -1,8 +1,5 @@
+import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { base64UrlDecodeToString } from '@/src/utils/jwtUtils'
-
-function normalizeClaimKey(value: string): string {
-  return value.replace(/[\s_.-]/g, '').toLowerCase()
-}
 
 function readDisclosureClaimKey(segment: string): string | undefined {
   let decoded: unknown

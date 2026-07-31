@@ -1,9 +1,14 @@
-import { getCardSchema } from '../../config/cardSchemas'
+import { getCardSchema, findDisplayFieldForClaimKey } from '../../config/cardSchemas'
+import { readDisplayValue } from '../credentials/credentialDisplay'
 import { readClaimText } from '../credentials/claimFormatting'
-import { decodeJwtPayload, isRecord, readString } from '@/src/utils/jwtUtils'
+import { readCredentialClaimMap } from '../vci/exchangeService'
+import { readString } from '@/src/utils/jwtUtils'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
-import { isExactDualFormatPair } from './dualFormatPresentationMatch'
+import { isCompactJwtVc, isCompactSdJwt, readCredentialVct } from './credentialFormatUtils'
+import { isExactDualFormatPair, isSdJwtDcqlFormat } from './dualFormatQuery'
 import type { DcqlClaimsQuery, DcqlCredentialQuery, DcqlQuery } from './presentationService'
+
+export { isCompactJwtVc, isCompactSdJwt, readCredentialVct } from './credentialFormatUtils'
 
 const THAI_ID_TYPE = 'ThaiNationalID'
 const TRANSCRIPT_TYPE = 'ChulalongkornUniversityTranscript'
@@ -98,26 +103,20 @@ export function findUnsatisfiedDcqlClaimKeys(
   const claims = credential.claims ?? []
   if (claims.length === 0) return []
 
+  const claimMap = readCredentialClaimMap(record)
+  const schema = getCardSchema(record.type)
+
   const isClaimSatisfied = (claimQuery: DcqlClaimsQuery): boolean => {
     const requestedKey = claimQuery.path[0]
     if (!requestedKey) return false
 
-    const schema = getCardSchema(record.type)
-    const normalizedClaimKeys = new Map(Object.keys(record.claims).map((key) => [normalizeClaimKey(key), key]))
-    const normalizedRequestedKey = normalizeClaimKey(requestedKey)
-    const matchedKey = normalizedClaimKeys.get(normalizedRequestedKey)
-    if (!matchedKey) return false
+    const field = findDisplayFieldForClaimKey(schema.displayFields, requestedKey)
+    const lookupKeys = field
+      ? [field.key, ...(field.aliases ?? [])]
+      : [requestedKey]
 
-    const value = readClaimText(record.claims, [matchedKey])
-    if (value === undefined) return false
-
-    const field = schema.displayFields.find(
-      (displayField) =>
-        normalizeClaimKey(displayField.key) === normalizedRequestedKey ||
-        (displayField.aliases ?? []).some((alias) => normalizeClaimKey(alias) === normalizedRequestedKey),
-    )
-
-    return Boolean(field ?? matchedKey)
+    const value = field ? readDisplayValue(claimMap, field) : readClaimText(claimMap, lookupKeys)
+    return value !== undefined
   }
 
   const claimKey = (claimQuery: DcqlClaimsQuery): string => claimQuery.path[0] ?? '(empty path)'
@@ -170,7 +169,7 @@ export function describeDcqlMatchFailure(
     requestedFormat: credential.format,
     requestedTypeValues: credential.meta?.type_values ?? [],
     requestedVctValues: credential.meta?.vct_values ?? [],
-    recordClaimKeys: Object.keys(record.claims),
+    recordClaimKeys: Object.keys(readCredentialClaimMap(record)),
   }
 
   const typeValues = credential.meta?.type_values ?? []
@@ -201,7 +200,7 @@ export function isCredentialCompatibleWithDcqlFormat(
 ): boolean {
   if (!format) return false
   if (format === 'jwt_vc_json' || format === 'jwt_vc') return isCompactJwtVc(record.rawVc)
-  if (format === 'dc+sd-jwt' || format === 'vc+sd-jwt') return isCompactSdJwt(record.rawVc)
+  if (isSdJwtDcqlFormat(format)) return isCompactSdJwt(record.rawVc)
   return false
 }
 
@@ -213,31 +212,45 @@ export function isCredentialCompatibleWithDcqlMetadata(
   if (requestedVctValues.length === 0) return true
 
   const credentialVct = readCredentialVct(record)
-  return Boolean(credentialVct && requestedVctValues.includes(credentialVct))
+  return Boolean(
+    credentialVct && requestedVctValues.some((requested) => areVctValuesEquivalent(requested, credentialVct)),
+  )
 }
 
-function readCredentialVct(record: VerifiableCredentialRecord): string | undefined {
-  const claimVct = readString(record.claims.vct)
-  if (claimVct) return claimVct
+/**
+ * Treats issuer VCT URLs as equivalent when they share the same origin and path
+ * prefix and map to the same wallet credential type, including the common
+ * DrivingLicense / DrivingLicence spelling mismatch between verifier and issuer.
+ */
+export function areVctValuesEquivalent(requested: string, stored: string): boolean {
+  if (requested === stored) return true
 
-  const issuerJwt = record.rawVc.split('~')[0] ?? record.rawVc
-  return readString(decodeJwtPayload(issuerJwt)?.vct)
-}
-
-function isCompactJwtVc(rawVc: string): boolean {
-  if (isCompactSdJwt(rawVc)) return false
-  const payload = decodeJwtPayload(rawVc)
-  return isRecord(payload?.vc)
-}
-
-function isCompactSdJwt(rawVc: string): boolean {
-  return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
-}
-
-function normalizeClaimKey(key: string): string {
-  return key.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const requestedKey = buildVctEquivalenceKey(requested)
+  const storedKey = buildVctEquivalenceKey(stored)
+  return Boolean(requestedKey && storedKey && requestedKey === storedKey)
 }
 
 function normalizeCredentialType(type: string): string {
   return type.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function normalizeVctTypeSegment(segment: string): string {
+  return normalizeCredentialType(segment).replace(/license/g, 'licence')
+}
+
+function buildVctEquivalenceKey(vct: string): string | undefined {
+  try {
+    const url = new URL(vct)
+    const segments = url.pathname.split('/').filter(Boolean)
+    if (segments.length === 0) return undefined
+
+    const typeSegment = segments[segments.length - 1]!
+    if (!readCredentialTypeFromDcqlTypeValue(typeSegment)) return undefined
+
+    segments[segments.length - 1] = normalizeVctTypeSegment(typeSegment)
+    return `${url.origin}/${segments.join('/')}`
+  } catch {
+    if (!readCredentialTypeFromDcqlTypeValue(vct)) return undefined
+    return normalizeVctTypeSegment(vct)
+  }
 }

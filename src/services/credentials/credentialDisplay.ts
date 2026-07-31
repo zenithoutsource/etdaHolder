@@ -1,4 +1,5 @@
 import { getCardSchema, type CardSchemaConfig, type DisplayField } from '../../config/cardSchemas'
+import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { isHiddenClaimKey, readClaimText, stringifyClaim } from './claimFormatting'
 
@@ -176,8 +177,4 @@ function readThaiNamePart(claims: Record<string, unknown>, keys: string[]): stri
 function readLatinNamePart(claims: Record<string, unknown>, keys: string[]): string | undefined {
   const text = readFirstClaimTextLoose(claims, keys)
   return text && /[A-Za-z]/.test(text) && !/[\u0E00-\u0E7F]/.test(text) ? text : undefined
-}
-
-function normalizeClaimKey(key: string): string {
-  return key.replace(/[\s_\-.]/g, '').toLowerCase()
 }

@@ -1,5 +1,5 @@
 import { readCredentialHolderProfile, readDisplayValue } from '../credentials/credentialDisplay'
-import { readClaimText, stringifyClaim } from '../credentials/claimFormatting'
+import { readClaimText } from '../credentials/claimFormatting'
 import { isIssuerOid4VpClientId, isIssuerOid4VpResponseUri } from '../../config/trustedVerifiers'
 import { getCardSchema, findDisplayFieldForClaimKey, resolvePresentationDisclosureLabel } from '../../config/cardSchemas'
 import {
@@ -8,7 +8,8 @@ import {
   readVerifierKbAudienceMode,
 } from '../../config/runtimeFlags'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
-import { decodeJwtPayload, isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
+import { isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
+import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { enrichDisclosuresWithPolicy } from './claimDisclosurePolicy'
 import type { FetchIssuerMetadata, VerifiableCredentialRecord } from '../vci/exchangeService'
 import { fetchIssuerMetadata, readCredentialClaimMap } from '../vci/exchangeService'
@@ -17,17 +18,25 @@ import { parseAuthorizationRequestBody } from './authorizationRequestJar'
 import {
   assertNoSetDcqlCardinality,
   assertSupportedDcqlRequest,
-  canWalletSatisfyDcqlCredentialQuery,
   describeDcqlMatchFailure,
-  isCredentialCompatibleWithDcqlFormat,
-  isCredentialCompatibleWithDcqlMetadata,
+  isCompactJwtVc,
+  isCompactSdJwt,
   readCredentialTypeFromDcqlTypeValue,
+  readCredentialVct,
 } from './dcqlCredentialMatch'
 import { parseDcqlCredentialSets, resolveDcqlCredentialSelection } from './dcqlCredentialSetResolver'
-import { assertDualFormatPresentationReady, isDualFormatDcqlRequest, isSdJwtSideCompatibleWithDualFormatRequest } from './dualFormatPresentationMatch'
+import { assertDualFormatPresentationReady, isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
+import {
+  matchesPresentationDefinitionCredential,
+  satisfiesDcqlCandidateTypes,
+  satisfiesDcqlFormats,
+  satisfiesDcqlMetadata,
+  satisfiesFullDcqlRequest,
+} from './presentationCredentialMatch'
 import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
+import { PresentationCredentialUnavailableError } from './presentationUnavailable'
 
 type JsonRecord = Record<string, unknown>
 
@@ -224,23 +233,16 @@ export async function resolvePresentationRequest(
 
   const requestedTypes = effectiveDcqlQuery ? readRequestedCredentialTypes(effectiveDcqlQuery) : [THAI_ID_TYPE]
   const issuerPidRequest = isIssuerOid4VpClientId(clientId) && requestedTypes.includes(THAI_ID_TYPE)
+  const hasRequiredClaims = (candidate: VerifiableCredentialRecord) =>
+    hasRequiredClaimForRequest(candidate, { presentationDefinition, dcqlQuery: effectiveDcqlQuery })
   const matchedCredential = credentials.find((record) => {
     if (presentationDefinition) {
-      return (
-        requestedTypes.includes(record.type) &&
-        hasRequiredClaimForRequest(record, { presentationDefinition, dcqlQuery: effectiveDcqlQuery })
-      )
+      return matchesPresentationDefinitionCredential(record, requestedTypes, hasRequiredClaims)
     }
 
     if (!effectiveDcqlQuery) return false
 
-    if (isDualFormatDcqlRequest(effectiveDcqlQuery)) {
-      return isSdJwtSideCompatibleWithDualFormatRequest(record, effectiveDcqlQuery)
-    }
-
-    return effectiveDcqlQuery.credentials.every((credential) =>
-      canWalletSatisfyDcqlCredentialQuery(record, credential),
-    )
+    return satisfiesFullDcqlRequest(record, effectiveDcqlQuery)
   })
   if (!matchedCredential) {
     const matchDiagnostics = (() => {
@@ -274,65 +276,47 @@ export async function resolvePresentationRequest(
     })()
     const candidateCredentials = credentials.filter((record) => {
       if (presentationDefinition) {
-        return (
-          requestedTypes.includes(record.type) &&
-          hasRequiredClaimForRequest(record, { presentationDefinition, dcqlQuery: effectiveDcqlQuery })
-        )
+        return matchesPresentationDefinitionCredential(record, requestedTypes, hasRequiredClaims)
       }
 
       if (!effectiveDcqlQuery) return false
 
-      if (isDualFormatDcqlRequest(effectiveDcqlQuery)) {
-        return isSdJwtSideCompatibleWithDualFormatRequest(record, effectiveDcqlQuery)
-      }
-
-      const mappedTypes = effectiveDcqlQuery.credentials
-        .flatMap((credential) => credential.meta?.type_values ?? [])
-        .map(readCredentialTypeFromDcqlTypeValue)
-        .filter((type): type is string => Boolean(type))
-
-      if (mappedTypes.length > 0 && !mappedTypes.includes(record.type)) {
-        return false
-      }
-
-      return true
+      return satisfiesDcqlCandidateTypes(record, effectiveDcqlQuery)
     })
     const formatCompatibleCredentials = candidateCredentials.filter((record) => {
       if (presentationDefinition) return true
       if (!effectiveDcqlQuery) return false
 
-      if (isDualFormatDcqlRequest(effectiveDcqlQuery)) {
-        return isSdJwtSideCompatibleWithDualFormatRequest(record, effectiveDcqlQuery)
-      }
-
-      return effectiveDcqlQuery.credentials.every((credential) =>
-        isCredentialCompatibleWithDcqlFormat(record, credential.format),
-      )
+      return satisfiesDcqlFormats(record, effectiveDcqlQuery)
     })
     if (formatCompatibleCredentials.length > 0) {
-      const metadataCompatibleCredentials = formatCompatibleCredentials.filter((record) => {
-        if (!effectiveDcqlQuery || isDualFormatDcqlRequest(effectiveDcqlQuery)) return true
-        return effectiveDcqlQuery.credentials.every((credential) =>
-          isCredentialCompatibleWithDcqlMetadata(record, credential),
-        )
-      })
-      if (metadataCompatibleCredentials.length === 0) {
-        throw new Error(`PresentationCredentialMetadataMismatch: ${describeCredentialMetadataMismatch(effectiveDcqlQuery, formatCompatibleCredentials)}`)
-      }
-      throw new Error(
-        issuerPidRequest
-          ? `PresentationCredentialMissing:issuer-pid: no ThaiNationalID (${matchDiagnostics})`
-          : `PresentationCredentialMissing: requested credential is not available (${matchDiagnostics})`,
+      const metadataCompatibleCredentials = formatCompatibleCredentials.filter((record) =>
+        satisfiesDcqlMetadata(record, effectiveDcqlQuery),
       )
+      if (metadataCompatibleCredentials.length === 0) {
+        throw new PresentationCredentialUnavailableError({
+          message: `PresentationCredentialMetadataMismatch: ${describeCredentialMetadataMismatch(effectiveDcqlQuery, formatCompatibleCredentials)}`,
+          reason: 'metadata-mismatch',
+          requestedVctValues: readRequestedVctValues(effectiveDcqlQuery),
+          requestedCredentialTypes: requestedTypes,
+        })
+      }
+      throwCredentialMissingUnavailable({
+        issuerPidRequest,
+        matchDiagnostics,
+        effectiveDcqlQuery,
+        requestedTypes,
+      })
     }
     if (candidateCredentials.length > 0) {
       throw new Error('PresentationCredentialFormatUnsupported: stored credential format does not match the Verifier request')
     }
-    throw new Error(
-      issuerPidRequest
-        ? `PresentationCredentialMissing:issuer-pid: no ThaiNationalID (${matchDiagnostics})`
-        : `PresentationCredentialMissing: requested credential is not available (${matchDiagnostics})`,
-    )
+    throwCredentialMissingUnavailable({
+      issuerPidRequest,
+      matchDiagnostics,
+      effectiveDcqlQuery,
+      requestedTypes,
+    })
   }
 
   if (effectiveDcqlQuery && isDualFormatDcqlRequest(effectiveDcqlQuery)) {
@@ -841,6 +825,22 @@ function readRequestedCredentialTypes(query: DcqlQuery): string[] {
   return [...new Set(types)]
 }
 
+function throwCredentialMissingUnavailable(input: {
+  issuerPidRequest: boolean
+  matchDiagnostics: string
+  effectiveDcqlQuery: DcqlQuery | undefined
+  requestedTypes: string[]
+}): never {
+  throw new PresentationCredentialUnavailableError({
+    message: input.issuerPidRequest
+      ? `PresentationCredentialMissing:issuer-pid: no ThaiNationalID (${input.matchDiagnostics})`
+      : `PresentationCredentialMissing: requested credential is not available (${input.matchDiagnostics})`,
+    reason: 'credential-missing',
+    requestedVctValues: readRequestedVctValues(input.effectiveDcqlQuery),
+    requestedCredentialTypes: input.requestedTypes,
+  })
+}
+
 function hasRequiredClaimForRequest(
   record: VerifiableCredentialRecord,
   request: Pick<ResolvedPresentationRequest, 'presentationDefinition' | 'dcqlQuery'>,
@@ -956,30 +956,16 @@ function describeCredentialMetadataMismatch(
   return `requested vct_values [${formatList(requestedVctValues)}]; stored vct [${formatList(storedVctValues)}]`
 }
 
+function readRequestedVctValues(query: DcqlQuery | undefined): string[] {
+  return uniqueValues(query?.credentials.flatMap((credential) => credential.meta?.vct_values ?? []) ?? [])
+}
+
 function uniqueValues(values: string[]): string[] {
   return [...new Set(values)]
 }
 
 function formatList(values: string[]): string {
   return values.length > 0 ? values.join(', ') : 'none'
-}
-
-function readCredentialVct(record: VerifiableCredentialRecord): string | undefined {
-  const claimVct = readString(record.claims.vct)
-  if (claimVct) return claimVct
-
-  const issuerJwt = record.rawVc.split('~')[0] ?? record.rawVc
-  return readString(decodeJwtPayload(issuerJwt)?.vct)
-}
-
-function isCompactJwtVc(rawVc: string): boolean {
-  if (isCompactSdJwt(rawVc)) return false
-  const payload = decodeJwtPayload(rawVc)
-  return isRecord(payload?.vc)
-}
-
-function isCompactSdJwt(rawVc: string): boolean {
-  return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
 }
 
 function readBirthDateDisclosures(record: VerifiableCredentialRecord): PresentationDisclosure[] {
@@ -1042,9 +1028,5 @@ function readRequiredString(record: JsonRecord, key: string, errorCode: string):
   const value = readString(record[key])
   if (!value) throw new Error(`${errorCode}: ${key} is required`)
   return value
-}
-
-function normalizeClaimKey(key: string): string {
-  return key.replace(/[\s_\-.]/g, '').toLowerCase()
 }
 
