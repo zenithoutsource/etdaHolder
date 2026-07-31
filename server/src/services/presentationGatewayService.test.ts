@@ -1,11 +1,10 @@
-import { createHash, createPublicKey, generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'node:crypto'
+import { createHash, generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'node:crypto'
 
 import type { Ed25519PublicJwk, ServerConfig } from '../config'
 import {
-  createPresentationSession,
+  createDevVpSession,
   uploadPresentation,
-  verifyPresentationSession,
-  V1_GATEWAY_CREDENTIAL_TYPE,
+  verifyDevVpSession,
 } from './presentationGatewayService'
 import { createInMemoryPresentationSessionStore } from './presentationSessionStore'
 import { resetSdJwtIssuerKeyCacheForTests } from './sdJwtVerifier'
@@ -30,7 +29,7 @@ function signEdDSA(
 function buildFixtureVp(input: { nonce: string; aud: string }): string {
   const issuerJwt = signEdDSA(
     { alg: 'EdDSA', typ: 'vc+sd-jwt' },
-    { iss: 'https://issuer.dev', vct: V1_GATEWAY_CREDENTIAL_TYPE, cnf: { jwk: holderPublicJwk } },
+    { iss: 'https://issuer.dev', vct: 'ThaiNationalID', cnf: { jwk: holderPublicJwk } },
     issuerKeys.privateKey,
   )
   const sdJwtWithoutKb = `${issuerJwt}~`
@@ -45,49 +44,44 @@ function buildFixtureVp(input: { nonce: string; aud: string }): string {
 
 const baseConfig: Pick<
   ServerConfig,
-  'presentationSessionTtlMs' | 'verifierPresentationBaseUrl' | 'vpIssuerPublicKeyJwk' | 'presentationIssuerJwksCacheMs'
+  'vpSessionTtlMs' | 'verifierPresentationBaseUrl' | 'vpIssuerPublicKeyJwk'
 > = {
-  presentationSessionTtlMs: 300_000,
+  vpSessionTtlMs: 300_000,
   verifierPresentationBaseUrl: 'http://localhost:4000',
   vpIssuerPublicKeyJwk: issuerPublicJwk,
-  presentationIssuerJwksCacheMs: 3_600_000,
 }
 
 beforeEach(() => {
   resetSdJwtIssuerKeyCacheForTests()
 })
 
-test('create → upload → verify marks session verified', async () => {
+test('dev session create → upload → verify marks session verified', async () => {
   const store = createInMemoryPresentationSessionStore()
-  const created = createPresentationSession(store, baseConfig)
-  expect(created.verifyUrl).toBe(`http://localhost:4000/v1/present/verify?s=${created.sessionId}`)
+  const created = createDevVpSession(store, baseConfig.vpSessionTtlMs)
 
   const vpToken = buildFixtureVp({ nonce: created.nonce, aud: baseConfig.verifierPresentationBaseUrl })
-  expect(uploadPresentation(store, created.sessionId, vpToken, V1_GATEWAY_CREDENTIAL_TYPE)).toEqual({ ok: true })
+  expect(uploadPresentation(store, created.sessionId, vpToken, 'ThaiNationalID')).toEqual({ ok: true })
   expect(store.resolveStatus(created.sessionId)).toBe('ready')
 
-  const verified = await verifyPresentationSession(store, created.sessionId, baseConfig)
+  const verified = await verifyDevVpSession(store, created.sessionId, baseConfig)
   expect(verified.kind).toBe('success')
   expect(store.resolveStatus(created.sessionId)).toBe('verified')
 })
 
-test('verify failure finalizes session as verify_failed', async () => {
+test('dev verify failure finalizes session as verify_failed', async () => {
   const store = createInMemoryPresentationSessionStore()
-  const created = createPresentationSession(store, baseConfig)
+  const created = createDevVpSession(store, baseConfig.vpSessionTtlMs)
   const vpToken = buildFixtureVp({ nonce: 'wrong-nonce', aud: baseConfig.verifierPresentationBaseUrl })
-  uploadPresentation(store, created.sessionId, vpToken, V1_GATEWAY_CREDENTIAL_TYPE)
+  uploadPresentation(store, created.sessionId, vpToken, 'ThaiNationalID')
 
-  const outcome = await verifyPresentationSession(store, created.sessionId, baseConfig)
+  const outcome = await verifyDevVpSession(store, created.sessionId, baseConfig)
   expect(outcome.kind).toBe('verify-failed')
   expect(store.resolveStatus(created.sessionId)).toBe('verify_failed')
   expect(store.getSession(created.sessionId)?.verificationReason).toBe('kb-nonce-mismatch')
 })
 
-test('upload rejects non-ThaiNationalID credential type on v1 gateway', () => {
+test('dev upload accepts any credential type', () => {
   const store = createInMemoryPresentationSessionStore()
-  const created = createPresentationSession(store, baseConfig)
-  expect(uploadPresentation(store, created.sessionId, 'vp~kb', 'DrivingLicence')).toEqual({
-    ok: false,
-    code: 'bad-request',
-  })
+  const created = createDevVpSession(store, baseConfig.vpSessionTtlMs)
+  expect(uploadPresentation(store, created.sessionId, 'vp~kb', 'DrivingLicence')).toEqual({ ok: true })
 })

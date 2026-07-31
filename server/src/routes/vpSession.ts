@@ -2,10 +2,6 @@ import { Router } from 'express'
 
 import { readConfig } from '../config'
 import {
-  formatVpIssuerPublicKeyEnvLine,
-  resolveVpIssuerPublicKeyFromRawVc,
-} from '../services/resolveVpIssuerKey'
-import {
   createDevVpSession,
   fetchPresentationSessionStatus,
   uploadPresentation,
@@ -27,28 +23,6 @@ function sendVpHtml(res: import('express').Response, statusCode: number, html: s
   res.status(statusCode).type('text/html; charset=utf-8').send(html)
 }
 
-vpSessionRouter.post('/vp-issuer-key/resolve', async (req, res) => {
-  const rawVc = typeof req.body?.rawVc === 'string' ? req.body.rawVc.trim() : ''
-  const issuerUrl = typeof req.body?.issuerUrl === 'string' ? req.body.issuerUrl.trim() : undefined
-  if (!rawVc) {
-    res.status(400).json({ message: 'rawVc is required' })
-    return
-  }
-
-  try {
-    const jwk = await resolveVpIssuerPublicKeyFromRawVc(rawVc, issuerUrl)
-    const envLine = formatVpIssuerPublicKeyEnvLine(jwk)
-    res.status(200).json({ jwk, envLine })
-  } catch (error) {
-    console.error('[vp-relay] issuer-key-resolve-failed', {
-      error: error instanceof Error ? error.message : String(error),
-    })
-    res.status(422).json({
-      message: 'Could not resolve issuer public key from rawVc',
-    })
-  }
-})
-
 vpSessionRouter.post('/vp-session', (_req, res) => {
   const config = readConfig()
   const session = createDevVpSession(store, config.vpSessionTtlMs)
@@ -58,9 +32,7 @@ vpSessionRouter.post('/vp-session', (_req, res) => {
 vpSessionRouter.put('/vp-session/:sessionId', (req, res) => {
   const vpToken = typeof req.body?.vpToken === 'string' ? req.body.vpToken : ''
   const credentialType = typeof req.body?.credentialType === 'string' ? req.body.credentialType : ''
-  const outcome = uploadPresentation(store, req.params.sessionId, vpToken, credentialType, {
-    enforceThaiNationalId: false,
-  })
+  const outcome = uploadPresentation(store, req.params.sessionId, vpToken, credentialType)
   if (!outcome.ok) {
     if (outcome.code === 'bad-request') {
       res.status(400).json({ message: 'Bad Request' })

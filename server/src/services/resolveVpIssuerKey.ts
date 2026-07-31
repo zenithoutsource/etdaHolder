@@ -140,6 +140,35 @@ function pickEd25519Key(keys: unknown[], kid?: string): Ed25519PublicJwk | undef
   return undefined
 }
 
+type IssuerResolveDidResponse = {
+  success?: boolean
+  data?: string
+}
+
+export async function resolveDidKeyViaIssuer(
+  issuerUrl: string,
+  didKey: string,
+): Promise<Ed25519PublicJwk> {
+  const base = normalizeIssuerUrl(issuerUrl)
+  const did = didKey.startsWith('did:key:') ? didKey.split('#')[0]! : `did:key:${didKey.split('#')[0]!}`
+  const url = `${base}/resolveDID?didKey=${encodeURIComponent(did)}`
+  const response = await fetch(url, { headers: { Accept: 'application/json' } })
+  if (!response.ok) {
+    throw new Error(`ResolveDidFailed:${response.status}`)
+  }
+
+  const body = (await response.json()) as IssuerResolveDidResponse
+  if (!body.success || typeof body.data !== 'string' || body.data.trim().length === 0) {
+    throw new Error('ResolveDidInvalidResponse')
+  }
+
+  return {
+    kty: 'OKP',
+    crv: 'Ed25519',
+    x: body.data,
+  }
+}
+
 async function resolveFromIssuerJwks(rawVc: string, issuerUrl: string): Promise<Ed25519PublicJwk> {
   const { header } = readIssuerJwtParts(rawVc)
   const kid = readString(header.kid)
@@ -169,12 +198,6 @@ export async function resolveVpIssuerPublicKeyFromRawVc(
     throw new Error(`IssuerAlgUnsupported:${alg ?? 'missing'}`)
   }
 
-  const kid = readString(header.kid)
-  if (kid?.startsWith('did:key:')) {
-    const did = kid.split('#')[0]!
-    return didKeyToEd25519PublicJwk(did)
-  }
-
   const issuer =
     issuerUrl ??
     readString(payload.iss) ??
@@ -182,6 +205,11 @@ export async function resolveVpIssuerPublicKeyFromRawVc(
 
   if (!issuer) {
     throw new Error('IssuerBaseUrlMissing')
+  }
+
+  const kid = readString(header.kid)
+  if (kid?.startsWith('did:key:')) {
+    return resolveDidKeyViaIssuer(issuer, kid)
   }
 
   return resolveFromIssuerJwks(rawVc, issuer)
