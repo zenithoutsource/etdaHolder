@@ -1,16 +1,4 @@
-const jsonContent = (schema: Record<string, unknown>) => ({
-  content: {
-    'application/json': { schema },
-  },
-})
-
-const schemaRef = (name: string) => ({
-  $ref: `#/components/schemas/${name}`,
-})
-
-const responseRef = (name: string) => ({
-  $ref: `#/components/responses/${name}`,
-})
+import { jsonContent, responseRef, schemaRef } from './openApiHelpers'
 
 const bearerSecurity = [{ bearerAuth: [] }]
 
