@@ -57,7 +57,7 @@ describe('ScanScreen deeplink handling', () => {
     mockRouterReplace.mockClear()
     mockRouterPush.mockClear()
     cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
-    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
+    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
   })
 
   it('stores pending credential offer URI without navigating from Scan', async () => {

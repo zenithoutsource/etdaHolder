@@ -9,7 +9,7 @@ import {
 
 describe('deeplinkStore', () => {
   beforeEach(() => {
-    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
+    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
   })
 
   it('recognizes OID4VCI credential offer deeplinks', () => {
@@ -33,6 +33,27 @@ describe('deeplinkStore', () => {
 
     expect(useDeeplinkStore.getState().consumePendingDeeplinkUri()).toBe('openid-credential-offer://?credential_offer={}')
     expect(useDeeplinkStore.getState().consumePendingDeeplinkUri()).toBeNull()
+  })
+
+  it('does not create a new offer generation for duplicate pending delivery', () => {
+    const offerUri = 'openid-credential-offer://?credential_offer={}'
+
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+
+    expect(useDeeplinkStore.getState().offerGeneration).toBe(1)
+  })
+
+  it('does not republish a consumed offer while that same offer is active', () => {
+    const offerUri = 'openid-credential-offer://?credential_offer={}'
+
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    expect(useDeeplinkStore.getState().consumePendingDeeplinkUri()).toBe(offerUri)
+
+    useDeeplinkStore.getState().setIncomingDeeplinkUri(offerUri)
+
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+    expect(useDeeplinkStore.getState().offerGeneration).toBe(1)
   })
 
   it('waits to route pending credential offers until auth and PIN setup are ready', () => {

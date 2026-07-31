@@ -5,6 +5,7 @@ describe('waitForPortalCallbackCapture', () => {
   beforeEach(() => {
     useDeeplinkStore.setState({
       pendingUri: null,
+      activeUri: null,
       dismissedUri: null,
       offerGeneration: 0,
       vpGeneration: 0,

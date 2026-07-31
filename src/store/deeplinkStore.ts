@@ -3,6 +3,7 @@ import type { PlatformOSType } from 'react-native'
 
 type DeeplinkState = {
   pendingUri: string | null
+  activeUri: string | null
   dismissedUri: string | null
   offerGeneration: number
   vpGeneration: number
@@ -11,6 +12,7 @@ type DeeplinkState = {
 type DeeplinkActions = {
   setPendingDeeplinkUri: (uri: string) => void
   setIncomingDeeplinkUri: (uri: string) => void
+  activateDeeplinkUri: (uri: string) => void
   setDismissedDeeplinkUri: (uri: string) => void
   consumePendingDeeplinkUri: () => string | null
 }
@@ -64,34 +66,55 @@ export function readPendingPresentationRoute(input: {
   return '/(tabs)/presentation-request'
 }
 
+function storeDeeplinkUri(
+  state: DeeplinkState & DeeplinkActions,
+  uri: string,
+): DeeplinkState & DeeplinkActions {
+  if (
+    (state.pendingUri === uri || state.activeUri === uri)
+    && state.dismissedUri !== uri
+  ) {
+    return state
+  }
+
+  return {
+    ...state,
+    pendingUri: uri,
+    dismissedUri: state.dismissedUri === uri ? null : state.dismissedUri,
+    offerGeneration: isCredentialOfferDeeplink(uri) ? state.offerGeneration + 1 : state.offerGeneration,
+    vpGeneration: isPresentationRequestDeeplink(uri) ? state.vpGeneration + 1 : state.vpGeneration,
+  }
+}
+
 export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, get) => ({
   pendingUri: null,
+  activeUri: null,
   dismissedUri: null,
   offerGeneration: 0,
   vpGeneration: 0,
 
-  setPendingDeeplinkUri: (uri) => set((state) => ({
-    pendingUri: uri,
-    dismissedUri: state.dismissedUri === uri ? null : state.dismissedUri,
-    offerGeneration: isCredentialOfferDeeplink(uri) ? state.offerGeneration + 1 : state.offerGeneration,
-    vpGeneration: isPresentationRequestDeeplink(uri) ? state.vpGeneration + 1 : state.vpGeneration,
-  })),
+  setPendingDeeplinkUri: (uri) => set((state) => storeDeeplinkUri(state, uri)),
 
-  setIncomingDeeplinkUri: (uri) => set((state) => ({
-    pendingUri: uri,
-    dismissedUri: state.dismissedUri === uri ? null : state.dismissedUri,
-    offerGeneration: isCredentialOfferDeeplink(uri) ? state.offerGeneration + 1 : state.offerGeneration,
-    vpGeneration: isPresentationRequestDeeplink(uri) ? state.vpGeneration + 1 : state.vpGeneration,
-  })),
+  setIncomingDeeplinkUri: (uri) => set((state) => storeDeeplinkUri(state, uri)),
+
+  activateDeeplinkUri: (uri) => set((state) => {
+    if (state.activeUri === uri && state.pendingUri !== uri) return state
+
+    return {
+      activeUri: uri,
+      pendingUri: state.pendingUri === uri ? null : state.pendingUri,
+    }
+  }),
 
   setDismissedDeeplinkUri: (uri) => set((state) => ({
     dismissedUri: uri,
     pendingUri: state.pendingUri === uri ? null : state.pendingUri,
+    activeUri: state.activeUri === uri ? null : state.activeUri,
   })),
 
   consumePendingDeeplinkUri: () => {
     const uri = get().pendingUri
-    if (uri) set({ pendingUri: null })
+    if (uri) get().activateDeeplinkUri(uri)
     return uri
   },
 }))

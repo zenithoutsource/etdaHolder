@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native'
+import { BackHandler } from 'react-native'
 
+import CredentialOfferRoute from '../../app/(tabs)/credential-offer'
 import { CredentialOfferClaimScreen } from './CredentialOfferClaimScreen'
 import { useDeeplinkStore } from '../store/deeplinkStore'
 import { acquireCredentialRecord, resolveOffer } from '../services/vci/exchangeService'
@@ -17,6 +19,7 @@ jest.mock('expo-camera', () => {
 const mockRouterReplace = jest.fn()
 const mockRouterBack = jest.fn()
 const mockRouterCanGoBack = jest.fn(() => true)
+let mockRouteFocused = true
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -24,6 +27,13 @@ jest.mock('expo-router', () => ({
     back: mockRouterBack,
     canGoBack: mockRouterCanGoBack,
   }),
+  useFocusEffect: (callback: () => void | (() => void)) => {
+    const { useEffect } = jest.requireActual<typeof import('react')>('react')
+    useEffect(() => {
+      if (!mockRouteFocused) return undefined
+      return callback()
+    }, [callback])
+  },
 }))
 
 jest.mock('expo-linking', () => ({
@@ -80,10 +90,15 @@ describe('CredentialOfferClaimScreen', () => {
     jest.clearAllMocks()
     mockRouterReplace.mockClear()
     mockRouterCanGoBack.mockReturnValue(true)
+    mockRouteFocused = true
     linkingMock.getInitialURL.mockResolvedValue(null)
     useUrlMock.mockReturnValue(null)
-    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null })
+    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null })
     readStoredCredentialsMock.mockReturnValue([])
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
   })
 
   it('consumes a pending credential offer deeplink and resolves it without camera permission', async () => {
@@ -101,6 +116,109 @@ describe('CredentialOfferClaimScreen', () => {
       expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
     })
     expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+  })
+
+  it('does not restart an in-flight offer when the same callback is delivered again', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer'
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    let finishResolve: ((offer: {
+      credentialConfigurations: { id: string }[]
+      issuer: string
+      txCode: undefined
+    }) => void) | undefined
+    resolveOfferMock.mockImplementation(() => new Promise((resolve) => {
+      finishResolve = resolve
+    }))
+
+    render(<CredentialOfferRoute />)
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledTimes(1)
+    })
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+
+    await act(async () => {
+      useDeeplinkStore.getState().setIncomingDeeplinkUri(offerUri)
+    })
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledTimes(1)
+    })
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+
+    await act(async () => {
+      finishResolve?.({
+        credentialConfigurations: [{ id: 'ThaiNationalID' }],
+        issuer: 'https://issuer.example',
+        txCode: undefined,
+      })
+    })
+  })
+
+  it('does not restart a direct-link offer when the same callback later reaches the store', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fdirect-offer'
+    useUrlMock.mockReturnValue(offerUri)
+    let finishResolve: ((offer: {
+      credentialConfigurations: { id: string }[]
+      issuer: string
+      txCode: undefined
+    }) => void) | undefined
+    resolveOfferMock.mockImplementation(() => new Promise((resolve) => {
+      finishResolve = resolve
+    }))
+
+    render(<CredentialOfferRoute />)
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledTimes(1)
+    })
+
+    await act(async () => {
+      useDeeplinkStore.getState().setIncomingDeeplinkUri(offerUri)
+    })
+
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+    expect(resolveOfferMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finishResolve?.({
+        credentialConfigurations: [{ id: 'ThaiNationalID' }],
+        issuer: 'https://issuer.example',
+        txCode: undefined,
+      })
+    })
+  })
+
+  it('clears the active offer when Android system Back exits the claim route', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fback-offer'
+    let hardwareBackHandler: (() => boolean | null | undefined) | undefined
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+      hardwareBackHandler = handler
+      return { remove: jest.fn() }
+    })
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockRejectedValue(new Error('Issuer offline'))
+
+    render(<CredentialOfferRoute />)
+
+    await screen.findByText('Back to Wallet')
+    expect(useDeeplinkStore.getState().activeUri).toBe(offerUri)
+
+    act(() => {
+      expect(hardwareBackHandler?.()).toBe(false)
+    })
+
+    expect(useDeeplinkStore.getState().activeUri).toBeNull()
+    expect(useDeeplinkStore.getState().dismissedUri).toBe(offerUri)
+  })
+
+  it('does not register Android Back while the claim route is unfocused', () => {
+    mockRouteFocused = false
+    const addEventListenerSpy = jest.spyOn(BackHandler, 'addEventListener')
+
+    render(<CredentialOfferRoute />)
+
+    expect(addEventListenerSpy).not.toHaveBeenCalled()
   })
 
   it('falls back to the current Linking URL when no pending store value exists', async () => {

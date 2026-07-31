@@ -85,7 +85,7 @@ describe('buildIssuanceCallbackUrlFromSearchParams', () => {
 
 describe('storePendingFromIssuanceCallbackUrl', () => {
   beforeEach(() => {
-    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
+    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
   })
 
   test('stores normalized offer from walletapp callback before pin unlock', () => {

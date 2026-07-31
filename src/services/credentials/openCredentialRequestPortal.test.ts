@@ -39,7 +39,7 @@ describe('openCredentialRequestPortal', () => {
   beforeEach(() => {
     process.env.EXPO_PUBLIC_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/Account/Login'
     process.env.EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL = 'walletapp://callback'
-    useDeeplinkStore.setState({ pendingUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
+    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
     openAuthSessionAsync.mockReset()
     openBrowserAsync.mockReset()
     openBrowserAsync.mockResolvedValue({ type: 'opened' })

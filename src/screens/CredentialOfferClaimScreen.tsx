@@ -1,7 +1,7 @@
 import * as Linking from 'expo-linking'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Image, ScrollView, Text, TextInput, View, type ImageSourcePropType } from 'react-native'
+import { ActivityIndicator, BackHandler, Image, ScrollView, Text, TextInput, View, type ImageSourcePropType } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../components/AppButton'
@@ -106,7 +106,6 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
-  const offerGeneration = useDeeplinkStore((s) => s.offerGeneration)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
   const activeOfferUriRef = useRef<string | null>(null)
   const expiredCleanupPromptedRef = useRef<string | null>(null)
@@ -284,9 +283,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     missingOfferCheckRef.current += 1
     lastStartedOfferRef.current = uri
     activeOfferUriRef.current = uri
-    if (useDeeplinkStore.getState().pendingUri === uri) {
-      useDeeplinkStore.getState().consumePendingDeeplinkUri()
-    }
+    useDeeplinkStore.getState().activateDeeplinkUri(uri)
     generationRef.current += 1
     setTxCode('')
     setPhase({ tag: 'initializing' })
@@ -356,14 +353,29 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       isMounted = false
       if (graceTimer) clearTimeout(graceTimer)
     }
-  }, [beginOffer, incomingUrl, initialOfferUri, pendingDeeplinkUri, offerGeneration])
+  }, [beginOffer, incomingUrl, initialOfferUri, pendingDeeplinkUri])
 
-  function resetToWalletHome() {
+  const dismissActiveOffer = useCallback(() => {
     generationRef.current += 1
     missingOfferCheckRef.current += 1
     lastStartedOfferRef.current = null
     const uriToDismiss = activeOfferUriRef.current ?? incomingUrl
     if (uriToDismiss) setDismissedDeeplinkUri(uriToDismiss)
+  }, [incomingUrl, setDismissedDeeplinkUri])
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        dismissActiveOffer()
+        return false
+      })
+
+      return () => subscription.remove()
+    }, [dismissActiveOffer]),
+  )
+
+  function resetToWalletHome() {
+    dismissActiveOffer()
     onClose?.()
     if (router.canGoBack()) {
       router.back()
