@@ -31,7 +31,7 @@ describe('assertIssuerDidWebCredentialSignature', () => {
   const privateKey = Uint8Array.from({ length: 32 }, (_, index) => index + 1)
   const otherPrivateKey = Uint8Array.from({ length: 32 }, (_, index) => index + 2)
 
-  test('skips resolve when iss is https', async () => {
+  test('skips resolve when iss is https without did:key kid', async () => {
     const fetchMock = jest.fn()
     const jwt = `${encodeJson({ alg: 'EdDSA' })}.${encodeJson({
       iss: 'https://issuer.example.com',
@@ -42,6 +42,59 @@ describe('assertIssuerDidWebCredentialSignature', () => {
       assertIssuerDidWebCredentialSignature(jwt, { fetchImpl: fetchMock as unknown as typeof fetch }),
     ).resolves.toBeUndefined()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('resolves HTTPS iss via resolveDID when kid is did:key and verifies signature', async () => {
+    const publicKey = getPublicKey(privateKey)
+    const x = bytesToBase64Url(publicKey)
+    const iss = 'https://issuer.zenithcomp.co.th:455'
+    const did = 'did:key:z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk'
+    const kid = `${did}#z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk`
+    const jwt = await signIssuerJwt({
+      privateKey,
+      kid,
+      payload: { iss, jti: 'cred-https' },
+    })
+
+    const fetchMock = jest.fn(async () =>
+      Response.json({ success: true, data: x }),
+    )
+
+    await expect(
+      assertIssuerDidWebCredentialSignature(`${jwt}~`, {
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://issuer.zenithcomp.co.th:455/resolveDID?didKey=${encodeURIComponent(did)}`,
+      expect.objectContaining({
+        headers: { Accept: 'application/json' },
+      }),
+    )
+  })
+
+  test('rejects invalid Issuer signature for HTTPS iss with did:key kid', async () => {
+    const iss = 'https://issuer.zenithcomp.co.th:455'
+    const did = 'did:key:z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk'
+    const kid = `${did}#z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk`
+    const jwt = await signIssuerJwt({
+      privateKey,
+      kid,
+      payload: { iss, jti: 'cred-bad-https' },
+    })
+
+    const fetchMock = jest.fn(async () =>
+      Response.json({
+        success: true,
+        data: bytesToBase64Url(getPublicKey(otherPrivateKey)),
+      }),
+    )
+
+    await expect(
+      assertIssuerDidWebCredentialSignature(jwt, {
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow('CredentialIssuerSignatureInvalid')
   })
 
   test('resolves did:web and verifies Issuer EdDSA signature', async () => {

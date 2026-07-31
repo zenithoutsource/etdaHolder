@@ -1771,6 +1771,18 @@ function applyWalletAttestationFields(
   }
 }
 
+function usesMsoMdocDoctypeCredentialRequest(
+  configuration: OfferedCredentialConfiguration,
+  docType: string | undefined,
+): boolean {
+  if (!docType) return false
+  // Use the OID4VCI doctype wire profile only when issuer metadata is keyed by
+  // the ISO doctype itself. Offers may still carry the doctype as `id` while
+  // `requestId` maps to a family-suffixed metadata entry.
+  if (configuration.requestId === docType) return true
+  return isIsoMdocDoctypeOfferId(configuration.requestId)
+}
+
 function applyMsoMdocCredentialRequestFields(
   credentialRequest: Record<string, unknown>,
   configuration: OfferedCredentialConfiguration,
@@ -1782,24 +1794,35 @@ function applyMsoMdocCredentialRequestFields(
   const docType = readMdocDocType(configuration)
   const legacyProof = readRecord(credentialRequest.proof)
   const proofJwt = readString(legacyProof?.jwt)
+  const useDoctypeProfile = usesMsoMdocDoctypeCredentialRequest(configuration, docType)
 
-  // OID4VCI 1.0 Credential Request uses `proofs.jwt[]`, not legacy `proof`.
-  // Sphereon 0.20 still emits `proof`; .NET issuers often KeyNotFound on `proofs`.
   const {
     proof: _legacyProof,
     format: _legacyFormat,
     cose_key: _requestCoseKey,
+    proofs: _existingProofs,
+    credential_configuration_id: _configId,
     ...rest
   } = credentialRequest
 
+  if (useDoctypeProfile && docType) {
+    // OID4VCI 1.0 / credential_request_iso_mdl.json — zenithcomp direct
+    // `org.iso.18013.5.1.mDL` metadata keys use format+doctype+proofs only.
+    return {
+      ...rest,
+      format: 'mso_mdoc',
+      doctype: docType,
+      ...(proofJwt ? { proofs: { jwt: [proofJwt] } } : legacyProof ? { proof: legacyProof } : {}),
+    }
+  }
+
+  // Family-suffixed configs (Iso18013DriversLicenseCredential_mso_mdoc): legacy
+  // `credential_configuration_id` + `proof` matches Sphereon / .NET SD-JWT path.
   return {
     ...rest,
+    credential_configuration_id: configuration.requestId,
     ...(docType ? { doctype: docType } : {}),
-    ...(proofJwt
-      ? { proofs: { jwt: [proofJwt] } }
-      : legacyProof
-        ? { proof: legacyProof }
-        : {}),
+    ...(legacyProof ? { proof: legacyProof } : {}),
   }
 }
 

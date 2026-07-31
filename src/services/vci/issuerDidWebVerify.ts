@@ -5,6 +5,7 @@ import {
 } from '@/src/utils/jwtUtils'
 import { logWalletStep } from '../debug/walletLogger'
 import { verifyEdDsaCompactJwt } from '../crypto/eddsaJwtVerify'
+import { resolveDidKeyViaIssuer } from '../vp/resolveDidKeyViaIssuer'
 import { resolveDidWebVerificationJwk } from '../vp/didWebResolver'
 
 export type AssertIssuerDidWebOptions = {
@@ -12,12 +13,10 @@ export type AssertIssuerDidWebOptions = {
 }
 
 /**
- * P2 steps 29–31 (partial): when the credential `iss` is `did:web:…`, resolve
- * the Issuer DID document and verify the Issuer JWT EdDSA signature.
- *
- * HTTPS / non-did:web `iss` values skip DID resolve (common OID4VCI HTTPS
- * issuers) — alg checks remain elsewhere. Trust Registry accreditation is
- * still out of scope until a registry API exists.
+ * P2 steps 29–31 (partial): verify Issuer JWT EdDSA signature after resolving
+ * the signing key from `did:web` DID documents or Issuer `GET /resolveDID` when
+ * the JWT header `kid` is `did:key:…`. Trust Registry accreditation is still
+ * out of scope until a registry API exists.
  */
 export async function assertIssuerDidWebCredentialSignature(
   rawVc: string,
@@ -37,29 +36,44 @@ export async function assertIssuerDidWebCredentialSignature(
     return
   }
 
-  if (!iss.startsWith('did:web:')) {
-    logWalletStep('oid4vci', 'issuer-did-web-resolve-skipped', {
-      reason: 'iss-not-did-web',
-      issScheme: iss.split(':')[0] ?? 'unknown',
-    })
-    return
-  }
-
   const header = decodeJwtHeader(issuerJwt)
   const kid = readString(header?.kid)
   const fetchImpl = options.fetchImpl ?? fetch
 
-  logWalletStep('oid4vci', 'issuer-did-web-resolve-start', { iss })
-  const publicJwk = await resolveDidWebVerificationJwk(iss, kid, fetchImpl)
-  logWalletStep('oid4vci', 'issuer-did-web-resolve-complete', { iss })
+  if (iss.startsWith('did:web:')) {
+    logWalletStep('oid4vci', 'issuer-did-web-resolve-start', { iss })
+    const publicJwk = await resolveDidWebVerificationJwk(iss, kid, fetchImpl)
+    logWalletStep('oid4vci', 'issuer-did-web-resolve-complete', { iss })
 
-  if (!verifyEdDsaCompactJwt(issuerJwt, publicJwk)) {
-    throw new Error(
-      'CredentialIssuerSignatureInvalid: issuer JWT signature does not match did:web public key',
-    )
+    if (!verifyEdDsaCompactJwt(issuerJwt, publicJwk)) {
+      throw new Error(
+        'CredentialIssuerSignatureInvalid: issuer JWT signature does not match did:web public key',
+      )
+    }
+
+    logWalletStep('oid4vci', 'issuer-did-web-signature-verified', { iss })
+    return
   }
 
-  logWalletStep('oid4vci', 'issuer-did-web-signature-verified', { iss })
+  if (kid?.startsWith('did:key:')) {
+    logWalletStep('oid4vci', 'issuer-resolve-did-start', { iss })
+    const publicJwk = await resolveDidKeyViaIssuer(iss, kid, fetchImpl)
+    logWalletStep('oid4vci', 'issuer-resolve-did-complete', { iss })
+
+    if (!verifyEdDsaCompactJwt(issuerJwt, publicJwk)) {
+      throw new Error(
+        'CredentialIssuerSignatureInvalid: issuer JWT signature does not match resolveDID public key',
+      )
+    }
+
+    logWalletStep('oid4vci', 'issuer-resolve-did-signature-verified', { iss })
+    return
+  }
+
+  logWalletStep('oid4vci', 'issuer-did-web-resolve-skipped', {
+    reason: 'iss-not-did-web',
+    issScheme: iss.split(':')[0] ?? 'unknown',
+  })
 }
 
 function readIssuerJwt(rawVc: string): string {
