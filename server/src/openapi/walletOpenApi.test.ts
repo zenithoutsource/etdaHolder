@@ -1,6 +1,8 @@
 import { walletOpenApiDocument } from './walletOpenApi'
 
 type OpenApiOperation = {
+  summary?: string
+  description?: string
   security?: Array<Record<string, string[]>>
   responses?: Record<string, unknown>
 }
@@ -21,6 +23,7 @@ const expectedPaths = [
   '/wallet-api/wallet/accounts/wallets',
   '/wallet-api/wallet/{wallet}/credentials/import',
   '/wallet-api/wallet/push-token',
+  '/wallet-api/wallet-attestations',
 ] as const
 
 function paths(): Record<string, OpenApiPathItem> {
@@ -40,6 +43,17 @@ describe('walletOpenApiDocument', () => {
         (path) => path.startsWith('/wallet-api/dev/') || path.startsWith('/dev/'),
       ),
     ).toBe(false)
+  })
+
+  test.each(
+    Object.entries(paths()).flatMap(([path, pathItem]) =>
+      Object.entries(pathItem).map(([method, operation]) => [path, method, operation] as const),
+    ),
+  )('documents a non-empty summary and description for %s %s', (_path, _method, operation) => {
+    expect(operation.summary).toEqual(expect.any(String))
+    expect(operation.summary?.trim()).not.toBe('')
+    expect(operation.description).toEqual(expect.any(String))
+    expect(operation.description?.trim()).not.toBe('')
   })
 
   test('defines Bearer JWT authorization only on protected operations', () => {
@@ -72,5 +86,29 @@ describe('walletOpenApiDocument', () => {
     expect(
       Object.keys(paths()['/wallet-api/wallet/push-token'].post?.responses ?? {}).sort(),
     ).toEqual(['200', '400'])
+  })
+
+  test('documents the development Wallet attestation endpoint', () => {
+    expect(paths()['/wallet-api/wallet-attestations'].post).toMatchObject({
+      summary: 'Issue development Wallet attestations',
+      responses: {
+        201: expect.any(Object),
+        400: expect.any(Object),
+      },
+    })
+    expect(JSON.stringify(paths()['/wallet-api/wallet-attestations'])).toContain('development')
+    expect(JSON.stringify(paths()['/wallet-api/wallet-attestations'])).toContain('alg: none')
+  })
+
+  test('constrains registration PINs and attestation JWKs', () => {
+    expect(walletOpenApiDocument.components.schemas.RegisterRequest.properties.pin).toMatchObject({
+      type: 'string',
+      pattern: '^\\d{6}$',
+    })
+    expect(
+      (walletOpenApiDocument.components.schemas as Record<string, unknown>).WalletAttestationJwk,
+    ).toMatchObject({
+      required: ['kty', 'crv', 'x'],
+    })
   })
 })

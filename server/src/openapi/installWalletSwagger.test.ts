@@ -19,6 +19,7 @@ describe('Wallet Swagger routes', () => {
     expect(response.type).toBe('application/json')
     expect(response.body.openapi).toBe('3.0.3')
     expect(response.body.paths).toHaveProperty('/wallet-api/wallet/push-token')
+    expect(response.body.paths).toHaveProperty('/wallet-api/wallet-attestations')
   })
 
   test('keeps development routes out of the public document', async () => {
@@ -27,7 +28,10 @@ describe('Wallet Swagger routes', () => {
 
     expect(
       documentedPaths.some(
-        (path) => path.startsWith('/wallet-api/dev/') || path.startsWith('/dev/'),
+        (path) =>
+          path.startsWith('/wallet-api/dev/') ||
+          path.startsWith('/dev/') ||
+          path.startsWith('/v1/'),
       ),
     ).toBe(false)
   })
