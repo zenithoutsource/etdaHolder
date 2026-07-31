@@ -49,6 +49,19 @@ The generated file is committed so CI and team members do not need Orval at chec
 
 Any PR that imports or calls forbidden exchange endpoints from app code must be rejected.
 
+## Wallet Provider Attestation Boundary
+
+Wallet v2 crypto activation calls the Wallet Provider client directly rather
+than the generated Orval SDK:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/wallet-api/wallet-attestations` | Exchange the Wallet attestation public JWK for WUA/WIA values |
+
+`EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL` supplies the origin. The current
+`server/` handler returns development mock attestations with `alg: none`; it is
+not a production Wallet Provider implementation.
+
 ## SDK Base URL Adapter
 
 The generated SDK uses relative `/wallet-api/*` URLs. `src/sdk/installWalletApiFetch.ts` patches global `fetch` so generated SDK calls are prefixed with `EXPO_PUBLIC_WALLET_API_BASE_URL`. Absolute Issuer URLs are left unchanged.

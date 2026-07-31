@@ -1,5 +1,98 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-31 (Remove unused Presentation Gateway /v1)
+
+- Removed the superseded `/v1/presentation-sessions` and `/v1/present/verify`
+  reference routes, Swagger/OpenAPI docs, and `presentation-gateway-api.md`.
+  Production My QR uses Broker + external Verifier OID4VP; Scan tab uses
+  `verifier.zenithcomp.co.th` `openid4vc/*` — not VP-by-reference `/v1/*`.
+- Kept non-production `/dev/vp-session` and `/dev/vp-verify` for LAN VP relay
+  testing; simplified `presentationGatewayService` to dev-only shared logic.
+- Dropped `PRESENTATION_GATEWAY_BASE_URL`, `PRESENTATION_SESSION_TTL_MS`, and
+  `presentationGatewayBaseUrl` config aliases.
+- Issuer `did:key` resolution for dev VP verify now calls Issuer
+  `GET /resolveDID`; removed redundant `POST /dev/vp-issuer-key/resolve`.
+- Mobile OID4VCI issuer signature verify and issuer-key helpers now call Issuer
+  `GET /resolveDID` for `did:key` JWT kids instead of local multibase decode.
+- Verification: `cd server && yarn tsc` and `cd server && yarn test` (128 tests).
+
+### Session 2026-07-31 (Credential delete biometric)
+
+- Delete PIN verification on the credential detail screen now exposes the shared
+  OS biometric alternative via `confirmCredentialDeletionBiometric()`; success
+  enters the unchanged approval screen.
+- Biometric cancellation is silent; real failures show a friendly PIN fallback
+  message. PIN setup/confirmation and Revoke behavior remain unchanged.
+- Verification: focused biometric deletion suites pass (10 tests), the complete
+  root suite passes (909 tests), and root lint exits 0 with 37 existing warnings.
+  Root TypeScript remains blocked by pre-existing callback-route, Keychain
+  test-mock, OID4VCI offer-cast, and server OpenAPI diagnostics outside this
+  slice.
+
+### Session 2026-07-31 (API documentation boundaries)
+
+- Published three independent OpenAPI surfaces aligned to server trust boundaries:
+  Wallet Backend (`/wallet-api/docs`, `/wallet-api/openapi.json`), Presentation
+  Gateway (`/v1/docs`, `/v1/openapi.json`), and Development APIs (`/dev/docs`,
+  `/dev/openapi.json`, non-production only).
+- Completed Wallet OpenAPI with eleven public paths including
+  `/wallet-api/wallet-attestations` (unsigned `alg: none` development mocks —
+  documented as non-production).
+- Gated `/dev/*` and `/wallet-api/dev/*` routers and Development Swagger behind
+  `NODE_ENV !== "production"`.
+- Added Markdown workflow guides under `server/docs/` and updated `server/README.md`
+  as the documentation index.
+- Verification: `cd server && yarn tsc` exits 0; `cd server && yarn test` exits 0 (139 tests).
+
+### Session 2026-07-31 (OID4VCI duplicate callback issuance fix)
+
+- Stopped credential-offer routes from remounting on every deeplink generation
+  and made identical pending deeplink deliveries idempotent.
+- The active claim screen now retains its URI guard when Android delivers the
+  same Issuer callback through multiple callback/linking paths, preventing
+  duplicate token, proof, SD-JWT, and `mso_mdoc` requests.
+- Added regressions for duplicate in-flight callbacks and duplicate pending
+  store delivery while preserving same-offer reopen after explicit dismissal.
+  Direct Linking callbacks use the same active-offer guard, and Android Back
+  clears that guard only while the claim route is focused.
+- Verification: the focused callback/dual-format/OID4VCI suite passes (57
+  tests), the complete root suite passes (898 tests), and root lint exits 0
+  with 36 existing warnings. Root TypeScript remains blocked by the same six
+  pre-existing callback-route, Keychain test-mock, and OID4VCI offer-cast
+  diagnostics outside this slice. Physical-device single-request validation
+  remains pending a fresh interactive Driving Licence portal attempt.
+
+### Session 2026-07-31 (OID4VP unavailable-document UX)
+
+- Replaced raw OID4VP credential-mismatch messages with a dedicated Thai
+  unavailable-document panel for both Verifier QR scans and Wallet-generated
+  My QR presentations.
+- Known requested document types show a human card-schema label and can open
+  the existing Issuer portal; unknown types provide only the contextual return
+  action. Exact signed `vct` matching remains enforced.
+- Added structured unavailable errors, stable credential-set resolution, and
+  stale-run suppression so equivalent storage refreshes no longer repeat the
+  same resolve failure log.
+- Verification: the complete root suite passes (894 tests), the broader
+  OID4VP suite passes (173 tests), and root lint exits 0 with warnings only.
+  Root TypeScript remains blocked by pre-existing callback-route, Keychain
+  test-mock, and OID4VCI offer-cast diagnostics outside this slice.
+
+### Session 2026-07-31 (Wallet attestation proxy-compatible route)
+
+- Moved Wallet Provider activation from `/v1/wallet-attestations` to
+  `/wallet-api/wallet-attestations` so the existing containerized Nginx
+  `/wallet-api/*` forwarding reaches the Wallet Node service.
+- Kept Verifier-owned presentation `/v1/*` routes unchanged and removed the
+  old attestation route rather than publishing an alias.
+- Updated the mobile client, server contract tests, API boundary docs, and v2
+  crypto design/plan references. The current `alg: none` attestation handler
+  remains development-only and is not production Wallet Provider crypto.
+- Verification: the complete root suite passes (883 tests), the complete
+  server suite passes (111 tests), and server TypeScript plus root lint exit
+  0. Root TypeScript remains blocked by six pre-existing callback route,
+  Keychain test-mock, and OID4VCI offer-cast diagnostics outside this slice.
+
 ### Session 2026-07-30 (Wallet backend Swagger)
 
 - Added public Wallet Swagger UI at `/wallet-api/docs` and OpenAPI JSON at
@@ -32,7 +125,13 @@
   info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
   error Command failed with exit code 2.
   ```
+### Session 2026-07-30 (EAS Android archive autolinking fix)
 
+- Fixed the EAS Preview archive including the Windows-generated `android/` tree, `.env`, and stale Gradle autolinking state because `.easignore` overrode the repository's complete `.gitignore` rules.
+- The corrected `.easignore` excludes generated native projects, local dependencies, local environment files, caches, and workspace scratch while explicitly including the Firebase client configuration required by `app.json` during EAS Prebuild.
+- Removed the obsolete npm lockfile so EAS deterministically selects Yarn, aligned Expo to `~54.0.36` and Jest types to `29.5.14`, and selectively excluded the intentionally retained/local native modules that React Native Directory cannot classify.
+- Verification: Expo Doctor passes all 18 checks. `eas build:inspect --stage archive` contains only `yarn.lock`, excludes `android`, `ios`, `node_modules`, `.env`, and `package-lock.json`, includes `google-services.json`, and contains no stale `C:\project\...\node_modules` autolinking paths. `yarn lint` exits 0 with 36 existing warnings. Root TypeScript remains blocked by the existing callback-route, Keychain test-mock, and OID4VCI offer-cast diagnostics outside this slice.
+- Remaining: submit a fresh EAS Android Preview build with `--clear-cache`; repository upload requires explicit approval.
 ### Session 2026-07-30 (v2 legacy wallet-key expiry loop)
 
 - Fixed the expired-key modal reopening after **Create new key** under v2 crypto. Root cause: `rotateWalletKey()` correctly skips wallet-wide rotation for per-credential keys, but the legacy wallet-key TTL lane remained active and immediately made the modal eligible again.

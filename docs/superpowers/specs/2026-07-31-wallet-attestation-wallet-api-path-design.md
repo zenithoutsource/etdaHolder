@@ -23,7 +23,7 @@ Changing the container's Nginx routing is currently operationally difficult.
 Move the public Wallet Provider attestation contract to:
 
 ```text
-POST /wallet-api/v1/wallet-attestations
+POST /wallet-api/wallet-attestations
 ```
 
 The mobile Wallet Provider base URL remains an origin, for example:
@@ -32,8 +32,8 @@ The mobile Wallet Provider base URL remains an origin, for example:
 EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL=https://wallet.example
 ```
 
-The mobile client appends `/wallet-api/v1/wallet-attestations`. The server
-mounts the existing `walletProviderAttestRouter` at `/wallet-api/v1`.
+The mobile client appends `/wallet-api/wallet-attestations`. The server
+mounts the existing `walletProviderAttestRouter` at `/wallet-api`.
 
 The former `/v1/wallet-attestations` route will be removed rather than retained
 as an alias. This keeps one canonical contract and avoids publishing an
@@ -57,7 +57,7 @@ production-ready.
 ```text
 Mobile startup
   -> resolve EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL
-  -> POST /wallet-api/v1/wallet-attestations
+  -> POST /wallet-api/wallet-attestations
   -> Nginx forwards /wallet-api/* to the Wallet Node service
   -> walletProviderAttestRouter validates pubKAttestJwk
   -> development server returns WUA, WIA, and expiresAt
@@ -76,8 +76,8 @@ Mobile startup
 
 Update focused tests to assert the canonical path:
 
-- Mobile client calls `/wallet-api/v1/wallet-attestations`.
-- Server accepts `POST /wallet-api/v1/wallet-attestations` and returns 201 for
+- Mobile client calls `/wallet-api/wallet-attestations`.
+- Server accepts `POST /wallet-api/wallet-attestations` and returns 201 for
   a valid Ed25519 public JWK.
 - Server returns 400 for an invalid JWK.
 - The old `/v1/wallet-attestations` path is not part of the public contract.

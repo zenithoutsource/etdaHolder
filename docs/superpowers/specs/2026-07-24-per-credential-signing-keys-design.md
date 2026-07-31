@@ -168,6 +168,10 @@ type WalletAttestClient = {
 | Mobile | `EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL` |
 | Dev mock | Local `server/` reference route (LAN), same pattern as presentation gateway |
 
+The Wallet Provider client posts to `/wallet-api/wallet-attestations`. This
+path reuses the Wallet backend's existing reverse-proxy namespace while
+remaining outside the generated Orval SDK boundary.
+
 ## Feature gating
 
 | Condition | Behavior |

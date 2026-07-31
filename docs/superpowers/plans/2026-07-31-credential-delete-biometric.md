@@ -32,7 +32,7 @@
 - Consumes: `confirmBiometricGate(options): Promise<void>` and `isBiometricGateCancellation(error, prefix): boolean` from `src/services/auth/biometricGate.ts`.
 - Produces: `confirmCredentialDeletionBiometric(): Promise<void>` and `isCredentialDeletionBiometricCancellation(error: unknown): boolean`.
 
-- [ ] **Step 1: Write the failing service test**
+- [x] **Step 1: Write the failing service test**
 
 Create a focused test that mocks only the OS-facing shared gate and verifies the deletion wrapper's public contract:
 

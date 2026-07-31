@@ -214,7 +214,7 @@ export function createWalletAttestClient(baseUrl?: string): {
 Dev server route:
 
 ```
-POST /v1/wallet-attestations
+POST /wallet-api/wallet-attestations
 Body: { pubKAttestJwk: JsonWebKey }
 Response 201: { wua, wia, expiresAt }
 ```
