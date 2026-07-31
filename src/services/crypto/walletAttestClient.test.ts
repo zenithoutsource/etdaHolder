@@ -33,7 +33,7 @@ describe('walletAttestClient', () => {
       expiresAt: '2026-07-25T00:00:00.000Z',
     })
     expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:4000/v1/wallet-attestations',
+      'http://localhost:4000/wallet-api/wallet-attestations',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ pubKAttestJwk: PUB_JWK }),

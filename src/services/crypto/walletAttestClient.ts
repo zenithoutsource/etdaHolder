@@ -43,7 +43,7 @@ export function createWalletAttestClient(baseUrl?: string) {
 
   return {
     async requestAttestations(input: { pubKAttestJwk: JsonWebKey }): Promise<WalletAttestation> {
-      const url = `${resolvedBaseUrl}/v1/wallet-attestations`
+      const url = `${resolvedBaseUrl}/wallet-api/wallet-attestations`
       logWalletStep('crypto', 'wallet-attest-request-start', { url })
 
       let response: Response
