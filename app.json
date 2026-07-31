@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Document Wallet",
-    "slug": "wallet",
+    "slug": "etdaWallet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -35,7 +35,8 @@
         "android.permission.RECORD_AUDIO"
       ],
       "predictiveBackGestureEnabled": false,
-      "package": "com.thanaboon.chan.etdaWallet"
+      "package": "com.thanaboon.chan.etdaWallet",
+      "versionCode": 2
     },
     "web": {
       "output": "static",
@@ -79,6 +80,6 @@
         "projectId": "02e2e8d0-81d3-4e6f-9351-e80d60781966"
       }
     },
-    "owner": "thanaboon.chan"
+    "owner": "etdawallet"
   }
 }

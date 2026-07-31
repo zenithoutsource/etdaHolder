@@ -33,7 +33,7 @@
     "@tanstack/react-query": "^5.100.14",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
-    "expo": "~54.0.34",
+    "expo": "~54.0.36",
     "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
@@ -79,7 +79,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
+    "@types/jest": "29.5.14",
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
@@ -88,6 +88,18 @@
     "tailwindcss": "3.4.4",
     "ts-node": "^10.9.2",
     "typescript": "~5.9.2"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "expo-mdoc-proximity",
+          "wallet-keystore-diagnostics",
+          "react-native-nfc-manager",
+          "react-native-ssl-pinning"
+        ]
+      }
+    }
   },
   "private": true
 }
