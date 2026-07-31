@@ -178,6 +178,58 @@ describe('useWalletInitiatedVpQrSession', () => {
     expect(result.current.phase).toBe('error')
   })
 
+  test('resumes an existing broker session when resumeSessionId is provided', async () => {
+    const createSession = jest.fn()
+    const fetchPresentationRequestUri = jest
+      .fn()
+      .mockResolvedValue('openid4vp://authorize?request_uri=http://verifier/r/1')
+    const client = createMockBrokerClient({ createSession, fetchPresentationRequestUri })
+
+    const { result } = renderHook(() =>
+      useWalletInitiatedVpQrSession({
+        credential,
+        active: true,
+        resumeSessionId: 'session-resume-1',
+        client,
+        walletId: 'wallet-1',
+        deviceToken: 'token',
+        platform: 'android',
+      }),
+    )
+
+    await flush()
+
+    expect(createSession).not.toHaveBeenCalled()
+    expect(fetchPresentationRequestUri).toHaveBeenCalledWith('session-resume-1')
+    expect(result.current.phase).toBe('request_ready')
+    expect(result.current.authorizationRequestUri).toBe('openid4vp://authorize?request_uri=http://verifier/r/1')
+    expect(result.current.sessionId).toBe('session-resume-1')
+  })
+
+  test('resumes into waiting_scan when the broker has not deposited a request yet', async () => {
+    const createSession = jest.fn()
+    const fetchPresentationRequestUri = jest.fn().mockResolvedValue(null)
+    const client = createMockBrokerClient({ createSession, fetchPresentationRequestUri })
+
+    const { result } = renderHook(() =>
+      useWalletInitiatedVpQrSession({
+        credential,
+        active: true,
+        resumeSessionId: 'session-resume-2',
+        client,
+        walletId: 'wallet-1',
+        deviceToken: 'token',
+        platform: 'android',
+      }),
+    )
+
+    await flush()
+
+    expect(createSession).not.toHaveBeenCalled()
+    expect(result.current.phase).toBe('waiting_scan')
+    expect(result.current.sessionId).toBe('session-resume-2')
+  })
+
   test('stops polling once the session becomes inactive', async () => {
     const createSession = jest.fn().mockResolvedValue({
       session_id: 'session-1',

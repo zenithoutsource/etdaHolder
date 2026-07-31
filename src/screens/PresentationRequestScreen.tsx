@@ -5,8 +5,10 @@ import { ActivityIndicator, Text } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Oid4VpDisclosureFlow } from '../components/Oid4VpDisclosureFlow'
+import type { IssuerPortalCredentialType } from '../config/issuerPortalUrls'
 import { useScreenCaptureGuard } from '../hooks/useScreenCaptureGuard'
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
+import { openCredentialRequestPortal } from '../services/credentials/openCredentialRequestPortal'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
 import { resolvePresentationRequestUri } from '../services/credentials/resolvePresentationRequestUri'
 import { describeUriForLog } from '../services/scan/scanLogDescriptors'
@@ -114,6 +116,11 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     router.replace('/(tabs)')
   }, [router, setDismissedDeeplinkUri])
 
+  const requestCredential = useCallback((credentialType: IssuerPortalCredentialType) => {
+    finish()
+    void openCredentialRequestPortal(credentialType)
+  }, [finish])
+
   if (missingRequestError) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
@@ -137,6 +144,8 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
       credentials={credentials}
       historyChannel="oid4vp"
       logScope="presentation-request"
+      presentationOrigin="scanned-verifier-qr"
+      onRequestCredential={requestCredential}
       onDone={finish}
       onCancel={finish}
     />

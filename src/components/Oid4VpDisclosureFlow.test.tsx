@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native'
 
 import { Oid4VpDisclosureFlow } from './Oid4VpDisclosureFlow'
+import { logWalletError } from '../services/debug/walletLogger'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
 jest.mock('../services/debug/walletLogger', () => ({
@@ -261,6 +262,138 @@ describe('Oid4VpDisclosureFlow', () => {
 
     await flush()
     expect(screen.getByText('VerifierUntrusted')).toBeTruthy()
+  })
+
+  test('shows a friendly document-unavailable state without exposing the requested vct URL', async () => {
+    const onRequestCredential = jest.fn()
+    mockResolve.mockRejectedValue(Object.assign(
+      new Error(
+        'PresentationCredentialMetadataMismatch: requested vct_values [https://issuer.example/credentials/TranscriptCredential]; stored vct [https://issuer.example/credentials/IDCard]',
+      ),
+      {
+        name: 'PresentationCredentialUnavailableError',
+        reason: 'metadata-mismatch',
+        requestedVctValues: ['https://issuer.example/credentials/TranscriptCredential'],
+        requestedCredentialTypes: [],
+      },
+    ))
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        presentationOrigin="scanned-verifier-qr"
+        onRequestCredential={onRequestCredential}
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    expect(screen.getByTestId('presentation-document-unavailable')).toBeTruthy()
+    expect(screen.getByText('Academic Transcript')).toBeTruthy()
+    expect(screen.queryByText(/https:\/\/issuer\.example/)).toBeNull()
+
+    fireEvent.press(screen.getByTestId('presentation-document-unavailable-request'))
+    expect(onRequestCredential).toHaveBeenCalledWith('ChulalongkornUniversityTranscript')
+  })
+
+  test('shows only the My QR return action for an unknown requested document', async () => {
+    mockResolve.mockRejectedValue(Object.assign(
+      new Error('PresentationCredentialMissing'),
+      {
+        name: 'PresentationCredentialUnavailableError',
+        reason: 'credential-missing',
+        requestedVctValues: ['urn:example:unsupported-document'],
+        requestedCredentialTypes: [],
+      },
+    ))
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        presentationOrigin="wallet-generated-qr"
+        onRequestCredential={jest.fn()}
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    expect(screen.getByText('Requested document')).toBeTruthy()
+    expect(screen.queryByTestId('presentation-document-unavailable-request')).toBeNull()
+    expect(screen.getByText('กลับไปที่ My QR')).toBeTruthy()
+  })
+
+  test('does not resolve again when a refreshed credentials array contains the same records', async () => {
+    mockResolve.mockRejectedValue(new Error('VerifierUntrusted'))
+    const props = {
+      authorizationRequestUri: 'openid4vp://authorize?request_uri=http://verifier/r/1',
+      onDone: jest.fn(),
+      onCancel: jest.fn(),
+    }
+    const { rerender } = render(
+      <Oid4VpDisclosureFlow
+        {...props}
+        credentials={[credential]}
+      />,
+    )
+
+    await flush()
+    rerender(
+      <Oid4VpDisclosureFlow
+        {...props}
+        credentials={[credential]}
+      />,
+    )
+    await flush()
+
+    expect(mockResolve).toHaveBeenCalledTimes(1)
+  })
+
+  test('does not log a stale resolver failure after credentials change', async () => {
+    let rejectFirst: ((reason?: unknown) => void) | undefined
+    mockResolve
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectFirst = reject
+      }))
+      .mockRejectedValueOnce(new Error('VerifierUntrusted'))
+
+    const props = {
+      authorizationRequestUri: 'openid4vp://authorize?request_uri=http://verifier/r/1',
+      onDone: jest.fn(),
+      onCancel: jest.fn(),
+    }
+    const { rerender } = render(
+      <Oid4VpDisclosureFlow
+        {...props}
+        credentials={[credential]}
+      />,
+    )
+    const replacementCredential = {
+      ...credential,
+      id: 'cred-2',
+    } as VerifiableCredentialRecord
+    rerender(
+      <Oid4VpDisclosureFlow
+        {...props}
+        credentials={[replacementCredential]}
+      />,
+    )
+    await flush()
+
+    await act(async () => {
+      rejectFirst?.(new Error('stale failure'))
+      await Promise.resolve()
+    })
+
+    expect(logWalletError).toHaveBeenCalledTimes(1)
+    expect(logWalletError).toHaveBeenCalledWith(
+      'my-qr',
+      'presentation-resolve-failed',
+      expect.objectContaining({ message: 'VerifierUntrusted' }),
+    )
   })
 
   test('records only effective disclosed claims when holder deselects optional GPA', async () => {

@@ -30,6 +30,55 @@ export class BrokerPresentationRequestInvalid extends Error {
 const OPENID4VP_SCHEME_PATTERN = /^openid4vp:/i
 const HTTP_REQUEST_URI_PATTERN = /^https?:\/\/.*(response_type=vp_token|request_uri=)/i
 
+const PRESENTATION_REQUEST_FIELD_KEYS = [
+  'request_uri',
+  'authorization_request',
+  'qr',
+  'openid4vp',
+] as const
+
+function readRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function isConsumablePresentationRequestUri(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (OPENID4VP_SCHEME_PATTERN.test(trimmed) || HTTP_REQUEST_URI_PATTERN.test(trimmed)) {
+    return true
+  }
+
+  try {
+    const url = new URL(trimmed)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function readPresentationRequestUriFromRecord(record: Record<string, unknown>): string | undefined {
+  for (const key of PRESENTATION_REQUEST_FIELD_KEYS) {
+    const value = record[key]
+    if (typeof value === 'string' && isConsumablePresentationRequestUri(value)) {
+      return value.trim()
+    }
+  }
+
+  const authRequest = readRecord(record.auth_request)
+  if (!authRequest) return undefined
+
+  for (const key of PRESENTATION_REQUEST_FIELD_KEYS) {
+    const value = authRequest[key]
+    if (typeof value === 'string' && isConsumablePresentationRequestUri(value)) {
+      return value.trim()
+    }
+  }
+
+  return undefined
+}
+
 /**
  * Normalizes a broker GET `/broker/session/:id/request` body into the URI consumed by
  * `resolvePresentationRequest`, or `null` while the verifier has not deposited a request yet.
@@ -38,7 +87,7 @@ export function normalizeBrokerPresentationRequest(body: unknown): string | null
   if (typeof body === 'string') {
     const trimmed = body.trim()
     if (trimmed.length === 0) return null
-    if (OPENID4VP_SCHEME_PATTERN.test(trimmed) || HTTP_REQUEST_URI_PATTERN.test(trimmed)) {
+    if (isConsumablePresentationRequestUri(trimmed)) {
       return trimmed
     }
     throw new BrokerPresentationRequestInvalid()
@@ -48,11 +97,8 @@ export function normalizeBrokerPresentationRequest(body: unknown): string | null
 
   if (typeof body === 'object') {
     const record = body as Record<string, unknown>
-
-    if (typeof record.request_uri === 'string') return record.request_uri
-    if (typeof record.authorization_request === 'string') return record.authorization_request
-    if (typeof record.qr === 'string') return record.qr
-    if (typeof record.openid4vp === 'string') return record.openid4vp
+    const uri = readPresentationRequestUriFromRecord(record)
+    if (uri) return uri
 
     if (Object.keys(record).length === 0) return null
     if (record.status === 'pending') return null

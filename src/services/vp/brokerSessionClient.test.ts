@@ -149,3 +149,31 @@ test('fetchPresentationRequest returns the request_uri once deposited', async ()
   )
   expect(fetchMock).toHaveBeenCalledWith('http://192.100.10.49/broker/session/s1/request')
 })
+
+test('normalize returns openid4vp from auth_request when status is request_available', () => {
+  const openid4vp =
+    'openid4vp://authorize?client_id=redirect_uri%3Ahttps%3A%2F%2Fverifier.zenithcomp.co.th%3A455%2Fopenid4vc%2Fverify%2Fd851ff91-4142-4084-b71d-49708d7e73df&request_uri=https%3A%2F%2Fverifier.zenithcomp.co.th%3A455%2Fopenid4vc%2Frequest%2Fd851ff91-4142-4084-b71d-49708d7e73df'
+
+  expect(
+    normalizeBrokerPresentationRequest({
+      status: 'request_available',
+      auth_request: { request_uri: openid4vp },
+    }),
+  ).toBe(openid4vp)
+})
+
+test('fetchPresentationRequest returns openid4vp from auth_request envelope', async () => {
+  const openid4vp =
+    'openid4vp://authorize?client_id=redirect_uri%3Ahttps%3A%2F%2Fverifier.zenithcomp.co.th%3A455%2Fopenid4vc%2Fverify%2Fd851ff91-4142-4084-b71d-49708d7e73df&request_uri=https%3A%2F%2Fverifier.zenithcomp.co.th%3A455%2Fopenid4vc%2Frequest%2Fd851ff91-4142-4084-b71d-49708d7e73df'
+  const fetchMock = jest.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    text: async () =>
+      JSON.stringify({
+        status: 'request_available',
+        auth_request: { request_uri: openid4vp },
+      }),
+  })
+  const client = createBrokerSessionClient('http://192.100.10.49', fetchMock as unknown as typeof fetch)
+  await expect(client.fetchPresentationRequestUri('s1')).resolves.toBe(openid4vp)
+})

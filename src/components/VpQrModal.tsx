@@ -1,8 +1,8 @@
-import { useCallback } from 'react'
+import { useRouter } from 'expo-router'
+import { useCallback, useEffect } from 'react'
 import { Modal, Pressable, View } from 'react-native'
 
 import { AppButton } from './AppButton'
-import { Oid4VpDisclosureFlow } from './Oid4VpDisclosureFlow'
 import { WalletInitiatedVpQrPanel } from './WalletInitiatedVpQrPanel'
 import { useWalletInitiatedVpQrSession } from '../hooks/useWalletInitiatedVpQrSession'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
@@ -14,7 +14,8 @@ type Props = {
 }
 
 export function VpQrModal({ visible, credential, onClose }: Props) {
-  const { phase, qrUrl, minutes, seconds, authorizationRequestUri, startSession } =
+  const router = useRouter()
+  const { phase, qrUrl, minutes, seconds, sessionId, authorizationRequestUri, startSession } =
     useWalletInitiatedVpQrSession({
       credential,
       active: visible,
@@ -24,18 +25,18 @@ export function VpQrModal({ visible, credential, onClose }: Props) {
     void startSession()
   }, [startSession])
 
-  if (visible && phase === 'request_ready' && authorizationRequestUri) {
-    return (
-      <Modal visible transparent={false} animationType="fade" onRequestClose={onClose}>
-        <Oid4VpDisclosureFlow
-          authorizationRequestUri={authorizationRequestUri}
-          credentials={[credential]}
-          onDone={onClose}
-          onCancel={onClose}
-        />
-      </Modal>
-    )
-  }
+  useEffect(() => {
+    if (!visible || phase !== 'request_ready' || !authorizationRequestUri || !sessionId) return
+
+    onClose()
+    router.push({
+      pathname: '/(tabs)/qr',
+      params: {
+        brokerSessionId: sessionId,
+        credentialId: credential.id,
+      },
+    })
+  }, [authorizationRequestUri, credential.id, onClose, phase, router, sessionId, visible])
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

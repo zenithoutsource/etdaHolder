@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -10,15 +10,22 @@ import { WalletInitiatedVpQrPanel } from '../../src/components/WalletInitiatedVp
 import { useStoredCredentials } from '../../src/hooks/useStoredCredentials'
 import { useWalletInitiatedVpQrSession } from '../../src/hooks/useWalletInitiatedVpQrSession'
 import { readPidGateStatus } from '../../src/services/credentials/credentialGuard'
+import { isCredentialPresentable } from '../../src/services/credentials/credentialLifecycle'
 import { openCredentialRequestPortal } from '../../src/services/credentials/openCredentialRequestPortal'
+import type { IssuerPortalCredentialType } from '../../src/config/issuerPortalUrls'
 import { resolveMyQrPresentationCredential } from '../../src/services/credentials/resolveMyQrPresentationCredential'
 import { WALLET_HOME_COPY } from '../../src/services/credentials/walletHomeCopy'
+import { isSdJwtCredential } from '../../src/services/vp/sdJwtCredential'
 import type { VerifiableCredentialRecord } from '../../src/services/vci/exchangeService'
 
 type ResolverStatus = 'loading' | 'ready' | 'missing'
 
 export default function MyQrScreen() {
   const router = useRouter()
+  const { brokerSessionId, credentialId } = useLocalSearchParams<{
+    brokerSessionId?: string
+    credentialId?: string
+  }>()
   const { status, credentials } = useStoredCredentials()
   const [isFocused, setIsFocused] = useState(false)
   const [presentationCredential, setPresentationCredential] = useState<VerifiableCredentialRecord | undefined>()
@@ -41,7 +48,16 @@ export default function MyQrScreen() {
     let cancelled = false
     void (async () => {
       setResolverStatus('loading')
-      const resolved = await resolveMyQrPresentationCredential(credentials)
+      const selectedCredentialId = typeof credentialId === 'string' ? credentialId.trim() : ''
+      const selectedCredential = selectedCredentialId
+        ? credentials.find((record) => record.id === selectedCredentialId)
+        : undefined
+      const resolved =
+        selectedCredential
+        && isSdJwtCredential(selectedCredential)
+        && isCredentialPresentable(selectedCredential)
+          ? selectedCredential
+          : await resolveMyQrPresentationCredential(credentials)
       if (cancelled) return
       setPresentationCredential(resolved)
       setResolverStatus(resolved ? 'ready' : 'missing')
@@ -50,15 +66,17 @@ export default function MyQrScreen() {
     return () => {
       cancelled = true
     }
-  }, [credentials, status])
+  }, [credentialId, credentials, status])
 
   const pidGateStatus = useMemo(() => readPidGateStatus(credentials), [credentials])
   const usesDrivingLicenceMyQr = presentationCredential?.type === 'DLTDrivingLicence'
+  const resumeSessionId = typeof brokerSessionId === 'string' ? brokerSessionId.trim() : ''
 
   const { phase, qrUrl, minutes, seconds, authorizationRequestUri, startSession } =
     useWalletInitiatedVpQrSession({
       credential: presentationCredential,
       active: isFocused && resolverStatus === 'ready' && presentationCredential !== undefined,
+      resumeSessionId: resumeSessionId || undefined,
     })
 
   const handleRetry = useCallback(() => {
@@ -73,6 +91,13 @@ export default function MyQrScreen() {
     void openCredentialRequestPortal('ThaiNationalID')
   }, [])
 
+  const handleRequestPresentationCredential = useCallback(
+    (credentialType: IssuerPortalCredentialType) => {
+      void openCredentialRequestPortal(credentialType)
+    },
+    [],
+  )
+
   const scanHint = usesDrivingLicenceMyQr
     ? WALLET_HOME_COPY.myQrScanHintDrivingLicence
     : WALLET_HOME_COPY.myQrScanHintDefault
@@ -82,6 +107,8 @@ export default function MyQrScreen() {
       <Oid4VpDisclosureFlow
         authorizationRequestUri={authorizationRequestUri}
         credentials={credentials}
+        presentationOrigin="wallet-generated-qr"
+        onRequestCredential={handleRequestPresentationCredential}
         onDone={handleDisclosureDone}
         onCancel={handleDisclosureDone}
       />

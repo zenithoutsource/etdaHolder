@@ -77,9 +77,18 @@ describe('resolveDcqlCredentialSelection', () => {
       credentialSets: [{ options: [['thai_id']] }],
     }
 
-    expect(() => resolveDcqlCredentialSelection(query, [])).toThrow(
-      'PresentationCredentialMissing: no credential satisfies the required credential set',
-    )
+    try {
+      resolveDcqlCredentialSelection(query, [])
+      throw new Error('Expected credential selection to fail')
+    } catch (error) {
+      expect(error).toMatchObject({
+        name: 'PresentationCredentialUnavailableError',
+        reason: 'credential-missing',
+        requestedVctValues: [],
+        requestedCredentialTypes: ['ThaiNationalID'],
+        message: 'PresentationCredentialMissing: no credential satisfies the required credential set',
+      })
+    }
   })
 
   test('throws PresentationCredentialMetadataMismatch when only the vct gate fails', () => {
@@ -98,9 +107,19 @@ describe('resolveDcqlCredentialSelection', () => {
       credentialSets: [{ options: [['thai_id']] }],
     }
 
-    expect(() => resolveDcqlCredentialSelection(query, [sdJwtRecord])).toThrow(
-      'PresentationCredentialMetadataMismatch: stored ThaiNationalID vct "urn:example:idcard" is not in requested vct_values [urn:other:idcard]',
-    )
+    try {
+      resolveDcqlCredentialSelection(query, [sdJwtRecord])
+      throw new Error('Expected credential selection to fail')
+    } catch (error) {
+      expect(error).toMatchObject({
+        name: 'PresentationCredentialUnavailableError',
+        reason: 'metadata-mismatch',
+        requestedVctValues: ['urn:other:idcard'],
+        requestedCredentialTypes: [],
+        message:
+          'PresentationCredentialMetadataMismatch: stored ThaiNationalID vct "urn:example:idcard" is not in requested vct_values [urn:other:idcard]',
+      })
+    }
   })
 
   test('throws PresentationCredentialFormatUnsupported when only the format gate fails', () => {

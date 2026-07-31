@@ -4,8 +4,10 @@ import {
   assertSupportedDcqlCredentialQuery,
   canWalletSatisfyDcqlCredentialQuery,
   describeDcqlMatchFailure,
+  readCredentialTypeFromDcqlTypeValue,
 } from './dcqlCredentialMatch'
 import type { DcqlCredentialSetQuery, DcqlQuery } from './presentationService'
+import { PresentationCredentialUnavailableError } from './presentationUnavailable'
 
 export function parseDcqlCredentialSets(value: unknown): DcqlCredentialSetQuery[] | undefined {
   if (!Array.isArray(value) || value.length === 0) return undefined
@@ -73,6 +75,20 @@ export function resolveDcqlCredentialSelection(
   })
 
   if (!selectedId) {
+    const supportedCredentialQueries = supportedOptionIds
+      .map((id) => credentialById.get(id))
+      .filter((credential): credential is NonNullable<typeof credential> => Boolean(credential))
+    const requestedVctValues = [
+      ...new Set(supportedCredentialQueries.flatMap((credential) => credential.meta?.vct_values ?? [])),
+    ]
+    const requestedCredentialTypes = [
+      ...new Set(
+        supportedCredentialQueries
+          .flatMap((credential) => credential.meta?.type_values ?? [])
+          .map(readCredentialTypeFromDcqlTypeValue)
+          .filter((type): type is string => Boolean(type)),
+      ),
+    ]
     const failures = supportedOptionIds.flatMap((id) => {
       const credential = credentialById.get(id)
       if (!credential) return []
@@ -85,14 +101,22 @@ export function resolveDcqlCredentialSelection(
     }
     if (failures.some((failure) => failure.failedGate === 'vct')) {
       const mismatch = failures.find((failure) => failure.failedGate === 'vct')!
-      throw new Error(
-        `PresentationCredentialMetadataMismatch: stored ${mismatch.recordType} vct "${mismatch.recordVct ?? 'missing'}" is not in requested vct_values [${mismatch.requestedVctValues.join(', ')}]`,
-      )
+      throw new PresentationCredentialUnavailableError({
+        message: `PresentationCredentialMetadataMismatch: stored ${mismatch.recordType} vct "${mismatch.recordVct ?? 'missing'}" is not in requested vct_values [${mismatch.requestedVctValues.join(', ')}]`,
+        reason: 'metadata-mismatch',
+        requestedVctValues,
+        requestedCredentialTypes,
+      })
     }
     if (failures.some((failure) => failure.failedGate === 'format')) {
       throw new Error('PresentationCredentialFormatUnsupported: stored credential format does not match the Verifier request')
     }
-    throw new Error('PresentationCredentialMissing: no credential satisfies the required credential set')
+    throw new PresentationCredentialUnavailableError({
+      message: 'PresentationCredentialMissing: no credential satisfies the required credential set',
+      reason: 'credential-missing',
+      requestedVctValues,
+      requestedCredentialTypes,
+    })
   }
 
   return {

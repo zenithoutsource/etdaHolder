@@ -2,6 +2,12 @@ import { render, screen } from '@testing-library/react-native'
 
 import { VpQrModal } from './VpQrModal'
 
+const mockPush = jest.fn()
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush }),
+}))
+
 jest.mock('react-native-qrcode-svg', () => {
   return function MockQRCode() {
     return null
@@ -70,5 +76,26 @@ describe('VpQrModal', () => {
     render(<VpQrModal visible credential={credential} onClose={jest.fn()} />)
 
     expect(mockUseSession).toHaveBeenCalledWith(expect.objectContaining({ active: true }))
+  })
+
+  test('hands off to My QR presentation when the broker request is ready', () => {
+    const onClose = jest.fn()
+    mockUseSession.mockReturnValue(
+      sessionState({
+        phase: 'request_ready',
+        authorizationRequestUri: 'openid4vp://authorize?request_uri=http://verifier/r/1',
+      }),
+    )
+
+    render(<VpQrModal visible credential={credential} onClose={onClose} />)
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(tabs)/qr',
+      params: {
+        brokerSessionId: 's1',
+        credentialId: 'cred-1',
+      },
+    })
   })
 })

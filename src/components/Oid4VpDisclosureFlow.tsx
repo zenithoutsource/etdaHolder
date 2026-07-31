@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from './AppButton'
 import { FacePreparePanel } from './FacePreparePanel'
+import { PresentationDocumentUnavailablePanel } from './PresentationDocumentUnavailablePanel'
 import { PresentationConsentPanel, readInitialSelectedClaimKeys, readSelectedDisclosureLabels } from './PresentationConsentPanel'
 import { PresentationInfoPanel } from './PresentationInfoPanel'
 import { PresentationResultPanel } from './PresentationResultPanel'
@@ -28,6 +29,11 @@ import {
   submitPresentationResponse,
   type ResolvedPresentationRequest,
 } from '../services/vp/presentationService'
+import {
+  readPresentationUnavailableDetails,
+  type PresentationUnavailableDetails,
+} from '../services/vp/presentationUnavailable'
+import type { IssuerPortalCredentialType } from '../config/issuerPortalUrls'
 
 const RESOLVE_TIMEOUT_MS = 20_000
 const PRESENT_TIMEOUT_MS = 30_000
@@ -42,6 +48,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 type FlowPhase =
   | { tag: 'resolving' }
+  | { tag: 'documentUnavailable'; details: PresentationUnavailableDetails }
   | { tag: 'facePrepare'; request: ResolvedPresentationRequest }
   | { tag: 'consent'; request: ResolvedPresentationRequest }
   | { tag: 'info'; request: ResolvedPresentationRequest }
@@ -53,6 +60,8 @@ type Props = {
   credentials: VerifiableCredentialRecord[]
   historyChannel?: 'oid4vp' | 'wallet'
   logScope?: 'presentation-request' | 'my-qr'
+  presentationOrigin?: 'scanned-verifier-qr' | 'wallet-generated-qr'
+  onRequestCredential?: (credentialType: IssuerPortalCredentialType) => void
   onDone: () => void
   onCancel: () => void
 }
@@ -66,6 +75,8 @@ export function Oid4VpDisclosureFlow({
   credentials,
   historyChannel = 'wallet',
   logScope = 'my-qr',
+  presentationOrigin = 'wallet-generated-qr',
+  onRequestCredential,
   onDone,
   onCancel,
 }: Props) {
@@ -73,6 +84,11 @@ export function Oid4VpDisclosureFlow({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedClaimKeys, setSelectedClaimKeys] = useState<Set<string>>(() => new Set())
   const generationRef = useRef(0)
+  const credentialsRef = useRef(credentials)
+  credentialsRef.current = credentials
+  const presentableCredentialKey = JSON.stringify(
+    filterPresentableCredentials(credentials).map((record) => record.id),
+  )
 
   useEffect(() => {
     const gen = ++generationRef.current
@@ -80,7 +96,7 @@ export function Oid4VpDisclosureFlow({
 
     void (async () => {
       try {
-        const presentableCredentials = filterPresentableCredentials(credentials)
+        const presentableCredentials = filterPresentableCredentials(credentialsRef.current)
         logWalletStep(logScope, 'presentation-credentials-loaded', {
           presentableCount: presentableCredentials.length,
         })
@@ -94,16 +110,22 @@ export function Oid4VpDisclosureFlow({
         logWalletStep(logScope, 'presentation-resolved', describePresentationForLog(request))
         if (generationRef.current === gen) setPhase({ tag: 'facePrepare', request })
       } catch (err) {
+        if (generationRef.current !== gen) return
         logWalletError(logScope, 'presentation-resolve-failed', err)
+        const unavailableDetails = readPresentationUnavailableDetails(err)
+        if (unavailableDetails) {
+          setPhase({ tag: 'documentUnavailable', details: unavailableDetails })
+          return
+        }
         const raw = err instanceof Error ? err.message : String(err)
-        if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
+        setPhase({ tag: 'error', message: toFriendlyError(raw) })
       }
     })()
 
     return () => {
       generationRef.current++
     }
-  }, [authorizationRequestUri, credentials, logScope])
+  }, [authorizationRequestUri, logScope, presentableCredentialKey])
 
   const confirmFacePrepare = useCallback((request: ResolvedPresentationRequest) => {
     setSelectedClaimKeys(readInitialSelectedClaimKeys(request.disclosures))
@@ -269,6 +291,24 @@ export function Oid4VpDisclosureFlow({
     return (
       <PresentationStepScaffold title="Verifier" onBack={onDone}>
         <PresentationResultPanel verifierName={phase.verifierName} onDone={onDone} />
+      </PresentationStepScaffold>
+    )
+  }
+
+  if (phase.tag === 'documentUnavailable') {
+    const requestCredentialType = phase.details.requestCredentialType
+    return (
+      <PresentationStepScaffold title="Wallet" onBack={onCancel}>
+        <PresentationDocumentUnavailablePanel
+          documentLabel={phase.details.documentLabel}
+          presentationOrigin={presentationOrigin}
+          onBack={onCancel}
+          onRequest={
+            requestCredentialType && onRequestCredential
+              ? () => onRequestCredential(requestCredentialType)
+              : undefined
+          }
+        />
       </PresentationStepScaffold>
     )
   }

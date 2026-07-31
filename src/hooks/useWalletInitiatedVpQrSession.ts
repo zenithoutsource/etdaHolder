@@ -20,15 +20,19 @@ export type WalletInitiatedVpQrPhase =
 type Options = {
   credential: VerifiableCredentialRecord | undefined
   active: boolean
+  resumeSessionId?: string
   client?: BrokerSessionClient
   walletId?: string
   deviceToken?: string
   platform?: 'android' | 'ios'
 }
 
+const RESUMED_SESSION_FALLBACK_TTL_MS = 5 * 60_000
+
 export function useWalletInitiatedVpQrSession({
   credential,
   active,
+  resumeSessionId,
   client,
   walletId: walletIdOverride,
   deviceToken: deviceTokenOverride,
@@ -69,6 +73,30 @@ export function useWalletInitiatedVpQrSession({
     }
   }, [credential, brokerClient, deviceTokenOverride, platformOverride, walletIdOverride, authWalletId])
 
+  const resumeSession = useCallback(async (sessionIdToResume: string) => {
+    setPhase('loading')
+    setSessionId(sessionIdToResume)
+    setQrUrl(null)
+    setAuthorizationRequestUri(null)
+    setExpiresAt(new Date(Date.now() + RESUMED_SESSION_FALLBACK_TTL_MS).toISOString())
+    logWalletStep('vp-broker', 'session-resume', { sessionPrefix: sessionIdToResume.slice(0, 8) })
+
+    try {
+      const uri = await brokerClient.fetchPresentationRequestUri(sessionIdToResume)
+      if (uri) {
+        setAuthorizationRequestUri(uri)
+        setPhase('request_ready')
+        logWalletStep('vp-broker', 'presentation-request-ready', { sessionPrefix: sessionIdToResume.slice(0, 8) })
+        return
+      }
+
+      setPhase('waiting_scan')
+    } catch (error) {
+      logWalletError('vp-broker', 'session-resume-failed', error)
+      setPhase('error')
+    }
+  }, [brokerClient])
+
   useEffect(() => {
     if (!active || !credential) {
       setPhase('idle')
@@ -79,8 +107,14 @@ export function useWalletInitiatedVpQrSession({
       return
     }
 
+    const brokerSessionId = resumeSessionId?.trim()
+    if (brokerSessionId) {
+      void resumeSession(brokerSessionId)
+      return
+    }
+
     void startSession()
-  }, [active, credential, startSession])
+  }, [active, credential, resumeSession, resumeSessionId, startSession])
 
   useEffect(() => {
     if (!expiresAt || (phase !== 'waiting_scan' && phase !== 'request_ready')) return undefined
