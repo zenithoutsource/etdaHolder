@@ -64,6 +64,7 @@ const variantStyles: Record<AppButtonVariant, { container: string; text: string;
 };
 
 type AppButtonProps = {
+  testID?: string;
   label?: string;
   onPress?: () => void;
   variant?: AppButtonVariant;
@@ -81,6 +82,7 @@ type AppButtonProps = {
 };
 
 export function AppButton({
+  testID,
   label,
   onPress,
   variant = 'outline-primary',
@@ -102,6 +104,7 @@ export function AppButton({
 
   return (
     <Pressable
+      testID={testID}
       onPress={onPress}
       disabled={disabled || loading}
       accessibilityLabel={accessibilityLabel}

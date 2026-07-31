@@ -62,7 +62,12 @@ import {
   acknowledgeIssuerSuspension,
   readIssuerSuspension,
 } from "../../../src/services/credentials/issuerSuspension";
+import { isBiometricDisabledForTesting } from "../../../src/config/runtimeFlags";
 import { hasWalletPin, setWalletPin, verifyWalletPin } from "../../../src/services/auth/walletPin";
+import {
+  confirmCredentialDeletionBiometric,
+  isCredentialDeletionBiometricCancellation,
+} from "../../../src/services/credentials/credentialDeletionBiometric";
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
 import { isProximityPresentationSupported } from "../../../src/services/proximity/proximityPresentation";
 import { hasStoredMdoc } from "../../../src/services/proximity/mdocStorage";
@@ -418,13 +423,28 @@ export default function CredentialDetailScreen() {
     }
   }
 
-  function handleFingerprintBypass() {
-    if (phase.tag !== "security") return;
-    if (__DEV__) {
+  async function handleDeleteBiometric() {
+    if (
+      phase.tag !== "security" ||
+      phase.action !== "Delete" ||
+      phase.mode !== "verify"
+    ) {
+      return;
+    }
+
+    setPinError(null);
+    if (isBiometricDisabledForTesting()) {
       setPhase({ tag: "approve", action: phase.action });
       return;
     }
-    setPinError("Fingerprint approval is not available in this build.");
+
+    try {
+      await confirmCredentialDeletionBiometric();
+      setPhase({ tag: "approve", action: phase.action });
+    } catch (error) {
+      if (isCredentialDeletionBiometricCancellation(error)) return;
+      setPinError("Biometric verification failed. Enter your PIN instead.");
+    }
   }
 
   async function approveAction(action: CredentialLifecycleAction) {
@@ -550,9 +570,14 @@ export default function CredentialDetailScreen() {
             subtitle={messageByMode}
             pin={pin}
             error={pinError}
+            showFingerprint={
+              phase.action === "Delete" && phase.mode === "verify"
+            }
             onDigit={handleKeyPress}
             onBackspace={() => setPin((value) => value.slice(0, -1))}
-            onFingerprint={handleFingerprintBypass}
+            onFingerprint={() => {
+              void handleDeleteBiometric();
+            }}
           />
           <Text className="mt-8 text-xs text-blue-gray">ลืมรหัสผ่าน?</Text>
         </View>
@@ -628,7 +653,12 @@ export default function CredentialDetailScreen() {
                     ? undefined
                     : showVpQrButton
                       ? () => setVpQrVisible(true)
-                      : () => router.push("/(tabs)/qr")
+                      : () => {
+                          router.push({
+                            pathname: "/(tabs)/qr",
+                            params: { credentialId: credential!.id },
+                          });
+                        }
                 }
                 onPresentViaNfc={
                   !isRenewalBlocked && credential && hasMdoc && isProximityPresentationSupported()
