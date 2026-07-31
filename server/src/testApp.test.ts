@@ -66,6 +66,24 @@ function signHolderRevokePop(
 
 const ORIGINAL_ENV = process.env
 
+function useSyntheticProductionEnv(): void {
+  process.env = {
+    ...ORIGINAL_ENV,
+    NODE_ENV: 'production',
+    PORT: '4000',
+    WALLET_API_ALLOWED_ORIGINS: 'https://wallet.example.invalid',
+    DB_HOST: 'db.example.invalid',
+    DB_PORT: '3306',
+    DB_NAME: 'wallet',
+    DB_USER: 'wallet',
+    DB_PASSWORD: 'synthetic-password',
+    JWT_SECRET: 'synthetic-production-jwt-secret',
+    MAIL_FROM: 'wallet@example.invalid',
+    PUBLIC_BASE_URL: 'https://wallet.example.invalid',
+    VERIFIER_PRESENTATION_BASE_URL: 'https://verifier.example.invalid',
+  }
+}
+
 describe('test app security middleware', () => {
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV }
@@ -74,10 +92,26 @@ describe('test app security middleware', () => {
   afterEach(() => {
     jest.restoreAllMocks()
     resetDevWalletState()
+    process.env = ORIGINAL_ENV
   })
 
   afterAll(() => {
     process.env = ORIGINAL_ENV
+  })
+
+  test('does not mount development API namespaces in production', async () => {
+    useSyntheticProductionEnv()
+    const app = createTestApp()
+
+    const devVerifier = await request(app).post('/dev/vp-session').send()
+    const devWallet = await request(app).get('/wallet-api/dev/wallet/suspension-status')
+    const removedGateway = await request(app).get('/v1/openapi.json')
+    const walletOpenApi = await request(app).get('/wallet-api/openapi.json')
+
+    expect(devVerifier.status).toBe(404)
+    expect(devWallet.status).toBe(404)
+    expect(removedGateway.status).toBe(404)
+    expect(walletOpenApi.status).toBe(200)
   })
 
   test('restricts CORS to configured development origins', async () => {

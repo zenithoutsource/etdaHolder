@@ -1,4 +1,4 @@
-import blocklist from '../../../shared/profanity-blocklist.json'
+import blocklist from '../../profanity-blocklist.json'
 
 const DISPLAY_NAME_PATTERN = /^(?:[a-zA-Z]{2,50}|[a-zA-Z][a-zA-Z\s''-]{0,48}[a-zA-Z])$/
 

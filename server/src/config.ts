@@ -13,8 +13,7 @@ export type Ed25519PublicJwk = {
 function readVerifierPresentationBaseUrl(): string {
   return readProductionUrl(
     'VERIFIER_PRESENTATION_BASE_URL',
-    readOptionalString('PRESENTATION_GATEWAY_BASE_URL')
-      ?? readOptionalString('PUBLIC_BASE_URL')
+    readOptionalString('PUBLIC_BASE_URL')
       ?? (process.env.NODE_ENV !== 'production' ? 'http://localhost:4000' : undefined),
     true,
   )
@@ -44,12 +43,9 @@ export type ServerConfig = {
   }
   vpSessionTtlMs: number
   vpIssuerPublicKeyJwk?: Ed25519PublicJwk
-  presentationSessionTtlMs: number
   issuerBaseUrl: string
   publicBaseUrl: string
   verifierPresentationBaseUrl: string
-  /** @deprecated Alias of verifierPresentationBaseUrl — kept for backward compatibility. */
-  presentationGatewayBaseUrl: string
   presentationIssuerJwksCacheMs: number
   walletAttestTtlMs: number
 }
@@ -155,10 +151,7 @@ export function readConfig(): ServerConfig {
   const verifierPresentationBaseUrl = readVerifierPresentationBaseUrl()
   const publicBaseUrl = readProductionUrl(
     'PUBLIC_BASE_URL',
-    verifierPresentationBaseUrl
-      || readOptionalString('VERIFIER_PRESENTATION_BASE_URL')
-      || readOptionalString('PRESENTATION_GATEWAY_BASE_URL')
-      || readOptionalString('EXPO_PUBLIC_WALLET_API_BASE_URL'),
+    verifierPresentationBaseUrl || readOptionalString('EXPO_PUBLIC_WALLET_API_BASE_URL'),
     true,
   )
 
@@ -189,11 +182,9 @@ export function readConfig(): ServerConfig {
     },
     vpSessionTtlMs: readIntegerInRange('VP_SESSION_TTL_MS', '300000', 30_000, 3_600_000),
     vpIssuerPublicKeyJwk: readIssuerPublicKeyJwk(),
-    presentationSessionTtlMs: readIntegerInRange('PRESENTATION_SESSION_TTL_MS', '300000', 30_000, 3_600_000),
     issuerBaseUrl: readProductionUrl('ISSUER_BASE_URL'),
     publicBaseUrl,
     verifierPresentationBaseUrl,
-    presentationGatewayBaseUrl: verifierPresentationBaseUrl,
     presentationIssuerJwksCacheMs: readIntegerInRange('PRESENTATION_ISSUER_JWKS_CACHE_MS', '3600000', 60_000, 86_400_000),
     walletAttestTtlMs: readIntegerInRange('WALLET_ATTEST_TTL_MS', '86400000', 60_000, 86_400_000),
   }

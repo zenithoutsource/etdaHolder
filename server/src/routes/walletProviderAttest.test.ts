@@ -18,12 +18,12 @@ afterAll(() => {
   process.env = ORIGINAL_ENV
 })
 
-test('POST /v1/wallet-attestations returns 201 with TTL from WALLET_ATTEST_TTL_MS', async () => {
+test('POST /wallet-api/wallet-attestations returns 201 with TTL from WALLET_ATTEST_TTL_MS', async () => {
   process.env.WALLET_ATTEST_TTL_MS = '600000'
   const app = createTestApp()
   const before = Date.now()
 
-  const res = await request(app).post('/v1/wallet-attestations').send({ pubKAttestJwk: PUB_JWK })
+  const res = await request(app).post('/wallet-api/wallet-attestations').send({ pubKAttestJwk: PUB_JWK })
 
   expect(res.status).toBe(201)
   expect(res.body.wua).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.$/)
@@ -35,8 +35,16 @@ test('POST /v1/wallet-attestations returns 201 with TTL from WALLET_ATTEST_TTL_M
   expect(expiresAtMs).toBeLessThanOrEqual(before + 600_000 + 5_000)
 })
 
-test('POST /v1/wallet-attestations rejects invalid JWK with 400', async () => {
+test('POST /wallet-api/wallet-attestations rejects invalid JWK with 400', async () => {
   const app = createTestApp()
-  const res = await request(app).post('/v1/wallet-attestations').send({ pubKAttestJwk: { kty: 'RSA' } })
+  const res = await request(app)
+    .post('/wallet-api/wallet-attestations')
+    .send({ pubKAttestJwk: { kty: 'RSA' } })
   expect(res.status).toBe(400)
+})
+
+test('POST /v1/wallet-attestations is not exposed', async () => {
+  const app = createTestApp()
+  const res = await request(app).post('/v1/wallet-attestations').send({ pubKAttestJwk: PUB_JWK })
+  expect(res.status).toBe(404)
 })

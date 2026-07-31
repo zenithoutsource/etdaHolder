@@ -20,24 +20,27 @@ mDOC / OID4VCI issuance for proximity work uses the customer Issuer (e.g. `http:
 
 ## API documentation
 
-The Wallet backend publishes public interactive documentation:
+| Surface | Guide | Swagger UI | OpenAPI JSON | Production |
+|---|---|---|---|---|
+| Wallet Backend | `docs/wallet-backend-api.md` | `/wallet-api/docs` | `/wallet-api/openapi.json` | Yes |
+| Development APIs | `docs/development-api.md` | `/dev/docs` | `/dev/openapi.json` | No |
 
-- Swagger UI: `http://localhost:4000/wallet-api/docs`
-- OpenAPI JSON: `http://localhost:4000/wallet-api/openapi.json`
+Verifier-owned OID4VP (`openid4vc/*` on the external Verifier host) and Wallet Broker
+(`/broker/session` on the shared wallet host) are documented on those services'
+Swagger UIs — not in this Node wallet backend.
 
-On the shared HTTPS host, use:
+Local examples:
 
-- Wallet Swagger UI: `https://wallet.zenithcomp.co.th:455/wallet-api/docs`
-- Broker Swagger UI: `https://wallet.zenithcomp.co.th:455/swagger/index.html`
+- Wallet Swagger UI: `http://localhost:4000/wallet-api/docs`
+- Development Swagger UI: `http://localhost:4000/dev/docs` (non-production only)
 
-The Wallet documentation covers normal `/wallet-api/auth/*` and
-`/wallet-api/wallet/*` operations only. Development routes are intentionally
-excluded. Use Swagger **Authorize** with a Wallet login JWT for protected
-operations.
+On a shared HTTPS host, substitute your operator-configured Wallet API origin for `http://localhost:4000`.
 
-The reverse proxy must preserve the complete `/wallet-api/*` path when
-forwarding requests to the Node process on port `4000`. The documentation is
-public; examples contain synthetic data only.
+`/dev/*` and `/wallet-api/dev/*` return `404` when `NODE_ENV === "production"`. Development Swagger (`/dev/docs`, `/dev/openapi.json`) is mounted under the same gate.
+
+The Wallet Backend documentation covers normal `/wallet-api/auth/*`, `/wallet-api/wallet/*`, push-token registration, and the development-only Wallet attestation mock at `/wallet-api/wallet-attestations` (unsigned `alg: none` — not production attestations). Use Swagger **Authorize** with a Wallet login JWT for Bearer-protected Wallet operations.
+
+The reverse proxy must preserve complete `/wallet-api/*` paths when forwarding to the Node process on port `4000`. Examples use synthetic data only.
 
 ## Setup
 

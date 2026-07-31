@@ -187,7 +187,7 @@ export const walletOpenApiDocument = {
         tags: ['Development'],
         summary: 'Issue development Wallet attestations',
         description:
-          'Issues development Wallet attestation mocks for the supplied Ed25519 public JWK. This unauthenticated endpoint currently returns unsigned alg: none development mocks and is not production-ready.',
+          'Issues development-only Wallet attestation mocks for the supplied Ed25519 public JWK. This unauthenticated endpoint currently returns unsigned alg: none development mocks and must never be used in production.',
         requestBody: {
           required: true,
           ...jsonContent(schemaRef('WalletAttestationRequest')),

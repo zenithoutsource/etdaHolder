@@ -98,6 +98,12 @@ describe('walletOpenApiDocument', () => {
     })
     expect(JSON.stringify(paths()['/wallet-api/wallet-attestations'])).toContain('development')
     expect(JSON.stringify(paths()['/wallet-api/wallet-attestations'])).toContain('alg: none')
+    expect(paths()['/wallet-api/wallet-attestations'].post?.description).toContain(
+      'development-only',
+    )
+    expect(paths()['/wallet-api/wallet-attestations'].post?.description).toContain(
+      'must never be used in production',
+    )
   })
 
   test('constrains registration PINs and attestation JWKs', () => {
