@@ -5,11 +5,13 @@ import {
 } from '@/src/utils/jwtUtils'
 import { logWalletStep } from '../debug/walletLogger'
 import { verifyEdDsaCompactJwt } from '../crypto/eddsaJwtVerify'
-import { resolveDidKeyViaIssuer } from '../vp/resolveDidKeyViaIssuer'
+import { resolveDidKeyPublicJwk, readIssuerResolveBaseUrls } from '../vp/resolveDidKeyViaIssuer'
 import { resolveDidWebVerificationJwk } from '../vp/didWebResolver'
 
 export type AssertIssuerDidWebOptions = {
   fetchImpl?: typeof fetch
+  issuerBaseUrl?: string
+  issuerMetadata?: Record<string, unknown>
 }
 
 /**
@@ -56,8 +58,19 @@ export async function assertIssuerDidWebCredentialSignature(
   }
 
   if (kid?.startsWith('did:key:')) {
-    logWalletStep('oid4vci', 'issuer-resolve-did-start', { iss })
-    const publicJwk = await resolveDidKeyViaIssuer(iss, kid, fetchImpl)
+    const issuerUrls = readIssuerResolveBaseUrls(
+      iss,
+      options.issuerBaseUrl,
+      options.issuerMetadata,
+    )
+    logWalletStep('oid4vci', 'issuer-resolve-did-start', {
+      iss,
+      issuerUrlCount: issuerUrls.length,
+    })
+    const publicJwk = await resolveDidKeyPublicJwk(kid, {
+      fetchImpl,
+      issuerUrls,
+    })
     logWalletStep('oid4vci', 'issuer-resolve-did-complete', { iss })
 
     if (!verifyEdDsaCompactJwt(issuerJwt, publicJwk)) {

@@ -3,9 +3,26 @@ import { Image, StyleSheet } from 'react-native'
 
 import { CredentialDocumentDetailCard } from './CredentialDocumentDetailCard'
 import type { CredentialDetailDisplay } from '../services/credentials/credentialDisplay'
+import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
 import { THEME } from '../config/themeColors'
 import { DRIVING_LICENCE_SAMPLE } from '../config/drivingLicenceSample'
+
+const drivingLicenceRecord: VerifiableCredentialRecord = {
+  id: 'licence-1',
+  type: 'DLTDrivingLicence',
+  rawVc: 'header.payload.signature',
+  claims: {
+    thaiFullName: DRIVING_LICENCE_SAMPLE.thaiName,
+    englishFullName: DRIVING_LICENCE_SAMPLE.englishName,
+    birthDate: DRIVING_LICENCE_SAMPLE.birthDate,
+    licenceClass: DRIVING_LICENCE_SAMPLE.type,
+    licenceNumber: DRIVING_LICENCE_SAMPLE.licenceNumber,
+    issuanceDate: DRIVING_LICENCE_SAMPLE.issueDate,
+    expiryDate: DRIVING_LICENCE_SAMPLE.expiryDate,
+  },
+  issuedAt: '2022-01-20T00:00:00.000Z',
+}
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'MaterialCommunityIcons')
 
@@ -337,7 +354,7 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
   })
 
-  test('uses the fixed driving-licence card and retains document actions', () => {
+  test('uses the driving-licence card from issuer claims and retains document actions', () => {
     const onOpenQr = jest.fn()
     const onPresentViaNfc = jest.fn()
 
@@ -350,6 +367,7 @@ describe('CredentialDocumentDetailCard', () => {
           imageKey: 'car',
           primaryColor: THEME.navyRoyal,
         }}
+        record={drivingLicenceRecord}
         onOpenQr={onOpenQr}
         onPresentViaNfc={onPresentViaNfc}
       />

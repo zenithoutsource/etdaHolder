@@ -2,7 +2,26 @@ import type { ImageSourcePropType } from 'react-native'
 import { render, screen } from '@testing-library/react-native'
 
 import { DRIVING_LICENCE_IMAGE, DRIVING_LICENCE_SAMPLE } from '../config/drivingLicenceSample'
+import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 import { DrivingLicenceDocumentCard } from './DrivingLicenceDocumentCard'
+
+const drivingLicenceRecord: VerifiableCredentialRecord = {
+  id: 'licence-1',
+  type: 'DLTDrivingLicence',
+  rawVc: 'header.payload.signature',
+  claims: {
+    givenName: 'นางสาว พิชญา',
+    familyName: 'รุ่งเรืองกิจ',
+    englishGivenName: 'Pichaya',
+    englishFamilyName: 'Rungruangkit',
+    birthDate: '15 พฤษภาคม 2530',
+    licenceClass: 'รถยนต์ส่วนบุคคล',
+    licenceNumber: '54002891',
+    issuanceDate: '20 มกราคม 2565',
+    expiryDate: '20 มกราคม 2570',
+  },
+  issuedAt: '2022-01-20T00:00:00.000Z',
+}
 
 describe('driving licence sample model', () => {
   test('exports the approved fixed driving-licence copy and portrait image', () => {
@@ -22,8 +41,8 @@ describe('driving licence sample model', () => {
 })
 
 describe('DrivingLicenceDocumentCard', () => {
-  test('renders the fixed driving-licence reference card', () => {
-    render(<DrivingLicenceDocumentCard />)
+  test('renders issuer claims on the driving-licence card', () => {
+    render(<DrivingLicenceDocumentCard record={drivingLicenceRecord} />)
 
     expect(screen.getByTestId('driving-licence-card')).toBeTruthy()
     expect(screen.getByTestId('document-card-layout')).toBeTruthy()
@@ -36,20 +55,13 @@ describe('DrivingLicenceDocumentCard', () => {
     expect(screen.getByTestId('driving-licence-hero')).toBeTruthy()
     expect(screen.getByTestId('driving-licence-left-column')).toBeTruthy()
     expect(screen.getByTestId('driving-licence-right-column')).toBeTruthy()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.documentTitle)).toBeTruthy()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.thaiName)).toBeTruthy()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.englishName)).toBeTruthy()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.birthDate)).toBeTruthy()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.type)).toBeTruthy()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.englishType)).toBeTruthy()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.licenceNumber)).toBeTruthy()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.issueDate)).toBeTruthy()
+    expect(screen.getByText('DRIVING LICENSE')).toBeTruthy()
+    expect(screen.getByText('นางสาว พิชญา รุ่งเรืองกิจ')).toBeTruthy()
+    expect(screen.getByText('54002891')).toBeTruthy()
     expect(screen.getByTestId('driving-licence-image').props.source).toBe(DRIVING_LICENCE_IMAGE)
-    expect(screen.getByTestId('driving-licence-expiry').props.children).toBe(
-      DRIVING_LICENCE_SAMPLE.expiryDate,
-    )
+    expect(screen.getByTestId('driving-licence-expiry')).toHaveTextContent('20 มกราคม 2570')
     expect(screen.getByTestId('driving-licence-expiry').props.accessibilityLabel).toBe(
-      `Expiry Date: ${DRIVING_LICENCE_SAMPLE.expiryDate}`,
+      'Expiry Date: 20 มกราคม 2570',
     )
   })
 })

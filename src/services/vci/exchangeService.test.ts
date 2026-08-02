@@ -736,6 +736,64 @@ test('saveCredentialRecord replaces older local records of the same credential t
   expect(writes.has('credential:new-transcript')).toBe(true)
 })
 
+test('saveCredentialRecord replaces issuer-suspended credentials even when holder DID changes', () => {
+  const suspendedPid: VerifiableCredentialRecord = {
+    id: 'old-thai-id',
+    type: 'ThaiNationalID',
+    rawVc: unsignedJwt({
+      cnf: {
+        kid: 'did:key:zOldHolder#zOldHolder',
+      },
+    }),
+    claims: {},
+    issuedAt: '2026-06-08T10:00:00.000Z',
+  }
+  const writes = new Map<string, string>([
+    ['credential:index', JSON.stringify(['old-thai-id'])],
+    ['credential:old-thai-id', JSON.stringify(suspendedPid)],
+    [
+      'credential:suspension:old-thai-id',
+      JSON.stringify({
+        credentialId: 'old-thai-id',
+        suspendedAt: '2026-06-25T10:00:00.000Z',
+        updatedAt: '2026-06-25T10:00:00.000Z',
+      }),
+    ],
+  ])
+  const storage = {
+    getString: jest.fn((key: string) => writes.get(key)),
+    set: jest.fn((key: string, value: string) => {
+      writes.set(key, value)
+    }),
+    remove: jest.fn((key: string) => {
+      writes.delete(key)
+      return true
+    }),
+  }
+
+  saveCredentialRecord(
+    {
+      id: 'new-thai-id',
+      type: 'ThaiNationalID',
+      rawVc: unsignedJwt({
+        cnf: {
+          kid: 'did:key:zNewHolder#zNewHolder',
+        },
+      }),
+      claims: {},
+      issuedAt: '2026-06-25T11:00:00.000Z',
+    },
+    {
+      getCredentialStorage: () => storage,
+    },
+  )
+
+  expect(JSON.parse(writes.get('credential:index') ?? '[]')).toEqual(['new-thai-id'])
+  expect(writes.has('credential:old-thai-id')).toBe(false)
+  expect(writes.has('credential:suspension:old-thai-id')).toBe(false)
+  expect(writes.has('credential:new-thai-id')).toBe(true)
+})
+
 async function transcriptSdJwtContract(): Promise<VerifiableCredentialRecord> {
   const resolved = await resolveOffer(transcriptOfferUri, {
     fetchIssuerMetadata: async () => ({

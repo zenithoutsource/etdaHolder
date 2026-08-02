@@ -5,6 +5,41 @@ import { assertIssuerDidWebCredentialSignature } from './issuerDidWebVerify'
 
 if (!hashes.sha512) hashes.sha512 = sha512
 
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+function bytesToBigInt(bytes: Uint8Array): bigint {
+  let n = 0n
+  for (const byte of bytes) n = (n << 8n) | BigInt(byte)
+  return n
+}
+
+function base58btcEncode(bytes: Uint8Array): string {
+  let leadingOnes = 0
+  for (const byte of bytes) {
+    if (byte !== 0) break
+    leadingOnes += 1
+  }
+
+  let n = bytesToBigInt(bytes)
+  let result = ''
+  while (n > 0n) {
+    const rem = Number(n % 58n)
+    result = BASE58_ALPHABET[rem] + result
+    n /= 58n
+  }
+
+  return '1'.repeat(leadingOnes) + result
+}
+
+function ed25519DidKeyFromPrivateKey(privateKey: Uint8Array): string {
+  const publicKey = getPublicKey(privateKey)
+  const multicodecBytes = new Uint8Array(34)
+  multicodecBytes[0] = 0xed
+  multicodecBytes[1] = 0x01
+  multicodecBytes.set(publicKey, 2)
+  return `did:key:z${base58btcEncode(multicodecBytes)}`
+}
+
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
@@ -48,8 +83,8 @@ describe('assertIssuerDidWebCredentialSignature', () => {
     const publicKey = getPublicKey(privateKey)
     const x = bytesToBase64Url(publicKey)
     const iss = 'https://issuer.zenithcomp.co.th:455'
-    const did = 'did:key:z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk'
-    const kid = `${did}#z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk`
+    const did = ed25519DidKeyFromPrivateKey(privateKey)
+    const kid = `${did}#${did.slice('did:key:'.length)}`
     const jwt = await signIssuerJwt({
       privateKey,
       kid,
@@ -71,6 +106,32 @@ describe('assertIssuerDidWebCredentialSignature', () => {
         headers: { Accept: 'application/json' },
       }),
     )
+  })
+
+  test('verifies HTTPS iss with did:key kid using local fallback when resolveDID fails', async () => {
+    const iss = 'https://issuer.zenithcomp.co.th:455'
+    const did = ed25519DidKeyFromPrivateKey(privateKey)
+    const kid = `${did}#${did.slice('did:key:'.length)}`
+    const jwt = await signIssuerJwt({
+      privateKey,
+      kid,
+      payload: { iss, jti: 'cred-https-fallback' },
+    })
+
+    const fetchMock = jest.fn(async () => {
+      throw new TypeError('Network request failed')
+    })
+
+    await expect(
+      assertIssuerDidWebCredentialSignature(`${jwt}~`, {
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        issuerBaseUrl: iss,
+        issuerMetadata: {
+          token_endpoint: 'http://issuer.zenithcomp.co.th:455/token',
+        },
+      }),
+    ).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalled()
   })
 
   test('rejects invalid Issuer signature for HTTPS iss with did:key kid', async () => {

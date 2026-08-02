@@ -30,6 +30,7 @@ import {
     importCredential as defaultImportCredential,
 } from '../../sdk/walletApi'
 import { stringifyClaim } from '../credentials/claimFormatting'
+import { extractMdocWalletClaims } from '../credentials/mdocWalletClaims'
 import { readNormalizedDocumentExpiry } from '../credentials/credentialDocumentExpiresAt'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
 import { readCredentialIssuerName } from '../credentials/credentialIssuer'
@@ -507,7 +508,11 @@ async function finalizeCredentialRecord(
 ): Promise<VerifiableCredentialRecord> {
   try {
     assertCredentialIssuerSignatureAlg(rawVc)
-    await assertIssuerDidWebCredentialSignature(rawVc, { fetchImpl: options.fetchImpl })
+    await assertIssuerDidWebCredentialSignature(rawVc, {
+      fetchImpl: options.fetchImpl,
+      issuerBaseUrl: resolvedOffer.issuer,
+      issuerMetadata: resolvedOffer.issuerMetadata as Record<string, unknown>,
+    })
     assertDevelopmentEddsaHolderBinding(rawVc, proof)
     logWalletStep('oid4vci', 'holder-binding-validated', { issuer: resolvedOffer.issuer })
     const record = normalizeCredentialRecord(rawVc, resolvedOffer)
@@ -1847,12 +1852,17 @@ function finalizeMdocCredentialRecord(
 ): VerifiableCredentialRecord {
   const docType = readMdocDocType(configuration) ?? 'unknown'
   const type = readCredentialType({ vct: docType }, undefined, resolvedOffer)
+  const mdocBytes = base64UrlToBytes(rawBase64)
+  const claims: Record<string, unknown> = {
+    doctype: docType,
+    ...extractMdocWalletClaims(mdocBytes),
+  }
 
   return {
     id: hashCredential(rawBase64),
     type,
     rawVc: `mdoc:${rawBase64}`,
-    claims: { doctype: docType },
+    claims,
     issuedAt: new Date().toISOString(),
   }
 }
@@ -2125,6 +2135,25 @@ function storeCredentialRecord(storage: CredentialStorage, record: VerifiableCre
   }
 }
 
+function isCredentialWithdrawnInStorage(
+  storage: CredentialStorage,
+  credentialId: string,
+): boolean {
+  const lifecycleRaw = storage.getString(`${CREDENTIAL_LIFECYCLE_KEY_PREFIX}${credentialId}`)
+  if (lifecycleRaw) {
+    try {
+      const lifecycle = JSON.parse(lifecycleRaw) as { status?: string }
+      if (lifecycle.status === 'revoked' || lifecycle.status === 'deleted') {
+        return true
+      }
+    } catch {
+      // ignore malformed lifecycle records
+    }
+  }
+
+  return Boolean(storage.getString(`${CREDENTIAL_SUSPENSION_KEY_PREFIX}${credentialId}`))
+}
+
 function isReplaceableCredentialId(
   storage: CredentialStorage,
   credentialId: string,
@@ -2141,6 +2170,10 @@ function isReplaceableCredentialId(
 
     const existingHolderDid = readCredentialHolderDid(existing as VerifiableCredentialRecord)
     const replacementHolderDid = readCredentialHolderDid(replacement)
+
+    if (isCredentialWithdrawnInStorage(storage, credentialId)) {
+      return true
+    }
 
     if (!existingHolderDid || !replacementHolderDid) {
       return false

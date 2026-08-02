@@ -1,6 +1,10 @@
 import { readSameDeviceCredentialIssuer } from '@/src/config/sameDeviceIssuance'
 import { base64UrlDecodeToString } from '../../utils/jwtUtils'
-import { resolveDidKeyViaIssuer, type Ed25519PublicJwk } from './resolveDidKeyViaIssuer'
+import {
+  readIssuerResolveBaseUrls,
+  resolveDidKeyPublicJwk,
+  type Ed25519PublicJwk,
+} from './resolveDidKeyViaIssuer'
 
 function decodeBase64UrlJson(part: string): Record<string, unknown> {
   const parsed = JSON.parse(base64UrlDecodeToString(part)) as unknown
@@ -39,12 +43,16 @@ export async function resolveIssuerPublicJwkFromRawVc(
     throw new Error('IssuerKidNotDidKey')
   }
 
-  const issuer =
-    options.issuerUrl ??
-    readString(payload.iss) ??
-    readSameDeviceCredentialIssuer()
+  const jwtIss = readString(payload.iss)
+  const issuerUrls = readIssuerResolveBaseUrls(
+    jwtIss ?? readSameDeviceCredentialIssuer(),
+    options.issuerUrl ?? jwtIss ?? readSameDeviceCredentialIssuer(),
+  )
 
-  return resolveDidKeyViaIssuer(issuer, kid, options.fetchImpl)
+  return resolveDidKeyPublicJwk(kid, {
+    issuerUrls,
+    fetchImpl: options.fetchImpl,
+  })
 }
 
 export function formatVpIssuerPublicKeyEnvLine(jwk: Ed25519PublicJwk): string {

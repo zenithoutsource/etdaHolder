@@ -5,6 +5,7 @@ import { Image, Pressable, View, Text, type ImageSourcePropType } from 'react-na
 import type { CredentialDetailDisplay, CredentialDisplayRow, CredentialHolderProfile } from '../services/credentials/credentialDisplay'
 import type { CredentialRenewalState } from '../services/credentials/credentialKeyRenewal'
 import type { CredentialInactiveState } from '../services/credentials/credentialInactiveState'
+import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 import { CredentialRenewalOverlay } from './CredentialRenewalOverlay'
 import { DrivingLicenceDocumentCard } from './DrivingLicenceDocumentCard'
 import { DocumentCardLayout } from './DocumentCardLayout'
@@ -21,6 +22,7 @@ const qrCodeIcon = require('../../assets/images/qr_code.png') as ImageSourceProp
 
 type Props = {
   display: CredentialDetailDisplay
+  record?: VerifiableCredentialRecord
   onOpenQr?: () => void
   onPresentViaNfc?: () => void
   holderProfile?: CredentialHolderProfile
@@ -256,11 +258,20 @@ function IdCardDocumentDetailCard({ display, onOpenQr, onPresentViaNfc, holderPr
   )
 }
 
-function DrivingLicenceDocumentDetailCard({ onOpenQr, onPresentViaNfc, inactiveState, renewalBadgeLabel, renewalState }: Props) {
+function DrivingLicenceDocumentDetailCard({
+  record,
+  onOpenQr,
+  onPresentViaNfc,
+  inactiveState,
+  renewalBadgeLabel,
+  renewalState,
+}: Props) {
+  if (!record) return null
+
   return (
     <View>
       <DocumentCardShell inactiveState={inactiveState} renewalBadgeLabel={renewalBadgeLabel} renewalState={renewalState}>
-        <DrivingLicenceDocumentCard />
+        <DrivingLicenceDocumentCard record={record} />
       </DocumentCardShell>
 
       <DocumentActionRow onOpenQr={onOpenQr} onPresentViaNfc={onPresentViaNfc} className="mt-[10px] justify-end" />
@@ -270,6 +281,7 @@ function DrivingLicenceDocumentDetailCard({ onOpenQr, onPresentViaNfc, inactiveS
 
 export function CredentialDocumentDetailCard({
   display,
+  record,
   onOpenQr,
   onPresentViaNfc,
   holderProfile,
@@ -307,6 +319,7 @@ export function CredentialDocumentDetailCard({
     return (
       <DrivingLicenceDocumentDetailCard
         display={display}
+        record={record}
         onOpenQr={onOpenQr}
         onPresentViaNfc={onPresentViaNfc}
         holderProfile={holderProfile}
