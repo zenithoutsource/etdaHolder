@@ -3,12 +3,14 @@ import type { Config } from 'jest'
 const config: Config = {
   preset: 'jest-expo',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  modulePathIgnorePatterns: ['<rootDir>/.worktrees/'],
   testMatch: [
     '<rootDir>/src/**/*.test.ts',
     '<rootDir>/src/**/*.test.tsx',
     '<rootDir>/scripts/**/*.test.js',
   ],
   moduleNameMapper: {
+    '^react-native-ssl-pinning$': '<rootDir>/src/__mocks__/react-native-ssl-pinning.ts',
     '^react-native-mmkv$': '<rootDir>/src/__mocks__/react-native-mmkv.ts',
     '^react-native-quick-crypto$': '<rootDir>/src/__mocks__/react-native-quick-crypto.ts',
     '^react-native-keychain$': '<rootDir>/src/__mocks__/react-native-keychain.ts',

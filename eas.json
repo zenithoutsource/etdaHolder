@@ -9,7 +9,11 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_WALLET_API_BASE_URL": "https://wallet.zenithcomp.co.th:455",
+        "EXPO_PUBLIC_WALLET_API_PINNED_CERTS": "sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4="
+      }
     },
     "production": {
       "autoIncrement": true

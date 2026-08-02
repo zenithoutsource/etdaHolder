@@ -1,7 +1,7 @@
 import { Platform } from 'react-native'
 
 import { normalizeWalletApiBaseUrl, getConfiguredWalletApiBaseUrl } from './installWalletApiFetch'
-import { readWalletApiPinningConfig } from './walletApiCertPinning'
+import { isPublicKeyPin, readWalletApiPinningConfig } from './walletApiCertPinning'
 
 type PlatformOS = typeof Platform.OS
 
@@ -30,6 +30,12 @@ export function assertWalletApiRuntimePolicy(options: WalletApiRuntimePolicyOpti
 
   if (options.pinnedCertificates.length === 0) {
     throw new Error('WalletApiCertificatePinsRequired: non-development native builds require Wallet Backend certificate pins')
+  }
+
+  if (!options.pinnedCertificates.every(isPublicKeyPin)) {
+    throw new Error(
+      'WalletApiPublicKeyPinsRequired: non-development native builds require sha256/ public-key pins for the Wallet Backend',
+    )
   }
 }
 
