@@ -1,5 +1,36 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-07-31 (Wallet Backend public-key SSL pinning)
+
+- Fixed preview-build crash after biometric unlock (`SSLContext is not initialized`)
+  by switching Wallet Backend pinning from bundled `.cer` assets to public-key
+  pinning (`pkPinning: true`) via `EXPO_PUBLIC_WALLET_API_PINNED_CERTS`
+  `sha256/<base64>` hashes in `src/sdk/walletApiCertPinning.ts`.
+- Preview/release EAS builds must bake the pin env at build time; local HTTP dev
+  backends may leave pins empty. Live leaf SPKI pin for `wallet.zenithcomp.co.th:455`:
+  `sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4=`.
+- Verification: `yarn test src/sdk/walletApiCertPinning.test.ts` and rebuild
+  preview to confirm cold start no longer crashes after Wallet API fetch.
+
+### Session 2026-07-31 (document-expired wallet-key prompt)
+
+- When document-expired and wallet-key lane is `create-key`, Wallet Home and
+  credential detail now show an inline **!! กุญแจหมดอายุ !!** panel with
+  **สร้างกุญแจใหม่** (in addition to the tab-level modal).
+- Legacy wallet-key TTL still drives `isWalletKeyExpired()` under v2 crypto;
+  v2 rotate refreshes `wallet.key_registered_at`, and startup calls
+  `ensureWalletKeyRegisteredAtBackfill()` for existing Keychain wallets missing
+  that metadata so the expiry modal can dismiss without looping.
+- Shared rotation handler: `performWalletKeyRotationWithDialog`.
+
+### Session 2026-07-31 (document-expired reissue → same-device portal)
+
+- Document-expired **ขอเอกสารใหม่** on Wallet Home and credential detail now
+  opens the issuer same-device portal (`openCredentialRequestPortal`) instead of
+  routing to the Scan tab.
+- Shared orchestration lives in `requestCredentialViaPortalFlow.ts` (used by
+  home and detail). P3 wallet-key renewal (`submitRenewalRequest`) unchanged.
+
 ### Session 2026-07-31 (Remove unused Presentation Gateway /v1)
 
 - Removed the superseded `/v1/presentation-sessions` and `/v1/present/verify`
@@ -14,6 +45,9 @@
   `GET /resolveDID`; removed redundant `POST /dev/vp-issuer-key/resolve`.
 - Mobile OID4VCI issuer signature verify and issuer-key helpers now call Issuer
   `GET /resolveDID` for `did:key` JWT kids instead of local multibase decode.
+- Fixed `resolveDidKeyPublicJwk` argument order (was building invalid resolveDID
+  URLs); added issuer metadata URL candidates and local `did:key` fallback when
+  resolveDID is unreachable.
 - Verification: `cd server && yarn tsc` and `cd server && yarn test` (128 tests).
 
 ### Session 2026-07-31 (Credential delete biometric)
@@ -135,7 +169,10 @@
 ### Session 2026-07-30 (v2 legacy wallet-key expiry loop)
 
 - Fixed the expired-key modal reopening after **Create new key** under v2 crypto. Root cause: `rotateWalletKey()` correctly skips wallet-wide rotation for per-credential keys, but the legacy wallet-key TTL lane remained active and immediately made the modal eligible again.
-- `readWalletKeyExpiryLane()` now resolves to `idle` whenever v2 crypto is enabled; Wallet Home, Credential Detail, and `WalletKeyExpiryHost` all supply the activation state so legacy expiry UI and document-reissue blocking do not apply to v2 wallets.
+- `readWalletKeyExpiryLane()` restores `create-key` when the legacy wallet-key TTL
+  has elapsed; v2 rotate refreshes `wallet.key_registered_at` so the modal can
+  dismiss without looping. Existing Keychain wallets backfill `registeredAt` on
+  startup when missing.
 - Added a focused regression for an expired legacy wallet key while v2 per-credential crypto is active.
 - Verification: focused expiry-host/lane tests pass (15 tests); lint exits 0 with 36 existing warnings. Root TypeScript remains blocked by the existing callback-route, Keychain test-mock, and OID4VCI offer-cast diagnostics outside this slice.
 
