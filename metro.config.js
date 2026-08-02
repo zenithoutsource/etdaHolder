@@ -4,6 +4,12 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
+// Local git worktrees duplicate package names and can confuse Metro/Jest resolution.
+config.resolver.blockList = [
+  ...(Array.isArray(config.resolver.blockList) ? config.resolver.blockList : []),
+  /[\\/]\.worktrees[\\/].*/,
+];
+
 function createResolveRequest(defaultResolveRequest) {
   return function resolveRequest(context, moduleName, platform) {
     if (moduleName === '@js-joda/core') {
