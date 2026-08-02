@@ -8,6 +8,11 @@ jest.mock('./credentialKeyRenewal', () => ({
 
 jest.mock('./credentialLifecycle', () => ({
   isCredentialPresentable: jest.fn(() => true),
+  readCredentialLifecycleStatus: jest.fn(() => undefined),
+}))
+
+jest.mock('./issuerSuspension', () => ({
+  readIssuerSuspension: jest.fn(() => undefined),
 }))
 
 jest.mock('../vp/sdJwtCredential', () => ({

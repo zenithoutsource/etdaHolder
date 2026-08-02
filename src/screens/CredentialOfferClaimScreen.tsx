@@ -50,6 +50,7 @@ import {
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from '../services/vci/exchangeService'
+import { resolveCredentialOfferDeeplink } from '../services/credentials/resolveCredentialOfferDeeplink'
 import { readCredentialPreviewDisplay } from '../services/vci/qrIssuanceFlow'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
 import { normalizeNumericCode } from '../utils/normalizeNumericCode'
@@ -105,6 +106,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   const router = useRouter()
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
+  const activeDeeplinkUri = useDeeplinkStore((s) => s.activeUri)
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
   const activeOfferUriRef = useRef<string | null>(null)
@@ -236,6 +238,14 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         return
       }
       if (isPidOffer) {
+        if (
+          canRequestCredentialType('ThaiNationalID', latestCredentials, renewalStatuses)
+        ) {
+          logWalletStep('deeplink', 'offer-pid-flow', describeOfferForLog(offer))
+          if (generationRef.current === gen) setPhase({ tag: 'thaIdVerify', offer })
+          return
+        }
+
         if (pidGateStatus === 'ready') {
           if (generationRef.current === gen) {
             setPhase({
@@ -246,20 +256,12 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
           return
         }
 
-        if (
-          !canRequestCredentialType('ThaiNationalID', latestCredentials, renewalStatuses)
-        ) {
-          if (generationRef.current === gen) {
-            setPhase({
-              tag: 'error',
-              message: WALLET_HOME_COPY.renewThaIdRequiredMessage,
-            })
-          }
-          return
+        if (generationRef.current === gen) {
+          setPhase({
+            tag: 'error',
+            message: WALLET_HOME_COPY.renewThaIdRequiredMessage,
+          })
         }
-
-        logWalletStep('deeplink', 'offer-pid-flow', describeOfferForLog(offer))
-        if (generationRef.current === gen) setPhase({ tag: 'thaIdVerify', offer })
         return
       }
       if (offer.txCode) {
@@ -291,22 +293,50 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     return true
   }, [dismissedDeeplinkUri, handleOfferUri])
 
+  // Only treat a still-pending store URI as "incoming" so a failed offer from
+  // Linking.useURL / initialOfferUri can still show the error + Back CTA.
   const hasIncomingPendingOffer = Boolean(
-    pendingDeeplinkUri
-      && isCredentialOfferDeeplink(pendingDeeplinkUri)
-      && pendingDeeplinkUri !== dismissedDeeplinkUri,
+    (() => {
+      const pendingOffer = resolveCredentialOfferDeeplink(pendingDeeplinkUri)
+      return pendingOffer && pendingOffer !== dismissedDeeplinkUri
+    })(),
   )
 
   useEffect(() => {
-    if (initialOfferUri && beginOffer(initialOfferUri)) return
-
-    if (pendingDeeplinkUri && beginOffer(pendingDeeplinkUri)) return
-
-    const directOffer = incomingUrl && isCredentialOfferDeeplink(incomingUrl) && incomingUrl !== directUrlHandledRef.current ? incomingUrl : null
-    if (directOffer) {
+    const markOfferSourceHandled = () => {
       initialUrlCheckedRef.current = true
-      directUrlHandledRef.current = directOffer
-      beginOffer(directOffer)
+    }
+
+    const resolvedInitialOffer = resolveCredentialOfferDeeplink(initialOfferUri)
+    if (resolvedInitialOffer && beginOffer(resolvedInitialOffer)) {
+      markOfferSourceHandled()
+      return
+    }
+
+    const resolvedPendingOffer = resolveCredentialOfferDeeplink(pendingDeeplinkUri)
+    if (resolvedPendingOffer && beginOffer(resolvedPendingOffer)) {
+      markOfferSourceHandled()
+      return
+    }
+
+    const resolvedActiveOffer = resolveCredentialOfferDeeplink(activeDeeplinkUri)
+    if (
+      resolvedActiveOffer
+      && resolvedActiveOffer !== dismissedDeeplinkUri
+      && beginOffer(resolvedActiveOffer)
+    ) {
+      markOfferSourceHandled()
+      return
+    }
+
+    const resolvedIncomingOffer = resolveCredentialOfferDeeplink(incomingUrl)
+    if (
+      resolvedIncomingOffer
+      && resolvedIncomingOffer !== directUrlHandledRef.current
+    ) {
+      markOfferSourceHandled()
+      directUrlHandledRef.current = resolvedIncomingOffer
+      beginOffer(resolvedIncomingOffer)
       return
     }
 
@@ -321,21 +351,17 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     const showMissingOfferError = () => {
       if (!isMounted || missingOfferCheckRef.current !== checkId) return
       if (lastStartedOfferRef.current) return
-      const pending = useDeeplinkStore.getState().pendingUri
-      if (
-        pending
-        && isCredentialOfferDeeplink(pending)
-        && pending !== useDeeplinkStore.getState().dismissedUri
-      ) {
-        return
-      }
+      const { pendingUri, activeUri, dismissedUri } = useDeeplinkStore.getState()
+      if (activeUri && activeUri !== dismissedUri) return
+      const waitingOffer = resolveCredentialOfferDeeplink(pendingUri)
+      if (waitingOffer && waitingOffer !== dismissedUri) return
       setPhase({ tag: 'error', message: 'No credential offer link is pending.' })
     }
 
     void Linking.getInitialURL()
       .then((initialUrl) => {
         if (!isMounted || missingOfferCheckRef.current !== checkId) return
-        const initialOffer = initialUrl && isCredentialOfferDeeplink(initialUrl) ? initialUrl : null
+        const initialOffer = resolveCredentialOfferDeeplink(initialUrl)
         if (initialOffer) {
           directUrlHandledRef.current = initialOffer
           beginOffer(initialOffer)
@@ -353,7 +379,13 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       isMounted = false
       if (graceTimer) clearTimeout(graceTimer)
     }
-  }, [beginOffer, incomingUrl, initialOfferUri, pendingDeeplinkUri])
+  }, [
+    activeDeeplinkUri,
+    beginOffer,
+    incomingUrl,
+    initialOfferUri,
+    pendingDeeplinkUri,
+  ])
 
   const dismissActiveOffer = useCallback(() => {
     generationRef.current += 1
@@ -430,6 +462,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={resetToWalletHome} />
           <DrivingLicencePreviewPanel
+            record={phase.record}
             onAccept={() => {
               void handleSave(phase.record, phase.pendingMdoc)
             }}

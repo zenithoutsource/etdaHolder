@@ -74,6 +74,7 @@ jest.mock('../services/credentials/credentialKeyRenewal', () => ({
 jest.mock('../services/vci/exchangeService', () => ({
   resolveOffer: jest.fn(),
   acquireCredentialRecord: jest.fn(),
+  readCredentialClaimMap: (record: { claims: Record<string, unknown> }) => record.claims,
 }))
 
 const resolveOfferMock = resolveOffer as jest.Mock
@@ -93,7 +94,7 @@ describe('CredentialOfferClaimScreen', () => {
     mockRouteFocused = true
     linkingMock.getInitialURL.mockResolvedValue(null)
     useUrlMock.mockReturnValue(null)
-    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null })
+    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
     readStoredCredentialsMock.mockReturnValue([])
   })
 
@@ -268,6 +269,47 @@ describe('CredentialOfferClaimScreen', () => {
     resolveOfferMock.mockResolvedValue({
       credentialConfigurations: [{ id: 'ThaiNationalID' }],
       issuer: 'http://issuer.zenithcomp.co.th:455',
+      txCode: undefined,
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
+    })
+    expect(screen.queryByText('No credential offer link is pending.')).toBeNull()
+  })
+
+  it('unwraps walletapp callback launch URLs before showing a missing pending offer error', async () => {
+    const callbackUrl =
+      'walletapp://callback?credential_offer_uri=https%3A%2F%2Fissuer.zenithcomp.co.th%3A455%2Fopenid4vc%2FcredentialOffer%3Fid%3Db30353bd-c066-4d73-9d2f-ff6f1f02798e'
+    const offerUri =
+      'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.zenithcomp.co.th%3A455%2Fopenid4vc%2FcredentialOffer%3Fid%3Db30353bd-c066-4d73-9d2f-ff6f1f02798e'
+    linkingMock.getInitialURL.mockResolvedValue(callbackUrl)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID' }],
+      issuer: 'https://issuer.zenithcomp.co.th:455',
+      txCode: undefined,
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
+    })
+    expect(screen.queryByText('No credential offer link is pending.')).toBeNull()
+  })
+
+  it('resumes an active offer after remount when pending was already consumed', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer'
+    useDeeplinkStore.setState({
+      pendingUri: null,
+      activeUri: offerUri,
+      dismissedUri: null,
+    })
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID' }],
+      issuer: 'https://issuer.example',
       txCode: undefined,
     })
 
