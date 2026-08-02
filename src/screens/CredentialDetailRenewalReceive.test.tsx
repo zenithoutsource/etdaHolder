@@ -48,7 +48,10 @@ jest.mock('../../src/components/PresentationPopCard', () => ({ PresentationPopCa
 jest.mock('../../src/components/WalletHeader', () => ({ WalletHeader: () => null }))
 jest.mock('../../src/components/VpQrModal', () => ({ VpQrModal: () => null }))
 
-jest.mock('../../src/services/crypto/crypto', () => ({ getWalletKeyRegisteredAt: jest.fn() }))
+jest.mock('../../src/services/crypto/crypto', () => ({
+  getWalletKeyRegisteredAt: jest.fn(),
+  hasWalletKey: jest.fn(() => false),
+}))
 jest.mock('../../src/services/credentials/credentialInactiveState', () => ({
   readCredentialInactiveState: () => ({ kind: 'renewal-processing', panelMessage: 'Renewal processing' }),
   resolveCredentialRevokeBehavior: jest.fn(),
@@ -86,6 +89,7 @@ jest.mock('../../src/services/credentials/credentialRenewalPresentation', () => 
 }))
 jest.mock('../../src/services/debug/walletLogger', () => ({
   logWalletError: (...args: unknown[]) => mockLogWalletError(...args),
+  logWalletStep: jest.fn(),
 }))
 jest.mock('../../src/services/notifications/notificationDocumentExpiryRoute', () => ({ isStaleDocumentExpiryNotification: () => false }))
 jest.mock('../../src/services/notifications/notificationRenewalRoute', () => ({ resolveRenewalReadyReplacementRoute: () => undefined }))

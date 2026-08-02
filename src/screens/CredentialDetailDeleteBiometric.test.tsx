@@ -93,6 +93,7 @@ jest.mock('../../src/services/credentials/credentialDeletionBiometric', () => ({
 
 jest.mock('../../src/services/crypto/crypto', () => ({
   getWalletKeyRegisteredAt: jest.fn(),
+  hasWalletKey: jest.fn(() => false),
 }))
 
 jest.mock('../../src/services/credentials/credentialInactiveState', () => ({
@@ -165,6 +166,7 @@ jest.mock('../../src/services/credentials/credentialRenewalPresentation', () => 
 
 jest.mock('../../src/services/debug/walletLogger', () => ({
   logWalletError: jest.fn(),
+  logWalletStep: jest.fn(),
 }))
 
 jest.mock('../../src/services/notifications/notificationDocumentExpiryRoute', () => ({
