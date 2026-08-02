@@ -58,6 +58,13 @@ describe('walletHomeCopy', () => {
     expect(readWalletHomeBadgeLabel('active')).toBe(WALLET_HOME_COPY.activeBadge)
   })
 
+  test('provides portal empty-offer copy in user-friendly Thai', () => {
+    expect(WALLET_HOME_COPY.portalEmptyOfferTitle).toBe('ยังไม่ได้รับเอกสาร')
+    expect(WALLET_HOME_COPY.portalEmptyOfferRetry).toBe('ลองใหม่อีกครั้ง')
+    expect(WALLET_HOME_COPY.portalEmptyOfferMessage).toContain('ผู้ออกเอกสาร')
+    expect(WALLET_HOME_COPY.portalNoCallbackTitle).toBe('ไม่สามารถรับเอกสารได้')
+  })
+
   test('provides P7 document expiry copy', () => {
     expect(WALLET_HOME_COPY.expiringSoonBadge).toBe('ใกล้หมดอายุ')
     expect(WALLET_HOME_COPY.documentExpiredBadge).toBe('หมดอายุ')

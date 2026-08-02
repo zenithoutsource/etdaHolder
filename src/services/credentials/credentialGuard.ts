@@ -47,10 +47,20 @@ export function isPidCredentialOffer(offer: ResolvedOfferLike): boolean {
   })
 }
 
-function isCredentialWithdrawnFromUse(credentialId: string): boolean {
+export function isCredentialWithdrawnFromUse(credentialId: string): boolean {
   const lifecycle = readCredentialLifecycleStatus(credentialId)
   if (lifecycle?.status === 'revoked' || lifecycle?.status === 'deleted') return true
   return Boolean(readIssuerSuspension(credentialId))
+}
+
+function isCredentialPreferredOnHome(
+  credential: VerifiableCredentialRecord,
+  renewalStatuses?: Record<string, CredentialRenewalRecord>,
+): boolean {
+  if (isCredentialWithdrawnFromUse(credential.id)) return false
+
+  const state = readRenewalState(credential.id, renewalStatuses)
+  return state !== 'old-revoked'
 }
 
 export function hasUsablePidCredential(
@@ -118,7 +128,11 @@ export function pickPreferredHomeCredential(
   const presentableMatches = matches.filter(
     (record) => !isCredentialDocumentExpired(record),
   )
-  const candidates = presentableMatches.length > 0 ? presentableMatches : matches
+  const baseCandidates = presentableMatches.length > 0 ? presentableMatches : matches
+  const preferredMatches = baseCandidates.filter((record) =>
+    isCredentialPreferredOnHome(record, renewalStatuses),
+  )
+  const candidates = preferredMatches.length > 0 ? preferredMatches : baseCandidates
 
   const renewedActive = candidates.find(
     (record) => readRenewalState(record.id, renewalStatuses) === 'renewed-active',

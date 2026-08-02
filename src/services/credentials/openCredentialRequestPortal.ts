@@ -27,11 +27,13 @@ import {
   resolvePortalCallbackResult,
 } from './resolvePortalCallbackResult'
 
+import type { PortalEmptyOfferReason } from './portalEmptyOfferDialog'
+
 export type OpenCredentialRequestPortalResult =
   | { status: 'claimed'; deeplink: string }
   | { status: 'presentation_request'; deeplink: string }
   | { status: 'dismissed' }
-  | { status: 'empty_offer'; diagnostic: string }
+  | { status: 'empty_offer'; reason: PortalEmptyOfferReason; diagnostic: string }
   | { status: 'misconfigured' }
   | { status: 'error' }
 
@@ -95,6 +97,7 @@ function finishWithCallbackUrl(
   })
   return {
     status: 'empty_offer',
+    reason: 'no_offer_in_callback',
     diagnostic: formatPortalReturnDiagnostic(emptyRecord),
   }
 }
@@ -222,6 +225,7 @@ export async function openCredentialRequestPortal(
         })
         return {
           status: 'empty_offer',
+          reason: 'no_callback',
           diagnostic: [
             'No walletapp://callback deep link received after login.',
             `Expected ReturnUrl: ${returnUrl}?credential_offer_uri=https://...`,

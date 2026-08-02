@@ -129,7 +129,7 @@ export function readCredentialInactiveState({
 
   if (renewalStatus?.state === 'cleanup-pending') {
     // Keep cleanup-pending above document-expired so the Holder still sees the
-    // P3-6 cleanup CTA instead of a competing "ขอเอกสารใหม่" → Scan path.
+    // P3-6 cleanup CTA instead of a competing "ขอเอกสารใหม่" → issuer portal path.
     return {
       kind: 'cleanup-pending',
       badgeLabel: 'Inactive',

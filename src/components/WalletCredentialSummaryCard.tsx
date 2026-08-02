@@ -22,8 +22,13 @@ export function WalletCredentialSummaryCard({
 }) {
   const display = readCredentialSummaryDisplay(record)
   const profile = readCredentialHolderProfile(record)
-  const idNumber = display.rows.find((row) => row.key === 'nationalId')?.value
+  const isDrivingLicence = record.type === 'DLTDrivingLicence'
+  const identifierRow = isDrivingLicence
+    ? display.rows.find((row) => row.key === 'licenceNumber')
+    : display.rows.find((row) => row.key === 'nationalId')
   const holderName = profile.thaiName ?? profile.englishName ?? display.primaryText
+  const identifierLabel = isDrivingLicence ? 'Licence No. :' : 'ID Card :'
+  const identifierValue = identifierRow?.value ?? '-'
 
   return (
     <View
@@ -47,7 +52,7 @@ export function WalletCredentialSummaryCard({
             {holderName}
           </Text>
           <Text className="mt-2 text-[12px] leading-5 text-white" numberOfLines={2}>
-            ID Card : {idNumber}
+            {identifierLabel} {identifierValue}
           </Text>
         </View>
       </View>

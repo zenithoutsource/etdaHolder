@@ -38,20 +38,12 @@ import {
   shouldShowInactivePortalRequestCta,
   shouldShowReadyRenewalReceiveCta,
 } from "../../src/services/credentials/credentialHomeNavigation";
-import { shouldOfferDocumentReissueCta } from "../../src/services/credentials/documentReissueCtaGate";
+import { shouldOfferDocumentReissueCta, shouldShowWalletKeyExpiredPrompt } from "../../src/services/credentials/documentReissueCtaGate";
+import { performWalletKeyRotationWithDialog } from "../../src/services/crypto/walletKeyRotationFlow";
 import { readWalletKeyExpiryLane } from "../../src/services/crypto/walletKeyExpiryLane";
 import { readWalletKeyRotationRecord } from "../../src/services/crypto/walletKeyRotation";
-import { isWalletCryptoV2Enabled } from "../../src/services/crypto/walletCryptoActivation";
 import { isIssuerPortalCredentialType } from "../../src/config/issuerPortalUrls";
-import { openCredentialRequestPortal } from "../../src/services/credentials/openCredentialRequestPortal";
-import {
-  consumeLastPortalReturn,
-  formatPortalReturnDiagnostic,
-} from "../../src/services/credentials/lastPortalReturn";
-import {
-  isCredentialOfferDeeplink,
-  useDeeplinkStore,
-} from "../../src/store/deeplinkStore";
+import { requestCredentialViaPortalFlow } from "../../src/services/credentials/requestCredentialViaPortalFlow";
 import { isCredentialExpiringSoon } from "../../src/services/credentials/credentialDocumentExpiry";
 import {
   readCredentialLifecycleStatuses,
@@ -183,7 +175,6 @@ export default function WalletHomeScreen() {
   const walletKeyExpiryLane = readWalletKeyExpiryLane({
     keyExpired: walletKeyExpired,
     hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
-    walletCryptoV2Enabled: isWalletCryptoV2Enabled(),
   });
   const router = useRouter();
   const { showDialog } = useAppDialog();
@@ -202,6 +193,7 @@ export default function WalletHomeScreen() {
   >({});
   const [receivingRenewalCredentialId, setReceivingRenewalCredentialId] =
     useState<string | null>(null);
+  const [isRotatingWalletKey, setIsRotatingWalletKey] = useState(false);
   const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
   const summaryCredential = pickPreferredHomeCredential(
     credentials.filter((record) => record.type === "ThaiNationalID"),
@@ -305,71 +297,8 @@ export default function WalletHomeScreen() {
     });
   }
 
-  async function handleRequestCredentialViaPortal(credentialType?: string) {
-    if (!isIssuerPortalCredentialType(credentialType)) {
-      showDialog({
-        title: WALLET_HOME_COPY.portalMisconfiguredTitle,
-        message: WALLET_HOME_COPY.portalMisconfiguredMessage,
-        icon: "danger",
-        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
-      });
-      return;
-    }
-
-    const result = await openCredentialRequestPortal(credentialType);
-    if (result.status === "claimed") {
-      router.push("/(tabs)/credential-offer");
-      return;
-    }
-    if (result.status === "presentation_request") {
-      router.push("/(tabs)/scan");
-      return;
-    }
-    if (result.status === "misconfigured") {
-      showDialog({
-        title: WALLET_HOME_COPY.portalMisconfiguredTitle,
-        message: WALLET_HOME_COPY.portalMisconfiguredMessage,
-        icon: "danger",
-        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
-      });
-      return;
-    }
-    if (result.status === "error") {
-      showDialog({
-        title: WALLET_HOME_COPY.portalErrorTitle,
-        message: WALLET_HOME_COPY.portalErrorMessage,
-        icon: "danger",
-        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
-      });
-      return;
-    }
-    if (result.status === "empty_offer") {
-      showDialog({
-        title: WALLET_HOME_COPY.portalEmptyOfferTitle,
-        message: __DEV__
-          ? `${WALLET_HOME_COPY.portalEmptyOfferMessage}\n\n${result.diagnostic}`
-          : WALLET_HOME_COPY.portalEmptyOfferMessage,
-        icon: "danger",
-        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
-      });
-      return;
-    }
-    const pendingOffer = useDeeplinkStore.getState().pendingUri;
-    if (pendingOffer && isCredentialOfferDeeplink(pendingOffer)) {
-      router.push("/(tabs)/credential-offer");
-      return;
-    }
-    const lastReturn = consumeLastPortalReturn();
-    if (lastReturn?.outcome === "empty-callback" || lastReturn?.outcome === "unrecognized") {
-      showDialog({
-        title: WALLET_HOME_COPY.portalEmptyOfferTitle,
-        message: __DEV__
-          ? `${WALLET_HOME_COPY.portalEmptyOfferMessage}\n\n${formatPortalReturnDiagnostic(lastReturn)}`
-          : WALLET_HOME_COPY.portalEmptyOfferMessage,
-        icon: "danger",
-        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
-      });
-    }
+  function handleRequestCredentialViaPortal(credentialType?: string) {
+    void requestCredentialViaPortalFlow({ credentialType, router, showDialog });
   }
 
   async function handleRenewalRequest(credentialId: string) {
@@ -658,11 +587,27 @@ export default function WalletHomeScreen() {
                   }
                   documentReissueCtaLabel={WALLET_HOME_COPY.requestNewCredential}
                   onDocumentReissue={() => {
-                    if (inactiveState.kind === "document-expired") {
-                      router.push("/(tabs)/scan");
-                      return;
-                    }
                     void handleRequestCredentialViaPortal(item.credentialType);
+                  }}
+                  showWalletKeyExpiredPrompt={
+                    isExpanded &&
+                    inactiveState.kind === "document-expired" &&
+                    shouldShowWalletKeyExpiredPrompt(walletKeyExpiryLane)
+                  }
+                  isRotatingWalletKey={isRotatingWalletKey}
+                  onCreateWalletKey={() => {
+                    setIsRotatingWalletKey(true);
+                    void performWalletKeyRotationWithDialog({
+                      showDialog,
+                      onSuccess: () => {
+                        void refreshCredentialStatuses();
+                      },
+                      navigateToCredential: (credentialId) => {
+                        router.push(`/(tabs)/credential/${credentialId}`);
+                      },
+                    }).finally(() => {
+                      setIsRotatingWalletKey(false);
+                    });
                   }}
                 />
               );

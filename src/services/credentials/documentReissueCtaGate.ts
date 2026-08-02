@@ -9,7 +9,7 @@ const BLOCKING_RENEWAL_STATES = new Set<CredentialRenewalState>([
 ])
 
 /**
- * Document-expired "ขอเอกสารใหม่" → Scan must not compete with an in-flight P3
+ * Document-expired "ขอเอกสารใหม่" → issuer portal must not compete with an in-flight P3
  * renewal Receive/cleanup path on the same credential.
  */
 export function shouldOfferDocumentReissueCta(input: {
@@ -22,4 +22,10 @@ export function shouldOfferDocumentReissueCta(input: {
     return false
   }
   return true
+}
+
+export function shouldShowWalletKeyExpiredPrompt(
+  lane: WalletKeyExpiryLane,
+): boolean {
+  return lane === 'create-key'
 }

@@ -1,4 +1,4 @@
-import { shouldOfferDocumentReissueCta } from './documentReissueCtaGate'
+import { shouldOfferDocumentReissueCta, shouldShowWalletKeyExpiredPrompt } from './documentReissueCtaGate'
 
 describe('shouldOfferDocumentReissueCta', () => {
   test('defers document reissue while create-key lane is active', () => {
@@ -56,5 +56,13 @@ describe('shouldOfferDocumentReissueCta', () => {
         renewalState: 'cleanup-pending',
       }),
     ).toBe(false)
+  })
+})
+
+describe('shouldShowWalletKeyExpiredPrompt', () => {
+  test('shows wallet key prompt only on create-key lane', () => {
+    expect(shouldShowWalletKeyExpiredPrompt('create-key')).toBe(true)
+    expect(shouldShowWalletKeyExpiredPrompt('finish-renewals')).toBe(false)
+    expect(shouldShowWalletKeyExpiredPrompt('idle')).toBe(false)
   })
 })

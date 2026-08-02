@@ -55,9 +55,15 @@ export const WALLET_HOME_COPY = {
   portalMisconfiguredMessage: 'ยังไม่ได้ตั้งค่า Issuer portal สำหรับเอกสารประเภทนี้',
   portalErrorTitle: 'ไม่สามารถเปิดหน้าขอเอกสารได้',
   portalErrorMessage: 'กรุณาลองใหม่อีกครั้ง',
-  portalEmptyOfferTitle: 'Issuer ไม่ได้ส่ง credential offer',
+  portalEmptyOfferTitle: 'ยังไม่ได้รับเอกสาร',
   portalEmptyOfferMessage:
-    'เข้าสู่ระบบสำเร็จแล้ว แต่ redirect กลับมาไม่มี credential_offer_uri — แจ้งทีม Issuer ให้ส่ง walletapp://callback?credential_offer_uri=https://...',
+    'เข้าสู่ระบบเสร็จแล้ว แต่ผู้ออกเอกสารยังไม่ได้ส่งเอกสารมาให้ กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ออกเอกสาร',
+  portalEmptyOfferRetry: 'ลองใหม่อีกครั้ง',
+  portalNoCallbackTitle: 'ไม่สามารถรับเอกสารได้',
+  portalNoCallbackMessage:
+    'ไม่ได้รับการตอบกลับจากผู้ออกเอกสาร กรุณาตรวจสอบการเชื่อมต่อและลองใหม่อีกครั้ง',
+  portalUnrecognizedReturnMessage:
+    'ได้รับการตอบกลับจากผู้ออกเอกสารแล้ว แต่ไม่สามารถอ่านข้อมูลเอกสารได้ กรุณาลองใหม่อีกครั้ง',
   portalPidVpRequiredTitle: 'ยืนยันตัวตนด้วย ThaID',
   portalPidVpRequiredMessage:
     'เมื่อ Issuer ส่งคำขอยืนยันตัวตน (OID4VP) ให้เปิดแท็บ Scan เพื่อให้ความยินยอมและส่ง PID',

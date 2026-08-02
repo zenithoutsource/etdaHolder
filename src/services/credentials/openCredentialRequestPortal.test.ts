@@ -90,6 +90,9 @@ describe('openCredentialRequestPortal', () => {
       androidFallbackMs: 500,
     })
     expect(result.status).toBe('empty_offer')
+    if (result.status === 'empty_offer') {
+      expect(result.reason).toBe('no_offer_in_callback')
+    }
   })
 
   test('returns empty_offer when Android wait times out with no deep link', async () => {
@@ -98,6 +101,7 @@ describe('openCredentialRequestPortal', () => {
     })
     expect(result.status).toBe('empty_offer')
     if (result.status === 'empty_offer') {
+      expect(result.reason).toBe('no_callback')
       expect(result.diagnostic).toContain('No walletapp://callback')
     }
   })

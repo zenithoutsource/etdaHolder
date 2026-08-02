@@ -3,6 +3,7 @@ import { Image, Pressable, Text, View, type ImageSourcePropType } from 'react-na
 
 import { AppButton } from './AppButton'
 import { StatusBadge } from './StatusBadge'
+import { WalletKeyExpiredActionPanel } from './WalletKeyExpiredActionPanel'
 
 import { THEME } from '../config/themeColors'
 
@@ -28,6 +29,9 @@ type WalletDocumentMenuItemProps = {
   showDocumentReissueCta?: boolean
   documentReissueCtaLabel?: string
   onDocumentReissue?: () => void
+  showWalletKeyExpiredPrompt?: boolean
+  isRotatingWalletKey?: boolean
+  onCreateWalletKey?: () => void
 }
 
 export function WalletDocumentMenuItem({
@@ -52,6 +56,9 @@ export function WalletDocumentMenuItem({
   showDocumentReissueCta = false,
   documentReissueCtaLabel,
   onDocumentReissue,
+  showWalletKeyExpiredPrompt = false,
+  isRotatingWalletKey = false,
+  onCreateWalletKey,
 }: WalletDocumentMenuItemProps) {
   return (
     <View
@@ -99,6 +106,13 @@ export function WalletDocumentMenuItem({
             <MaterialCommunityIcons name="lock-outline" size={28} color={THEME.navy} />
           </View>
           <Text className="mt-2 text-center text-xs text-gray600">{inactivePanelMessage}</Text>
+          {showWalletKeyExpiredPrompt && onCreateWalletKey ? (
+            <WalletKeyExpiredActionPanel
+              isRotating={isRotatingWalletKey}
+              onCreateNewKey={onCreateWalletKey}
+              className="mt-3 w-full rounded-xl bg-amber-tint px-4 py-4"
+            />
+          ) : null}
           {showRenewalCta && renewalCtaLabel && onRenewalRequest ? (
             <AppButton
               variant="solid-block"

@@ -240,4 +240,19 @@ describe('credentialGuard', () => {
     const picked = pickPreferredHomeCredential([expiredPid, activePid], {})
     expect(picked?.id).toBe('id-card-active')
   })
+
+  test('prefers a new active PID over an issuer-suspended PID of the same type', () => {
+    writeIssuerSuspension({
+      credentialId: thaiIdRecord.id,
+      suspendedAt: '2026-07-01T00:00:00.000Z',
+      updatedAt: '2026-07-01T00:00:00.000Z',
+    })
+
+    try {
+      const picked = pickPreferredHomeCredential([thaiIdRecord, renewedThaiIdRecord], {})
+      expect(picked?.id).toBe('id-card-2')
+    } finally {
+      getCredentialStorage().remove(`credential:suspension:${thaiIdRecord.id}`)
+    }
+  })
 })

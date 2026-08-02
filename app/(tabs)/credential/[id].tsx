@@ -45,10 +45,12 @@ import {
   isRenewalAwaitingHolderCleanup,
 } from "../../../src/services/credentials/renewalCleanupNotification";
 import { WALLET_HOME_COPY, readWalletHomeBadgeLabel } from "../../../src/services/credentials/walletHomeCopy";
-import { shouldOfferDocumentReissueCta } from "../../../src/services/credentials/documentReissueCtaGate";
+import { shouldOfferDocumentReissueCta, shouldShowWalletKeyExpiredPrompt } from "../../../src/services/credentials/documentReissueCtaGate";
+import { requestCredentialViaPortalFlow } from "../../../src/services/credentials/requestCredentialViaPortalFlow";
+import { WalletKeyExpiredActionPanel } from "../../../src/components/WalletKeyExpiredActionPanel";
+import { performWalletKeyRotationWithDialog } from "../../../src/services/crypto/walletKeyRotationFlow";
 import { readWalletKeyExpiryLane } from "../../../src/services/crypto/walletKeyExpiryLane";
 import { readWalletKeyRotationRecord } from "../../../src/services/crypto/walletKeyRotation";
-import { isWalletCryptoV2Enabled } from "../../../src/services/crypto/walletCryptoActivation";
 import {
   shouldHideCredentialActionMenu,
   shouldShowRenewedActiveBadge,
@@ -92,7 +94,6 @@ export default function CredentialDetailScreen() {
   const walletKeyExpiryLane = readWalletKeyExpiryLane({
     keyExpired: walletKeyExpired,
     hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
-    walletCryptoV2Enabled: isWalletCryptoV2Enabled(),
   });
   const { id, notificationEvent } = useLocalSearchParams<{ id: string; notificationEvent?: string }>();
   const router = useRouter();
@@ -104,6 +105,7 @@ export default function CredentialDetailScreen() {
   const [pinError, setPinError] = useState<string | null>(null);
   const [renewalRefreshTick, setRenewalRefreshTick] = useState(0);
   const [vpQrVisible, setVpQrVisible] = useState(false);
+  const [isRotatingWalletKey, setIsRotatingWalletKey] = useState(false);
   const previousCredentialIdRef = useRef<string | undefined>(id);
   const staleExpiryDialogShownRef = useRef(false);
   const credential = credentials.find((record) => record.id === id);
@@ -186,6 +188,9 @@ export default function CredentialDetailScreen() {
       documentExpired: true,
       renewalState: renewalStatus?.state,
     });
+  const showWalletKeyExpiredPrompt =
+    inactiveState.kind === "document-expired" &&
+    shouldShowWalletKeyExpiredPrompt(walletKeyExpiryLane);
   const showExpiringSoonBanner =
     inactiveState.kind === "active" &&
     credential !== undefined &&
@@ -597,7 +602,12 @@ export default function CredentialDetailScreen() {
           <ScrollView className="flex-1" contentContainerClassName="px-4 pb-8 pt-4">
             <CredentialDocumentDetailCard
               display={display}
-              holderProfile={display.imageKey === "id" || isTranscript ? holderProfile : undefined}
+              record={credential}
+              holderProfile={
+                display.imageKey === "id" || display.imageKey === "car" || isTranscript
+                  ? holderProfile
+                  : undefined
+              }
             />
 
             <View className="mt-4">
@@ -644,7 +654,12 @@ export default function CredentialDetailScreen() {
             <View>
               <CredentialDocumentDetailCard
                 display={display}
-                holderProfile={display.imageKey === "id" || isTranscript ? holderProfile : undefined}
+                record={credential}
+                holderProfile={
+                  display.imageKey === "id" || display.imageKey === "car" || isTranscript
+                    ? holderProfile
+                    : undefined
+                }
                 inactiveState={inactiveState}
                 renewalBadgeLabel={renewalBadgeLabel}
                 renewalState={showRenewedActiveBadge ? "renewed-active" : undefined}
@@ -698,12 +713,38 @@ export default function CredentialDetailScreen() {
                   />
                 </View>
               ) : null}
+              {showWalletKeyExpiredPrompt ? (
+                <WalletKeyExpiredActionPanel
+                  isRotating={isRotatingWalletKey}
+                  onCreateNewKey={() => {
+                    setIsRotatingWalletKey(true)
+                    void performWalletKeyRotationWithDialog({
+                      showDialog,
+                      onSuccess: () => {
+                        refresh()
+                        setRenewalRefreshTick((tick) => tick + 1)
+                      },
+                      navigateToCredential: (credentialId) => {
+                        router.push(`/(tabs)/credential/${credentialId}`)
+                      },
+                    }).finally(() => {
+                      setIsRotatingWalletKey(false)
+                    })
+                  }}
+                />
+              ) : null}
               {canRequestDocumentReissue ? (
                 <View className="mt-4">
                   <AppButton
                     variant="solid-block"
                     label={WALLET_HOME_COPY.requestNewCredential}
-                    onPress={() => router.push("/(tabs)/scan")}
+                    onPress={() => {
+                      void requestCredentialViaPortalFlow({
+                        credentialType: credential?.type,
+                        router,
+                        showDialog,
+                      });
+                    }}
                     className="w-full rounded-xl py-3"
                     textClassName="text-center text-sm font-bold"
                   />
