@@ -1,6 +1,7 @@
 import * as Keychain from 'react-native-keychain'
 
 import {
+  ensureWalletKeyRegisteredAtBackfill,
   generateWalletKeyIfNeeded,
   getHolderCoseKeyBase64Url,
   getPublicKeyJwk,
@@ -339,9 +340,24 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(hasWalletKey()).toBe(true)
   })
 
-  test('getWalletKeyRegisteredAt is undefined when key is synced from existing Keychain entry', async () => {
+  test('legacy keychain sync without registeredAt keeps TTL metadata unset', async () => {
     await generateWalletKeyIfNeeded()
+    getMetaStorage().remove('wallet.key_registered_at')
+
+    await generateWalletKeyIfNeeded()
+
     expect(getWalletKeyRegisteredAt()).toBeUndefined()
+  })
+
+  test('ensureWalletKeyRegisteredAtBackfill sets registeredAt for existing keys missing TTL metadata', async () => {
+    await generateWalletKeyIfNeeded()
+    getMetaStorage().remove('wallet.key_registered_at')
+
+    const backfilled = ensureWalletKeyRegisteredAtBackfill(new Date('2026-07-31T00:00:00.000Z'))
+
+    expect(backfilled).toBe(true)
+    expect(getWalletKeyRegisteredAt()).toBe('2026-07-31T00:00:00.000Z')
+    expect(ensureWalletKeyRegisteredAtBackfill()).toBe(false)
   })
 
   test('getWalletKeyRegisteredAt returns an ISO 8601 timestamp when a fresh key is generated', async () => {

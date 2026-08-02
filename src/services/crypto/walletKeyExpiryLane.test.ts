@@ -1,14 +1,13 @@
 import { readWalletKeyExpiryLane } from './walletKeyExpiryLane'
 
 describe('readWalletKeyExpiryLane', () => {
-  test('v2 per-credential crypto ignores the legacy wallet-key expiry lane', () => {
+  test('key expired on v2 wallets still enters create-key lane', () => {
     expect(
       readWalletKeyExpiryLane({
         keyExpired: true,
         hasRotationRecord: false,
-        walletCryptoV2Enabled: true,
       }),
-    ).toBe('idle')
+    ).toBe('create-key')
   })
 
   test('rotation record wins over key expired → finish-renewals', () => {
@@ -16,7 +15,6 @@ describe('readWalletKeyExpiryLane', () => {
       readWalletKeyExpiryLane({
         keyExpired: true,
         hasRotationRecord: true,
-        walletCryptoV2Enabled: false,
       }),
     ).toBe('finish-renewals')
   })
@@ -26,7 +24,6 @@ describe('readWalletKeyExpiryLane', () => {
       readWalletKeyExpiryLane({
         keyExpired: true,
         hasRotationRecord: false,
-        walletCryptoV2Enabled: false,
       }),
     ).toBe('create-key')
   })
@@ -36,7 +33,6 @@ describe('readWalletKeyExpiryLane', () => {
       readWalletKeyExpiryLane({
         keyExpired: false,
         hasRotationRecord: false,
-        walletCryptoV2Enabled: false,
       }),
     ).toBe('idle')
   })
@@ -46,7 +42,6 @@ describe('readWalletKeyExpiryLane', () => {
       readWalletKeyExpiryLane({
         keyExpired: false,
         hasRotationRecord: true,
-        walletCryptoV2Enabled: false,
       }),
     ).toBe('finish-renewals')
   })

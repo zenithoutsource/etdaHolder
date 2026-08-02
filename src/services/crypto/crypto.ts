@@ -277,7 +277,8 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
       step = 'public-key-derive-existing'
       const existingPublicKey = readPublicKeyFromSeed(existingSeed)
       step = 'cache-write'
-      cacheWalletPublicKey(existingPublicKey)
+      const existingRegisteredAt = metaStorage.getString(KEY_REGISTERED_AT_STORAGE)
+      cacheWalletPublicKey(existingPublicKey, existingRegisteredAt)
       logWalletStep('crypto', 'wallet-key-keychain-existing', { keyId: KEY_ID, publicKeyBytes: existingPublicKey.length })
       return
     }
@@ -367,6 +368,30 @@ export function hasPreviousWalletKey(): boolean {
 /** Returns when the Wallet Signing Key was registered (ISO 8601), or undefined if not yet generated. */
 export function getWalletKeyRegisteredAt(): string | undefined {
   return metaStorage.getString(KEY_REGISTERED_AT_STORAGE)
+}
+
+/** Backfills registration time for wallets that already had a Keychain seed before TTL tracking. */
+export function ensureWalletKeyRegisteredAtBackfill(now = new Date()): boolean {
+  if (metaStorage.getString(KEY_REGISTERED_AT_STORAGE)) return false
+  if (!metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE)) return false
+
+  metaStorage.set(KEY_REGISTERED_AT_STORAGE, now.toISOString())
+  notifyWalletKeyRegistrationChanged()
+  logWalletStep('crypto', 'wallet-key-registered-at-backfilled', {
+    registeredAt: metaStorage.getString(KEY_REGISTERED_AT_STORAGE),
+  })
+  return true
+}
+
+/** Refreshes registration time after a v2 no-op rotate so the expiry modal can dismiss. */
+export function refreshWalletKeyRegisteredAt(now = new Date()): void {
+  if (!metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE)) return
+
+  metaStorage.set(KEY_REGISTERED_AT_STORAGE, now.toISOString())
+  notifyWalletKeyRegistrationChanged()
+  logWalletStep('crypto', 'wallet-key-registered-at-refreshed', {
+    registeredAt: metaStorage.getString(KEY_REGISTERED_AT_STORAGE),
+  })
 }
 
 /** Returns the Holder DID derived from the cached Ed25519 public key. Sync, no biometric. */

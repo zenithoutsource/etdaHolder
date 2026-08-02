@@ -121,7 +121,7 @@ export default function RootLayout() {
       }
 
       const [
-        { generateWalletKeyIfNeeded, getHolderDid },
+        { generateWalletKeyIfNeeded, getHolderDid, ensureWalletKeyRegisteredAtBackfill },
         { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock, needsStoragePinFallbackMigration },
         { assertDeviceIntegrity },
         { assertConfiguredWalletApiRuntimePolicy },
@@ -300,6 +300,9 @@ export default function RootLayout() {
       logWalletStep('startup', 'wallet-history-backfill-complete');
       await generateWalletKeyIfNeeded();
       if (!isCurrentRun()) return;
+      if (ensureWalletKeyRegisteredAtBackfill()) {
+        logWalletStep('startup', 'wallet-key-registered-at-backfilled');
+      }
       logWalletStep('startup', 'wallet-key-ready');
 
       const {

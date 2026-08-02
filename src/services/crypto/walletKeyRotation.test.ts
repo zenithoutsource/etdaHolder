@@ -8,16 +8,17 @@ import {
   generateWalletKeyIfNeeded,
   getHolderDid,
   getPreviousHolderDid,
+  getWalletKeyRegisteredAt,
   hasPreviousWalletKey,
   signPresentationVpTokenWithPreviousKey,
 } from './crypto'
 import { getMetaStorage } from '../storage/storage'
 import {
   clearWalletKeyRotationRecord,
+  isWalletKeyExpired,
   readWalletKeyRotationRecord,
   rotateWalletKey,
 } from './walletKeyRotation'
-
 import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
 
 jest.mock('./walletCryptoActivation', () => ({
@@ -201,14 +202,33 @@ describe('rotateWalletKey re-rotation guard', () => {
     expect(readWalletKeyRotationRecord()).toBeDefined()
   })
 
-  test('skips wallet-wide rotation when v2 crypto is enabled', async () => {
+  test('skips wallet-wide rotation when v2 crypto is enabled and refreshes registeredAt', async () => {
     isWalletCryptoV2EnabledMock.mockReturnValue(true)
     jest.mocked(randomBytes).mockImplementationOnce(() => seedBytes(7))
     await generateWalletKeyIfNeeded()
+    const beforeRotate = getWalletKeyRegisteredAt()
 
     const result = await rotateWalletKey(new Date('2026-06-29T00:00:00.000Z'))
 
     expect(result.affectedCredentialIds).toEqual([])
     expect(readWalletKeyRotationRecord()).toBeUndefined()
+    expect(getWalletKeyRegisteredAt()).toBe('2026-06-29T00:00:00.000Z')
+    expect(getWalletKeyRegisteredAt()).not.toBe(beforeRotate)
+  })
+
+  test('isWalletKeyExpired respects registeredAt even when v2 crypto is enabled', async () => {
+    isWalletCryptoV2EnabledMock.mockReturnValue(true)
+    jest.mocked(randomBytes).mockImplementationOnce(() => seedBytes(8))
+    await generateWalletKeyIfNeeded()
+
+    expect(isWalletKeyExpired(new Date('2099-01-01T00:00:00.000Z'))).toBe(true)
+  })
+
+  test('isWalletKeyExpired is true when wallet key exists but registeredAt is missing', async () => {
+    jest.mocked(randomBytes).mockImplementationOnce(() => seedBytes(9))
+    await generateWalletKeyIfNeeded()
+    getMetaStorage().remove('wallet.key_registered_at')
+
+    expect(isWalletKeyExpired()).toBe(true)
   })
 })

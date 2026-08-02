@@ -6,6 +6,7 @@ import {
   getHolderDid,
   getWalletKeyRegisteredAt,
   hasWalletKey,
+  refreshWalletKeyRegisteredAt,
 } from './crypto'
 import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
 import { getMetaStorage } from '../storage/storage'
@@ -23,7 +24,11 @@ export type WalletKeyRotationRecord = {
 }
 
 export function isWalletKeyExpired(now = new Date()): boolean {
-  return isWalletKeyExpiredAt(getWalletKeyRegisteredAt(), now)
+  const registeredAt = getWalletKeyRegisteredAt()
+  if (!registeredAt) {
+    return hasWalletKey()
+  }
+  return isWalletKeyExpiredAt(registeredAt, now)
 }
 
 export function readWalletKeyRotationRecord(): WalletKeyRotationRecord | undefined {
@@ -65,7 +70,10 @@ export async function rotateWalletKey(now = new Date()): Promise<{
   affectedCredentialIds: string[]
 }> {
   if (isWalletCryptoV2Enabled()) {
-    logWalletStep('crypto', 'wallet-key-rotation-skipped-v2')
+    refreshWalletKeyRegisteredAt(now)
+    logWalletStep('crypto', 'wallet-key-rotation-skipped-v2', {
+      registeredAt: getWalletKeyRegisteredAt(),
+    })
     return {
       holderDid: getHolderDid(),
       affectedCredentialIds: [],

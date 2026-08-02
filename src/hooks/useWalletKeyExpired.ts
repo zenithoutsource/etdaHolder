@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { AppState, type AppStateStatus } from 'react-native'
 
 import { readMsUntilWalletKeyExpiry } from '@/src/config/walletKeyPolicy'
-import { getWalletKeyRegisteredAt } from '@/src/services/crypto/crypto'
+import { logWalletStep } from '@/src/services/debug/walletLogger'
+import { getWalletKeyRegisteredAt, hasWalletKey } from '@/src/services/crypto/crypto'
 import { subscribeWalletKeyRegistrationChange } from '@/src/services/crypto/walletKeyExpiryWatch'
 import { isWalletKeyExpired } from '@/src/services/crypto/walletKeyRotation'
 
@@ -17,7 +18,13 @@ export function useWalletKeyExpired(): UseWalletKeyExpiredResult {
   const [isExpired, setIsExpired] = useState(() => isWalletKeyExpired())
 
   const refreshExpiryState = useCallback(() => {
-    setIsExpired(isWalletKeyExpired())
+    const expired = isWalletKeyExpired()
+    setIsExpired(expired)
+    logWalletStep('wallet-key-expiry', 'refresh-state', {
+      expired,
+      hasWalletKey: hasWalletKey(),
+      registeredAt: getWalletKeyRegisteredAt(),
+    })
   }, [])
 
   useEffect(() => {

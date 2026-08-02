@@ -6,16 +6,13 @@ import { WalletKeyExpiredModal } from '@/src/components/WalletKeyExpiredModal'
 import { useWalletKeyExpired } from '@/src/hooks/useWalletKeyExpired'
 import { readFirstPendingRenewalCredentialId } from '@/src/services/credentials/pendingRenewalNavigation'
 import { WALLET_HOME_COPY } from '@/src/services/credentials/walletHomeCopy'
-import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
+import { logWalletStep } from '@/src/services/debug/walletLogger'
 import {
   readWalletKeyExpiryLane,
   type WalletKeyExpiryLane,
 } from '@/src/services/crypto/walletKeyExpiryLane'
-import {
-  readWalletKeyRotationRecord,
-  rotateWalletKey,
-} from '@/src/services/crypto/walletKeyRotation'
-import { isWalletCryptoV2Enabled } from '@/src/services/crypto/walletCryptoActivation'
+import { performWalletKeyRotationWithDialog } from '@/src/services/crypto/walletKeyRotationFlow'
+import { readWalletKeyRotationRecord } from '@/src/services/crypto/walletKeyRotation'
 
 export function readWalletKeyRotationFailureDialog(error: unknown): {
   title: string
@@ -99,7 +96,10 @@ export function WalletKeyExpiryHost() {
   const lane = readWalletKeyExpiryLane({
     keyExpired: isExpired,
     hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
-    walletCryptoV2Enabled: isWalletCryptoV2Enabled(),
+  })
+  const showWalletKeyModal = shouldShowWalletKeyExpiredModal({
+    lane,
+    isRotatingWalletKey,
   })
 
   useEffect(() => {
@@ -137,33 +137,10 @@ export function WalletKeyExpiryHost() {
   async function handleCreateNewWalletKey() {
     setIsRotatingWalletKey(true)
     try {
-      logWalletStep('wallet-key-expiry', 'wallet-key-rotation-start')
-      const result = await rotateWalletKey()
-      logWalletStep('wallet-key-expiry', 'wallet-key-rotation-complete', {
-        affectedCredentialCount: result.affectedCredentialIds.length,
-        holderDidLength: result.holderDid.length,
-      })
-      refreshExpiryState()
-    } catch (error) {
-      logWalletError('wallet-key-expiry', 'wallet-key-rotation-failed', error)
-
-      if (isWalletKeyRotationBlockedByPendingRenewals(error)) {
-        const credentialId = readFirstPendingRenewalCredentialId()
-        showDialog({
-          ...readWalletKeyRotationFailureDialog(error),
-          icon: 'danger',
-          actions: buildFinishRenewalsDialogActions(
-            credentialId,
-            navigateToPendingRenewalCredential,
-          ),
-        })
-        return
-      }
-
-      showDialog({
-        ...readWalletKeyRotationFailureDialog(error),
-        icon: 'danger',
-        actions: [{ label: WALLET_HOME_COPY.cancel, variant: 'secondary' }],
+      await performWalletKeyRotationWithDialog({
+        showDialog,
+        onSuccess: refreshExpiryState,
+        navigateToCredential: navigateToPendingRenewalCredential,
       })
     } finally {
       setIsRotatingWalletKey(false)
@@ -172,10 +149,7 @@ export function WalletKeyExpiryHost() {
 
   return (
     <WalletKeyExpiredModal
-      visible={shouldShowWalletKeyExpiredModal({
-        lane,
-        isRotatingWalletKey,
-      })}
+      visible={showWalletKeyModal}
       isRotating={isRotatingWalletKey}
       onCreateNewKey={() => {
         void handleCreateNewWalletKey()
