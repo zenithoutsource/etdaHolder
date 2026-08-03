@@ -28,6 +28,10 @@ export function isPublicKeyPin(pin: string): boolean {
   return pin.startsWith(PUBLIC_KEY_PIN_PREFIX)
 }
 
+export function isLegacyCertificateResourcePin(pin: string): boolean {
+  return pin.length > 0 && !isPublicKeyPin(pin)
+}
+
 export function usesPublicKeyPinning(pins: string[]): boolean {
   return pins.length > 0 && pins.every(isPublicKeyPin)
 }

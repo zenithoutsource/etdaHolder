@@ -1,4 +1,4 @@
-import { createWalletAttestClient } from './walletAttestClient'
+import { createWalletAttestClient, resolveWalletProviderBaseUrl } from './walletAttestClient'
 
 const PUB_JWK: JsonWebKey = {
   kty: 'OKP',
@@ -8,9 +8,17 @@ const PUB_JWK: JsonWebKey = {
 
 describe('walletAttestClient', () => {
   const originalFetch = global.fetch
+  const originalProviderUrl = process.env.EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL
+  const originalWalletApiUrl = process.env.EXPO_PUBLIC_WALLET_API_BASE_URL
+  const originalDev = (global as { __DEV__?: boolean }).__DEV__
 
   afterEach(() => {
     global.fetch = originalFetch
+    if (originalProviderUrl === undefined) delete process.env.EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL
+    else process.env.EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL = originalProviderUrl
+    if (originalWalletApiUrl === undefined) delete process.env.EXPO_PUBLIC_WALLET_API_BASE_URL
+    else process.env.EXPO_PUBLIC_WALLET_API_BASE_URL = originalWalletApiUrl
+    ;(global as { __DEV__?: boolean }).__DEV__ = originalDev
   })
 
   test('requestAttestations posts JWK and parses WUA/WIA response', async () => {
@@ -52,5 +60,13 @@ describe('walletAttestClient', () => {
     await expect(client.requestAttestations({ pubKAttestJwk: PUB_JWK })).rejects.toThrow(
       'WalletAttestRequestFailed:400',
     )
+  })
+
+  test('resolveWalletProviderBaseUrl falls back to wallet API origin in release builds', () => {
+    delete process.env.EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL
+    process.env.EXPO_PUBLIC_WALLET_API_BASE_URL = 'https://wallet.zenithcomp.co.th:455'
+    ;(global as { __DEV__?: boolean }).__DEV__ = false
+
+    expect(resolveWalletProviderBaseUrl()).toBe('https://wallet.zenithcomp.co.th:455')
   })
 })

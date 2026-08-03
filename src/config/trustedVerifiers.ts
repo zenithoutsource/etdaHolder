@@ -45,13 +45,26 @@ function buildDidWebTrustedPartyFromEnv(input: {
   }
 }
 
+function shouldEmitRedirectUriVerifierTrust(env: Env, isDevelopment: boolean): boolean {
+  const verifierApiBaseUrl = normalizeBaseUrl(env.EXPO_PUBLIC_VERIFIER_API_BASE_URL)
+  if (!verifierApiBaseUrl) return false
+  if (isDevelopment) return true
+  if (env.EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST !== 'true') return false
+
+  try {
+    return new URL(verifierApiBaseUrl).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export function buildTrustedVerifiersFromEnv(
   env: Env = process.env,
   isDevelopment = __DEV__,
 ): TrustedVerifier[] {
   const verifiers: TrustedVerifier[] = []
   const verifierApiBaseUrl = normalizeBaseUrl(env.EXPO_PUBLIC_VERIFIER_API_BASE_URL)
-  if (isDevelopment && verifierApiBaseUrl) {
+  if (shouldEmitRedirectUriVerifierTrust(env, isDevelopment) && verifierApiBaseUrl) {
     verifiers.push({
       clientId: `redirect_uri:${verifierApiBaseUrl}/openid4vc/verify`,
       name: env.EXPO_PUBLIC_VERIFIER_NAME?.trim() || 'Verifier API',

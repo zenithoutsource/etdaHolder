@@ -19,7 +19,7 @@ describe('trustedVerifiers', () => {
     ])
   })
 
-  test('omits Verifier API redirect_uri allowlist outside development', () => {
+  test('omits Verifier API redirect_uri allowlist outside development by default', () => {
     expect(
       buildTrustedVerifiersFromEnv(
         {
@@ -29,6 +29,25 @@ describe('trustedVerifiers', () => {
         false,
       ),
     ).toEqual([])
+  })
+
+  test('allows HTTPS redirect_uri Verifier API trust outside development when explicitly enabled', () => {
+    expect(
+      buildTrustedVerifiersFromEnv(
+        {
+          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'https://verifier.zenithcomp.co.th:455/',
+          EXPO_PUBLIC_VERIFIER_NAME: 'Demo Verifier',
+          EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST: 'true',
+        },
+        false,
+      ),
+    ).toEqual([
+      {
+        clientId: 'redirect_uri:https://verifier.zenithcomp.co.th:455/openid4vc/verify',
+        name: 'Demo Verifier',
+        allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
+      },
+    ])
   })
 
   test('adds decentralized_identifier did:web verifier when env is configured', () => {
@@ -134,5 +153,15 @@ describe('trustedVerifiers', () => {
         false,
       ),
     ).toEqual({ includesRedirectUri: false, includesDidWeb: false })
+
+    expect(
+      readTrustedVerifierBuildPolicy(
+        {
+          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'https://verifier.zenithcomp.co.th:455/',
+          EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST: 'true',
+        },
+        false,
+      ),
+    ).toEqual({ includesRedirectUri: true, includesDidWeb: false })
   })
 })

@@ -73,8 +73,16 @@ function toUserMessage(message: string): string {
     return 'ไม่สามารถยืนยัน Wallet กับผู้ให้บริการได้ กรุณาลองใหม่อีกครั้ง'
   if (message.includes('DeviceIntegrityCompromised'))
     return 'ไม่สามารถใช้งาน Wallet บนอุปกรณ์ที่ผ่านการ Root หรือ Jailbreak ได้'
-  if (message.includes('WalletApiTransportSecurityRequired') || message.includes('WalletApiCertificatePinsRequired'))
+  if (message.includes('WalletApiTransportSecurityRequired'))
+    return 'Wallet Backend URL must use HTTPS in this build.'
+  if (message.includes('WalletApiCertificatePinsRequired'))
+    return 'Wallet Backend certificate pins are missing for this build. Rebuild with EXPO_PUBLIC_WALLET_API_PINNED_CERTS set.'
+  if (message.includes('WalletApiLegacyCertificatePinsRejected'))
+    return 'This build still uses legacy cert file pins (for example wallet-api). Rebuild with sha256/ public-key pins instead.'
+  if (message.includes('WalletApiPublicKeyPinsRequired'))
     return 'Wallet Backend security configuration is incomplete for this build.'
+  if (message.includes('MobileConfigInvalid'))
+    return 'Wallet build configuration is incomplete for this build.'
   return 'เกิดข้อผิดพลาดในการเริ่มต้น Wallet กรุณาลองใหม่อีกครั้ง'
 }
 

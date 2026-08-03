@@ -1,4 +1,5 @@
 import { readMobileRuntimeEndpoint } from '@/src/config/runtimeEndpoints'
+import { getConfiguredWalletApiBaseUrl } from '@/src/sdk/installWalletApiFetch'
 
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 
@@ -12,9 +13,10 @@ export type WalletAttestation = {
 
 export function resolveWalletProviderBaseUrl(): string {
   const override = process.env.EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL?.trim()
+  const defaultUrl = __DEV__ ? DEFAULT_WALLET_PROVIDER_BASE_URL : getConfiguredWalletApiBaseUrl()
   return readMobileRuntimeEndpoint(
     'WALLET_PROVIDER_BASE_URL',
-    override || (__DEV__ ? DEFAULT_WALLET_PROVIDER_BASE_URL : undefined),
+    override || defaultUrl,
     { requiredInRelease: true, allowHttpInDev: true },
   )
 }

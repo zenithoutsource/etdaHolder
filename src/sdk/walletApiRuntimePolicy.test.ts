@@ -31,7 +31,7 @@ describe('wallet API runtime policy', () => {
         pinnedCertificates: ['wallet-api-prod'],
         platformOS: 'android',
       }),
-    ).toThrow('WalletApiPublicKeyPinsRequired')
+    ).toThrow('WalletApiLegacyCertificatePinsRejected')
   })
 
   test('blocks HTTPS without configured pins in non-development native runtimes', () => {

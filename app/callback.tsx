@@ -34,7 +34,6 @@ export default function IssuanceCallbackRoute() {
   const router = useRouter()
   const incomingUrl = Linking.useURL()
   const searchParams = useLocalSearchParams()
-  const setIncomingDeeplinkUri = useDeeplinkStore((s) => s.setIncomingDeeplinkUri)
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
   const isPinVerified = useAuthStore((s) => s.isPinVerified)
   const handledRef = useRef(false)
@@ -98,7 +97,7 @@ export default function IssuanceCallbackRoute() {
       return
     }
 
-    setIncomingDeeplinkUri(parsed.uri)
+    setPendingDeeplinkUri(parsed.uri)
     logWalletStep('deeplink', 'callback-routed', {
       kind: parsed.kind,
       linking: describeIssuanceCallbackForLog(incomingUrl),
@@ -117,7 +116,6 @@ export default function IssuanceCallbackRoute() {
     isPinVerified,
     router,
     searchParams,
-    setIncomingDeeplinkUri,
     setPendingDeeplinkUri,
   ])
 
