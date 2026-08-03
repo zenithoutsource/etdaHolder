@@ -3,6 +3,29 @@ import { parseClientId } from '../services/vp/clientIdScheme'
 
 type Env = Record<string, string | undefined>
 
+// Expo only inlines EXPO_PUBLIC_* values that use direct process.env dot access.
+// Keep this snapshot explicit so release bundles receive the configured trust policy.
+const BUILD_ENV: Env = {
+  EXPO_PUBLIC_VERIFIER_API_BASE_URL: process.env.EXPO_PUBLIC_VERIFIER_API_BASE_URL,
+  EXPO_PUBLIC_VERIFIER_NAME: process.env.EXPO_PUBLIC_VERIFIER_NAME,
+  EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST:
+    process.env.EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST,
+  EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID,
+  EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN:
+    process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN,
+  EXPO_PUBLIC_VERIFIER_DID_WEB_NAME: process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_NAME,
+  EXPO_PUBLIC_VERIFIER_DID_WEB_JWK: process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_JWK,
+  EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID:
+    process.env.EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID,
+  EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_RESPONSE_ORIGIN:
+    process.env.EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_RESPONSE_ORIGIN,
+  EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_NAME:
+    process.env.EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_NAME,
+  EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_JWK:
+    process.env.EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_JWK,
+  EXPO_PUBLIC_WALLET_API_BASE_URL: process.env.EXPO_PUBLIC_WALLET_API_BASE_URL,
+}
+
 function readVerificationJwk(env: Env, key: string): Record<string, unknown> | undefined {
   const raw = env[key]?.trim()
   if (!raw) return undefined
@@ -59,7 +82,7 @@ function shouldEmitRedirectUriVerifierTrust(env: Env, isDevelopment: boolean): b
 }
 
 export function buildTrustedVerifiersFromEnv(
-  env: Env = process.env,
+  env: Env = BUILD_ENV,
   isDevelopment = __DEV__,
 ): TrustedVerifier[] {
   const verifiers: TrustedVerifier[] = []
@@ -106,7 +129,7 @@ export function buildTrustedVerifiersFromEnv(
 }
 
 export function readTrustedVerifierBuildPolicy(
-  env: Env = process.env,
+  env: Env = BUILD_ENV,
   isDevelopment = __DEV__,
 ): { includesRedirectUri: boolean; includesDidWeb: boolean } {
   const verifiers = buildTrustedVerifiersFromEnv(env, isDevelopment)
@@ -119,13 +142,13 @@ export function readTrustedVerifierBuildPolicy(
   }
 }
 
-export function isIssuerOid4VpClientId(clientId: string, env: Env = process.env): boolean {
+export function isIssuerOid4VpClientId(clientId: string, env: Env = BUILD_ENV): boolean {
   const issuer = readIssuerOid4VpTrustFromEnv(env)
   if (!issuer) return false
   return clientIdsEquivalent(clientId, issuer.clientId)
 }
 
-export function isIssuerOid4VpResponseUri(responseUri: string, env: Env = process.env): boolean {
+export function isIssuerOid4VpResponseUri(responseUri: string, env: Env = BUILD_ENV): boolean {
   const issuer = readIssuerOid4VpTrustFromEnv(env)
   if (!issuer) return false
 

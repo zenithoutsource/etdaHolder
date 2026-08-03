@@ -1,5 +1,16 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-03 (preview OID4VP Verifier trust env inlining)
+
+- Fixed release/preview OID4VP trust configuration being absent at runtime:
+  Expo production bundles only inline direct `process.env.EXPO_PUBLIC_*` access,
+  while `trustedVerifiers.ts` previously passed the whole `process.env` object
+  through dynamic configuration helpers.
+- Added an explicit build-time env snapshot for Verifier and Issuer OID4VP trust
+  values and a production Babel-transform regression test proving every value is
+  embedded in the Android bundle.
+- Preview EAS config now explicitly includes the HTTPS Verifier API URL and name.
+
 ### Session 2026-07-31 (Wallet Backend public-key SSL pinning)
 
 - Fixed preview-build crash after biometric unlock (`SSLContext is not initialized`)
