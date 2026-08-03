@@ -16,16 +16,15 @@ jest.mock('expo-camera', () => {
   throw new Error('CredentialOfferClaimScreen must not import expo-camera')
 })
 
-const mockRouterReplace = jest.fn()
-const mockRouterBack = jest.fn()
-const mockRouterCanGoBack = jest.fn(() => true)
+const mockRouterDismissTo = jest.fn()
 let mockRouteFocused = true
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
-    replace: mockRouterReplace,
-    back: mockRouterBack,
-    canGoBack: mockRouterCanGoBack,
+    dismissTo: mockRouterDismissTo,
+  }),
+  useNavigation: () => ({
+    getParent: () => null,
   }),
   useFocusEffect: (callback: () => void | (() => void)) => {
     const { useEffect } = jest.requireActual<typeof import('react')>('react')
@@ -89,8 +88,6 @@ const useUrlMock = linkingMock.useURL
 describe('CredentialOfferClaimScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    mockRouterReplace.mockClear()
-    mockRouterCanGoBack.mockReturnValue(true)
     mockRouteFocused = true
     linkingMock.getInitialURL.mockResolvedValue(null)
     useUrlMock.mockReturnValue(null)
@@ -206,11 +203,14 @@ describe('CredentialOfferClaimScreen', () => {
     expect(useDeeplinkStore.getState().activeUri).toBe(offerUri)
 
     act(() => {
-      expect(hardwareBackHandler?.()).toBe(false)
+      expect(hardwareBackHandler?.()).toBe(true)
+      expect(hardwareBackHandler?.()).toBe(true)
     })
 
     expect(useDeeplinkStore.getState().activeUri).toBeNull()
     expect(useDeeplinkStore.getState().dismissedUri).toBe(offerUri)
+    expect(mockRouterDismissTo).toHaveBeenCalledWith('/(tabs)')
+    expect(mockRouterDismissTo).toHaveBeenCalledTimes(1)
   })
 
   it('does not register Android Back while the claim route is unfocused', () => {
@@ -393,7 +393,7 @@ describe('CredentialOfferClaimScreen', () => {
     fireEvent.press(screen.getByText('Back to Wallet'))
 
     expect(useDeeplinkStore.getState().dismissedUri).toBe(offerUri)
-    expect(mockRouterBack).toHaveBeenCalled()
+    expect(mockRouterDismissTo).toHaveBeenCalledWith('/(tabs)')
   })
 
   it('reopens a fresh offer after the user dismisses the claim screen and requests again', async () => {
@@ -484,13 +484,12 @@ describe('CredentialOfferClaimScreen', () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer'
     useUrlMock.mockReturnValue(offerUri)
     resolveOfferMock.mockRejectedValue(new Error('Issuer offline'))
-    mockRouterCanGoBack.mockReturnValue(false)
 
     render(<CredentialOfferClaimScreen />)
 
     await screen.findByText('Back to Wallet')
     fireEvent.press(screen.getByText('Back to Wallet'))
 
-    expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)')
+    expect(mockRouterDismissTo).toHaveBeenCalledWith('/(tabs)')
   })
 })

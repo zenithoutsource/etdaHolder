@@ -1,7 +1,7 @@
 import * as Linking from 'expo-linking'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, BackHandler, Image, ScrollView, Text, TextInput, View, type ImageSourcePropType } from 'react-native'
+import { ActivityIndicator, Image, ScrollView, Text, TextInput, View, type ImageSourcePropType } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../components/AppButton'
@@ -15,7 +15,8 @@ import { ThaiIdSuccessConfirmationPanel } from '../components/ThaiIdSuccessConfi
 import { TranscriptPreviewPanel } from '../components/TranscriptPreviewPanel'
 import { WalletHeader } from '../components/WalletHeader'
 
-
+import { useAndroidBackNavigation } from '../hooks/useAndroidBackNavigation'
+import { useReturnToWallet } from '../hooks/useReturnToWallet'
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
 import {
   canRequestCredentialType,
@@ -113,6 +114,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   const expiredCleanupPromptedRef = useRef<string | null>(null)
   const lastStartedOfferRef = useRef<string | null>(null)
   const missingOfferCheckRef = useRef(0)
+  const returnToWallet = useReturnToWallet(router)
 
   useEffect(() => {
     if (phase.tag !== 'success') return
@@ -395,26 +397,13 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     if (uriToDismiss) setDismissedDeeplinkUri(uriToDismiss)
   }, [incomingUrl, setDismissedDeeplinkUri])
 
-  useFocusEffect(
-    useCallback(() => {
-      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-        dismissActiveOffer()
-        return false
-      })
-
-      return () => subscription.remove()
-    }, [dismissActiveOffer]),
-  )
-
-  function resetToWalletHome() {
+  const resetToWalletHome = useCallback(() => {
     dismissActiveOffer()
     onClose?.()
-    if (router.canGoBack()) {
-      router.back()
-    } else {
-      router.replace('/(tabs)')
-    }
-  }
+    returnToWallet()
+  }, [dismissActiveOffer, onClose, returnToWallet])
+
+  const exitFlow = useAndroidBackNavigation(resetToWalletHome)
 
   function handleTxCodeSubmit(offer: ResolvedCredentialOffer) {
     logWalletStep('deeplink', 'tx-code-submit', {
@@ -460,7 +449,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     if (phase.record.type === 'DLTDrivingLicence') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-          <WalletHeader onBack={resetToWalletHome} />
+          <WalletHeader onBack={exitFlow} />
           <DrivingLicencePreviewPanel
             record={phase.record}
             onAccept={() => {
@@ -474,7 +463,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     if (phase.record.type === 'ThaiNationalID') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-          <WalletHeader onBack={resetToWalletHome} />
+          <WalletHeader onBack={exitFlow} />
           <ThaiIdSuccessConfirmationPanel
             record={phase.record}
             onConfirm={() =>
@@ -492,7 +481,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     if (phase.record.type === 'ChulalongkornUniversityTranscript') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-          <WalletHeader onBack={resetToWalletHome} />
+          <WalletHeader onBack={exitFlow} />
           <TranscriptPreviewPanel
             record={phase.record}
             profileImage={credentialImages.transcript}
@@ -508,7 +497,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-        <WalletHeader onBack={resetToWalletHome} />
+        <WalletHeader onBack={exitFlow} />
         <View className="flex-1 bg-surface px-4 pt-6">
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
             <View
@@ -550,7 +539,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   if (phase.tag === 'receive') {
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-        <WalletHeader onBack={resetToWalletHome} />
+        <WalletHeader onBack={exitFlow} />
         <ThaiIdReceivePanel
           record={phase.record}
           onConfirm={() => {
@@ -578,7 +567,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-        <WalletHeader onBack={resetToWalletHome} />
+        <WalletHeader onBack={exitFlow} />
         <View className="flex-1 bg-surface px-4 pt-6">
           <View className="rounded-lg bg-white p-6">
             <Text className="text-[16px] font-extrabold text-navy-deep">Transaction code</Text>
@@ -635,7 +624,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   if (phase.tag === 'success') {
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-        <WalletHeader onBack={resetToWalletHome} />
+        <WalletHeader onBack={exitFlow} />
         <ScanSuccessPanel record={phase.record} />
       </SafeAreaView>
     )
@@ -645,7 +634,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     if (hasIncomingPendingOffer) {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-          <WalletHeader onBack={resetToWalletHome} />
+          <WalletHeader onBack={exitFlow} />
           <View className="flex-1 items-center justify-center bg-surface-soft p-6">
             <ActivityIndicator color={THEME.navy} />
             <Text className="mt-3 text-center text-[15px] font-semibold text-navy-deep">Opening Credential Offer</Text>
@@ -658,7 +647,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
         <Text className="mb-5 text-center text-[14px] text-red-600">{phase.message}</Text>
-        <AppButton variant="solid-block" label="Back to Wallet" onPress={resetToWalletHome} className="rounded-xl px-[18px] py-[14px]" textClassName="text-[15px] font-semibold" />
+        <AppButton variant="solid-block" label="Back to Wallet" onPress={exitFlow} className="rounded-xl px-[18px] py-[14px]" textClassName="text-[15px] font-semibold" />
       </SafeAreaView>
     )
   }
@@ -674,7 +663,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-      <WalletHeader onBack={resetToWalletHome} />
+      <WalletHeader onBack={exitFlow} />
       <View className="flex-1 items-center justify-center bg-surface-soft p-6">
         <ActivityIndicator color={THEME.navy} />
         <Text className="mt-3 text-center text-[15px] font-semibold text-navy-deep">{loadingLabel}</Text>

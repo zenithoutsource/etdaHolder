@@ -1,5 +1,16 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-03 (Android flow Back navigation)
+
+- Android system Back from credential receive and document presentation flows is
+  now focus-scoped, consumed, and guarded against repeated presses.
+- Exiting a flow resets the root navigation stack to the Wallet tab, preventing
+  stale receive/share screens from reappearing underneath a success screen.
+- Verification: focused navigation tests pass (21 tests) and root lint exits 0
+  with existing warnings. Root TypeScript remains blocked by pre-existing
+  callback-route, Keychain test-mock, OID4VCI offer-cast, and disclosure-policy
+  diagnostics outside this slice.
+
 ### Session 2026-08-03 (preview OID4VP Verifier trust env inlining)
 
 - Fixed release/preview OID4VP trust configuration being absent at runtime:

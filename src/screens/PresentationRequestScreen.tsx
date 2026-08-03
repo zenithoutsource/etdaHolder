@@ -6,6 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Oid4VpDisclosureFlow } from '../components/Oid4VpDisclosureFlow'
 import type { IssuerPortalCredentialType } from '../config/issuerPortalUrls'
+import { useAndroidBackNavigation } from '../hooks/useAndroidBackNavigation'
+import { useReturnToWallet } from '../hooks/useReturnToWallet'
 import { useScreenCaptureGuard } from '../hooks/useScreenCaptureGuard'
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
 import { openCredentialRequestPortal } from '../services/credentials/openCredentialRequestPortal'
@@ -23,6 +25,7 @@ type Props = {
 export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   useScreenCaptureGuard()
   const router = useRouter()
+  const returnToWallet = useReturnToWallet(router)
   const { credentials } = useStoredCredentials()
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
@@ -113,13 +116,15 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     activeRequestUriRef.current = null
     lastStartedRequestRef.current = null
     setRequestUri(null)
-    router.replace('/(tabs)')
-  }, [router, setDismissedDeeplinkUri])
+    returnToWallet()
+  }, [returnToWallet, setDismissedDeeplinkUri])
+
+  const exitFlow = useAndroidBackNavigation(finish)
 
   const requestCredential = useCallback((credentialType: IssuerPortalCredentialType) => {
-    finish()
+    exitFlow()
     void openCredentialRequestPortal(credentialType)
-  }, [finish])
+  }, [exitFlow])
 
   if (missingRequestError) {
     return (
@@ -146,8 +151,8 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
       logScope="presentation-request"
       presentationOrigin="scanned-verifier-qr"
       onRequestCredential={requestCredential}
-      onDone={finish}
-      onCancel={finish}
+      onDone={exitFlow}
+      onCancel={exitFlow}
     />
   )
 }

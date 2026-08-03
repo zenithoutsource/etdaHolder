@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -12,6 +12,8 @@ import {
   getReaderProfileForDocumentType,
   listMdocFieldKeysFromProfile,
 } from '@/src/config/readerProfiles'
+import { useAndroidBackNavigation } from '@/src/hooks/useAndroidBackNavigation'
+import { useReturnToWallet } from '@/src/hooks/useReturnToWallet'
 import { useStoredCredentials } from '@/src/hooks/useStoredCredentials'
 import { isCredentialDocumentExpired } from '@/src/services/credentials/credentialDocumentExpiry'
 import { WALLET_HOME_COPY } from '@/src/services/credentials/walletHomeCopy'
@@ -20,6 +22,7 @@ import { useProximityStore } from '@/src/store/proximityStore'
 
 export default function PresentScreen() {
   const router = useRouter()
+  const returnToWallet = useReturnToWallet(router)
   const { credentialId } = useLocalSearchParams<{ credentialId?: string }>()
   const { credentials } = useStoredCredentials()
   const credential = credentials.find((record) => record.id === credentialId)
@@ -64,16 +67,18 @@ export default function PresentScreen() {
 
   useEffect(() => () => reset(), [reset])
 
-  function handleDone() {
+  const handleDone = useCallback(() => {
     reset()
-    router.back()
-  }
+    returnToWallet()
+  }, [reset, returnToWallet])
+
+  const exitFlow = useAndroidBackNavigation(handleDone)
 
   const approvedFieldKeys = readerProfile ? listMdocFieldKeysFromProfile(readerProfile) : []
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
-      <WalletHeader title="NFC" onBack={handleDone} />
+      <WalletHeader title="NFC" onBack={exitFlow} />
       <ScrollView className="flex-1 bg-surface" contentContainerClassName="px-4 py-6">
         {credential ? (
           <Text className="mb-4 text-center text-sm font-medium text-ink">
@@ -87,7 +92,7 @@ export default function PresentScreen() {
               {WALLET_HOME_COPY.documentExpiredMessage}
             </Text>
             <View className="mt-4 items-center">
-              <AppButton variant="solid-block" label="Back" onPress={handleDone} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
+              <AppButton variant="solid-block" label="Back" onPress={exitFlow} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
             </View>
           </View>
         ) : null}
@@ -98,7 +103,7 @@ export default function PresentScreen() {
               No mDOC credential available for proximity presentation
             </Text>
             <View className="mt-4 items-center">
-              <AppButton variant="solid-block" label="Back" onPress={handleDone} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
+              <AppButton variant="solid-block" label="Back" onPress={exitFlow} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
             </View>
           </View>
         ) : null}
@@ -120,11 +125,11 @@ export default function PresentScreen() {
         ) : null}
 
         {status === 'approved' || status === 'hce-armed' || status === 'engaged' ? (
-          <WaitingForTapPanel deviceEngagementUri={deviceEngagementUri} onCancel={handleDone} />
+          <WaitingForTapPanel deviceEngagementUri={deviceEngagementUri} onCancel={exitFlow} />
         ) : null}
 
         {status === 'complete' && sharedFields ? (
-          <PresentationResultPanel sharedFields={sharedFields} onDone={handleDone} />
+          <PresentationResultPanel sharedFields={sharedFields} onDone={exitFlow} />
         ) : null}
 
         {status === 'error' ? (

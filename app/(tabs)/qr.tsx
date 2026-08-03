@@ -7,6 +7,8 @@ import { AppButton } from '../../src/components/AppButton'
 import { Oid4VpDisclosureFlow } from '../../src/components/Oid4VpDisclosureFlow'
 import { WalletHeader } from '../../src/components/WalletHeader'
 import { WalletInitiatedVpQrPanel } from '../../src/components/WalletInitiatedVpQrPanel'
+import { useAndroidBackNavigation } from '../../src/hooks/useAndroidBackNavigation'
+import { useReturnToWallet } from '../../src/hooks/useReturnToWallet'
 import { useStoredCredentials } from '../../src/hooks/useStoredCredentials'
 import { useWalletInitiatedVpQrSession } from '../../src/hooks/useWalletInitiatedVpQrSession'
 import { readPidGateStatus } from '../../src/services/credentials/credentialGuard'
@@ -22,11 +24,15 @@ type ResolverStatus = 'loading' | 'ready' | 'missing'
 
 export default function MyQrScreen() {
   const router = useRouter()
+  const returnToWallet = useReturnToWallet(router)
   const { brokerSessionId, credentialId } = useLocalSearchParams<{
     brokerSessionId?: string
     credentialId?: string
   }>()
   const { status, credentials } = useStoredCredentials()
+  const handleAndroidBack = useCallback(() => {
+    returnToWallet()
+  }, [returnToWallet])
   const [isFocused, setIsFocused] = useState(false)
   const [presentationCredential, setPresentationCredential] = useState<VerifiableCredentialRecord | undefined>()
   const [resolverStatus, setResolverStatus] = useState<ResolverStatus>('loading')
@@ -37,6 +43,8 @@ export default function MyQrScreen() {
       return () => setIsFocused(false)
     }, []),
   )
+
+  useAndroidBackNavigation(handleAndroidBack)
 
   useEffect(() => {
     if (status !== 'ready') {

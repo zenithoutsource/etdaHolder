@@ -9,14 +9,23 @@ const mockReact = React
 const mockText = Text
 const mockPressable = Pressable
 const mockRouterReplace = jest.fn()
+const mockRouterDismissTo = jest.fn()
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     replace: mockRouterReplace,
+    dismissTo: mockRouterDismissTo,
     push: jest.fn(),
     canGoBack: () => false,
     back: jest.fn(),
   }),
+  useNavigation: () => ({
+    getParent: () => null,
+  }),
+  useFocusEffect: (callback: () => void | (() => void)) => {
+    const { useEffect } = jest.requireActual<typeof import('react')>('react')
+    useEffect(() => callback(), [callback])
+  },
 }))
 
 jest.mock('expo-linking', () => ({
