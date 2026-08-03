@@ -166,4 +166,25 @@ describe('deeplinkStore', () => {
       hasWalletPin: true,
     })).toBe('/(tabs)/credential-offer')
   })
+
+  it('reopens a previously dismissed VP URI on fresh incoming event and bumps vpGeneration', () => {
+    const requestUri = 'openid4vp://?client_id=did%3Aweb%3Averifier.example&response_type=vp_token&state=a'
+
+    useDeeplinkStore.getState().setPendingDeeplinkUri(requestUri)
+    expect(useDeeplinkStore.getState().consumePendingDeeplinkUri()).toBe(requestUri)
+    useDeeplinkStore.getState().setDismissedDeeplinkUri(requestUri)
+
+    useDeeplinkStore.getState().setIncomingDeeplinkUri(requestUri)
+
+    expect(useDeeplinkStore.getState().dismissedUri).toBeNull()
+    expect(useDeeplinkStore.getState().pendingUri).toBe(requestUri)
+    expect(useDeeplinkStore.getState().vpGeneration).toBe(2)
+    expect(readPendingPresentationRoute({
+      pendingUri: useDeeplinkStore.getState().pendingUri,
+      dismissedUri: useDeeplinkStore.getState().dismissedUri,
+      isAuthenticated: true,
+      platform: 'android',
+      hasWalletPin: true,
+    })).toBe('/(tabs)/presentation-request')
+  })
 })

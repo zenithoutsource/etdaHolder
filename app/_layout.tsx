@@ -98,6 +98,7 @@ export default function RootLayout() {
   const isPinVerified = useAuthStore((s) => s.isPinVerified);
   const isAuthenticatedRef = useRef(isAuthenticated);
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri);
+  const setIncomingDeeplinkUri = useDeeplinkStore((s) => s.setIncomingDeeplinkUri);
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri);
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri);
   const router = useRouter();
@@ -485,10 +486,13 @@ export default function RootLayout() {
 
   const routeDeeplink = useCallback((url: string, { store = false }: { store?: boolean } = {}) => {
     if (!isSupportedWalletDeeplink(url)) return;
+
+    // Store before the dismissed check so a fresh warm event can clear a
+    // previously dismissed same URI (setPending/setIncoming reopen path).
+    if (store) setPendingDeeplinkUri(url);
+
     const dismissed = useDeeplinkStore.getState().dismissedUri;
     if (url === dismissed) return;
-
-    if (store) setPendingDeeplinkUri(url);
 
     const pinExists = Platform.OS === 'web' || hasWalletPin();
     const pinVerified = useAuthStore.getState().isPinVerified;
@@ -549,11 +553,25 @@ export default function RootLayout() {
     const subscription = Linking.addEventListener('url', ({ url }) => {
       const routeUri = resolveRouteUri(url);
       if (!routeUri) return;
+      // Warm-app events must hit the store so vpGeneration/offerGeneration bump
+      // and PresentationRequestScreen / CredentialOfferClaimScreen remount.
+      // setIncoming also clears a matching dismissedUri for same-URI reopen.
+      setIncomingDeeplinkUri(routeUri);
       routeDeeplink(routeUri);
     });
 
     return () => { subscription.remove(); };
-  }, [startupState.status, incomingUrl, isAuthenticated, isPinVerified, currentSegment, router, routeDeeplink, setPendingDeeplinkUri]);
+  }, [
+    startupState.status,
+    incomingUrl,
+    isAuthenticated,
+    isPinVerified,
+    currentSegment,
+    router,
+    routeDeeplink,
+    setPendingDeeplinkUri,
+    setIncomingDeeplinkUri,
+  ]);
 
   useEffect(() => {
     if (startupState.status !== 'ready' || !pendingDeeplinkUri || !isPinVerified) {
