@@ -17,6 +17,8 @@
         "EXPO_PUBLIC_BROKER_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_VERIFIER_API_BASE_URL": "https://verifier.zenithcomp.co.th:455",
         "EXPO_PUBLIC_VERIFIER_NAME": "Verifier API",
+        "EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE": "raw",
+        "EXPO_PUBLIC_VERIFIER_KB_AUD": "response_uri",
         "EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST": "true"
       }
     },

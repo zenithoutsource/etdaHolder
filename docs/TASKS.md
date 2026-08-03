@@ -11,6 +11,17 @@
   callback-route, Keychain test-mock, OID4VCI offer-cast, and disclosure-policy
   diagnostics outside this slice.
 
+### Session 2026-08-03 (preview Verifier SD-JWT response compatibility)
+
+- Fixed preview OID4VP submissions being rejected after consent: release builds
+  ignored the explicitly configured Verifier compatibility values and always
+  submitted `object_array` DCQL envelopes with KB-JWT `aud=client_id`.
+- `EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE` and
+  `EXPO_PUBLIC_VERIFIER_KB_AUD` now apply whenever explicitly configured,
+  including preview builds; preview EAS config pins the current Verifier
+  contract to raw SD-JWT submission and `response_uri` audience.
+- Verification: runtime flag, dual-format token, and presentation tests pass.
+
 ### Session 2026-08-03 (preview OID4VP Verifier trust env inlining)
 
 - Fixed release/preview OID4VP trust configuration being absent at runtime:
