@@ -1341,6 +1341,41 @@ test('acquireCredentialRecord retries once with a refreshed c_nonce on invalid_p
   expect(signedNonces).toEqual(['nonce', 'fresh-nonce'])
 })
 
+test('acquireCredentialRecord uses one proof signing session for retry without a second auth call', async () => {
+  const resolved = await contract()
+  const sessionSignProof = jest.fn(async (cNonce: string) => `proof-${cNonce}.jwt`)
+  const dependencySignProof = jest.fn(async (cNonce: string) => `dependency-proof-${cNonce}.jwt`)
+  const close = jest.fn()
+  let requestCredentialCalls = 0
+
+  await acquireCredentialRecord(resolved, {
+    tx_code: '123456',
+    proofSession: {
+      signProof: sessionSignProof,
+      close,
+    },
+    dependencies: {
+      acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+      signProof: dependencySignProof,
+      requestCredential: async ({ proof }) => {
+        requestCredentialCalls += 1
+        if (requestCredentialCalls === 1) {
+          throw new InvalidProofError('CredentialRequestFailed: invalid_proof', 'fresh-nonce')
+        }
+        expect(proof).toBe('proof-fresh-nonce.jwt')
+        return unsignedJwt({ vc: { type: ['VerifiableCredential', 'ThaiNationalID'] } })
+      },
+      getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+    },
+  })
+
+  expect(sessionSignProof).toHaveBeenCalledTimes(2)
+  expect(sessionSignProof).toHaveBeenNthCalledWith(1, 'nonce', resolved.issuer, { keyBinding: 'did-kid' })
+  expect(sessionSignProof).toHaveBeenNthCalledWith(2, 'fresh-nonce', resolved.issuer, { keyBinding: 'did-kid' })
+  expect(dependencySignProof).not.toHaveBeenCalled()
+  expect(close).not.toHaveBeenCalled()
+})
+
 describe('readMdocCredentialFromResponse', () => {
   test('reads OID4VCI 1.0 credentials array mDOC response', () => {
     expect(

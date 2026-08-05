@@ -107,3 +107,25 @@ export function isSameKid(actual: string, expected: string): boolean {
   const expectedDid = expected.split('#')[0]
   return actual === expected || actual === expectedDid
 }
+
+export function formatWalletHolderBindingHint(
+  holderJwk?: Record<string, unknown>,
+  holderKid?: string,
+): string {
+  if (holderKid) return holderKid.split('#')[0] ?? holderKid
+  const x = readString(holderJwk?.x)
+  const crv = readString(holderJwk?.crv)
+  if (x && crv) return `cnf.jwk ${crv} x=${x}`
+  return 'wallet signing key'
+}
+
+export function formatCredentialCnfHint(
+  cnfJwk?: Record<string, unknown>,
+  cnfKid?: string,
+): string {
+  if (cnfKid) return `cnf.kid=${cnfKid}`
+  const x = readString(cnfJwk?.x)
+  const crv = readString(cnfJwk?.crv)
+  if (x && crv) return `cnf.jwk ${crv} x=${x}`
+  return 'cnf missing'
+}

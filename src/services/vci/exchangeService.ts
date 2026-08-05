@@ -21,6 +21,8 @@ import {
     isRecord,
     isSameJwk,
     isSameKid,
+    formatWalletHolderBindingHint,
+    formatCredentialCnfHint,
     readRecord,
     readString,
     toErrorMessage,
@@ -38,11 +40,14 @@ import { notifyCredentialsChanged } from '../credentials/storedCredentials'
 import {
     bindPendingKeyToCredential,
     createPendingCredentialKey,
+    discardPendingCredentialKey,
     getCredentialHolderDid as getPerCredentialHolderDid,
 } from '../crypto/credentialSigningKey'
 import {
+    createProofSigningSession as defaultCreateProofSigningSession,
     signProof as defaultSignProof,
     getHolderDid,
+    type ProofSigningSession,
     type SignProofOptions,
 } from '../crypto/crypto'
 import {
@@ -140,6 +145,7 @@ export type AcquireAccessTokenInput = {
   resolvedOffer: ResolvedCredentialOffer
   tx_code?: string
   authorizationCodeExchange?: AuthorizationCodeExchangeInput
+  signal?: AbortSignal
 }
 
 export type AcquireAccessTokenResult = {
@@ -154,12 +160,14 @@ export type RequestCredentialInput = {
   proof: string
   credentialIdentifier?: string
   walletAttestations?: { wua: string; wia: string }
+  signal?: AbortSignal
 }
 
 export type ClaimCredentialDependencies = {
   acquireAccessToken: (input: AcquireAccessTokenInput) => Promise<AcquireAccessTokenResult>
   requestCredential: (input: RequestCredentialInput) => Promise<string>
   signProof: SignProof
+  createProofSigningSession?: (credentialKeyId?: string) => Promise<ProofSigningSession>
   getCredentialStorage: () => CredentialStorage
   /** Optional fetch for Issuer did:web resolve on credential receive (P2 steps 29–31). */
   fetchImpl?: typeof fetch
@@ -168,10 +176,16 @@ export type ClaimCredentialDependencies = {
 export type ClaimCredentialOptions = {
   tx_code?: string
   dependencies?: Partial<ClaimCredentialDependencies>
+  /** Reuse one authenticated proof-signing session across related requests. */
+  proofSession?: ProofSigningSession
+  /** Reports a fresh c_nonce received while retrying an invalid proof. */
+  onCNonceUpdated?: (cNonce: string) => void
   /** Reuse a pre-authorized access token (dual-format second credential request). */
   reuseToken?: AcquireAccessTokenResult
   /** Authorization Code grant exchange (same-device issuance). */
   authorizationCodeExchange?: AuthorizationCodeExchangeInput
+  /** Cancels an in-flight acquisition without retaining its pending key. */
+  signal?: AbortSignal
 }
 
 export type AuthorizationCodeExchangeInput = {
@@ -185,6 +199,8 @@ export type AuthorizationCodeExchangeInput = {
 export type AcquireCredentialRecordOptions = ClaimCredentialOptions & {
   /** Pending credential key id created by claimCredential when v2 crypto is enabled. */
   pendingCredentialKeyId?: string
+  /** Keep a shared dual-format pending key available for the next format request. */
+  deferCredentialKeyBinding?: boolean
 }
 
 export type BackendSyncResult = {
@@ -274,7 +290,7 @@ export async function resolveAuthorizationCodeIssuance(input: {
       },
       supportedFlows: ['authorization_code'],
       version: 1,
-    } as CredentialOfferRequestWithBaseUrl,
+    } as unknown as CredentialOfferRequestWithBaseUrl,
     issuerMetadata,
     issuerDisplay: toCredentialDisplay(issuerMetadata.display),
     credentialConfigurations,
@@ -380,122 +396,224 @@ export async function acquireCredentialRecord(
     reuseToken: Boolean(options.reuseToken),
   })
   const token = options.reuseToken
-    ?? await dependencies.acquireAccessToken({
-      resolvedOffer,
-      tx_code: options.tx_code,
-      authorizationCodeExchange: options.authorizationCodeExchange,
-    })
+    ?? await awaitCredentialAcquisition(
+      Promise.resolve().then(() => dependencies.acquireAccessToken({
+        resolvedOffer,
+        tx_code: options.tx_code,
+        authorizationCodeExchange: options.authorizationCodeExchange,
+        signal: options.signal,
+      })),
+      options.signal,
+    )
+  if (!token) {
+    const error = new Error('CredentialTokenExchangeFailed: token response was empty')
+    logWalletError('oid4vci', 'access-token-empty', error, { issuer: resolvedOffer.issuer })
+    throw error
+  }
   logWalletStep('oid4vci', 'access-token-acquired', {
     issuer: resolvedOffer.issuer,
     cNoncePresent: Boolean(token.cNonce),
     credentialIdentifierPresent: Boolean(token.credentialIdentifier),
     reused: Boolean(options.reuseToken),
   })
+  throwIfCredentialAcquisitionAborted(options.signal)
   const proofKeyBinding = readProofKeyBinding(resolvedOffer.credentialConfigurations[0])
-  let pendingCredentialKeyId = options.pendingCredentialKeyId
+  let pendingCredentialKeyId =
+    options.pendingCredentialKeyId ??
+    (isWalletCryptoV2Enabled() ? options.proofSession?.credentialKeyId : undefined)
+  let ownsPendingCredentialKey = false
   if (!pendingCredentialKeyId && isWalletCryptoV2Enabled()) {
     pendingCredentialKeyId = await createPendingCredentialKey()
+    ownsPendingCredentialKey = true
   }
   const walletAttestations = readWalletAttestationsForCredentialRequest()
-  const signProofForClaim = async (
-    nonce: string,
-    audience: string,
-    signOptions: SignProofOptions = {},
-  ) =>
-    dependencies.signProof(nonce, audience, {
-      ...signOptions,
-      ...(pendingCredentialKeyId && isWalletCryptoV2Enabled()
-        ? { credentialKeyId: pendingCredentialKeyId }
-        : {}),
-    })
-
-  let proof = await signProofForClaim(token.cNonce, resolvedOffer.issuer, {
-    keyBinding: proofKeyBinding,
-  })
-  logWalletStep('oid4vci', 'proof-signed', {
-    issuer: resolvedOffer.issuer,
-    popBytes: proof.length,
-    keyBinding: proofKeyBinding,
-  })
-  let rawVc: string
+  const hasCustomSignProof = Object.prototype.hasOwnProperty.call(options.dependencies ?? {}, 'signProof')
+  let ownedProofSession: ProofSigningSession | undefined
   try {
-    const requestConfiguration = resolvedOffer.credentialConfigurations[0]
-    logWalletStep('oid4vci', 'credential-request-start', {
+    throwIfCredentialAcquisitionAborted(options.signal)
+    ownedProofSession =
+      options.proofSession || hasCustomSignProof
+        ? undefined
+        : await dependencies.createProofSigningSession?.(
+            pendingCredentialKeyId && isWalletCryptoV2Enabled()
+              ? pendingCredentialKeyId
+              : undefined,
+          )
+  } catch (error) {
+    if (pendingCredentialKeyId && ownsPendingCredentialKey) {
+      await discardPendingCredentialKey(pendingCredentialKeyId)
+    }
+    throw error
+  }
+  const proofSession = options.proofSession ?? ownedProofSession
+
+  try {
+    throwIfCredentialAcquisitionAborted(options.signal)
+    const signProofForClaim = async (
+      nonce: string,
+      audience: string,
+      signOptions: SignProofOptions = {},
+    ) =>
+      (proofSession?.signProof ?? dependencies.signProof)(nonce, audience, {
+        ...signOptions,
+        ...(pendingCredentialKeyId && isWalletCryptoV2Enabled()
+          ? { credentialKeyId: pendingCredentialKeyId }
+          : {}),
+      })
+
+    let proof = await signProofForClaim(token.cNonce, resolvedOffer.issuer, {
+      keyBinding: proofKeyBinding,
+    })
+    logWalletStep('oid4vci', 'proof-signed', {
       issuer: resolvedOffer.issuer,
-      credentialEndpoint: resolvedOffer.issuerMetadata.credential_endpoint,
-      configurationId: requestConfiguration?.id,
-      requestId: requestConfiguration?.requestId,
-      format: requestConfiguration?.format,
-      credentialIdentifierPresent: Boolean(token.credentialIdentifier),
       popBytes: proof.length,
       keyBinding: proofKeyBinding,
     })
-    rawVc = await dependencies.requestCredential({
-      resolvedOffer,
-      accessToken: token.accessToken,
-      proof,
-      credentialIdentifier: token.credentialIdentifier,
-      ...(walletAttestations ? { walletAttestations } : {}),
-    })
-  } catch (error) {
-    if (error instanceof DeferredIssuancePending) {
-      logWalletStep('oid4vci', 'credential-deferred', {
-        issuer: resolvedOffer.issuer,
-        transactionId: error.transactionId,
-        deferredEndpoint: error.deferredEndpoint,
-      })
-      throw error
-    }
 
-    if (!(error instanceof InvalidProofError)) {
-      const failedConfiguration = resolvedOffer.credentialConfigurations[0]
-      logWalletError('oid4vci', 'credential-request-failed', error, {
+    let rawVc: string
+    try {
+      const requestConfiguration = resolvedOffer.credentialConfigurations[0]
+      logWalletStep('oid4vci', 'credential-request-start', {
         issuer: resolvedOffer.issuer,
         credentialEndpoint: resolvedOffer.issuerMetadata.credential_endpoint,
-        configurationId: failedConfiguration?.id,
-        requestId: failedConfiguration?.requestId,
-        format: failedConfiguration?.format,
+        configurationId: requestConfiguration?.id,
+        requestId: requestConfiguration?.requestId,
+        format: requestConfiguration?.format,
+        credentialIdentifierPresent: Boolean(token.credentialIdentifier),
+        popBytes: proof.length,
         keyBinding: proofKeyBinding,
       })
-      throw error
+      rawVc = await awaitCredentialAcquisition(
+        Promise.resolve().then(() => dependencies.requestCredential({
+          resolvedOffer,
+          accessToken: token.accessToken,
+          proof,
+          credentialIdentifier: token.credentialIdentifier,
+          ...(walletAttestations ? { walletAttestations } : {}),
+          signal: options.signal,
+        })),
+        options.signal,
+      )
+    } catch (error) {
+      if (error instanceof DeferredIssuancePending) {
+        logWalletStep('oid4vci', 'credential-deferred', {
+          issuer: resolvedOffer.issuer,
+          transactionId: error.transactionId,
+          deferredEndpoint: error.deferredEndpoint,
+        })
+        throw error
+      }
+
+      if (!(error instanceof InvalidProofError)) {
+        const failedConfiguration = resolvedOffer.credentialConfigurations[0]
+        logWalletError('oid4vci', 'credential-request-failed', error, {
+          issuer: resolvedOffer.issuer,
+          credentialEndpoint: resolvedOffer.issuerMetadata.credential_endpoint,
+          configurationId: failedConfiguration?.id,
+          requestId: failedConfiguration?.requestId,
+          format: failedConfiguration?.format,
+          keyBinding: proofKeyBinding,
+        })
+        throw error
+      }
+
+      logWalletError('oid4vci', 'credential-request-invalid-proof', error, { issuer: resolvedOffer.issuer, retry: true })
+      options.onCNonceUpdated?.(error.cNonce)
+      proof = await signProofForClaim(error.cNonce, resolvedOffer.issuer, {
+        keyBinding: proofKeyBinding,
+      })
+      logWalletStep('oid4vci', 'proof-resigned', {
+        issuer: resolvedOffer.issuer,
+        popBytes: proof.length,
+        keyBinding: proofKeyBinding,
+      })
+      rawVc = await awaitCredentialAcquisition(
+        Promise.resolve().then(() => dependencies.requestCredential({
+          resolvedOffer,
+          accessToken: token.accessToken,
+          proof,
+          credentialIdentifier: token.credentialIdentifier,
+          ...(walletAttestations ? { walletAttestations } : {}),
+          signal: options.signal,
+        })),
+        options.signal,
+      )
     }
 
-    logWalletError('oid4vci', 'credential-request-invalid-proof', error, { issuer: resolvedOffer.issuer, retry: true })
-    proof = await signProofForClaim(error.cNonce, resolvedOffer.issuer, {
-      keyBinding: proofKeyBinding,
-    })
-    logWalletStep('oid4vci', 'proof-resigned', {
-      issuer: resolvedOffer.issuer,
-      popBytes: proof.length,
-      keyBinding: proofKeyBinding,
-    })
-    rawVc = await dependencies.requestCredential({
-      resolvedOffer,
-      accessToken: token.accessToken,
-      proof,
-      credentialIdentifier: token.credentialIdentifier,
-      ...(walletAttestations ? { walletAttestations } : {}),
-    })
+    logWalletStep('oid4vci', 'credential-response-received', { issuer: resolvedOffer.issuer, credentialBytes: rawVc.length })
+
+    const configuration = resolvedOffer.credentialConfigurations[0]
+    const record =
+      configuration && isMsoMdocFormat(configuration.format)
+        ? await finalizeMdocCredentialRecord(rawVc, resolvedOffer, configuration)
+        : await finalizeCredentialRecord(rawVc, proof, resolvedOffer, {
+            fetchImpl: dependencies.fetchImpl,
+          })
+
+    throwIfCredentialAcquisitionAborted(options.signal)
+    if (options.deferCredentialKeyBinding) return record
+
+    const boundRecord = await bindV2CredentialKeyIfNeeded(pendingCredentialKeyId, record, proofSession)
+    ownsPendingCredentialKey = false
+    return boundRecord
+  } finally {
+    ownedProofSession?.close()
+    if (pendingCredentialKeyId && ownsPendingCredentialKey) {
+      await discardPendingCredentialKey(pendingCredentialKeyId)
+    }
   }
-  logWalletStep('oid4vci', 'credential-response-received', { issuer: resolvedOffer.issuer, credentialBytes: rawVc.length })
+}
 
-  const configuration = resolvedOffer.credentialConfigurations[0]
-  const record =
-    configuration && isMsoMdocFormat(configuration.format)
-      ? await finalizeMdocCredentialRecord(rawVc, resolvedOffer, configuration)
-      : await finalizeCredentialRecord(rawVc, proof, resolvedOffer, {
-          fetchImpl: dependencies.fetchImpl,
-        })
+function throwIfCredentialAcquisitionAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new Error('CredentialAcquisitionAborted')
+  }
+}
 
-  return bindV2CredentialKeyIfNeeded(pendingCredentialKeyId, record)
+export function awaitCredentialAcquisition<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return promise
+  if (signal.aborted) {
+    void promise.catch(() => undefined)
+    return Promise.reject(new Error('CredentialAcquisitionAborted'))
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort)
+      reject(new Error('CredentialAcquisitionAborted'))
+    }
+
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
 }
 
 async function bindV2CredentialKeyIfNeeded(
   pendingCredentialKeyId: string | undefined,
   record: VerifiableCredentialRecord,
+  proofSession?: ProofSigningSession,
 ): Promise<VerifiableCredentialRecord> {
   if (pendingCredentialKeyId && isWalletCryptoV2Enabled()) {
-    await bindPendingKeyToCredential(pendingCredentialKeyId, record.id, record.type)
+    if (
+      proofSession?.credentialKeyId === pendingCredentialKeyId
+      && proofSession.bindCredentialKey
+    ) {
+      await proofSession.bindCredentialKey(record.id, record.type)
+    } else {
+      await bindPendingKeyToCredential(pendingCredentialKeyId, record.id, record.type)
+    }
   }
   return record
 }
@@ -525,13 +643,22 @@ async function finalizeCredentialRecord(
   }
 }
 
+export type SaveCredentialRecordDependencies = Pick<ClaimCredentialDependencies, 'getCredentialStorage'> & {
+  appendHistory?: boolean
+}
+
 export function saveCredentialRecord(
   record: VerifiableCredentialRecord,
-  dependencies: Pick<ClaimCredentialDependencies, 'getCredentialStorage'> = {
+  dependencies: SaveCredentialRecordDependencies = {
     getCredentialStorage: getDefaultCredentialStorage,
   },
 ): void {
   storeCredentialRecord(dependencies.getCredentialStorage(), record)
+  if (dependencies.appendHistory === false) return
+  appendCredentialReceivedHistory(record)
+}
+
+export function appendCredentialReceivedHistory(record: VerifiableCredentialRecord): void {
   const schema = getCardSchema(record.type)
   appendWalletHistoryEvent({
     kind: 'credential-received',
@@ -1171,11 +1298,11 @@ function normalizeCredentialRecord(
 
 export function createDefaultClaimCredentialDependencies(): ClaimCredentialDependencies {
   return {
-    acquireAccessToken: async ({ resolvedOffer, tx_code, authorizationCodeExchange }) => {
+    acquireAccessToken: async ({ resolvedOffer, tx_code, authorizationCodeExchange, signal }) => {
       try {
         const response = authorizationCodeExchange
-          ? await requestAuthorizationCodeAccessToken(resolvedOffer, authorizationCodeExchange)
-          : await requestPreAuthorizedAccessToken(resolvedOffer, tx_code)
+          ? await requestAuthorizationCodeAccessToken(resolvedOffer, authorizationCodeExchange, signal)
+          : await requestPreAuthorizedAccessToken(resolvedOffer, tx_code, signal)
 
         const accessToken = readString(response.access_token)
         const cNonce = readString(response.c_nonce)
@@ -1192,8 +1319,16 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
         throw new Error(`CredentialTokenExchangeFailed: ${toErrorMessage(error)}`)
       }
     },
-    requestCredential: async ({ resolvedOffer, accessToken, proof, credentialIdentifier, walletAttestations }) => {
+    requestCredential: async ({
+      resolvedOffer,
+      accessToken,
+      proof,
+      credentialIdentifier,
+      walletAttestations,
+      signal,
+    }) => {
       try {
+        throwIfCredentialAcquisitionAborted(signal)
         const credentialConfiguration = resolvedOffer.credentialConfigurations[0]
 
         if (!credentialConfiguration || !isSupportedCredentialFormat(credentialConfiguration.format)) {
@@ -1229,6 +1364,7 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
           requestPayload as unknown as Parameters<typeof credentialClient.acquireCredentialsUsingRequest>[0],
           credentialConfiguration.format as OID4VCICredentialFormat,
         )
+        throwIfCredentialAcquisitionAborted(signal)
         assertCredentialEndpointSuccess(response)
 
         const deferredTransactionId = readDeferredTransactionId(response)
@@ -1252,6 +1388,9 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
 
         return readCompactCredentialFromResponse(response)
       } catch (error) {
+        if (signal?.aborted) {
+          throw new Error('CredentialAcquisitionAborted')
+        }
         if (error instanceof DeferredIssuancePending) {
           throw error
         }
@@ -1270,6 +1409,7 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
       }
     },
     signProof: defaultSignProof,
+    createProofSigningSession: defaultCreateProofSigningSession,
     getCredentialStorage: getDefaultCredentialStorage,
   }
 }
@@ -1277,6 +1417,7 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
 async function requestPreAuthorizedAccessToken(
   resolvedOffer: ResolvedCredentialOffer,
   txCode?: string,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const tokenEndpoint = readString(readRecord(resolvedOffer.issuerMetadata)?.token_endpoint)
     ?? await discoverAuthorizationServerTokenEndpoint(resolvedOffer.issuerMetadata)
@@ -1295,6 +1436,7 @@ async function requestPreAuthorizedAccessToken(
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: body.toString(),
+    signal,
   })
   const responseBody = await readJsonResponseBody(response)
 
@@ -1310,6 +1452,7 @@ async function requestPreAuthorizedAccessToken(
 async function requestAuthorizationCodeAccessToken(
   resolvedOffer: ResolvedCredentialOffer,
   exchange: AuthorizationCodeExchangeInput,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const tokenEndpoint = exchange.tokenEndpoint
     ?? readString(readRecord(resolvedOffer.issuerMetadata)?.token_endpoint)
@@ -1334,6 +1477,7 @@ async function requestAuthorizationCodeAccessToken(
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: body.toString(),
+    signal,
   })
   const responseBody = await readJsonResponseBody(response)
 
@@ -1952,7 +2096,9 @@ function assertDevelopmentEddsaHolderBinding(rawVc: string, proofJwt: string): v
   if (cnfJwk && expectedJwk && isSameJwk(cnfJwk, expectedJwk)) return
   if (cnfKid && expectedKid && isSameKid(cnfKid, expectedKid)) return
 
-  throw new Error('CredentialHolderBindingMismatch: Issuer returned SD-JWT credential bound to a different holder key')
+  throw new Error(
+    `CredentialHolderBindingMismatch: expected=${formatWalletHolderBindingHint(expectedJwk, expectedKid)}; got=${formatCredentialCnfHint(cnfJwk, cnfKid)}`,
+  )
 }
 
 function readProofJwtHeader(proofJwt: string): Record<string, unknown> | undefined {

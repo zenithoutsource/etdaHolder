@@ -67,6 +67,7 @@ describe('per-credential', () => {
       credentialType: 'ThaiNationalID',
       createdAt: '2026-07-24T00:00:00.000Z',
     })
+    jest.spyOn(credentialSigningKey, 'discardPendingCredentialKey').mockResolvedValue()
     jest.spyOn(credentialSigningKey, 'getCredentialHolderDid').mockReturnValue('did:key:z6MkperCredential')
   })
 
@@ -117,6 +118,57 @@ describe('per-credential', () => {
     expect(writes.has('credential:vc-123')).toBe(true)
   })
 
+  test('acquire reuses the credential key carried by a shared proof session', async () => {
+    const resolved = resolvedOffer()
+    const rawVc = unsignedJwt({
+      jti: 'vc-shared-session',
+      vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+      iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+    })
+    const sessionSignProof = jest.fn(async (
+      _nonce: string,
+      _audience: string,
+      options?: { credentialKeyId?: string },
+    ) => {
+      expect(options?.credentialKeyId).toBe('shared-key-1')
+      return 'proof.jwt'
+    })
+    const dependencySignProof = jest.fn(async () => 'dependency-proof.jwt')
+    const proofSession = {
+      credentialKeyId: 'shared-key-1',
+      signProof: sessionSignProof,
+      close: jest.fn(),
+    }
+
+    const record = await acquireCredentialRecord(resolved, {
+      tx_code: '123456',
+      proofSession,
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+        signProof: dependencySignProof,
+        requestCredential: async () => rawVc,
+        getCredentialStorage: () => ({
+          getString: () => undefined,
+          set: () => undefined,
+        }),
+      },
+    })
+
+    expect(record.id).toBe('vc-shared-session')
+    expect(credentialSigningKey.createPendingCredentialKey).not.toHaveBeenCalled()
+    expect(credentialSigningKey.bindPendingKeyToCredential).toHaveBeenCalledWith(
+      'shared-key-1',
+      'vc-shared-session',
+      'ThaiNationalID',
+    )
+    expect(sessionSignProof).toHaveBeenCalledWith(
+      'nonce-1',
+      resolved.issuer,
+      { keyBinding: 'did-kid', credentialKeyId: 'shared-key-1' },
+    )
+    expect(dependencySignProof).not.toHaveBeenCalled()
+  })
+
   test('acquireCredentialRecord alone creates and binds per-credential key for preview save path', async () => {
     const resolved = resolvedOffer()
     const rawVc = unsignedJwt({
@@ -145,6 +197,28 @@ describe('per-credential', () => {
       'ThaiNationalID',
     )
     expect(record.id).toBe('vc-456')
+  })
+
+  test('acquisition failure discards a locally created pending key', async () => {
+    await expect(
+      acquireCredentialRecord(resolvedOffer(), {
+        tx_code: '123456',
+        dependencies: {
+          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+          signProof: async () => 'proof.jwt',
+          requestCredential: async () => {
+            throw new Error('issuer unavailable')
+          },
+          getCredentialStorage: () => ({
+            getString: () => undefined,
+            set: () => undefined,
+          }),
+        },
+      }),
+    ).rejects.toThrow('issuer unavailable')
+
+    expect(credentialSigningKey.discardPendingCredentialKey).toHaveBeenCalledWith('pending-key-1')
+    expect(credentialSigningKey.bindPendingKeyToCredential).not.toHaveBeenCalled()
   })
 
   test('sync uses per-credential associated_did when v2 is enabled', async () => {
