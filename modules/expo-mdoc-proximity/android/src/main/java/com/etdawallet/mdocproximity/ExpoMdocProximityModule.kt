@@ -53,7 +53,11 @@ class ExpoMdocProximityModule : Module() {
     }
 
     AsyncFunction("hasMdoc") { credentialId: String ->
-      val context = appContext.reactContext?.applicationContext ?: return@AsyncFunction false
+      val context = appContext.reactContext?.applicationContext
+        ?: throw MdocProximityException(
+          MdocProximityErrors.STORAGE_FAILED,
+          "Application context is unavailable",
+        )
       return@AsyncFunction MdocProximityEngine.hasMdoc(context, credentialId)
     }
 
