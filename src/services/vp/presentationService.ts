@@ -19,6 +19,7 @@ import {
   assertNoSetDcqlCardinality,
   assertSupportedDcqlRequest,
   describeDcqlMatchFailure,
+  type DcqlMatchFailure,
   isCompactJwtVc,
   isCompactSdJwt,
   readCredentialTypeFromDcqlTypeValue,
@@ -37,7 +38,7 @@ import {
 import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
-import { PresentationCredentialUnavailableError } from './presentationUnavailable'
+import { PresentationCredentialUnavailableError, type PresentationMatchFailureKind } from './presentationUnavailable'
 import { isPresentationNonceConsumed } from './presentationRequestReplay'
 import {
   fetchAuthorizationRequestMaterial,
@@ -270,12 +271,19 @@ export async function resolvePresentationRequest(
     return satisfiesFullDcqlRequest(record, effectiveDcqlQuery)
   })
   if (!matchedCredential) {
+    const dcqlMatchFailures =
+      effectiveDcqlQuery && !isDualFormatDcqlRequest(effectiveDcqlQuery)
+        ? credentials.flatMap((record) =>
+            effectiveDcqlQuery.credentials.map((credentialQuery) =>
+              describeDcqlMatchFailure(record, credentialQuery),
+            ),
+          )
+        : []
+    const primaryMatchFailure = pickPrimaryMatchFailure(dcqlMatchFailures)
     const matchDiagnostics = (() => {
       if (credentials.length === 0) return 'wallet has no presentable credentials'
-      if (effectiveDcqlQuery && !isDualFormatDcqlRequest(effectiveDcqlQuery)) {
-        const dcqlQueryCredentials = effectiveDcqlQuery.credentials
-        return credentials
-          .flatMap((record) => dcqlQueryCredentials.map((credentialQuery) => describeDcqlMatchFailure(record, credentialQuery)))
+      if (dcqlMatchFailures.length > 0) {
+        return dcqlMatchFailures
           .map((failure) => {
             if (__DEV__) logWalletStep('oid4vp', 'dcql-match-failed', failure)
             const missing = failure.unsatisfiedClaimKeys?.length
@@ -324,6 +332,7 @@ export async function resolvePresentationRequest(
           reason: 'metadata-mismatch',
           requestedVctValues: readRequestedVctValues(effectiveDcqlQuery),
           requestedCredentialTypes: requestedTypes,
+          matchFailureKind: 'metadata-mismatch',
         })
       }
       throwCredentialMissingUnavailable({
@@ -331,6 +340,8 @@ export async function resolvePresentationRequest(
         matchDiagnostics,
         effectiveDcqlQuery,
         requestedTypes,
+        primaryMatchFailure,
+        noPresentableCredentials: credentials.length === 0,
       })
     }
     if (candidateCredentials.length > 0) {
@@ -341,6 +352,8 @@ export async function resolvePresentationRequest(
       matchDiagnostics,
       effectiveDcqlQuery,
       requestedTypes,
+      primaryMatchFailure,
+      noPresentableCredentials: credentials.length === 0,
     })
   }
 
@@ -912,7 +925,10 @@ function throwCredentialMissingUnavailable(input: {
   matchDiagnostics: string
   effectiveDcqlQuery: DcqlQuery | undefined
   requestedTypes: string[]
+  primaryMatchFailure?: DcqlMatchFailure
+  noPresentableCredentials?: boolean
 }): never {
+  const matchFailureKind = deriveMatchFailureKind(input)
   throw new PresentationCredentialUnavailableError({
     message: input.issuerPidRequest
       ? `PresentationCredentialMissing:issuer-pid: no ThaiNationalID (${input.matchDiagnostics})`
@@ -920,7 +936,44 @@ function throwCredentialMissingUnavailable(input: {
     reason: 'credential-missing',
     requestedVctValues: readRequestedVctValues(input.effectiveDcqlQuery),
     requestedCredentialTypes: input.requestedTypes,
+    matchFailureKind,
+    unsatisfiedClaimKeys: input.primaryMatchFailure?.unsatisfiedClaimKeys,
+    recordType: input.primaryMatchFailure?.recordType,
   })
+}
+
+function pickPrimaryMatchFailure(failures: DcqlMatchFailure[]): DcqlMatchFailure | undefined {
+  if (failures.length === 0) return undefined
+
+  const gatePriority: DcqlMatchFailure['failedGate'][] = ['claims', 'format', 'vct', 'type']
+  for (const gate of gatePriority) {
+    const match = failures.find((failure) => failure.failedGate === gate)
+    if (match) return match
+  }
+
+  return failures[0]
+}
+
+function deriveMatchFailureKind(input: {
+  matchDiagnostics: string
+  primaryMatchFailure?: DcqlMatchFailure
+  noPresentableCredentials?: boolean
+}): PresentationMatchFailureKind {
+  if (input.noPresentableCredentials) return 'not-presentable'
+
+  const gate = input.primaryMatchFailure?.failedGate
+  if (gate === 'claims') return 'claims-incomplete'
+  if (gate === 'format') return 'format-mismatch'
+  if (gate === 'vct') return 'metadata-mismatch'
+
+  if (input.matchDiagnostics.includes('no presentable credentials')) return 'not-presentable'
+  if (input.matchDiagnostics.includes('failed format gate')) return 'format-mismatch'
+  if (input.matchDiagnostics.includes('failed vct gate')) return 'metadata-mismatch'
+  if (input.matchDiagnostics.includes('failed claims gate') || input.matchDiagnostics.includes('missing claims:')) {
+    return 'claims-incomplete'
+  }
+
+  return 'document-not-stored'
 }
 
 function hasRequiredClaimForRequest(

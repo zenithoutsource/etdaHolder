@@ -21,6 +21,19 @@ import type { PresentationFlowOrigin } from '../services/vp/oid4vc/types'
 
 const MISSING_REQUEST_GRACE_MS = 1_500
 
+function readHydratedPresentationRequestUri(): string | null {
+  const state = useDeeplinkStore.getState()
+  const candidate = state.activeUri ?? state.pendingUri
+  if (!candidate || !isPresentationRequestDeeplink(candidate)) return null
+  if (candidate === state.dismissedUri) return null
+  if (isPresentationRequestConsumed(candidate)) return null
+  return candidate
+}
+
+function readHydratedPresentationFlowOrigin(): PresentationFlowOrigin {
+  return useDeeplinkStore.getState().pendingPresentationFlowOrigin ?? 'same-device'
+}
+
 function readPresentationUiOrigin(
   flowOrigin: PresentationFlowOrigin,
 ): 'scanned-verifier-qr' | 'wallet-generated-qr' {
@@ -41,14 +54,15 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   const activeDeeplinkUri = useDeeplinkStore((s) => s.activeUri)
   const pendingPresentationFlowOrigin = useDeeplinkStore((s) => s.pendingPresentationFlowOrigin)
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
-  const vpGeneration = useDeeplinkStore((s) => s.vpGeneration)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
-  const activeRequestUriRef = useRef<string | null>(null)
-  const lastStartedRequestRef = useRef<string | null>(null)
+  const activeRequestUriRef = useRef<string | null>(readHydratedPresentationRequestUri())
+  const lastStartedRequestRef = useRef<string | null>(readHydratedPresentationRequestUri())
   const initialUrlCheckedRef = useRef(false)
   const directUrlHandledRef = useRef<string | null>(null)
-  const [requestUri, setRequestUri] = useState<string | null>(null)
-  const [presentationFlowOrigin, setPresentationFlowOrigin] = useState<PresentationFlowOrigin>('same-device')
+  const [requestUri, setRequestUri] = useState<string | null>(readHydratedPresentationRequestUri)
+  const [presentationFlowOrigin, setPresentationFlowOrigin] = useState<PresentationFlowOrigin>(
+    readHydratedPresentationFlowOrigin,
+  )
   const [missingRequestError, setMissingRequestError] = useState<string | null>(null)
   const [isFinishing, setIsFinishing] = useState(false)
 
@@ -138,7 +152,6 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     isFinishing,
     pendingDeeplinkUri,
     pendingPresentationFlowOrigin,
-    vpGeneration,
   ])
 
   useEffect(() => {

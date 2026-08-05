@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Text } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { AppButton } from './AppButton'
+
 import { FacePreparePanel } from './FacePreparePanel'
-import { PresentationDocumentUnavailablePanel } from './PresentationDocumentUnavailablePanel'
+import { PresentationFailurePanel } from './PresentationFailurePanel'
 import { PresentationConsentPanel, readInitialSelectedClaimKeys, readSelectedDisclosureLabels } from './PresentationConsentPanel'
 import { PresentationInfoPanel } from './PresentationInfoPanel'
 import { PresentationResultPanel } from './PresentationResultPanel'
@@ -20,21 +20,17 @@ import { recordWalletPresentationSuccess } from '../services/history/recordWalle
 import { recordOid4vpPresentationFailure, recordWalletInitiatedPresentationFailure } from '../services/history/walletHistoryRecording'
 import { maybeConsumeSingleUseCredential } from '../services/credentials/singleUseCredentialConsumption'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
-import { toFriendlyError } from '../services/scan/scanFriendlyErrors'
 import { describePresentationForLog } from '../services/scan/scanLogDescriptors'
 import { confirmPresentationBiometric, createApprovedPresentationResponse } from '../services/vp/presentationApproval'
 import { markPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
 import type { PresentationFlowOrigin } from '../services/vp/oid4vc/types'
 import {
   readPresentationTokenMode,
-  resolvePresentationRequest,
   submitPresentationResponse,
   type ResolvedPresentationRequest,
 } from '../services/vp/presentationService'
-import {
-  readPresentationUnavailableDetails,
-  type PresentationUnavailableDetails,
-} from '../services/vp/presentationUnavailable'
+import { resolvePresentationRequestCached } from '../services/vp/presentationResolveCache'
+import { resolvePresentationFailureUi, type PresentationFailureUi } from '../services/vp/presentationFailureUi'
 import type { IssuerPortalCredentialType } from '../config/issuerPortalUrls'
 
 const RESOLVE_TIMEOUT_MS = 20_000
@@ -50,7 +46,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 
 type FlowPhase =
   | { tag: 'resolving' }
-  | { tag: 'documentUnavailable'; details: PresentationUnavailableDetails }
+  | { tag: 'failure'; details: PresentationFailureUi }
   | { tag: 'facePrepare'; request: ResolvedPresentationRequest }
   | { tag: 'consent'; request: ResolvedPresentationRequest }
   | { tag: 'info'; request: ResolvedPresentationRequest }
@@ -105,10 +101,15 @@ export function Oid4VpDisclosureFlow({
           presentableCount: presentableCredentials.length,
         })
         const request = await withTimeout(
-          resolvePresentationRequest(authorizationRequestUri, presentableCredentials, {
-            trustedVerifiers: TRUSTED_VERIFIERS,
-            presentationFlowOrigin,
-          }),
+          resolvePresentationRequestCached(
+            authorizationRequestUri,
+            presentableCredentialKey,
+            presentableCredentials,
+            {
+              trustedVerifiers: TRUSTED_VERIFIERS,
+              presentationFlowOrigin,
+            },
+          ),
           RESOLVE_TIMEOUT_MS,
           `${logScope}Timeout: resolving presentation request timed out`,
         )
@@ -117,13 +118,7 @@ export function Oid4VpDisclosureFlow({
       } catch (err) {
         if (generationRef.current !== gen) return
         logWalletError(logScope, 'presentation-resolve-failed', err)
-        const unavailableDetails = readPresentationUnavailableDetails(err)
-        if (unavailableDetails) {
-          setPhase({ tag: 'documentUnavailable', details: unavailableDetails })
-          return
-        }
-        const raw = err instanceof Error ? err.message : String(err)
-        setPhase({ tag: 'error', message: toFriendlyError(raw) })
+        setPhase({ tag: 'failure', details: resolvePresentationFailureUi(err) })
       }
     })()
 
@@ -218,7 +213,9 @@ export function Oid4VpDisclosureFlow({
         })
       }
       const raw = err instanceof Error ? err.message : String(err)
-      if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
+      if (generationRef.current === gen) {
+        setPhase({ tag: 'failure', details: resolvePresentationFailureUi(err) })
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -304,36 +301,22 @@ export function Oid4VpDisclosureFlow({
     )
   }
 
-  if (phase.tag === 'documentUnavailable') {
+  if (phase.tag === 'failure') {
     const requestCredentialType = phase.details.requestCredentialType
+    const showRequestButton = phase.details.showRequestButton
     return (
       <PresentationStepScaffold title="Wallet" onBack={onCancel}>
-        <PresentationDocumentUnavailablePanel
-          documentLabel={phase.details.documentLabel}
+        <PresentationFailurePanel
+          {...phase.details}
           presentationOrigin={presentationOrigin}
           onBack={onCancel}
           onRequest={
-            requestCredentialType && onRequestCredential
+            showRequestButton && requestCredentialType && onRequestCredential
               ? () => onRequestCredential(requestCredentialType)
               : undefined
           }
         />
       </PresentationStepScaffold>
-    )
-  }
-
-  if (phase.tag === 'error') {
-    return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
-        <Text className="mb-5 text-center text-[14px] text-red-600">{phase.message}</Text>
-        <AppButton
-          variant="solid-block"
-          label="ลองอีกครั้ง"
-          onPress={onCancel}
-          className="rounded-xl px-[18px] py-[14px]"
-          textClassName="text-[15px] font-semibold"
-        />
-      </SafeAreaView>
     )
   }
 

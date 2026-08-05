@@ -4,10 +4,14 @@ import {
   assertSupportedDcqlCredentialQuery,
   canWalletSatisfyDcqlCredentialQuery,
   describeDcqlMatchFailure,
+  type DcqlMatchFailure,
   readCredentialTypeFromDcqlTypeValue,
 } from './dcqlCredentialMatch'
 import type { DcqlCredentialSetQuery, DcqlQuery } from './presentationService'
-import { PresentationCredentialUnavailableError } from './presentationUnavailable'
+import {
+  PresentationCredentialUnavailableError,
+  type PresentationMatchFailureKind,
+} from './presentationUnavailable'
 
 export function parseDcqlCredentialSets(value: unknown): DcqlCredentialSetQuery[] | undefined {
   if (!Array.isArray(value) || value.length === 0) return undefined
@@ -101,21 +105,27 @@ export function resolveDcqlCredentialSelection(
     }
     if (failures.some((failure) => failure.failedGate === 'vct')) {
       const mismatch = failures.find((failure) => failure.failedGate === 'vct')!
-      throw new PresentationCredentialUnavailableError({
-        message: `PresentationCredentialMetadataMismatch: stored ${mismatch.recordType} vct "${mismatch.recordVct ?? 'missing'}" is not in requested vct_values [${mismatch.requestedVctValues.join(', ')}]`,
-        reason: 'metadata-mismatch',
-        requestedVctValues,
-        requestedCredentialTypes,
-      })
+        throw new PresentationCredentialUnavailableError({
+          message: `PresentationCredentialMetadataMismatch: stored ${mismatch.recordType} vct "${mismatch.recordVct ?? 'missing'}" is not in requested vct_values [${mismatch.requestedVctValues.join(', ')}]`,
+          reason: 'metadata-mismatch',
+          requestedVctValues,
+          requestedCredentialTypes,
+          matchFailureKind: 'metadata-mismatch',
+          recordType: mismatch.recordType,
+        })
     }
     if (failures.some((failure) => failure.failedGate === 'format')) {
       throw new Error('PresentationCredentialFormatUnsupported: stored credential format does not match the Verifier request')
     }
+    const primaryMatchFailure = pickPrimaryCredentialSetMatchFailure(failures)
     throw new PresentationCredentialUnavailableError({
       message: 'PresentationCredentialMissing: no credential satisfies the required credential set',
       reason: 'credential-missing',
       requestedVctValues,
       requestedCredentialTypes,
+      matchFailureKind: deriveCredentialSetMatchFailureKind(failures),
+      unsatisfiedClaimKeys: primaryMatchFailure?.unsatisfiedClaimKeys,
+      recordType: primaryMatchFailure?.recordType,
     })
   }
 
@@ -147,4 +157,17 @@ function assertSupportedCredentialSetsShape(sets: DcqlCredentialSetQuery[]): voi
       throw new Error('PresentationRequestUnsupported: multi-credential credential_sets options are not supported in v1')
     }
   }
+}
+
+function pickPrimaryCredentialSetMatchFailure(failures: DcqlMatchFailure[]): DcqlMatchFailure | undefined {
+  const claimsFailure = failures.find((failure) => failure.failedGate === 'claims')
+  return claimsFailure ?? failures[0]
+}
+
+function deriveCredentialSetMatchFailureKind(failures: DcqlMatchFailure[]): PresentationMatchFailureKind {
+  const primary = pickPrimaryCredentialSetMatchFailure(failures)
+  if (primary?.failedGate === 'claims') return 'claims-incomplete'
+  if (primary?.failedGate === 'format') return 'format-mismatch'
+  if (primary?.failedGate === 'vct') return 'metadata-mismatch'
+  return 'document-not-stored'
 }

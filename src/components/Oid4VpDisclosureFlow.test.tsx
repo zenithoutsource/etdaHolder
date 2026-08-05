@@ -236,7 +236,7 @@ describe('Oid4VpDisclosureFlow', () => {
 
     expect(mockSubmit).toHaveBeenCalledTimes(1)
     expect(mockMarkPresentationRequestConsumed).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('PresentationReplayLedgerWriteFailed')).toBeTruthy()
+    expect(screen.getByText('ไม่สามารถบันทึกสถานะความปลอดภัยได้')).toBeTruthy()
   })
 
   test('raw-credential mode requires the app-level biometric gate at info accept', async () => {
@@ -307,7 +307,7 @@ describe('Oid4VpDisclosureFlow', () => {
     )
 
     await flush()
-    expect(screen.getByText('VerifierUntrusted')).toBeTruthy()
+    expect(screen.getByText('ผู้ตรวจสอบไม่ได้รับความเชื่อถือ')).toBeTruthy()
   })
 
   test('shows a friendly document-unavailable state without exposing the requested vct URL', async () => {
@@ -336,11 +336,12 @@ describe('Oid4VpDisclosureFlow', () => {
     )
 
     await flush()
-    expect(screen.getByTestId('presentation-document-unavailable')).toBeTruthy()
+    expect(screen.getByTestId('presentation-failure-panel')).toBeTruthy()
     expect(screen.getByText('Academic Transcript')).toBeTruthy()
+    expect(screen.getByText('เอกสารไม่ตรงกับที่ผู้ตรวจสอบขอ')).toBeTruthy()
     expect(screen.queryByText(/https:\/\/issuer\.example/)).toBeNull()
 
-    fireEvent.press(screen.getByTestId('presentation-document-unavailable-request'))
+    fireEvent.press(screen.getByTestId('presentation-failure-request'))
     expect(onRequestCredential).toHaveBeenCalledWith('ChulalongkornUniversityTranscript')
   })
 
@@ -367,9 +368,42 @@ describe('Oid4VpDisclosureFlow', () => {
     )
 
     await flush()
-    expect(screen.getByText('Requested document')).toBeTruthy()
-    expect(screen.queryByTestId('presentation-document-unavailable-request')).toBeNull()
+    expect(screen.getByText('เอกสารที่ร้องขอ')).toBeTruthy()
+    expect(screen.queryByTestId('presentation-failure-request')).toBeNull()
     expect(screen.getByText('กลับไปที่ My QR')).toBeTruthy()
+  })
+
+  test('shows missing-claim guidance when the stored credential is incomplete for the verifier request', async () => {
+    mockResolve.mockRejectedValue(Object.assign(
+      new Error(
+        'PresentationCredentialMissing: requested credential is not available (ThaiNationalID(sd-jwt) failed claims gate [missing claims: photo])',
+      ),
+      {
+        name: 'PresentationCredentialUnavailableError',
+        reason: 'credential-missing',
+        requestedVctValues: ['https://issuer.example/credentials/IDCard'],
+        requestedCredentialTypes: ['ThaiNationalID'],
+        matchFailureKind: 'claims-incomplete',
+        unsatisfiedClaimKeys: ['photo'],
+        recordType: 'ThaiNationalID',
+      },
+    ))
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        presentationOrigin="wallet-generated-qr"
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    expect(screen.getByText('เอกสารไม่ครบข้อมูลที่ผู้ตรวจสอบต้องการ')).toBeTruthy()
+    expect(screen.getByText(/รูปถ่าย/)).toBeTruthy()
+    expect(screen.queryByText('ไม่พบเอกสารที่ใช้ยืนยัน')).toBeNull()
+    expect(screen.queryByTestId('presentation-failure-request')).toBeNull()
   })
 
   test('does not resolve again when a refreshed credentials array contains the same records', async () => {

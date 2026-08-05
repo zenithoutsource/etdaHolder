@@ -6,6 +6,13 @@ import { getCardSchema, getCardSchemaForConfigurationId } from '../../config/car
 
 export type PresentationUnavailableReason = 'credential-missing' | 'metadata-mismatch'
 
+export type PresentationMatchFailureKind =
+  | 'document-not-stored'
+  | 'claims-incomplete'
+  | 'metadata-mismatch'
+  | 'format-mismatch'
+  | 'not-presentable'
+
 export type PresentationUnavailableDetails = {
   reason: PresentationUnavailableReason
   documentLabel: string
@@ -22,18 +29,27 @@ export class PresentationCredentialUnavailableError extends Error {
   readonly reason: PresentationUnavailableReason
   readonly requestedVctValues: string[]
   readonly requestedCredentialTypes: string[]
+  readonly matchFailureKind?: PresentationMatchFailureKind
+  readonly unsatisfiedClaimKeys?: string[]
+  readonly recordType?: string
 
   constructor(input: {
     message: string
     reason: PresentationUnavailableReason
     requestedVctValues?: string[]
     requestedCredentialTypes?: string[]
+    matchFailureKind?: PresentationMatchFailureKind
+    unsatisfiedClaimKeys?: string[]
+    recordType?: string
   }) {
     super(input.message)
     this.name = 'PresentationCredentialUnavailableError'
     this.reason = input.reason
     this.requestedVctValues = input.requestedVctValues ?? []
     this.requestedCredentialTypes = input.requestedCredentialTypes ?? []
+    this.matchFailureKind = input.matchFailureKind
+    this.unsatisfiedClaimKeys = input.unsatisfiedClaimKeys
+    this.recordType = input.recordType
   }
 }
 
