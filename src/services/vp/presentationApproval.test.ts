@@ -31,6 +31,7 @@ const baseRequest: ResolvedPresentationRequest = {
   responseMode: 'direct_post',
   nonce: 'nonce-123',
   state: 'state-123',
+  protocolPath: 'legacy',
   verifier: {
     clientId: 'redirect_uri:https://verifier.example.com/verify',
     name: 'Verifier API',

@@ -71,6 +71,7 @@ describe('PresentationRequestScreen deeplink remount', () => {
     jest.clearAllMocks()
     useDeeplinkStore.setState({
       pendingUri: null,
+      pendingPresentationFlowOrigin: null,
       activeUri: null,
       dismissedUri: null,
       offerGeneration: 0,

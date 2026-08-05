@@ -763,6 +763,7 @@ Implemented:
 [x] Device-to-Verifier `direct_post` transport
 [x] Scan tab Holder consent/result flow for OID4VP QR
 [x] Local encrypted history for successful presentations
+[x] Phase 1 `@openid4vc/openid4vp` adapter behind `EXPO_PUBLIC_OID4VC_VP_ADAPTER` (default false, build-time) — Scan + same-device DCQL `direct_post` parse/submit via `src/services/vp/oid4vc/`; legacy path retained for My QR, issuer renewal, PEX, and dual-format. Spec: `docs/superpowers/specs/2026-07-31-oid4vc-vp-adapter-design.md`; plan: `docs/superpowers/plans/2026-08-05-oid4vc-vp-adapter.md`. Manual E2E with flag-on dev build pending.
 
 Remaining:
 

@@ -19,6 +19,7 @@ const request: ResolvedPresentationRequest = {
   responseUri: 'https://verifier.example.com/cb',
   responseMode: 'direct_post',
   nonce: 'nonce-1',
+  protocolPath: 'legacy',
   verifier: {
     clientId: 'redirect_uri:https://verifier.example.com/cb',
     name: 'Verifier',

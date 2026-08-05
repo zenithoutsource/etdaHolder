@@ -11,6 +11,7 @@ import {
   submitPresentationResponse,
   type ResolvedPresentationRequest,
 } from '../vp/presentationService'
+import { markPresentationRequestConsumed } from '../vp/presentationRequestReplay'
 import type { TrustedVerifier } from '../vp/trustedVerifierMatcher'
 
 export type SilentRenewalOid4VpDependencies = {
@@ -63,6 +64,7 @@ export async function presentOldCredentialForRenewal(
       {
         fetchImpl: resolved.fetchImpl,
         trustedVerifiers: resolved.trustedVerifiers,
+        presentationFlowOrigin: 'issuer-renewal',
       },
     )
   } catch (error) {
@@ -85,6 +87,10 @@ export async function presentOldCredentialForRenewal(
     vpToken: presentation.vpToken,
     presentationSubmission: presentation.presentationSubmission,
     fetchImpl: resolved.fetchImpl,
+  })
+  markPresentationRequestConsumed({
+    requestUri: request.requestUri,
+    nonce: request.nonce,
   })
 
   logWalletStep('renewal', 'oid4vp-auth-complete', {

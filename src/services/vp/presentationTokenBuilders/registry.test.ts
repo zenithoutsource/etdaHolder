@@ -9,6 +9,7 @@ test('selects dual-format DCQL builder before standard DCQL', async () => {
       responseUri: 'https://verifier.example/verify',
       responseMode: 'direct_post',
       nonce: 'nonce',
+      protocolPath: 'legacy',
       verifier: { clientId: 'client', name: 'Verifier', allowedOrigins: ['https://verifier.example'] },
       matchedCredential: {
         id: 'cred-1',

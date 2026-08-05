@@ -9,7 +9,14 @@ import {
 
 describe('deeplinkStore', () => {
   beforeEach(() => {
-    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
+    useDeeplinkStore.setState({
+      pendingUri: null,
+      pendingPresentationFlowOrigin: null,
+      activeUri: null,
+      dismissedUri: null,
+      offerGeneration: 0,
+      vpGeneration: 0,
+    })
   })
 
   it('recognizes OID4VCI credential offer deeplinks', () => {
@@ -165,6 +172,32 @@ describe('deeplinkStore', () => {
       platform: 'android',
       hasWalletPin: true,
     })).toBe('/(tabs)/credential-offer')
+  })
+
+  it('stores scan origin when a VP request is handed off from Scan', () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=scan'
+
+    useDeeplinkStore.getState().setPendingPresentationRequest({ uri: requestUri, origin: 'scan' })
+
+    expect(useDeeplinkStore.getState().pendingUri).toBe(requestUri)
+    expect(useDeeplinkStore.getState().pendingPresentationFlowOrigin).toBe('scan')
+  })
+
+  it('stores same-device origin when a VP callback is queued', () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=callback'
+
+    useDeeplinkStore.getState().setPendingPresentationRequest({ uri: requestUri, origin: 'same-device' })
+
+    expect(useDeeplinkStore.getState().pendingPresentationFlowOrigin).toBe('same-device')
+  })
+
+  it('clears pending presentation origin when the VP deeplink is consumed', () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=consume'
+
+    useDeeplinkStore.getState().setPendingPresentationRequest({ uri: requestUri, origin: 'scan' })
+    expect(useDeeplinkStore.getState().consumePendingDeeplinkUri()).toBe(requestUri)
+
+    expect(useDeeplinkStore.getState().pendingPresentationFlowOrigin).toBeNull()
   })
 
   it('reopens a previously dismissed VP URI on fresh incoming event and bumps vpGeneration', () => {

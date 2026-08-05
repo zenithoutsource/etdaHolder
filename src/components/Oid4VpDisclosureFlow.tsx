@@ -23,6 +23,8 @@ import type { VerifiableCredentialRecord } from '../services/vci/exchangeService
 import { toFriendlyError } from '../services/scan/scanFriendlyErrors'
 import { describePresentationForLog } from '../services/scan/scanLogDescriptors'
 import { confirmPresentationBiometric, createApprovedPresentationResponse } from '../services/vp/presentationApproval'
+import { markPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
+import type { PresentationFlowOrigin } from '../services/vp/oid4vc/types'
 import {
   readPresentationTokenMode,
   resolvePresentationRequest,
@@ -61,6 +63,7 @@ type Props = {
   historyChannel?: 'oid4vp' | 'wallet'
   logScope?: 'presentation-request' | 'my-qr'
   presentationOrigin?: 'scanned-verifier-qr' | 'wallet-generated-qr'
+  presentationFlowOrigin?: PresentationFlowOrigin
   onRequestCredential?: (credentialType: IssuerPortalCredentialType) => void
   onDone: () => void
   onCancel: () => void
@@ -76,6 +79,7 @@ export function Oid4VpDisclosureFlow({
   historyChannel = 'wallet',
   logScope = 'my-qr',
   presentationOrigin = 'wallet-generated-qr',
+  presentationFlowOrigin = 'my-qr',
   onRequestCredential,
   onDone,
   onCancel,
@@ -103,6 +107,7 @@ export function Oid4VpDisclosureFlow({
         const request = await withTimeout(
           resolvePresentationRequest(authorizationRequestUri, presentableCredentials, {
             trustedVerifiers: TRUSTED_VERIFIERS,
+            presentationFlowOrigin,
           }),
           RESOLVE_TIMEOUT_MS,
           `${logScope}Timeout: resolving presentation request timed out`,
@@ -125,7 +130,7 @@ export function Oid4VpDisclosureFlow({
     return () => {
       generationRef.current++
     }
-  }, [authorizationRequestUri, logScope, presentableCredentialKey])
+  }, [authorizationRequestUri, logScope, presentationFlowOrigin, presentableCredentialKey])
 
   const confirmFacePrepare = useCallback((request: ResolvedPresentationRequest) => {
     setSelectedClaimKeys(readInitialSelectedClaimKeys(request.disclosures))
@@ -162,6 +167,10 @@ export function Oid4VpDisclosureFlow({
       logWalletStep(logScope, 'presentation-submit-complete', {
         ...describePresentationForLog(request),
         responseStatus: response.status,
+      })
+      markPresentationRequestConsumed({
+        requestUri: request.requestUri,
+        nonce: request.nonce,
       })
 
       if (historyChannel === 'oid4vp') {

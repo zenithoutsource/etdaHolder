@@ -13,10 +13,18 @@ import { useStoredCredentials } from '../hooks/useStoredCredentials'
 import { openCredentialRequestPortal } from '../services/credentials/openCredentialRequestPortal'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
 import { resolvePresentationRequestUri } from '../services/credentials/resolvePresentationRequestUri'
+import { isPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
 import { describeUriForLog } from '../services/scan/scanLogDescriptors'
 import { isPresentationRequestDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
+import type { PresentationFlowOrigin } from '../services/vp/oid4vc/types'
 
 const MISSING_REQUEST_GRACE_MS = 1_500
+
+function readPresentationUiOrigin(
+  flowOrigin: PresentationFlowOrigin,
+): 'scanned-verifier-qr' | 'wallet-generated-qr' {
+  return flowOrigin === 'my-qr' ? 'wallet-generated-qr' : 'scanned-verifier-qr'
+}
 
 type Props = {
   initialRequestUri?: string | null
@@ -29,6 +37,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   const { credentials } = useStoredCredentials()
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
+  const pendingPresentationFlowOrigin = useDeeplinkStore((s) => s.pendingPresentationFlowOrigin)
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
   const vpGeneration = useDeeplinkStore((s) => s.vpGeneration)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
@@ -37,30 +46,37 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   const initialUrlCheckedRef = useRef(false)
   const directUrlHandledRef = useRef<string | null>(null)
   const [requestUri, setRequestUri] = useState<string | null>(null)
+  const [presentationFlowOrigin, setPresentationFlowOrigin] = useState<PresentationFlowOrigin>('same-device')
   const [missingRequestError, setMissingRequestError] = useState<string | null>(null)
 
-  const beginRequest = useCallback((uri: string) => {
+  const beginRequest = useCallback((uri: string, flowOrigin?: PresentationFlowOrigin) => {
     if (!isPresentationRequestDeeplink(uri)) return false
     if (uri === dismissedDeeplinkUri) return false
+    if (isPresentationRequestConsumed(uri)) return false
     if (uri === lastStartedRequestRef.current) return false
+
+    const resolvedFlowOrigin = flowOrigin
+      ?? (uri === pendingDeeplinkUri ? pendingPresentationFlowOrigin ?? undefined : undefined)
+      ?? 'same-device'
 
     lastStartedRequestRef.current = uri
     activeRequestUriRef.current = uri
     setMissingRequestError(null)
     setRequestUri(uri)
+    setPresentationFlowOrigin(resolvedFlowOrigin)
     if (uri === useDeeplinkStore.getState().pendingUri) {
       useDeeplinkStore.getState().consumePendingDeeplinkUri()
     }
     logWalletStep('presentation-request', 'request-detected', describeUriForLog(uri))
     return true
-  }, [dismissedDeeplinkUri])
+  }, [dismissedDeeplinkUri, pendingDeeplinkUri, pendingPresentationFlowOrigin])
 
   useEffect(() => {
-    if (initialRequestUri && beginRequest(initialRequestUri)) return
-    if (pendingDeeplinkUri && beginRequest(pendingDeeplinkUri)) return
+    if (initialRequestUri && beginRequest(initialRequestUri, pendingPresentationFlowOrigin ?? undefined)) return
+    if (pendingDeeplinkUri && beginRequest(pendingDeeplinkUri, pendingPresentationFlowOrigin ?? undefined)) return
 
     const directRequest = resolvePresentationRequestUri(incomingUrl)
-    if (directRequest && directRequest !== directUrlHandledRef.current && beginRequest(directRequest)) {
+    if (directRequest && directRequest !== directUrlHandledRef.current && beginRequest(directRequest, 'same-device')) {
       initialUrlCheckedRef.current = true
       directUrlHandledRef.current = directRequest
       return
@@ -91,7 +107,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
         const initialRequest = resolvePresentationRequestUri(initialUrl)
         if (initialRequest) {
           directUrlHandledRef.current = initialRequest
-          beginRequest(initialRequest)
+          beginRequest(initialRequest, 'same-device')
           return
         }
         graceTimer = setTimeout(showMissingRequestError, MISSING_REQUEST_GRACE_MS)
@@ -106,7 +122,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
       isMounted = false
       if (graceTimer) clearTimeout(graceTimer)
     }
-  }, [beginRequest, incomingUrl, initialRequestUri, pendingDeeplinkUri, vpGeneration])
+  }, [beginRequest, incomingUrl, initialRequestUri, pendingDeeplinkUri, pendingPresentationFlowOrigin, vpGeneration])
 
   const finish = useCallback(() => {
     const uriToDismiss = activeRequestUriRef.current
@@ -149,7 +165,8 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
       credentials={credentials}
       historyChannel="oid4vp"
       logScope="presentation-request"
-      presentationOrigin="scanned-verifier-qr"
+      presentationOrigin={readPresentationUiOrigin(presentationFlowOrigin)}
+      presentationFlowOrigin={presentationFlowOrigin}
       onRequestCredential={requestCredential}
       onDone={exitFlow}
       onCancel={exitFlow}

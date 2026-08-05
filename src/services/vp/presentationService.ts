@@ -26,6 +26,7 @@ import {
 } from './dcqlCredentialMatch'
 import { parseDcqlCredentialSets, resolveDcqlCredentialSelection } from './dcqlCredentialSetResolver'
 import { assertDualFormatPresentationReady, isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
+import { isSdJwtDcqlFormat } from './dualFormatQuery'
 import {
   matchesPresentationDefinitionCredential,
   satisfiesDcqlCandidateTypes,
@@ -37,6 +38,17 @@ import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
 import { PresentationCredentialUnavailableError } from './presentationUnavailable'
+import { isPresentationNonceConsumed } from './presentationRequestReplay'
+import {
+  fetchAuthorizationRequestMaterial,
+  readRoutingPreviewFromMaterial,
+} from './oid4vc/fetchAuthorizationRequestMaterial'
+import { isOid4vcVpAdapterEnabled } from './oid4vc/isOid4vcVpAdapterEnabled'
+import { normalizeAuthorizationRequestForRouting } from './oid4vc/normalizeAuthorizationRequestForRouting'
+import { parseAuthorizationRequestViaOid4vc } from './oid4vc/parseAuthorizationRequestViaOid4vc'
+import { shouldUseOid4vcVpAdapter } from './oid4vc/shouldUseOid4vcVpAdapter'
+import { submitDirectPostViaOid4vc } from './oid4vc/submitDirectPostViaOid4vc'
+import type { Oid4vcAdapterContext, PresentationFlowOrigin, ProtocolPath } from './oid4vc/types'
 
 type JsonRecord = Record<string, unknown>
 
@@ -93,6 +105,8 @@ export type DcqlQuery = {
   credentialSets?: DcqlCredentialSetQuery[]
 }
 
+export type { PresentationFlowOrigin, ProtocolPath } from './oid4vc/types'
+
 export type ResolvedPresentationRequest = {
   requestUri: string
   clientId: string
@@ -105,6 +119,8 @@ export type ResolvedPresentationRequest = {
   verifier: TrustedVerifier
   matchedCredential: VerifiableCredentialRecord
   disclosures: PresentationDisclosure[]
+  protocolPath: ProtocolPath
+  oid4vcContext?: Oid4vcAdapterContext
 }
 
 export type PresentationSubmission = {
@@ -118,6 +134,7 @@ export type PresentationSubmission = {
 }
 
 export type ResolvePresentationRequestOptions = {
+  presentationFlowOrigin: PresentationFlowOrigin
   trustedVerifiers: TrustedVerifier[]
   fetchImpl?: typeof fetch
   fetchIssuerMetadata?: FetchIssuerMetadata
@@ -180,14 +197,22 @@ export async function resolvePresentationRequest(
           : 'unknown',
     })),
   })
-  const authorizationRequest = await readAuthorizationRequest(rawRequestUri, {
+  const parsedAuthorizationRequest = await readAuthorizationRequest(rawRequestUri, {
     fetchImpl: options.fetchImpl,
     trustedVerifiers: options.trustedVerifiers,
+    presentationFlowOrigin: options.presentationFlowOrigin,
   })
+  const { authorizationRequest, protocolPath, oid4vcContext } = parsedAuthorizationRequest
   const clientId = readRequiredString(authorizationRequest, 'client_id', 'PresentationRequestInvalid')
   const responseUri = readRequiredString(authorizationRequest, 'response_uri', 'PresentationRequestInvalid')
   const responseMode = readRequiredString(authorizationRequest, 'response_mode', 'PresentationRequestInvalid')
   const nonce = readRequiredString(authorizationRequest, 'nonce', 'PresentationRequestInvalid')
+
+  if (isPresentationNonceConsumed(nonce)) {
+    const replayError = new Error('PresentationRequestReplay')
+    logWalletError('oid4vp', 'resolve-request-replay-blocked', replayError)
+    throw replayError
+  }
 
   if (responseMode !== SUPPORTED_RESPONSE_MODE) {
     throw new Error(`PresentationRequestUnsupported: response_mode ${responseMode} is not supported`)
@@ -340,6 +365,8 @@ export async function resolvePresentationRequest(
     responseUri,
     responseMode: SUPPORTED_RESPONSE_MODE,
     nonce,
+    protocolPath,
+    ...(oid4vcContext ? { oid4vcContext } : {}),
     ...(readString(authorizationRequest.state) ? { state: readString(authorizationRequest.state) } : {}),
     ...(presentationDefinition ? { presentationDefinition } : {}),
     ...(effectiveDcqlQuery ? { dcqlQuery: effectiveDcqlQuery } : {}),
@@ -394,11 +421,7 @@ export function readPresentationTokenMode(
   const sdJwtKbDisabledForTesting = typeof options === 'boolean'
     ? options
     : options.sdJwtKbDisabledForTesting ?? isSdJwtKbDisabledForTesting()
-  if (
-    request.dcqlQuery?.credentials.every((credential) =>
-      credential.format === 'dc+sd-jwt' || credential.format === 'vc+sd-jwt',
-    )
-  ) {
+  if (request.dcqlQuery?.credentials.every((credential) => isSdJwtDcqlFormat(credential.format))) {
     return request.dcqlQuery.credentials.every((credential) =>
       credential.require_cryptographic_holder_binding === false ||
       (sdJwtKbDisabledForTesting && credential.require_cryptographic_holder_binding !== true),
@@ -418,12 +441,7 @@ export async function submitPresentationResponse(
   request: ResolvedPresentationRequest,
   options: SubmitPresentationResponseOptions,
 ): Promise<VerifierResponse> {
-  const body = new URLSearchParams()
-  body.set('vp_token', formatVpTokenForResponse(request, options.vpToken))
-  if (options.presentationSubmission) {
-    body.set('presentation_submission', JSON.stringify(options.presentationSubmission))
-  }
-  if (request.state) body.set('state', request.state)
+  const formattedVpToken = formatVpTokenForResponse(request, options.vpToken)
 
   logWalletStep('oid4vp', 'submit-response-start', {
     responseUri: request.responseUri,
@@ -432,13 +450,57 @@ export async function submitPresentationResponse(
     tokenShape: request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw',
     submissionPresent: Boolean(options.presentationSubmission),
     statePresent: Boolean(request.state),
+    protocolPath: request.protocolPath,
   })
   if (__DEV__) {
     console.info('[wallet:oid4vp] submit-response-debug', {
-      body: formatVpTokenForResponse(request, options.vpToken),
+      body: formattedVpToken,
       submission: options.presentationSubmission,
+      protocolPath: request.protocolPath,
     })
   }
+
+  if (request.protocolPath === 'oid4vc') {
+    if (!request.oid4vcContext) {
+      throw new Error('PresentationSubmissionFailed: oid4vc adapter context is missing')
+    }
+
+    const adapterResult = await submitDirectPostViaOid4vc({
+      oid4vcContext: request.oid4vcContext,
+      responseUri: request.responseUri,
+      vpToken: formattedVpToken,
+      ...(request.state ? { state: request.state } : {}),
+      fetchImpl: options.fetchImpl,
+    })
+
+    logWalletStep('oid4vp', 'submit-response-received', {
+      responseUri: request.responseUri,
+      verifierName: request.verifier.name,
+      status: adapterResult.status,
+      ok: adapterResult.ok,
+      responseKeys: isRecord(adapterResult.parsedBody) ? Object.keys(adapterResult.parsedBody) : [],
+      protocolPath: request.protocolPath,
+    })
+
+    const parsedBody = adapterResult.parsedBody
+    const redirectUri = readVerifierReturnUrl(parsedBody, request)
+
+    return {
+      status: readString(isRecord(parsedBody) ? parsedBody.status : undefined) ?? 'verified',
+      ...(readString(isRecord(parsedBody) ? parsedBody.message : undefined)
+        ? { message: readString(isRecord(parsedBody) ? parsedBody.message : undefined) }
+        : {}),
+      ...(redirectUri ? { redirectUri } : {}),
+    }
+  }
+
+  const body = new URLSearchParams()
+  body.set('vp_token', formattedVpToken)
+  if (options.presentationSubmission) {
+    body.set('presentation_submission', JSON.stringify(options.presentationSubmission))
+  }
+  if (request.state) body.set('state', request.state)
+
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
     method: 'POST',
     headers: {
@@ -613,43 +675,63 @@ async function readAuthorizationRequest(
   options: {
     fetchImpl?: typeof fetch
     trustedVerifiers: TrustedVerifier[]
+    presentationFlowOrigin: PresentationFlowOrigin
   },
-): Promise<JsonRecord> {
-  const parsed = parseUrl(rawRequestUri)
-  const requestUri = parsed.searchParams.get('request_uri')
-  if (requestUri) {
-    return fetchAuthorizationRequestObject(requestUri, options)
+): Promise<{
+  authorizationRequest: JsonRecord
+  protocolPath: ProtocolPath
+  oid4vcContext?: Oid4vcAdapterContext
+}> {
+  const material = await fetchAuthorizationRequestMaterial(rawRequestUri, {
+    fetchImpl: options.fetchImpl,
+  })
+  const routingPreview = readRoutingPreviewFromMaterial(material)
+  const normalizedForRouting = normalizeAuthorizationRequestForRouting(routingPreview)
+  const useOid4vcAdapter = shouldUseOid4vcVpAdapter({
+    flagEnabled: isOid4vcVpAdapterEnabled(),
+    presentationFlowOrigin: options.presentationFlowOrigin,
+    authorizationRequest: normalizedForRouting,
+  })
+
+  if (useOid4vcAdapter) {
+    const parsed = await parseAuthorizationRequestViaOid4vc(material, {
+      trustedVerifiers: options.trustedVerifiers,
+      fetchImpl: options.fetchImpl,
+    })
+    return {
+      authorizationRequest: parsed.authorizationRequest,
+      protocolPath: 'oid4vc',
+      oid4vcContext: parsed.oid4vcContext,
+    }
   }
 
-  const requestObject = Object.fromEntries(parsed.searchParams.entries())
-  if (!requestObject.presentation_definition && !requestObject.presentation_definition_uri && !requestObject.dcql_query) {
-    throw new Error('PresentationRequestInvalid: presentation_definition or dcql_query is required')
-  }
-  return requestObject
+  const authorizationRequest = await parseAuthorizationRequestFromMaterial(material, options)
+  return { authorizationRequest, protocolPath: 'legacy' }
 }
 
-async function fetchAuthorizationRequestObject(
-  requestUri: string,
+async function parseAuthorizationRequestFromMaterial(
+  material: Awaited<ReturnType<typeof fetchAuthorizationRequestMaterial>>,
   options: {
     fetchImpl?: typeof fetch
     trustedVerifiers: TrustedVerifier[]
   },
 ): Promise<JsonRecord> {
-  const fetchImpl = options.fetchImpl ?? fetch
-  const response = await fetchImpl(requestUri, { headers: { Accept: 'application/json, application/oauth-authz-req+jwt' } })
-  if (!response.ok) {
-    throw new Error(`PresentationRequestFetchFailed: HTTP ${response.status}`)
+  if (material.rawBody) {
+    const parsed = await parseAuthorizationRequestBody(material.rawBody, {
+      trustedVerifiers: options.trustedVerifiers,
+      fetchImpl: options.fetchImpl,
+    })
+    if (!parsed) {
+      throw new Error('PresentationRequestInvalid: request_uri response must be an object')
+    }
+    return parsed
   }
 
-  const text = await response.text()
-  const parsed = await parseAuthorizationRequestBody(text, {
-    trustedVerifiers: options.trustedVerifiers,
-    fetchImpl,
-  })
-  if (!parsed) {
-    throw new Error('PresentationRequestInvalid: request_uri response must be an object')
+  if (material.byValueParams) {
+    return { ...material.byValueParams }
   }
-  return parsed
+
+  throw new Error('PresentationRequestInvalid: authorization request material is empty')
 }
 
 function assertMutuallyExclusiveQueryLanguages(request: JsonRecord): void {
@@ -1005,14 +1087,6 @@ function readBirthDateClaim(record: VerifiableCredentialRecord): { key: string; 
   )
 
   return { key: matchedKey ?? 'birthDate', value: profileBirthDate }
-}
-
-function parseUrl(raw: string): URL {
-  try {
-    return new URL(raw)
-  } catch (error) {
-    throw new Error(`PresentationRequestInvalid: ${toErrorMessage(error)}`)
-  }
 }
 
 async function readJsonResponse(response: Response): Promise<JsonRecord> {

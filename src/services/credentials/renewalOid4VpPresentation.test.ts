@@ -1,6 +1,11 @@
 import { presentOldCredentialForRenewal } from './renewalOid4VpPresentation'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
+const mockMarkPresentationRequestConsumed = jest.fn()
+jest.mock('../vp/presentationRequestReplay', () => ({
+  markPresentationRequestConsumed: (...args: unknown[]) => mockMarkPresentationRequestConsumed(...args),
+}))
+
 describe('presentOldCredentialForRenewal', () => {
   const credential: VerifiableCredentialRecord = {
     id: 'urn:uuid:old',
@@ -11,9 +16,11 @@ describe('presentOldCredentialForRenewal', () => {
   }
 
   test('resolves Issuer OID4VP, signs with previous-key helpers, and submits VP', async () => {
+    mockMarkPresentationRequestConsumed.mockClear()
     const resolvePresentationRequest = jest.fn().mockResolvedValue({
       matchedCredential: credential,
       verifier: { name: 'Dev Renewal Issuer' },
+      requestUri: 'openid4vp://renewal/request-1',
       responseUri: 'http://localhost:4000/wallet-api/dev/wallet/renewal-vp/response',
       clientId: 'redirect_uri:http://localhost:4000/wallet-api/dev/wallet/renewal-vp/response',
       nonce: 'n1',
@@ -45,7 +52,10 @@ describe('presentOldCredentialForRenewal', () => {
     expect(resolvePresentationRequest).toHaveBeenCalledWith(
       'openid4vp://authorize?nonce=1',
       [credential],
-      expect.objectContaining({ fetchImpl }),
+      expect.objectContaining({
+        fetchImpl,
+        presentationFlowOrigin: 'issuer-renewal',
+      }),
     )
     expect(buildApprovedPresentationResponse).toHaveBeenCalledWith(
       expect.objectContaining({ matchedCredential: credential }),
@@ -58,6 +68,10 @@ describe('presentOldCredentialForRenewal', () => {
       expect.objectContaining({ matchedCredential: credential }),
       expect.objectContaining({ vpToken: 'vp.token', fetchImpl }),
     )
+    expect(mockMarkPresentationRequestConsumed).toHaveBeenCalledWith({
+      requestUri: 'openid4vp://renewal/request-1',
+      nonce: 'n1',
+    })
   })
 
   test('rejects when matched credential is not the renewing VC', async () => {

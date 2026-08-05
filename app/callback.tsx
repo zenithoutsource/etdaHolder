@@ -18,6 +18,8 @@ import { hasWalletPin } from '@/src/services/auth/walletPin'
 import { logWalletStep } from '@/src/services/debug/walletLogger'
 import { useAuthStore } from '@/src/store/authStore'
 import { useDeeplinkStore } from '@/src/store/deeplinkStore'
+import { isPortalReturnUrlIgnoredDuringCapture } from '@/src/services/credentials/portalReturnBridge'
+import { isPresentationRequestConsumed } from '@/src/services/vp/presentationRequestReplay'
 
 /**
  * Handles Issuer portal return URLs such as
@@ -34,7 +36,9 @@ export default function IssuanceCallbackRoute() {
   const router = useRouter()
   const incomingUrl = Linking.useURL()
   const searchParams = useLocalSearchParams()
+  const setPendingPresentationRequest = useDeeplinkStore((s) => s.setPendingPresentationRequest)
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
+  const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
   const isPinVerified = useAuthStore((s) => s.isPinVerified)
   const handledRef = useRef(false)
   const notifiedRef = useRef(false)
@@ -55,7 +59,15 @@ export default function IssuanceCallbackRoute() {
       searchParams as Record<string, string | string[] | undefined>,
       returnUrl,
     )
-    const candidate = incomingUrl ?? rebuilt
+    const linkingParsed = incomingUrl
+      ? resolveIssuanceCallbackFromSources({
+          linkingUrl: incomingUrl,
+          returnUrl,
+        })
+      : { kind: 'unsupported' as const }
+    const candidate = linkingParsed.kind !== 'unsupported'
+      ? incomingUrl
+      : rebuilt
     if (!candidate) return
 
     notifiedRef.current = true
@@ -82,9 +94,35 @@ export default function IssuanceCallbackRoute() {
 
     handledRef.current = true
 
+    if (
+      parsed.uri === dismissedDeeplinkUri
+      || isPortalReturnUrlIgnoredDuringCapture(parsed.uri)
+      || (
+        parsed.kind === 'presentation_request'
+        && isPresentationRequestConsumed(parsed.uri)
+      )
+    ) {
+      logWalletStep(
+        'deeplink',
+        parsed.kind === 'presentation_request'
+          ? 'presentation-replay-ignored'
+          : 'credential-offer-dismissed-ignored',
+      )
+      router.replace('/(tabs)')
+      return
+    }
+
+    const queuePendingUri = (uri: string) => {
+      if (parsed.kind === 'presentation_request') {
+        setPendingPresentationRequest({ uri, origin: 'same-device' })
+        return
+      }
+      setPendingDeeplinkUri(uri)
+    }
+
     const pinRequired = Platform.OS !== 'web' && hasWalletPin() && !isPinVerified
     if (pinRequired) {
-      setPendingDeeplinkUri(parsed.uri)
+      queuePendingUri(parsed.uri)
       logWalletStep('deeplink', 'callback-routed', {
         kind: parsed.kind,
         pinRequired: true,
@@ -97,7 +135,7 @@ export default function IssuanceCallbackRoute() {
       return
     }
 
-    setPendingDeeplinkUri(parsed.uri)
+    queuePendingUri(parsed.uri)
     logWalletStep('deeplink', 'callback-routed', {
       kind: parsed.kind,
       linking: describeIssuanceCallbackForLog(incomingUrl),
@@ -113,9 +151,11 @@ export default function IssuanceCallbackRoute() {
     )
   }, [
     incomingUrl,
+    dismissedDeeplinkUri,
     isPinVerified,
     router,
     searchParams,
+    setPendingPresentationRequest,
     setPendingDeeplinkUri,
   ])
 
@@ -144,7 +184,7 @@ export default function IssuanceCallbackRoute() {
         notifiedRef.current = true
         notifyPortalReturnUrl(incomingUrl ?? readWalletReturnUrl(), 'callback-route-timeout')
       }
-      router.replace('/(tabs)/')
+      router.replace('/(tabs)')
     }, 2500)
 
     return () => clearTimeout(timeout)

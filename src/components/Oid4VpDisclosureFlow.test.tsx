@@ -61,6 +61,11 @@ jest.mock('../services/credentials/singleUseCredentialConsumption', () => ({
   maybeConsumeSingleUseCredential: (...args: unknown[]) => mockConsume(...args),
 }))
 
+const mockMarkPresentationRequestConsumed = jest.fn()
+jest.mock('../services/vp/presentationRequestReplay', () => ({
+  markPresentationRequestConsumed: (...args: unknown[]) => mockMarkPresentationRequestConsumed(...args),
+}))
+
 jest.mock('./PresentationStepScaffold', () => {
   const { View } = require('react-native')
   return { PresentationStepScaffold: ({ children }: { children: React.ReactNode }) => <View>{children}</View> }
@@ -128,6 +133,9 @@ const credential = { id: 'cred-1', type: 'ThaiNationalID', rawVc: 'a~b~', claims
 
 function buildRequest() {
   return {
+    requestUri: 'openid4vp://authorize?request_uri=http://verifier/r/1',
+    nonce: 'nonce-123',
+    protocolPath: 'legacy' as const,
     matchedCredential: credential,
     verifier: { name: 'ผู้ตรวจสอบทดสอบ' },
     disclosures: [
@@ -147,6 +155,7 @@ async function flush() {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  mockMarkPresentationRequestConsumed.mockReset()
   mockReadMode.mockReturnValue('sd-jwt-kb')
   mockCreateResponse.mockResolvedValue({ vpToken: 'vp~kb', presentationSubmission: { id: 'sub' } })
   mockSubmit.mockResolvedValue({ status: 'accepted' })
@@ -169,7 +178,10 @@ describe('Oid4VpDisclosureFlow', () => {
     expect(mockResolve).toHaveBeenCalledWith(
       'openid4vp://authorize?request_uri=http://verifier/r/1',
       [credential],
-      expect.objectContaining({ trustedVerifiers: [] }),
+      expect.objectContaining({
+        trustedVerifiers: [],
+        presentationFlowOrigin: 'my-qr',
+      }),
     )
     expect(screen.getByText('scan-face')).toBeTruthy()
 
@@ -187,10 +199,44 @@ describe('Oid4VpDisclosureFlow', () => {
     await flush()
     expect(mockCreateResponse).toHaveBeenCalledTimes(1)
     expect(mockSubmit).toHaveBeenCalledTimes(1)
+    expect(mockMarkPresentationRequestConsumed).toHaveBeenCalledWith({
+      requestUri: 'openid4vp://authorize?request_uri=http://verifier/r/1',
+      nonce: 'nonce-123',
+    })
+    expect(mockSubmit.mock.invocationCallOrder[0])
+      .toBeLessThan(mockMarkPresentationRequestConsumed.mock.invocationCallOrder[0]!)
     expect(mockRecordSuccess).toHaveBeenCalledWith(
       expect.objectContaining({ channel: 'wallet', partyName: 'ผู้ตรวจสอบทดสอบ', credentialId: 'cred-1' }),
     )
     expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+  })
+
+  test('reports a replay-ledger failure after the presentation has been submitted', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    mockMarkPresentationRequestConsumed.mockImplementation(() => {
+      throw new Error('PresentationReplayLedgerWriteFailed')
+    })
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('scan-face'))
+    await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
+
+    expect(mockSubmit).toHaveBeenCalledTimes(1)
+    expect(mockMarkPresentationRequestConsumed).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('PresentationReplayLedgerWriteFailed')).toBeTruthy()
   })
 
   test('raw-credential mode requires the app-level biometric gate at info accept', async () => {

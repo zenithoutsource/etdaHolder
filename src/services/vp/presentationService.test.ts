@@ -11,6 +11,10 @@ import {
   submitPresentationResponse,
 } from './presentationService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import {
+  configurePresentationReplayStorage,
+  markPresentationRequestConsumed,
+} from './presentationRequestReplay'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 
@@ -178,9 +182,40 @@ describe('presentationService', () => {
     expect(isOid4VpAuthorizationRequest('openid-credential-offer://?credential_offer={}')).toBe(false)
   })
 
+  test('rejects a presentation nonce that was already consumed by another request URI', async () => {
+    const values = new Map<string, string>()
+    configurePresentationReplayStorage({
+      getString: (key) => values.get(key),
+      set: (key, value) => values.set(key, value),
+    })
+    markPresentationRequestConsumed({
+      requestUri: 'openid4vp://authorize?request_uri=https%3A%2F%2Fverifier.example%2Fr%2Fprevious',
+      nonce: 'nonce-123',
+    })
+
+    try {
+      await expect(resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        trustedVerifiers: [
+          {
+            clientId: 'did:web:verifier.example.com',
+            name: 'Entertainment Venue',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+      })).rejects.toThrow('PresentationRequestReplay')
+    } finally {
+      configurePresentationReplayStorage({
+        getString: () => undefined,
+        set: () => undefined,
+      })
+    }
+  })
+
   test('resolves trusted Verifier request and matches ThaiNationalID birth date disclosure', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-06-15T00:00:00.000Z'))
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -215,6 +250,7 @@ describe('presentationService', () => {
     })
 
     const request = await resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -247,6 +283,7 @@ describe('presentationService', () => {
 
     await expect(
       resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
         trustedVerifiers: [
           {
             clientId: 'did:web:verifier.example.com',
@@ -272,6 +309,7 @@ describe('presentationService', () => {
 
     await expect(
       resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
         trustedVerifiers: [
           {
             clientId: 'did:web:verifier.example.com',
@@ -309,6 +347,7 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -363,6 +402,7 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -406,6 +446,7 @@ describe('presentationService', () => {
 
     await expect(
       resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
         fetchImpl: fetchMock as unknown as typeof fetch,
         trustedVerifiers: [
           {
@@ -463,6 +504,7 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdWithVerifierClaims], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -530,6 +572,7 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [transcriptWithVerifierClaims], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -578,6 +621,7 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -628,6 +672,7 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [drivingLicenceRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -678,6 +723,7 @@ describe('presentationService', () => {
 
     await expect(
       resolvePresentationRequest(verifierRequestUri(), [sdJwtThaiIdRecord], {
+        presentationFlowOrigin: 'scan',
         fetchImpl: fetchMock as unknown as typeof fetch,
         trustedVerifiers: [
           {
@@ -717,6 +763,7 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [sdJwtThaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -761,6 +808,7 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
@@ -819,6 +867,7 @@ describe('presentationService', () => {
 
     await expect(
       resolvePresentationRequest(verifierRequestUri(), [issuerTranscriptRecord], {
+        presentationFlowOrigin: 'scan',
         fetchImpl: fetchMock as unknown as typeof fetch,
         trustedVerifiers: [
           {
@@ -840,6 +889,7 @@ describe('presentationService', () => {
 
   test('uses raw credential presentation tokens for DCQL SD-JWT requests', async () => {
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -878,6 +928,7 @@ describe('presentationService', () => {
 
   test('uses SD-JWT+KB presentation tokens for DCQL SD-JWT requests by default', async () => {
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -916,6 +967,7 @@ describe('presentationService', () => {
   test('uses raw credential presentation tokens for omitted holder binding only when the development bypass is enabled', async () => {
     process.env.EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING = 'true'
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -954,6 +1006,7 @@ describe('presentationService', () => {
 
   test('uses signed JWT VP tokens for Presentation Exchange requests', async () => {
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -968,7 +1021,10 @@ describe('presentationService', () => {
 
   test('rejects untrusted Verifier requests', async () => {
     await expect(
-      resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], { trustedVerifiers: [] }),
+      resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        trustedVerifiers: [],
+      }),
     ).rejects.toThrow('VerifierUntrusted')
   })
 
@@ -983,6 +1039,7 @@ describe('presentationService', () => {
         }),
         [thaiIdRecord],
         {
+          presentationFlowOrigin: 'scan',
           trustedVerifiers: [
             {
               clientId: 'did:web:verifier.example.com',
@@ -997,6 +1054,7 @@ describe('presentationService', () => {
 
   test('builds a Presentation Exchange submission for the matched credential', async () => {
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -1028,6 +1086,7 @@ describe('presentationService', () => {
         }),
     )
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -1055,6 +1114,7 @@ describe('presentationService', () => {
       async () => new Response(JSON.stringify({ status: 'accepted' }), { status: 200 }),
     )
     const request = await resolvePresentationRequest(issuerPidRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'decentralized_identifier:did:web:issuer.example.com',
@@ -1091,6 +1151,7 @@ describe('presentationService', () => {
       async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
     )
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -1135,6 +1196,7 @@ describe('presentationService', () => {
       async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
     )
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -1181,6 +1243,7 @@ describe('presentationService', () => {
       async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
     )
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -1222,6 +1285,7 @@ describe('presentationService', () => {
 
   test('selects client_id as the default presentation token audience', async () => {
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -1254,6 +1318,7 @@ describe('presentationService', () => {
     const originalAudience = process.env.EXPO_PUBLIC_VERIFIER_KB_AUD
     process.env.EXPO_PUBLIC_VERIFIER_KB_AUD = 'response_uri'
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -1298,6 +1363,7 @@ describe('presentationService', () => {
         ),
     )
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -1345,6 +1411,7 @@ describe('presentationService', () => {
         ),
     )
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
@@ -1388,6 +1455,7 @@ describe('presentationService', () => {
         }),
     )
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -1400,6 +1468,215 @@ describe('presentationService', () => {
     await expect(
       submitPresentationResponse(request, { vpToken: 'vp.jwt', fetchImpl: fetchMock as unknown as typeof fetch }),
     ).rejects.toThrow('PresentationSubmissionFailed: HTTP 400: invalid_request - Present VP is invalid')
+  })
+
+  describe('oid4vc adapter integration', () => {
+    const originalOid4vcFlag = process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER
+
+    afterEach(() => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = originalOid4vcFlag
+    })
+
+    test('resolves request_uri JWT DCQL through oid4vc when flag is on for scan origin', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [
+                  {
+                    id: 'idcard_credential',
+                    format: 'jwt_vc_json',
+                    meta: { type_values: ['IDCardCredential'] },
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+
+      const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(request.protocolPath).toBe('oid4vc')
+      expect(request.oid4vcContext?.authorizationRequestPayload.response_uri).toBe(
+        'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+      )
+    })
+
+    test('submits oid4vc direct_post and preserves protocolPath on resolved request', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      const resolveFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [
+                  {
+                    id: 'idcard_credential',
+                    format: 'jwt_vc_json',
+                    meta: { type_values: ['IDCardCredential'] },
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+      const submitFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
+      )
+
+      const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: resolveFetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      })
+
+      expect(request.protocolPath).toBe('oid4vc')
+
+      const result = await submitPresentationResponse(request, {
+        vpToken: 'vp.jwt',
+        fetchImpl: submitFetchMock as unknown as typeof fetch,
+      })
+
+      expect(submitFetchMock).toHaveBeenCalledWith(
+        'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        expect.objectContaining({ method: 'POST' }),
+      )
+      expect(result).toEqual({ status: 'verified' })
+    })
+
+    test('keeps legacy protocolPath for my-qr origin when flag is on', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [
+                  {
+                    id: 'idcard_credential',
+                    format: 'jwt_vc_json',
+                    meta: { type_values: ['IDCardCredential'] },
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+
+      const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'my-qr',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      })
+
+      expect(request.protocolPath).toBe('legacy')
+      expect(request.oid4vcContext).toBeUndefined()
+    })
+
+    test('keeps legacy protocolPath for dual-format DCQL when flag is on', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [
+                  { id: 'sd_jwt_cred', format: 'dc+sd-jwt' },
+                  { id: 'mdoc_cred', format: 'mso_mdoc' },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+
+      await expect(
+        resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+          presentationFlowOrigin: 'scan',
+          fetchImpl: fetchMock as unknown as typeof fetch,
+          trustedVerifiers: [
+            {
+              clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+              name: 'Verifier API',
+              allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+            },
+          ],
+        }),
+      ).rejects.toThrow('PresentationCredentialMissing')
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('keeps legacy protocolPath for Presentation Exchange when flag is on', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      jest.useFakeTimers().setSystemTime(new Date('2026-06-15T00:00:00.000Z'))
+
+      const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        trustedVerifiers: [
+          {
+            clientId: 'did:web:verifier.example.com',
+            name: 'Entertainment Venue',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+      })
+
+      expect(request.protocolPath).toBe('legacy')
+      expect(request.oid4vcContext).toBeUndefined()
+    })
   })
 })
 
@@ -1590,6 +1867,7 @@ describe('presentationService MSW harness', () => {
 
   test('submits issuer PID VP through issuer direct_post contract', async () => {
     const request = await resolvePresentationRequest(issuerPidRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'decentralized_identifier:did:web:issuer.example.com',

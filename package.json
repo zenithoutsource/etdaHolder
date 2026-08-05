@@ -26,6 +26,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@noble/ed25519": "^3.1.0",
     "@noble/hashes": "^2.2.0",
+    "@openid4vc/openid4vp": "0.5.4",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",

@@ -116,6 +116,7 @@ export default function MyQrScreen() {
         authorizationRequestUri={authorizationRequestUri}
         credentials={credentials}
         presentationOrigin="wallet-generated-qr"
+        presentationFlowOrigin="my-qr"
         onRequestCredential={handleRequestPresentationCredential}
         onDone={handleDisclosureDone}
         onCancel={handleDisclosureDone}

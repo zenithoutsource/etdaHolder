@@ -28,6 +28,7 @@ export default function ScanScreen() {
   const router = useRouter()
   const { renew } = useLocalSearchParams<{ renew?: string | string[] }>()
   const renewCredentialId = Array.isArray(renew) ? renew[0] : renew
+  const setPendingPresentationRequest = useDeeplinkStore((s) => s.setPendingPresentationRequest)
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
@@ -41,10 +42,10 @@ export default function ScanScreen() {
 
   const handoffPresentationRequest = useCallback((uri: string) => {
     logWalletStep('scan', 'presentation-handoff', describeUriForLog(uri))
-    setPendingDeeplinkUri(uri)
+    setPendingPresentationRequest({ uri, origin: 'scan' })
     processingRef.current = false
     router.push('/(tabs)/presentation-request')
-  }, [router, setPendingDeeplinkUri])
+  }, [router, setPendingPresentationRequest])
 
   useFocusEffect(
     useCallback(() => {

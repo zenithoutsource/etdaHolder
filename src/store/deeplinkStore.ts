@@ -1,8 +1,11 @@
 import { create } from 'zustand'
 import type { PlatformOSType } from 'react-native'
 
+import type { PresentationFlowOrigin } from '../services/vp/oid4vc/types'
+
 type DeeplinkState = {
   pendingUri: string | null
+  pendingPresentationFlowOrigin: PresentationFlowOrigin | null
   activeUri: string | null
   dismissedUri: string | null
   offerGeneration: number
@@ -11,6 +14,7 @@ type DeeplinkState = {
 
 type DeeplinkActions = {
   setPendingDeeplinkUri: (uri: string) => void
+  setPendingPresentationRequest: (input: { uri: string; origin: PresentationFlowOrigin }) => void
   setIncomingDeeplinkUri: (uri: string) => void
   activateDeeplinkUri: (uri: string) => void
   setDismissedDeeplinkUri: (uri: string) => void
@@ -86,14 +90,27 @@ function storeDeeplinkUri(
   }
 }
 
+function clearPendingPresentationFlowOrigin(
+  state: DeeplinkState & DeeplinkActions,
+  uri: string,
+): PresentationFlowOrigin | null {
+  return isPresentationRequestDeeplink(uri) ? null : state.pendingPresentationFlowOrigin
+}
+
 export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, get) => ({
   pendingUri: null,
+  pendingPresentationFlowOrigin: null,
   activeUri: null,
   dismissedUri: null,
   offerGeneration: 0,
   vpGeneration: 0,
 
   setPendingDeeplinkUri: (uri) => set((state) => storeDeeplinkUri(state, uri)),
+
+  setPendingPresentationRequest: ({ uri, origin }) => set((state) => ({
+    ...storeDeeplinkUri(state, uri),
+    pendingPresentationFlowOrigin: isPresentationRequestDeeplink(uri) ? origin : state.pendingPresentationFlowOrigin,
+  })),
 
   setIncomingDeeplinkUri: (uri) => set((state) => storeDeeplinkUri(state, uri)),
 
@@ -103,6 +120,9 @@ export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, ge
     return {
       activeUri: uri,
       pendingUri: state.pendingUri === uri ? null : state.pendingUri,
+      pendingPresentationFlowOrigin: state.pendingUri === uri
+        ? clearPendingPresentationFlowOrigin(state, uri)
+        : state.pendingPresentationFlowOrigin,
     }
   }),
 
@@ -110,6 +130,9 @@ export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, ge
     dismissedUri: uri,
     pendingUri: state.pendingUri === uri ? null : state.pendingUri,
     activeUri: state.activeUri === uri ? null : state.activeUri,
+    pendingPresentationFlowOrigin: state.pendingUri === uri || state.activeUri === uri
+      ? clearPendingPresentationFlowOrigin(state, uri)
+      : state.pendingPresentationFlowOrigin,
   })),
 
   consumePendingDeeplinkUri: () => {
