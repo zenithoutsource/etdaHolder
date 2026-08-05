@@ -23,7 +23,7 @@ Milestone is complete only when **all three document types** pass on a physical 
 | Topic | Decision |
 |-------|----------|
 | Milestone scope | All three: ThaID (IdCard), Transcript, Driving Licence |
-| Portal entry | `/Account/Login?ReturnUrl=walletapp://callback&documentType=...` |
+| Portal entry | `/thaiid/login?ReturnUrl=walletapp://callback&documentType=...` (see `2026-08-04-thaiid-portal-entry-design.md`) |
 | Post-login payload | `walletapp://callback?credential_offer_uri=<urlencoded https offer URL>` |
 | PID VP for DL/Transcript | **Issuer web only** — Wallet receives final offer URI only |
 | Wallet PID gate | Existing `canRequestCredentialType` (Home) + `readPidGateStatus` (claim screen) |
@@ -41,7 +41,7 @@ Wallet Home — row without VC, canRequestCredentialType = true
   │ Holder taps ขอเอกสาร
   ▼
 openAuthSessionAsync(
-  https://issuer.zenithcomp.co.th:455/Account/Login
+  https://issuer.zenithcomp.co.th:455/thaiid/login
     ?ReturnUrl=walletapp://callback
     &documentType=IdCard | DriverLicense | Transcript
 )
@@ -113,7 +113,7 @@ Already implemented; E2E verifies on device:
 | # | Check |
 |---|--------|
 | P1 | Dev/production build with native `walletapp` registration |
-| P2 | `EXPO_PUBLIC_ISSUER_LOGIN_URL` → Issuer `/Account/Login` |
+| P2 | `EXPO_PUBLIC_ISSUER_LOGIN_URL` → Issuer `/thaiid/login` |
 | P3 | `EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL=walletapp://callback` (default) |
 | P4 | Holder PIN setup and Ed25519 holder key ready |
 | P5 | Issuer whitelisted `walletapp://callback` |
