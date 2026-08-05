@@ -4,16 +4,17 @@ import { createHash, randomBytes } from 'react-native-quick-crypto'
 import * as Keychain from 'react-native-keychain'
 
 import { isBiometricDisabledForTesting } from '@/src/config/runtimeFlags'
-import { base64UrlDecodeToString, isSameJwk, isSameKid, readRecord, toErrorMessage } from '@/src/utils/jwtUtils'
+import { base64UrlDecodeToString, formatCredentialCnfHint, formatWalletHolderBindingHint, isSameJwk, isSameKid, readRecord, toErrorMessage } from '@/src/utils/jwtUtils'
 
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getMetaStorage } from '../storage/storage'
-import { readWalletKeyDeviceDiagnostics } from './walletKeyDeviceDiagnostics'
 import { notifyWalletKeyRegistrationChanged } from './walletKeyExpiryWatch'
 import {
+  createCredentialKeySigningSession,
   getCredentialSigningHolderDid,
   readCredentialSigningPublicJwk,
   signWithCredentialKey,
+  type CredentialKeySigningSession,
 } from './credentialSigningKey'
 import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
 
@@ -274,25 +275,33 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
     const existingSeed = await readStoredEd25519Seed(KEYCHAIN_SERVICE)
     existingKeyPresent = Boolean(existingSeed)
     if (existingSeed) {
-      step = 'public-key-derive-existing'
-      const existingPublicKey = readPublicKeyFromSeed(existingSeed)
-      step = 'cache-write'
-      const existingRegisteredAt = metaStorage.getString(KEY_REGISTERED_AT_STORAGE)
-      cacheWalletPublicKey(existingPublicKey, existingRegisteredAt)
-      logWalletStep('crypto', 'wallet-key-keychain-existing', { keyId: KEY_ID, publicKeyBytes: existingPublicKey.length })
-      return
+      try {
+        step = 'public-key-derive-existing'
+        const existingPublicKey = readPublicKeyFromSeed(existingSeed)
+        step = 'cache-write'
+        const existingRegisteredAt = metaStorage.getString(KEY_REGISTERED_AT_STORAGE)
+        cacheWalletPublicKey(existingPublicKey, existingRegisteredAt)
+        logWalletStep('crypto', 'wallet-key-keychain-existing', { keyId: KEY_ID, publicKeyBytes: existingPublicKey.length })
+        return
+      } finally {
+        existingSeed.fill(0)
+      }
     }
 
     step = 'seed-generate'
     const seed = randomBytes(32)
-    assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
-    step = 'keychain-write'
-    await writeEd25519Seed(seed, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
-    step = 'public-key-derive'
-    const publicKey = readPublicKeyFromSeed(seed)
-    step = 'cache-write'
-    cacheWalletPublicKey(publicKey, new Date().toISOString())
-    logWalletStep('crypto', 'wallet-key-generated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
+    try {
+      assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+      step = 'keychain-write'
+      await writeEd25519Seed(seed, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+      step = 'public-key-derive'
+      const publicKey = readPublicKeyFromSeed(seed)
+      step = 'cache-write'
+      cacheWalletPublicKey(publicKey, new Date().toISOString())
+      logWalletStep('crypto', 'wallet-key-generated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
+    } finally {
+      seed.fill(0)
+    }
   } catch (error) {
     attachWalletKeyStep(error, step)
     logWalletError('crypto', 'wallet-key-init-failed', error, {
@@ -303,7 +312,6 @@ export async function generateWalletKeyIfNeeded(): Promise<void> {
       existingKeyPresent,
       biometricDisabledForTesting: isBiometricDisabledForTesting(),
       keychainOptions: describeKeychainSetOptions(KEYCHAIN_SERVICE),
-      device: await readWalletKeyDeviceDiagnostics(),
     })
     throw error
   }
@@ -320,27 +328,35 @@ export async function forceRotateWalletKey(now = new Date()): Promise<void> {
   try {
     const previousSeed = await readStoredEd25519Seed(KEYCHAIN_SERVICE, 'Rotate Wallet Key')
     if (previousSeed) {
-      step = 'previous-seed-retain'
-      await writeEd25519Seed(previousSeed, PREVIOUS_KEYCHAIN_SERVICE, PREVIOUS_KEYCHAIN_USERNAME)
-      const previousPublicKey = readPublicKeyFromSeed(previousSeed)
-      metaStorage.set(PREVIOUS_ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(previousPublicKey))
-      previousKeyRetained = true
-      logWalletStep('crypto', 'wallet-key-previous-retained', {
-        keyId: KEY_ID,
-        publicKeyBytes: previousPublicKey.length,
-      })
+      try {
+        step = 'previous-seed-retain'
+        await writeEd25519Seed(previousSeed, PREVIOUS_KEYCHAIN_SERVICE, PREVIOUS_KEYCHAIN_USERNAME)
+        const previousPublicKey = readPublicKeyFromSeed(previousSeed)
+        metaStorage.set(PREVIOUS_ED25519_PUBLIC_KEY_STORAGE, uint8ArrayToBase64(previousPublicKey))
+        previousKeyRetained = true
+        logWalletStep('crypto', 'wallet-key-previous-retained', {
+          keyId: KEY_ID,
+          publicKeyBytes: previousPublicKey.length,
+        })
+      } finally {
+        previousSeed.fill(0)
+      }
     }
 
     step = 'seed-generate'
     const seed = randomBytes(32)
-    assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
-    step = 'keychain-write'
-    await writeEd25519Seed(seed, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
-    step = 'public-key-derive'
-    const publicKey = readPublicKeyFromSeed(seed)
-    step = 'cache-write'
-    cacheWalletPublicKey(publicKey, now.toISOString())
-    logWalletStep('crypto', 'wallet-key-rotated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
+    try {
+      assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+      step = 'keychain-write'
+      await writeEd25519Seed(seed, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+      step = 'public-key-derive'
+      const publicKey = readPublicKeyFromSeed(seed)
+      step = 'cache-write'
+      cacheWalletPublicKey(publicKey, now.toISOString())
+      logWalletStep('crypto', 'wallet-key-rotated', { keyId: KEY_ID, publicKeyBytes: publicKey.length })
+    } finally {
+      seed.fill(0)
+    }
   } catch (error) {
     attachWalletKeyStep(error, step)
     logWalletError('crypto', 'wallet-key-rotate-failed', error, {
@@ -351,7 +367,6 @@ export async function forceRotateWalletKey(now = new Date()): Promise<void> {
       previousKeyRetained,
       biometricDisabledForTesting: isBiometricDisabledForTesting(),
       keychainOptions: describeKeychainSetOptions(KEYCHAIN_SERVICE),
-      device: await readWalletKeyDeviceDiagnostics(),
     })
     throw error
   }
@@ -464,10 +479,152 @@ export type SignProofOptions = {
   credentialKeyId?: string
 }
 
+export type ProofSigningSession = {
+  /** Pending or bound per-credential key used by this session in crypto v2. */
+  credentialKeyId?: string
+  signProof: (
+    nonce: string,
+    audience: string,
+    options?: SignProofOptions,
+  ) => Promise<string>
+  bindCredentialKey?: (credentialId: string, credentialType: string) => Promise<void>
+  close: () => void
+}
+
+/**
+ * Opens one authenticated signing session for a user action.
+ *
+ * The seed remains private to this module and is cleared when the caller
+ * closes the session. This lets a dual-format issuance sign the two
+ * protocol-required proofs, including a fresh-nonce retry, after one
+ * sign-time Keychain authentication.
+ */
+export async function createProofSigningSession(
+  credentialKeyId?: string,
+): Promise<ProofSigningSession> {
+  if (credentialKeyId && isWalletCryptoV2Enabled()) {
+    const credentialSession = await createCredentialKeySigningSession(credentialKeyId)
+    return createCredentialProofSigningSession(credentialKeyId, credentialSession)
+  }
+
+  const seed = await readStoredEd25519Seed(KEYCHAIN_SERVICE, 'Sign with Wallet Key')
+  if (!seed) {
+    throw new Error('WalletKeyNotInitialized')
+  }
+
+  let closed = false
+  return {
+    signProof: async (nonce, audience, options = {}) => {
+      if (closed) {
+        throw new Error('WalletKeySigningSessionClosed')
+      }
+      if (options.credentialKeyId) {
+        throw new Error('CredentialKeySigningSessionRequired')
+      }
+      return signProofWithSeed(nonce, audience, options, seed)
+    },
+    close: () => {
+      if (closed) return
+      seed.fill(0)
+      closed = true
+    },
+  }
+}
+
+function createCredentialProofSigningSession(
+  credentialKeyId: string,
+  credentialSession: CredentialKeySigningSession,
+): ProofSigningSession {
+  return {
+    credentialKeyId,
+    signProof: (nonce, audience, options = {}) =>
+      signProofWithCredentialSession(nonce, audience, options, credentialKeyId, credentialSession),
+    bindCredentialKey: async (credentialId, credentialType) => {
+      await credentialSession.bindCredentialKey(credentialId, credentialType)
+    },
+    close: credentialSession.close,
+  }
+}
+
+async function signProofWithCredentialSession(
+  nonce: string,
+  audience: string,
+  options: SignProofOptions,
+  credentialKeyId: string,
+  credentialSession: CredentialKeySigningSession,
+): Promise<string> {
+  if (options.credentialKeyId && options.credentialKeyId !== credentialKeyId) {
+    throw new Error('CredentialKeySigningSessionMismatch')
+  }
+
+  const keyBinding = options.keyBinding ?? 'did-kid'
+  const header =
+    keyBinding === 'jwk'
+      ? {
+          alg: 'EdDSA' as const,
+          typ: 'openid4vci-proof+jwt' as const,
+          jwk: credentialSession.publicJwk,
+          cose_key: base64UrlEncode(
+            encodeEd25519CoseKey(
+              getPublicKeyFromCredentialSigningJwk(credentialSession.publicJwk),
+            ),
+          ),
+        }
+      : {
+          alg: 'EdDSA' as const,
+          typ: 'openid4vci-proof+jwt' as const,
+          kid: `${credentialSession.holderDid}#${credentialSession.holderDid.slice('did:key:'.length)}`,
+        }
+  const payload =
+    keyBinding === 'jwk'
+      ? {
+          aud: audience,
+          iat: Math.floor(Date.now() / 1000),
+          nonce,
+        }
+      : {
+          iss: credentialSession.holderDid,
+          sub: credentialSession.holderDid,
+          aud: audience,
+          iat: Math.floor(Date.now() / 1000),
+          nonce,
+        }
+
+  logWalletStep('crypto', 'sign-proof-start', {
+    alg: header.alg,
+    typ: header.typ,
+    keyBinding,
+    credentialKeyId,
+    kid: 'kid' in header ? header.kid : undefined,
+    jwkCrv: 'jwk' in header && header.jwk ? header.jwk.crv : undefined,
+    coseKeyPresent: 'cose_key' in header,
+    audience,
+    noncePresent: Boolean(nonce),
+  })
+  return signJwtLikeObject(
+    header,
+    payload,
+    'proof',
+    'active',
+    undefined,
+    undefined,
+    (message) => credentialSession.sign(message),
+  )
+}
+
 export async function signProof(
   nonce: string,
   audience: string,
   options: SignProofOptions = {},
+): Promise<string> {
+  return signProofWithSeed(nonce, audience, options)
+}
+
+async function signProofWithSeed(
+  nonce: string,
+  audience: string,
+  options: SignProofOptions = {},
+  seed?: Uint8Array,
 ): Promise<string> {
   const keyBinding = options.keyBinding ?? 'did-kid'
   const credentialKeyId = options.credentialKeyId
@@ -530,7 +687,7 @@ export async function signProof(
     audience,
     noncePresent: Boolean(nonce),
   })
-  return signJwtLikeObject(header, payload, 'proof', 'active', credentialKeyId)
+  return signJwtLikeObject(header, payload, 'proof', 'active', credentialKeyId, seed)
 }
 
 /** RFC 8152 COSE_Key for the holder Ed25519 public key, base64url-encoded CBOR. */
@@ -854,6 +1011,8 @@ async function signJwtLikeObject(
   tokenKind: string,
   seedKind: 'active' | 'previous' = 'active',
   credentialKeyId?: string,
+  seedOverride?: Uint8Array,
+  signerOverride?: (message: Uint8Array) => Uint8Array | Promise<Uint8Array>,
 ): Promise<string> {
   const headerB64 = base64UrlEncode(JSON.stringify(header))
   const payloadB64 = base64UrlEncode(JSON.stringify(payload))
@@ -862,15 +1021,23 @@ async function signJwtLikeObject(
   try {
     if (credentialKeyId && isWalletCryptoV2Enabled()) {
       signatureBytes = await signWithCredentialKey(credentialKeyId, new TextEncoder().encode(signingInput))
+    } else if (signerOverride) {
+      signatureBytes = await signerOverride(new TextEncoder().encode(signingInput))
     } else {
       const service = seedKind === 'previous' ? PREVIOUS_KEYCHAIN_SERVICE : KEYCHAIN_SERVICE
       const promptTitle =
         seedKind === 'previous' ? 'Sign with Previous Wallet Key' : 'Sign with Wallet Key'
-      const seed = await readStoredEd25519Seed(service, promptTitle)
-      if (!seed) {
+      const signingSeed = seedOverride ?? await readStoredEd25519Seed(service, promptTitle)
+      if (!signingSeed) {
         throw new Error(seedKind === 'previous' ? 'PreviousWalletKeyNotInitialized' : 'WalletKeyNotInitialized')
       }
-      signatureBytes = sign(new TextEncoder().encode(signingInput), seed)
+      try {
+        signatureBytes = sign(new TextEncoder().encode(signingInput), signingSeed)
+      } finally {
+        if (!seedOverride) {
+          signingSeed.fill(0)
+        }
+      }
     }
   } catch (error) {
     if (isWalletKeySigningCancellation(error)) {
@@ -915,7 +1082,9 @@ function assertSdJwtHolderBinding(sdJwt: string, holder: { jwk: JsonWebKey; kid:
   if (cnfKid && isSameKid(cnfKid, holder.kid)) return cnfKid
   if (cnfJwk && isSameJwk(cnfJwk, holder.jwk as Record<string, unknown>)) return undefined
 
-  throw new Error('PresentationCredentialHolderBindingMismatch: SD-JWT credential is not bound to this Wallet Signing Key')
+  throw new Error(
+    `PresentationCredentialHolderBindingMismatch: expected=${formatWalletHolderBindingHint(holder.jwk as Record<string, unknown>, holder.kid)}; got=${formatCredentialCnfHint(cnfJwk, cnfKid)}`,
+  )
 }
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> {

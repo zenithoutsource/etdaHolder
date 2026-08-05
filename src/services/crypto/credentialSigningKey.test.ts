@@ -1,6 +1,5 @@
 import { getPublicKey, verify } from '@noble/ed25519'
 import * as Keychain from 'react-native-keychain'
-import { __resetStore } from 'react-native-keychain'
 
 import { getMetaStorage } from '../storage/storage'
 import { getCredentialKeyRecord } from './credentialKeyRegistry'
@@ -20,9 +19,11 @@ function base64ToUint8Array(b64: string): Uint8Array {
   return out
 }
 
+const resetKeychainStore = (Keychain as unknown as { __resetStore: () => void }).__resetStore
+
 describe('credentialSigningKey', () => {
   beforeEach(() => {
-    __resetStore()
+    resetKeychainStore()
     getMetaStorage().clearAll()
   })
 
@@ -34,7 +35,8 @@ describe('credentialSigningKey', () => {
       service: `wallet.ed25519_seed.cred.${pendingId}`,
     })
     expect(credentials).toBeTruthy()
-    expect(base64ToUint8Array(credentials!.password)).toHaveLength(32)
+    if (!credentials) throw new Error('Credential keychain seed missing')
+    expect(base64ToUint8Array(credentials.password)).toHaveLength(32)
   })
 
   test('bindPendingKeyToCredential moves key to credentialId service and registry entry with valid did:key', async () => {
@@ -63,7 +65,8 @@ describe('credentialSigningKey', () => {
 
     const record = getCredentialKeyRecord('cred-sign')!
     const seedCredentials = await Keychain.getGenericPassword({ service: record.keychainService })
-    const seed = base64ToUint8Array(seedCredentials!.password)
+    if (!seedCredentials) throw new Error('Credential keychain seed missing')
+    const seed = base64ToUint8Array(seedCredentials.password)
     const publicKey = getPublicKey(seed)
     expect(verify(signature, message, publicKey)).toBe(true)
   })

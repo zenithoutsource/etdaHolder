@@ -1,5 +1,4 @@
 import * as Keychain from 'react-native-keychain'
-import { __resetStore } from 'react-native-keychain'
 
 import { getMetaStorage } from '../storage/storage'
 import {
@@ -8,9 +7,11 @@ import {
   readWalletAttestPublicJwk,
 } from './walletAttestKey'
 
+const resetKeychainStore = (Keychain as unknown as { __resetStore: () => void }).__resetStore
+
 describe('walletAttestKey', () => {
   beforeEach(() => {
-    __resetStore()
+    resetKeychainStore()
     getMetaStorage().clearAll()
   })
 

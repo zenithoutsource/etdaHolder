@@ -9,10 +9,13 @@ import {
   getHolderDid,
   signPresentationVpToken,
   signProof,
+  createProofSigningSession,
   resetWalletKey,
   hasWalletKey,
   getWalletKeyRegisteredAt,
 } from './crypto'
+import { WALLET_CRYPTO_V2_META_KEY } from '@/src/config/walletCryptoPolicy'
+import { createPendingCredentialKey } from './credentialSigningKey'
 import { getMetaStorage } from '../storage/storage'
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
@@ -139,6 +142,50 @@ describe('Keychain Ed25519 wallet crypto service', () => {
         cancel: 'Cancel',
       },
     }))
+  })
+
+  test('signs both dual-format proofs after one authenticated Keychain read', async () => {
+    await generateWalletKeyIfNeeded()
+    jest.clearAllMocks()
+
+    const session = await createProofSigningSession()
+    await session.signProof('nonce-sd-jwt', 'https://issuer.example.com', { keyBinding: 'did-kid' })
+    await session.signProof('nonce-mdoc', 'https://issuer.example.com', { keyBinding: 'jwk' })
+    session.close()
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
+    expect(Keychain.getGenericPassword).toHaveBeenCalledWith(expect.objectContaining({
+      service: 'etda.wallet.ed25519_seed',
+      authenticationPrompt: {
+        title: 'Sign with Wallet Key',
+        cancel: 'Cancel',
+      },
+    }))
+  })
+
+  test('uses one authenticated per-credential proof session for both dual-format proofs', async () => {
+    getMetaStorage().set(WALLET_CRYPTO_V2_META_KEY, 'true')
+    const pendingKeyId = await createPendingCredentialKey()
+    jest.clearAllMocks()
+
+    const session = await createProofSigningSession(pendingKeyId)
+    expect(session.credentialKeyId).toBe(pendingKeyId)
+    await session.signProof('nonce-sd-jwt', 'https://issuer.example.com', { keyBinding: 'did-kid' })
+    await session.signProof('nonce-mdoc', 'https://issuer.example.com', { keyBinding: 'jwk' })
+    session.close()
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
+    expect(Keychain.getGenericPassword).toHaveBeenCalledWith(expect.objectContaining({
+      service: `wallet.ed25519_seed.cred.${pendingKeyId}`,
+      authenticationPrompt: {
+        title: 'Sign with Credential Key',
+        cancel: 'Cancel',
+      },
+    }))
+
+    expect(session.bindCredentialKey).toBeDefined()
+    await session.bindCredentialKey?.('dual-format-session-credential', 'ThaiNationalID')
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
   })
 
   test('signs OID4VCI PoP JWT with EdDSA jwk header for cose_key binding', async () => {
@@ -415,10 +462,6 @@ describe('Keychain Ed25519 wallet crypto service', () => {
         expect.objectContaining({
           step: 'keychain-write',
           existingKeyPresent: false,
-          device: expect.objectContaining({
-            platform: expect.any(String),
-            softwareEd25519Supported: expect.any(Boolean),
-          }),
         }),
         expect.objectContaining({ message: 'Ed25519SeedKeychainWriteFailed' }),
       )

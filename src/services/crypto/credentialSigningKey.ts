@@ -176,11 +176,25 @@ function removePendingKeyMeta(pendingId: string): void {
 export async function createPendingCredentialKey(now = new Date()): Promise<string> {
   const pendingId = createPendingId()
   const seed = randomBytes(32)
-  assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
-  await writeEd25519Seed(seed, credentialKeychainService(pendingId))
-  writePendingKeyMeta({ pendingId, createdAt: now.toISOString() })
-  logWalletStep('crypto', 'credential-pending-key-created', { pendingId })
-  return pendingId
+  try {
+    assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+    await writeEd25519Seed(seed, credentialKeychainService(pendingId))
+    try {
+      writePendingKeyMeta({ pendingId, createdAt: now.toISOString() })
+    } catch (error) {
+      removePendingKeyMeta(pendingId)
+      try {
+        await Keychain.resetGenericPassword({ service: credentialKeychainService(pendingId) })
+      } catch (cleanupError) {
+        logWalletError('crypto', 'credential-pending-key-rollback-failed', cleanupError, { pendingId })
+      }
+      throw error
+    }
+    logWalletStep('crypto', 'credential-pending-key-created', { pendingId })
+    return pendingId
+  } finally {
+    seed.fill(0)
+  }
 }
 
 export async function bindPendingKeyToCredential(
@@ -200,11 +214,25 @@ export async function bindPendingKeyToCredential(
     throw new Error('PendingCredentialKeySeedMissing')
   }
 
-  const credentialService = credentialKeychainService(credentialId)
-  await writeEd25519Seed(seed, credentialService)
-  await Keychain.resetGenericPassword({ service: pendingService }).catch(() => undefined)
-  removePendingKeyMeta(pendingId)
+  try {
+    return await bindPendingKeyWithSeed(pendingId, credentialId, credentialType, seed, now)
+  } finally {
+    seed.fill(0)
+  }
+}
 
+async function bindPendingKeyWithSeed(
+  pendingId: string,
+  credentialId: string,
+  credentialType: string,
+  seed: Uint8Array,
+  now: Date,
+): Promise<CredentialKeyRecord> {
+  if (!readPendingKeyMeta(pendingId)) {
+    throw new Error('PendingCredentialKeyNotFound')
+  }
+
+  const credentialService = credentialKeychainService(credentialId)
   const publicKey = getPublicKey(seed)
   assertEd25519PublicKeyLength(publicKey)
   const holderDid = ed25519PublicKeyToDidKey(publicKey)
@@ -215,15 +243,113 @@ export async function bindPendingKeyToCredential(
     credentialType,
     createdAt: now.toISOString(),
   }
-  registerCredentialKey(record)
+
+  try {
+    await writeEd25519Seed(seed, credentialService)
+    registerCredentialKey(record)
+    await Keychain.resetGenericPassword({ service: credentialKeychainService(pendingId) })
+    removePendingKeyMeta(pendingId)
+  } catch (error) {
+    removeCredentialKeyRecord(credentialId)
+    try {
+      await Keychain.resetGenericPassword({ service: credentialService })
+    } catch (cleanupError) {
+      logWalletError('crypto', 'credential-key-bind-rollback-failed', cleanupError, {
+        pendingId,
+        credentialId,
+      })
+    }
+    throw error
+  }
+
   logWalletStep('crypto', 'credential-key-bound', { credentialId, credentialType })
   return record
+}
+
+/**
+ * Discards a pending issuance key when the claim is cancelled or abandoned.
+ * The metadata is intentionally retained when the Keychain deletion fails so
+ * the normal pending-key GC can retry it later.
+ */
+export async function discardPendingCredentialKey(pendingId: string): Promise<void> {
+  if (!readPendingKeyMeta(pendingId)) return
+
+  try {
+    await Keychain.resetGenericPassword({ service: credentialKeychainService(pendingId) })
+    removePendingKeyMeta(pendingId)
+    logWalletStep('crypto', 'credential-pending-key-discarded', { pendingId })
+  } catch (error) {
+    logWalletError('crypto', 'credential-pending-key-discard-failed', error, { pendingId })
+  }
 }
 
 export function getCredentialHolderDid(credentialId: string): string {
   const record = getCredentialKeyRecord(credentialId)
   if (!record) throw new Error('CredentialKeyNotFound')
   return record.holderDid
+}
+
+export type CredentialKeySigningSession = {
+  credentialKeyId: string
+  publicJwk: JsonWebKey
+  holderDid: string
+  sign: (message: Uint8Array) => Uint8Array
+  bindCredentialKey: (credentialId: string, credentialType: string) => Promise<CredentialKeyRecord>
+  close: () => void
+}
+
+/**
+ * Opens one authenticated session for a sequence of proofs using the same
+ * per-credential Ed25519 key. The seed stays private to this module and is
+ * cleared when the session closes.
+ */
+export async function createCredentialKeySigningSession(
+  credentialKeyId: string,
+): Promise<CredentialKeySigningSession> {
+  const service = resolveKeychainServiceForKey(credentialKeyId)
+  if (!service) throw new Error('CredentialKeyNotFound')
+
+  const seed = await readStoredEd25519Seed(service, 'Sign with Credential Key')
+  if (!seed) throw new Error('CredentialKeySeedMissing')
+
+  let sessionCreated = false
+  try {
+    const publicKey = getPublicKey(seed)
+    assertEd25519PublicKeyLength(publicKey)
+    const record = getCredentialKeyRecord(credentialKeyId)
+    const holderDid = record?.holderDid ?? ed25519PublicKeyToDidKey(publicKey)
+    let closed = false
+
+    const session: CredentialKeySigningSession = {
+      credentialKeyId,
+      publicJwk: publicKeyToEd25519Jwk(publicKey),
+      holderDid,
+      sign: (message) => {
+        if (closed) throw new Error('CredentialKeySigningSessionClosed')
+        try {
+          const signature = sign(message, seed)
+          if (signature.length !== 64) {
+            throw new Error(`InvalidSignatureLength: expected 64 Ed25519 bytes, got ${signature.length}`)
+          }
+          return signature
+        } catch (error) {
+          logWalletError('crypto', 'credential-key-session-sign-failed', error, { credentialKeyId })
+          throw error
+        }
+      },
+      bindCredentialKey: (credentialId, credentialType) =>
+        bindPendingKeyWithSeed(credentialKeyId, credentialId, credentialType, seed, new Date()),
+      close: () => {
+        if (closed) return
+        seed.fill(0)
+        closed = true
+      },
+    }
+    sessionCreated = true
+    return session
+  } finally {
+    if (!sessionCreated) seed.fill(0)
+  }
 }
 
 function publicKeyToEd25519Jwk(publicKey: Uint8Array): JsonWebKey {
@@ -247,7 +373,11 @@ export async function readCredentialSigningPublicJwk(keyId: string): Promise<Jso
 
   const seed = await readStoredEd25519Seed(service)
   if (!seed) throw new Error('CredentialKeySeedMissing')
-  return publicKeyToEd25519Jwk(getPublicKey(seed))
+  try {
+    return publicKeyToEd25519Jwk(getPublicKey(seed))
+  } finally {
+    seed.fill(0)
+  }
 }
 
 export async function getCredentialSigningHolderDid(keyId: string): Promise<string> {
@@ -259,7 +389,11 @@ export async function getCredentialSigningHolderDid(keyId: string): Promise<stri
 
   const seed = await readStoredEd25519Seed(service)
   if (!seed) throw new Error('CredentialKeySeedMissing')
-  return ed25519PublicKeyToDidKey(getPublicKey(seed))
+  try {
+    return ed25519PublicKeyToDidKey(getPublicKey(seed))
+  } finally {
+    seed.fill(0)
+  }
 }
 
 export async function signWithCredentialKey(credentialId: string, message: Uint8Array): Promise<Uint8Array> {
@@ -269,12 +403,16 @@ export async function signWithCredentialKey(credentialId: string, message: Uint8
   try {
     const seed = await readStoredEd25519Seed(service, 'Sign with Credential Key')
     if (!seed) throw new Error('CredentialKeySeedMissing')
-    const signature = sign(message, seed)
-    if (signature.length !== 64) {
-      throw new Error(`InvalidSignatureLength: expected 64 Ed25519 bytes, got ${signature.length}`)
+    try {
+      const signature = sign(message, seed)
+      if (signature.length !== 64) {
+        throw new Error(`InvalidSignatureLength: expected 64 Ed25519 bytes, got ${signature.length}`)
+      }
+      logWalletStep('crypto', 'credential-key-sign-complete', { credentialId })
+      return signature
+    } finally {
+      seed.fill(0)
     }
-    logWalletStep('crypto', 'credential-key-sign-complete', { credentialId })
-    return signature
   } catch (error) {
     logWalletError('crypto', 'credential-key-sign-failed', error, { credentialId })
     throw error
