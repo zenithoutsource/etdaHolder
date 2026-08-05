@@ -20,7 +20,8 @@ export type IssuanceVerificationConfig = {
 export type IssuanceConfirmationConfig = {
   documentLabel: string;
   issuerLabel: string;
-  imageKey: "dopa";
+  imageKey: "dopa" | "dltt" | "chulalongkorn" | "profile";
+  accent: "navy" | "pink";
 };
 
 export type CardSchemaConfig = {
@@ -140,6 +141,7 @@ const SCHEMAS: CardSchemaConfig[] = [
       documentLabel: "บัตรประชาชน",
       issuerLabel: "กรมการปกครอง",
       imageKey: "dopa",
+      accent: "navy",
     },
   },
   {
@@ -244,6 +246,12 @@ const SCHEMAS: CardSchemaConfig[] = [
         aliases: ["expiry_date", "expirationDate"],
       },
     ],
+    issuanceConfirmation: {
+      documentLabel: "ใบอนุญาตขับขี่",
+      issuerLabel: "กรมการขนส่งทางบก",
+      imageKey: "dltt",
+      accent: "navy",
+    },
   },
   {
     type: "ChulalongkornUniversityTranscript",
@@ -389,6 +397,12 @@ const SCHEMAS: CardSchemaConfig[] = [
     ],
     summaryRowDivider: "both",
     hideSummaryValidityFooter: true,
+    issuanceConfirmation: {
+      documentLabel: "ใบแสดงผลการเรียน",
+      issuerLabel: "จุฬาลงกรณ์มหาวิทยาลัย",
+      imageKey: "chulalongkorn",
+      accent: "pink",
+    },
   },
   {
     type: "MedicalCertificate",

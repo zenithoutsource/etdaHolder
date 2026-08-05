@@ -30,6 +30,27 @@ describe('getCardSchema', () => {
     expect(schema.displayFields.some((f) => f.key === 'gpa')).toBe(true)
   })
 
+  test('provides issuer confirmation content for every supported issuance document', () => {
+    expect(getCardSchema('ThaiNationalID').issuanceConfirmation).toEqual({
+      documentLabel: 'บัตรประชาชน',
+      issuerLabel: 'กรมการปกครอง',
+      imageKey: 'dopa',
+      accent: 'navy',
+    })
+    expect(getCardSchema('DLTDrivingLicence').issuanceConfirmation).toEqual({
+      documentLabel: 'ใบอนุญาตขับขี่',
+      issuerLabel: 'กรมการขนส่งทางบก',
+      imageKey: 'dltt',
+      accent: 'navy',
+    })
+    expect(getCardSchema('ChulalongkornUniversityTranscript').issuanceConfirmation).toEqual({
+      documentLabel: 'ใบแสดงผลการเรียน',
+      issuerLabel: 'จุฬาลงกรณ์มหาวิทยาลัย',
+      imageKey: 'chulalongkorn',
+      accent: 'pink',
+    })
+  })
+
   test('returns fallback for unknown type', () => {
     const schema = getCardSchema('UnknownCredentialType')
     expect(schema.title).toBe('Credential')

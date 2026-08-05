@@ -5,8 +5,14 @@ import CredentialOfferRoute from '../../app/(tabs)/credential-offer'
 import { CredentialOfferClaimScreen } from './CredentialOfferClaimScreen'
 import { useDeeplinkStore } from '../store/deeplinkStore'
 import { acquireCredentialRecord, resolveOffer } from '../services/vci/exchangeService'
+import {
+  acquireDrivingLicenceMdocOnlyForPreview,
+  acquireDualFormatForPreview,
+  finalizeDualFormatCredential,
+} from '../services/credentials/dualFormatIssuance'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
+import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
 
 jest.mock('../components/AppDialog', () => ({
   useAppDialog: () => ({ showDialog: jest.fn() }),
@@ -76,9 +82,29 @@ jest.mock('../services/vci/exchangeService', () => ({
   readCredentialClaimMap: (record: { claims: Record<string, unknown> }) => record.claims,
 }))
 
+jest.mock('../services/credentials/scannedCredentialSave', () => ({
+  saveScannedCredential: jest.fn(),
+}))
+
+jest.mock('../services/credentials/dualFormatIssuance', () => {
+  const actual = jest.requireActual<typeof import('../services/credentials/dualFormatIssuance')>(
+    '../services/credentials/dualFormatIssuance',
+  )
+  return {
+    ...actual,
+    acquireDrivingLicenceMdocOnlyForPreview: jest.fn(),
+    acquireDualFormatForPreview: jest.fn(),
+    finalizeDualFormatCredential: jest.fn(),
+  }
+})
+
 const resolveOfferMock = resolveOffer as jest.Mock
 const acquireCredentialRecordMock = acquireCredentialRecord as jest.Mock
+const acquireDrivingLicenceMdocOnlyForPreviewMock = acquireDrivingLicenceMdocOnlyForPreview as jest.Mock
+const acquireDualFormatForPreviewMock = acquireDualFormatForPreview as jest.Mock
+const finalizeDualFormatCredentialMock = finalizeDualFormatCredential as jest.Mock
 const readStoredCredentialsMock = readStoredCredentials as jest.Mock
+const saveScannedCredentialMock = saveScannedCredential as jest.Mock
 const linkingMock = jest.requireMock('expo-linking') as {
   getInitialURL: jest.Mock<Promise<string | null>, []>
   useURL: jest.Mock<string | null, []>
@@ -93,6 +119,9 @@ describe('CredentialOfferClaimScreen', () => {
     useUrlMock.mockReturnValue(null)
     useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
     readStoredCredentialsMock.mockReturnValue([])
+    acquireDrivingLicenceMdocOnlyForPreviewMock.mockReset()
+    acquireDualFormatForPreviewMock.mockReset()
+    finalizeDualFormatCredentialMock.mockReset()
   })
 
   afterEach(() => {
@@ -103,7 +132,7 @@ describe('CredentialOfferClaimScreen', () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer'
     useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
     resolveOfferMock.mockResolvedValue({
-      credentialConfigurations: [{ id: 'ThaiNationalID' }],
+      credentialConfigurations: [{ id: 'ThaiNationalID', format: 'dc+sd-jwt', rawConfiguration: {} }],
       issuer: 'https://issuer.example',
       txCode: undefined,
     })
@@ -349,7 +378,7 @@ describe('CredentialOfferClaimScreen', () => {
     expect(screen.queryByText(WALLET_HOME_COPY.renewThaIdRequiredMessage)).toBeNull()
   })
 
-  it('uses the driving-licence preview panel for a driving-licence record', async () => {
+  it('acquires a driving licence without showing the PID confirmation panel', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fdriving-licence-offer'
     readStoredCredentialsMock.mockReturnValue([
       {
@@ -378,8 +407,270 @@ describe('CredentialOfferClaimScreen', () => {
     render(<CredentialOfferClaimScreen />)
 
     await waitFor(() => {
+      expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
+    })
+
+    await waitFor(() => {
+      expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
       expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
     })
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+  })
+
+  it('shows the DOPA confirmation before acquiring a ThaiNationalID credential', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-before-acquire'
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+    acquireCredentialRecordMock.mockResolvedValue({
+      id: 'id-card-before-acquire',
+      type: 'ThaiNationalID',
+      rawVc: 'vc',
+      claims: {},
+      issuedAt: '2026-06-09T00:00:00.000Z',
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+    expect(acquireCredentialRecordMock).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
+    await waitFor(() => {
+      expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('thai-id-receive-panel')).toBeTruthy()
+    })
+  })
+
+  it('shows the issuer confirmation after DL preview and before saving', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fdriving-licence-confirmation'
+    readStoredCredentialsMock.mockReturnValue([
+      {
+        id: 'active-id-card',
+        type: 'ThaiNationalID',
+        rawVc: 'vc',
+        claims: {},
+        issuedAt: '2026-06-09T00:00:00.000Z',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    ])
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'DLTDrivingLicence', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+    acquireCredentialRecordMock.mockResolvedValue({
+      id: 'driving-licence-confirmation',
+      type: 'DLTDrivingLicence',
+      rawVc: 'vc',
+      claims: {},
+      issuedAt: '2026-06-09T00:00:00.000Z',
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+
+    fireEvent.press(screen.getByText('ยอมรับ'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('issuer-confirmation-image')).toBeTruthy()
+    })
+    expect(screen.getByText('กรมการขนส่งทางบก')).toBeTruthy()
+    expect(screen.getByText(/ใบอนุญาตขับขี่/)).toBeTruthy()
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
+
+    await waitFor(() => {
+      expect(saveScannedCredentialMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByText('รับเอกสารสำเร็จ')).toBeTruthy()
+    })
+  })
+
+  it('keeps pending mDOC through issuer confirmation and waits for dual-format finalization', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fdual-format-offer'
+    readStoredCredentialsMock.mockReturnValue([
+      {
+        id: 'active-id-card',
+        type: 'ThaiNationalID',
+        rawVc: 'vc',
+        claims: {},
+        issuedAt: '2026-06-09T00:00:00.000Z',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    ])
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [
+        {
+          id: 'DrivingCredential_dc+sd-jwt',
+          format: 'dc+sd-jwt',
+          rawConfiguration: { logical_credential_id: 'driving-1' },
+        },
+        {
+          id: 'DrivingCredential_mso_mdoc',
+          format: 'mso_mdoc',
+          rawConfiguration: {
+            doctype: 'org.iso.18013.5.1.mDL',
+            logical_credential_id: 'driving-1',
+          },
+        },
+      ],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+    const record = {
+      id: 'dual-driving-licence',
+      type: 'DLTDrivingLicence',
+      rawVc: 'sd-jwt',
+      claims: {},
+      issuedAt: '2026-06-09T00:00:00.000Z',
+      issuerUrl: 'https://issuer.example',
+      credentialConfigurationId: 'DrivingCredential_dc+sd-jwt',
+    }
+    const pendingMdoc = {
+      docType: 'org.iso.18013.5.1.mDL',
+      configurationId: 'DrivingCredential_mso_mdoc',
+      sdJwtConfigurationId: 'DrivingCredential_dc+sd-jwt',
+      logicalCredentialId: 'driving-1',
+      issuer: 'https://issuer.example',
+      rawBase64: 'AQIDBA',
+    }
+    acquireDrivingLicenceMdocOnlyForPreviewMock.mockResolvedValue({ primaryRecord: record, pendingMdoc })
+    let releaseFinalize: (() => void) | undefined
+    finalizeDualFormatCredentialMock.mockImplementation(
+      () => new Promise<void>((resolve) => {
+        releaseFinalize = resolve
+      }),
+    )
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(acquireDrivingLicenceMdocOnlyForPreviewMock).toHaveBeenCalledTimes(1)
+      expect(acquireDualFormatForPreviewMock).not.toHaveBeenCalled()
+      expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+
+    fireEvent.press(screen.getByText('ยอมรับ'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('issuer-confirmation-image')).toBeTruthy()
+    })
+    fireEvent.press(screen.getByText('ยืนยัน'))
+
+    await waitFor(() => {
+      expect(finalizeDualFormatCredentialMock).toHaveBeenCalledWith(record, pendingMdoc, {
+        refreshCredentials: expect.any(Function),
+      })
+    })
+    expect(screen.queryByText('รับเอกสารสำเร็จ')).toBeNull()
+    expect(saveScannedCredentialMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      releaseFinalize?.()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('รับเอกสารสำเร็จ')).toBeTruthy()
+    })
+  })
+
+  it('shows the university issuer confirmation after transcript preview', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Ftranscript-confirmation'
+    readStoredCredentialsMock.mockReturnValue([
+      {
+        id: 'active-id-card',
+        type: 'ThaiNationalID',
+        rawVc: 'vc',
+        claims: {},
+        issuedAt: '2026-06-09T00:00:00.000Z',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    ])
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ChulalongkornUniversityTranscript', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+    acquireCredentialRecordMock.mockResolvedValue({
+      id: 'transcript-confirmation',
+      type: 'ChulalongkornUniversityTranscript',
+      rawVc: 'vc',
+      claims: {},
+      issuedAt: '2026-06-09T00:00:00.000Z',
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('document-card-layout')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+
+    fireEvent.press(screen.getByText('ยอมรับ'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('issuer-confirmation-image')).toBeTruthy()
+    })
+    expect(screen.getByText('จุฬาลงกรณ์มหาวิทยาลัย')).toBeTruthy()
+    expect(screen.getByText(/ใบแสดงผลการเรียน/)).toBeTruthy()
+  })
+
+  it('saves unsupported credential previews directly without showing the DOPA issuer card', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fmedical-offer'
+    readStoredCredentialsMock.mockReturnValue([
+      {
+        id: 'active-id-card',
+        type: 'ThaiNationalID',
+        rawVc: 'vc',
+        claims: {},
+        issuedAt: '2026-06-09T00:00:00.000Z',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    ])
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'MedicalCertificate', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+    acquireCredentialRecordMock.mockResolvedValue({
+      id: 'medical-certificate',
+      type: 'MedicalCertificate',
+      rawVc: 'vc',
+      claims: {},
+      issuedAt: '2026-06-09T00:00:00.000Z',
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('credential-preview-content')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+
+    fireEvent.press(screen.getByText('ยอมรับ'))
+
+    await waitFor(() => {
+      expect(saveScannedCredentialMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByText('รับเอกสารสำเร็จ')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('issuer-confirmation-image')).toBeNull()
   })
 
   it('dismisses the active deeplink before navigating back to wallet', async () => {

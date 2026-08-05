@@ -1,6 +1,7 @@
 import { Image, Text, View, type ImageSourcePropType } from 'react-native'
 
 import { AppButton } from './AppButton'
+import { THEME } from '../config/themeColors'
 
 type Props = {
   image: ImageSourcePropType
@@ -11,6 +12,7 @@ type Props = {
   onConfirm: () => void
   confirmLabel?: string
   badge?: React.ReactNode
+  accent?: 'navy' | 'pink'
 }
 
 export function TrustConfirmationCard({
@@ -22,10 +24,16 @@ export function TrustConfirmationCard({
   onConfirm,
   confirmLabel = 'ยืนยัน',
   badge,
+  accent = 'navy',
 }: Props) {
+  const borderColor = accent === 'pink' ? THEME.pink : THEME.navy
+
   return (
-    <View className="flex-1 bg-surface px-10 pt-[60px]">
-      <View className="relative min-h-[200px] rounded-lg border-[8px] border-wallet-navy bg-white px-5 pb-6 pt-5">
+    <View testID="trust-confirmation-content" className="flex-1 items-center justify-center bg-surface px-10">
+      <View
+        testID="trust-confirmation-card"
+        className="relative min-h-[200px] w-full max-w-[340px] rounded-lg bg-white px-5 pb-6 pt-5"
+        style={{ borderWidth: 8, borderColor }}>
         {badge}
 
         <View className="items-center">
