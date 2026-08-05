@@ -1,5 +1,11 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-05 (ETDA demo learning web)
+
+- **Guide:** `docs/demo/etda-demo-learning.html` — standalone Thai tutorial for demo
+  prep (flows, P-256/StrongBox, My QR checklist, demo script, FAQ, quiz). Open
+  directly in a browser; no build required.
+
 ### Session 2026-08-03 (Android flow Back navigation)
 
 - Android system Back from credential receive and document presentation flows is

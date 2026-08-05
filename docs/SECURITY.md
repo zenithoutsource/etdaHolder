@@ -76,6 +76,11 @@ Every signature operation must be gated by Keychain biometric/device authenticat
 - Mobile app never connects directly to MySQL.
 - Local development backend under `server/` is acceptable only behind the SDK/API boundary.
 - OID4VP online presentation must run device-to-Verifier directly.
+- Before sending an OID4VP response, the wallet stores only SHA-256 fingerprints
+  of the authorization-request URI and nonce in encrypted wallet storage. Callback,
+  startup, and PIN-unlock routing reject those fingerprints to prevent a stale
+  request from reopening after process death. This is a local replay guard; the
+  Verifier remains responsible for authoritative nonce validation.
 - OID4VP Verifier requests must be rejected unless both the `client_id` and `direct_post` origin are allowlisted. Production should use registered `did:web` Verifiers; the current `redirect_uri:` Verifier is development-only.
 
 ### Local Backend Hardening
