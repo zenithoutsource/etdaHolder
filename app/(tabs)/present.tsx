@@ -53,8 +53,9 @@ export default function PresentScreen() {
     void (async () => {
       const stored = await hasStoredMdoc(credentialId)
       if (cancelled) return
-      setMdocAvailable(stored)
-      if (!stored) return
+      const hasMdoc = stored === true
+      setMdocAvailable(hasMdoc)
+      if (!hasMdoc) return
       if (status === 'idle') {
         openPresentation(credentialId, 'mdoc-only')
       }

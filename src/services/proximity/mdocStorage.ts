@@ -20,15 +20,27 @@ export async function storeMdocCredential(record: StoredMdocRecord, mdocBytes: U
   }
 }
 
-export async function hasStoredMdoc(credentialId: string): Promise<boolean> {
+/**
+ * Returns `undefined` when native storage cannot establish presence.
+ * Callers must not treat that state as absence during destructive rollback.
+ */
+export async function hasStoredMdoc(credentialId: string): Promise<boolean | undefined> {
   const native = getNativeProximityModule()
-  if (!native) return false
+  if (!native) {
+    logWalletError(
+      'proximity-storage',
+      'hasMdoc unavailable',
+      new Error('NativeProximityModuleUnavailable'),
+      { credentialId },
+    )
+    return undefined
+  }
 
   try {
     return await native.hasMdoc(credentialId)
   } catch (error) {
     logWalletError('proximity-storage', 'hasMdoc failed', error)
-    return false
+    return undefined
   }
 }
 

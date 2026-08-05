@@ -7,6 +7,7 @@ const baseRequest: ResolvedPresentationRequest = {
   responseUri: 'https://verifier.example.com/verify/request-123',
   responseMode: 'direct_post',
   nonce: 'nonce-123',
+  protocolPath: 'legacy',
   verifier: {
     clientId: 'redirect_uri:https://verifier.example.com/verify',
     name: 'Verifier API',
@@ -53,6 +54,27 @@ test('buildDualFormatDcqlVpToken assembles per-query-id tokens', async () => {
     transcript_sd_jwt: ['sd-jwt~kb.jwt'],
     transcript_mdoc: ['b64mdoc'],
   })
+})
+
+test('buildDualFormatDcqlVpToken uses the shared SD-JWT predicate for vc+sd-jwt', async () => {
+  const request: ResolvedPresentationRequest = {
+    ...baseRequest,
+    dcqlQuery: {
+      credentials: [
+        { ...baseRequest.dcqlQuery!.credentials[0]!, format: 'vc+sd-jwt' },
+        baseRequest.dcqlQuery!.credentials[1]!,
+      ],
+    },
+  }
+  const signSdJwtKb = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
+  const readMdocEntry = jest.fn().mockResolvedValue('b64mdoc')
+
+  await expect(buildDualFormatDcqlVpToken(request, { signSdJwtKb, readMdocEntry })).resolves.toEqual(
+    expect.any(String),
+  )
+
+  expect(signSdJwtKb).toHaveBeenCalledTimes(1)
+  expect(readMdocEntry).toHaveBeenCalledTimes(1)
 })
 
 test('buildDualFormatDcqlVpToken assembles driving licence dual-format tokens', async () => {

@@ -14,6 +14,7 @@ import {
   logWalletError,
   logWalletStep,
 } from "../src/services/debug/walletLogger";
+import { isPresentationRequestConsumed } from "../src/services/vp/presentationRequestReplay";
 import { useAuthStore } from "../src/store/authStore";
 import {
   readPendingCredentialOfferRoute,
@@ -70,7 +71,10 @@ export default function PinLockScreen() {
       return;
     }
 
-    const pendingPresentationRoute = readPendingPresentationRoute(routeInput);
+    const pendingPresentationRoute =
+      pendingUri && isPresentationRequestConsumed(pendingUri)
+        ? undefined
+        : readPendingPresentationRoute(routeInput);
     if (pendingPresentationRoute) {
       logWalletStep("wallet-unlock", "pin-lock-route-pending-presentation");
       router.replace(pendingPresentationRoute);

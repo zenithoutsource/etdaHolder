@@ -102,7 +102,7 @@ export async function startProximityPresentation(
 
   const native = requireNativeProximityModule()
   const hasMdoc = await hasStoredMdoc(credentialId)
-  if (!hasMdoc) {
+  if (hasMdoc !== true) {
     throw new ProximityPresentationError('CREDENTIAL_NOT_FOUND', 'No credential available for proximity')
   }
 

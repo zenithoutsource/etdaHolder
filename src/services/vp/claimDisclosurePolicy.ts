@@ -5,7 +5,7 @@ import {
   getCardSchema,
   resolvePresentationDisclosureLabel,
 } from '@/src/config/cardSchemas'
-import { readString } from '@/src/utils/jwtUtils'
+import { decodeJwtPayloadStrict as decodeJwtPayload, readString } from '@/src/utils/jwtUtils'
 import { readCredentialVct } from './credentialFormatUtils'
 import type { FetchIssuerMetadata } from '../vci/exchangeService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'

@@ -2,15 +2,16 @@ import { readVerifierDcqlVpTokenShape } from '@/src/config/runtimeFlags'
 import { signSdJwtKbPresentationToken } from '../crypto/crypto'
 import { logWalletStep } from '../debug/walletLogger'
 import { isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
+import { isSdJwtDcqlFormat } from './dualFormatQuery'
 import { readMdocVpTokenEntry } from './mdocVpTokenEntry'
 import {
-    readPresentationTokenAudience,
-    type DcqlCredentialQuery,
-    type ResolvedPresentationRequest,
+  readPresentationTokenAudience,
+  type DcqlCredentialQuery,
+  type ResolvedPresentationRequest,
 } from './presentationService'
 import { selectSdJwtDisclosures } from './sdJwtSelectiveDisclosure'
 
-export type DualFormatVpTokenDependencies = {
+type DualFormatVpTokenDependencies = {
   signSdJwtKb?: typeof signSdJwtKbPresentationToken
   readMdocEntry?: typeof readMdocVpTokenEntry
   selectedClaimKeys?: readonly string[]
@@ -60,16 +61,14 @@ async function buildDcqlCredentialToken(input: {
 }): Promise<string> {
   const format = input.credentialQuery.format
 
-  if (format === 'dc+sd-jwt' || format === 'vc+sd-jwt') {
-    const claimKeys =
-      input.selectedClaimKeys ??
-      input.credentialQuery.claims?.flatMap((claim) => (claim.path[0] ? [claim.path[0]] : [])) ??
-      input.request.disclosures.map((disclosure) => disclosure.key)
-
+  if (isSdJwtDcqlFormat(format)) {
     return input.signSdJwtKb({
       audience: input.audience,
       nonce: input.request.nonce,
-      sdJwt: selectSdJwtDisclosures(input.request.matchedCredential.rawVc, claimKeys),
+      sdJwt: selectSdJwtDisclosures(
+        input.request.matchedCredential.rawVc,
+        readDcqlPresentationClaimKeys(input),
+      ),
       credentialId: input.request.matchedCredential.id,
     })
   }
@@ -79,6 +78,18 @@ async function buildDcqlCredentialToken(input: {
   }
 
   throw new Error(`PresentationCredentialFormatUnsupported: DCQL format ${format ?? 'unknown'} is not supported`)
+}
+
+function readDcqlPresentationClaimKeys(input: {
+  request: ResolvedPresentationRequest
+  credentialQuery: DcqlCredentialQuery
+  selectedClaimKeys?: readonly string[]
+}): readonly string[] {
+  return (
+    input.selectedClaimKeys ??
+    input.credentialQuery.claims?.flatMap((claim) => (claim.path[0] ? [claim.path[0]] : [])) ??
+    input.request.disclosures.map((disclosure) => disclosure.key)
+  )
 }
 
 export function isPreformattedDualFormatVpToken(

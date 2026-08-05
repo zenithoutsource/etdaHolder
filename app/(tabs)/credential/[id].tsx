@@ -120,7 +120,7 @@ export default function CredentialDetailScreen() {
     let cancelled = false;
     void (async () => {
       const stored = await hasStoredMdoc(credential.id);
-      if (!cancelled) setHasMdoc(stored);
+      if (!cancelled) setHasMdoc(stored === true);
     })();
 
     return () => {

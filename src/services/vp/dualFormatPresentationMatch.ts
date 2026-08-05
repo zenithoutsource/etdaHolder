@@ -35,7 +35,7 @@ export async function assertDualFormatPresentationReady(
   }
 
   const hasMdoc = await hasStoredMdoc(matchedCredential.id)
-  if (!hasMdoc) {
+  if (hasMdoc !== true) {
     throw new Error('PresentationCredentialMissing: mso_mdoc format is unavailable for the matched logical credential')
   }
 }

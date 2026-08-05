@@ -14,6 +14,17 @@ test('detects dual-format DCQL requests', () => {
   expect(isDualFormatDcqlRequest(query)).toBe(true)
 })
 
+test('detects vc+sd-jwt as the SD-JWT side of a dual-format request', () => {
+  expect(
+    isDualFormatDcqlRequest({
+      credentials: [
+        { id: 'cred-1', format: 'vc+sd-jwt', meta: { vct_values: ['Transcript'] } },
+        { id: 'cred-2', format: 'mso_mdoc' },
+      ],
+    }),
+  ).toBe(true)
+})
+
 test('matches dual-format requests against the SD-JWT record only', () => {
   const query: DcqlQuery = {
     credentials: [

@@ -2,7 +2,6 @@ import { getCardSchema, findDisplayFieldForClaimKey } from '../../config/cardSch
 import { readDisplayValue } from '../credentials/credentialDisplay'
 import { readClaimText } from '../credentials/claimFormatting'
 import { readCredentialClaimMap } from '../vci/exchangeService'
-import { readString } from '@/src/utils/jwtUtils'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { isCompactJwtVc, isCompactSdJwt, readCredentialVct } from './credentialFormatUtils'
 import { isExactDualFormatPair, isSdJwtDcqlFormat } from './dualFormatQuery'
@@ -14,7 +13,9 @@ const THAI_ID_TYPE = 'ThaiNationalID'
 const TRANSCRIPT_TYPE = 'ChulalongkornUniversityTranscript'
 const DRIVING_LICENCE_TYPE = 'DLTDrivingLicence'
 
-const SUPPORTED_DCQL_FORMATS = new Set(['jwt_vc_json', 'jwt_vc', 'dc+sd-jwt', 'vc+sd-jwt'])
+function isSupportedDcqlFormat(format: string): boolean {
+  return format === 'jwt_vc_json' || format === 'jwt_vc' || isSdJwtDcqlFormat(format)
+}
 
 export function readCredentialTypeFromDcqlTypeValue(value: string): string | undefined {
   const normalized = normalizeCredentialType(value)
@@ -31,7 +32,7 @@ export function assertSupportedDcqlCredentialQuery(credential: DcqlCredentialQue
     throw new Error('PresentationRequestInvalid: dcql credential format is required')
   }
 
-  if (!SUPPORTED_DCQL_FORMATS.has(credential.format)) {
+  if (!isSupportedDcqlFormat(credential.format)) {
     throw new Error('PresentationRequestUnsupported: requested DCQL credential format is not supported')
   }
 
@@ -54,7 +55,7 @@ export function assertSupportedDcqlCredentialQuery(credential: DcqlCredentialQue
     return
   }
 
-  if (credential.format !== 'dc+sd-jwt' && credential.format !== 'vc+sd-jwt') {
+  if (!isSdJwtDcqlFormat(credential.format)) {
     throw new Error('PresentationRequestUnsupported: requested DCQL credential type is not supported')
   }
 }
@@ -96,7 +97,7 @@ export function canWalletSatisfyDcqlCredentialQuery(
   return findUnsatisfiedDcqlClaimKeys(record, credential).length === 0
 }
 
-export function findUnsatisfiedDcqlClaimKeys(
+function findUnsatisfiedDcqlClaimKeys(
   record: VerifiableCredentialRecord,
   credential: DcqlCredentialQuery,
 ): string[] {
@@ -162,23 +163,26 @@ export function describeDcqlMatchFailure(
   record: VerifiableCredentialRecord,
   credential: DcqlCredentialQuery,
 ): DcqlMatchFailure {
+  const requestedTypeValues = credential.meta?.type_values ?? []
+  const requestedVctValues = credential.meta?.vct_values ?? []
   const base = {
     recordType: record.type,
-    recordFormat: isCompactSdJwt(record.rawVc) ? ('sd-jwt' as const) : isCompactJwtVc(record.rawVc) ? ('jwt_vc' as const) : ('unknown' as const),
+    recordFormat: readRecordCredentialFormat(record.rawVc),
     recordVct: readCredentialVct(record),
     requestedFormat: credential.format,
-    requestedTypeValues: credential.meta?.type_values ?? [],
-    requestedVctValues: credential.meta?.vct_values ?? [],
+    requestedTypeValues,
+    requestedVctValues,
     recordClaimKeys: Object.keys(readCredentialClaimMap(record)),
   }
 
-  const typeValues = credential.meta?.type_values ?? []
-  if (typeValues.length > 0 && !typeValues.some((value) => record.type === readCredentialTypeFromDcqlTypeValue(value))) {
+  if (
+    requestedTypeValues.length > 0 &&
+    !requestedTypeValues.some((value) => record.type === readCredentialTypeFromDcqlTypeValue(value))
+  ) {
     return { ...base, failedGate: 'type' }
   }
 
-  const vctValues = credential.meta?.vct_values ?? []
-  if (vctValues.length > 0 && !isCredentialCompatibleWithDcqlMetadata(record, credential)) {
+  if (requestedVctValues.length > 0 && !isCredentialCompatibleWithDcqlMetadata(record, credential)) {
     return { ...base, failedGate: 'vct' }
   }
 
@@ -192,6 +196,12 @@ export function describeDcqlMatchFailure(
   }
 
   return { ...base, failedGate: 'none' }
+}
+
+function readRecordCredentialFormat(rawVc: string): DcqlMatchFailure['recordFormat'] {
+  if (isCompactSdJwt(rawVc)) return 'sd-jwt'
+  if (isCompactJwtVc(rawVc)) return 'jwt_vc'
+  return 'unknown'
 }
 
 export function isCredentialCompatibleWithDcqlFormat(
