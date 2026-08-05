@@ -362,7 +362,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         return
       }
       if (generationRef.current === gen) {
-        void acquireForPreview(offer)
+        setPhase({ tag: 'dopaConfirm', offer })
       }
     } catch (err) {
       logWalletError('deeplink', 'offer-resolve-failed', err, describeUriForLog(uri))

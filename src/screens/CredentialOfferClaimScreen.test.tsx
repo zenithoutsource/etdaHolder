@@ -378,7 +378,7 @@ describe('CredentialOfferClaimScreen', () => {
     expect(screen.queryByText(WALLET_HOME_COPY.renewThaIdRequiredMessage)).toBeNull()
   })
 
-  it('acquires a driving licence without showing the PID confirmation panel', async () => {
+  it('shows the DOPA confirmation before acquiring a driving licence', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fdriving-licence-offer'
     readStoredCredentialsMock.mockReturnValue([
       {
@@ -407,14 +407,16 @@ describe('CredentialOfferClaimScreen', () => {
     render(<CredentialOfferClaimScreen />)
 
     await waitFor(() => {
-      expect(resolveOfferMock).toHaveBeenCalledWith(offerUri)
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
     })
+    expect(acquireCredentialRecordMock).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
 
     await waitFor(() => {
       expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
       expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
     })
-    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
   })
 
   it('shows the DOPA confirmation before acquiring a ThaiNationalID credential', async () => {
@@ -476,10 +478,16 @@ describe('CredentialOfferClaimScreen', () => {
     render(<CredentialOfferClaimScreen />)
 
     await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+    expect(acquireCredentialRecordMock).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
+
+    await waitFor(() => {
       expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
       expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
     })
-    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
 
     fireEvent.press(screen.getByText('ยอมรับ'))
 
@@ -557,11 +565,17 @@ describe('CredentialOfferClaimScreen', () => {
     render(<CredentialOfferClaimScreen />)
 
     await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+    expect(acquireDrivingLicenceMdocOnlyForPreviewMock).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
+
+    await waitFor(() => {
       expect(acquireDrivingLicenceMdocOnlyForPreviewMock).toHaveBeenCalledTimes(1)
       expect(acquireDualFormatForPreviewMock).not.toHaveBeenCalled()
       expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
     })
-    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
 
     fireEvent.press(screen.getByText('ยอมรับ'))
 
@@ -616,10 +630,16 @@ describe('CredentialOfferClaimScreen', () => {
     render(<CredentialOfferClaimScreen />)
 
     await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+    expect(acquireCredentialRecordMock).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
+
+    await waitFor(() => {
       expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
       expect(screen.getByTestId('document-card-layout')).toBeTruthy()
     })
-    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
 
     fireEvent.press(screen.getByText('ยอมรับ'))
 
@@ -630,7 +650,7 @@ describe('CredentialOfferClaimScreen', () => {
     expect(screen.getByText(/ใบแสดงผลการเรียน/)).toBeTruthy()
   })
 
-  it('saves unsupported credential previews directly without showing the DOPA issuer card', async () => {
+  it('shows the DOPA confirmation before acquiring an unsupported credential preview', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fmedical-offer'
     readStoredCredentialsMock.mockReturnValue([
       {
@@ -659,10 +679,16 @@ describe('CredentialOfferClaimScreen', () => {
     render(<CredentialOfferClaimScreen />)
 
     await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+    expect(acquireCredentialRecordMock).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
+
+    await waitFor(() => {
       expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
       expect(screen.getByTestId('credential-preview-content')).toBeTruthy()
     })
-    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
 
     fireEvent.press(screen.getByText('ยอมรับ'))
 
