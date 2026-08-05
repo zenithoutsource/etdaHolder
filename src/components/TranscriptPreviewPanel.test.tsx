@@ -26,6 +26,8 @@ describe('TranscriptPreviewPanel', () => {
 
     render(<TranscriptPreviewPanel record={record} profileImage={require('../../assets/images/user_profile.png')} onAccept={onAccept} />)
 
+    expect(screen.getByTestId('transcript-preview-panel').props.className).toContain('items-center')
+    expect(screen.getByTestId('transcript-preview-content').props.className).toContain('max-w-[380px]')
     expect(screen.getByTestId('document-card-layout')).toBeTruthy()
     expect(screen.getByTestId('document-card-banner')).toBeTruthy()
     expect(screen.getByTestId('document-card-hero')).toBeTruthy()

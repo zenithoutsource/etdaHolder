@@ -23,6 +23,8 @@ describe('DrivingLicencePreviewPanel', () => {
     render(<DrivingLicencePreviewPanel record={drivingLicenceRecord} onAccept={onAccept} />)
 
     expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
+    expect(screen.getByTestId('driving-licence-preview-panel').props.className).toContain('items-center')
+    expect(screen.getByTestId('driving-licence-preview-content').props.className).toContain('max-w-[380px]')
     expect(screen.getByTestId('driving-licence-card')).toBeTruthy()
     expect(screen.getByText('DRIVING LICENSE')).toBeTruthy()
     expect(screen.getByText('สมชาย ใจดี')).toBeTruthy()
