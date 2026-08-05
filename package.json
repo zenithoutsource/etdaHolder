@@ -95,7 +95,6 @@
       "reactNativeDirectoryCheck": {
         "exclude": [
           "expo-mdoc-proximity",
-          "wallet-keystore-diagnostics",
           "react-native-nfc-manager",
           "react-native-ssl-pinning"
         ]
