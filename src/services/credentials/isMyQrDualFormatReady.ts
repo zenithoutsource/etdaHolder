@@ -9,5 +9,5 @@ export async function isMyQrDualFormatReady(record: VerifiableCredentialRecord):
   const logical = findLogicalCredentialBySdJwtRecordId(record.id)
   if (!logical?.formats['dc+sd-jwt'] || !logical.formats['mso_mdoc']) return false
 
-  return hasStoredMdoc(record.id)
+  return (await hasStoredMdoc(record.id)) === true
 }

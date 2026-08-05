@@ -18,6 +18,18 @@ describe('parseIssuanceCallbackUrl', () => {
     })
   })
 
+  test('accepts a trailing slash on the callback path', () => {
+    expect(
+      parseIssuanceCallbackUrl(
+        'walletapp://callback/?credential_offer_uri=http%3A%2F%2Fissuer.local%2Foffer',
+        'walletapp://callback',
+      ),
+    ).toEqual({
+      kind: 'credential_offer',
+      uri: 'openid-credential-offer://?credential_offer_uri=http%3A%2F%2Fissuer.local%2Foffer',
+    })
+  })
+
   test('wraps https offer URL from callback query', () => {
     expect(
       parseIssuanceCallbackUrl(

@@ -8,7 +8,7 @@ describe('buildIssuerLoginUrl', () => {
   const originalReturnUrl = process.env.EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL
 
   beforeEach(() => {
-    process.env.EXPO_PUBLIC_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/Account/Login'
+    process.env.EXPO_PUBLIC_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/thaiid/login'
     process.env.EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL = 'walletapp://callback'
   })
 
@@ -17,12 +17,12 @@ describe('buildIssuerLoginUrl', () => {
     process.env.EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL = originalReturnUrl
   })
 
-  test('builds Account/Login URL with ReturnUrl and documentType', () => {
-    process.env.EXPO_PUBLIC_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/Account/Login'
+  test('builds thaiid/login URL with ReturnUrl and documentType', () => {
+    process.env.EXPO_PUBLIC_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/thaiid/login'
     process.env.EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL = 'walletapp://callback'
 
     const url = new URL(buildIssuerLoginUrl('ChulalongkornUniversityTranscript'))
-    expect(url.origin + url.pathname).toBe('https://issuer.zenithcomp.co.th:455/Account/Login')
+    expect(url.origin + url.pathname).toBe('https://issuer.zenithcomp.co.th:455/thaiid/login')
     expect(url.searchParams.get('ReturnUrl')).toBe('walletapp://callback')
     expect(url.searchParams.get('documentType')).toBe('Transcript')
   })

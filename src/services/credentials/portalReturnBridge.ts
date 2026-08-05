@@ -1,5 +1,7 @@
 import { logWalletStep } from '../debug/walletLogger'
+import { readWalletReturnUrl } from '../../config/sameDeviceIssuance'
 import { describeIssuanceCallbackForLog } from './describeIssuanceCallbackForLog'
+import { parseIssuanceCallbackUrl } from './parseIssuanceCallbackUrl'
 
 type PortalReturnWaiter = {
   resolve: (url: string) => void
@@ -7,22 +9,59 @@ type PortalReturnWaiter = {
 
 let activeWaiter: PortalReturnWaiter | null = null
 let lastNotifiedUrl: string | undefined
+let activeCapture:
+  | {
+    ignoredUrls: Set<string>
+    ignoredUris: Set<string>
+  }
+  | undefined
 
 /**
  * Bridge for Android portal flow: Custom Tabs / Expo Router may deliver
  * walletapp://callback while openAuthSessionAsync never resolves.
  * /callback and Linking notify here so the portal opener can finish.
  */
-export function beginPortalReturnCapture(): void {
+export function beginPortalReturnCapture(input: {
+  ignoredUrls?: readonly string[]
+  ignoredUris?: readonly string[]
+} = {}): void {
   lastNotifiedUrl = undefined
   activeWaiter = null
+  activeCapture = {
+    ignoredUrls: new Set(input.ignoredUrls ?? []),
+    ignoredUris: new Set(input.ignoredUris ?? []),
+  }
 }
 
 export function endPortalReturnCapture(): void {
   activeWaiter = null
+  activeCapture = undefined
+}
+
+/**
+ * Prevents stale callback URLs from reaching the app-wide deep-link router
+ * while an issuer portal capture is active.
+ */
+export function isPortalReturnUrlIgnoredDuringCapture(
+  url: string,
+  returnUrl: string = readWalletReturnUrl(),
+): boolean {
+  if (!activeCapture) return false
+  if (activeCapture.ignoredUrls.has(url)) return true
+
+  const parsed = parseIssuanceCallbackUrl(url, returnUrl)
+  return parsed.kind !== 'unsupported' && activeCapture.ignoredUris.has(parsed.uri)
 }
 
 export function notifyPortalReturnUrl(url: string, source: string): void {
+  if (isPortalReturnUrlIgnoredDuringCapture(url)) {
+    logWalletStep('wallet-home', 'issuer-portal-return-ignored', {
+      source,
+      ...describeIssuanceCallbackForLog(url),
+    })
+    return
+  }
+
   lastNotifiedUrl = url
   logWalletStep('wallet-home', 'issuer-portal-return-notified', {
     source,

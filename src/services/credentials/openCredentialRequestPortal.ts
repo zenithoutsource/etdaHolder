@@ -23,9 +23,9 @@ import {
 } from './portalReturnBridge'
 import {
   isPortalCallbackCaptureUrl,
-  readPendingPortalOfferFromStore,
   resolvePortalCallbackResult,
 } from './resolvePortalCallbackResult'
+import { parseIssuanceCallbackUrl } from './parseIssuanceCallbackUrl'
 
 import type { PortalEmptyOfferReason } from './portalEmptyOfferDialog'
 
@@ -120,13 +120,64 @@ export async function openCredentialRequestPortal(
   }
 
   const returnUrl = readIssuerPortalReturnUrl()
+  // Do not reinterpret an offer left by an earlier flow as this portal's result.
+  const portalOfferGeneration = useDeeplinkStore.getState().offerGeneration
+  const portalState = useDeeplinkStore.getState()
+  const previousOfferUri = [
+    portalState.pendingUri,
+    portalState.activeUri,
+  ].find((uri) => uri && isCredentialOfferDeeplink(uri))
+  if (previousOfferUri) {
+    useDeeplinkStore.getState().setDismissedDeeplinkUri(previousOfferUri)
+  }
+  const readNewPendingPortalOffer = (): string | undefined => {
+    const { offerGeneration, pendingUri } = useDeeplinkStore.getState()
+    if (offerGeneration <= portalOfferGeneration) return undefined
+    return pendingUri && isCredentialOfferDeeplink(pendingUri)
+      ? pendingUri
+      : undefined
+  }
 
   if (Platform.OS === 'web') {
     void Linking.openURL(portalUrl)
     return { status: 'dismissed' }
   }
 
-  beginPortalReturnCapture()
+  // Android can return the URL that originally launched the app after the
+  // user dismisses Custom Tabs. It is not a new portal callback.
+  let initialUrlBeforePortal: string | undefined
+  try {
+    initialUrlBeforePortal = (await Linking.getInitialURL()) ?? undefined
+  } catch (error) {
+    logWalletError('wallet-home', 'issuer-portal-initial-url-read-failed', error, {
+      credentialType,
+    })
+  }
+  const initialParsedCallback = initialUrlBeforePortal
+    ? parseIssuanceCallbackUrl(initialUrlBeforePortal, returnUrl)
+    : undefined
+  const initialOfferUri = initialParsedCallback?.kind === 'credential_offer'
+    ? initialParsedCallback.uri
+    : undefined
+  if (initialOfferUri) {
+    useDeeplinkStore.getState().setDismissedDeeplinkUri(initialOfferUri)
+  }
+  const isPreexistingPortalOffer = (url: string): boolean => {
+    if (url === initialUrlBeforePortal) return true
+    const parsed = parseIssuanceCallbackUrl(url, returnUrl)
+    return parsed.kind === 'credential_offer'
+      && (
+        parsed.uri === previousOfferUri
+        || parsed.uri === initialOfferUri
+      )
+  }
+
+  beginPortalReturnCapture({
+    ...(initialUrlBeforePortal ? { ignoredUrls: [initialUrlBeforePortal] } : {}),
+    ignoredUris: [previousOfferUri, initialOfferUri].filter(
+      (uri): uri is string => Boolean(uri),
+    ),
+  })
 
   const linkingSubscription = Linking.addEventListener('url', ({ url }) => {
     logWalletStep('wallet-home', 'issuer-portal-link-seen', {
@@ -134,7 +185,10 @@ export async function openCredentialRequestPortal(
       captured: isPortalCallbackCaptureUrl(url, returnUrl),
       ...describeIssuanceCallbackForLog(url),
     })
-    if (isPortalCallbackCaptureUrl(url, returnUrl)) {
+    if (
+      isPortalCallbackCaptureUrl(url, returnUrl)
+      && !isPreexistingPortalOffer(url)
+    ) {
       logWalletStep('wallet-home', 'issuer-portal-link-captured', {
         credentialType,
         ...describeIssuanceCallbackForLog(url),
@@ -157,11 +211,15 @@ export async function openCredentialRequestPortal(
           ...describeIssuanceCallbackForLog(url),
         })
       }
-      if (url && isPortalCallbackCaptureUrl(url, returnUrl)) {
+      if (
+        url
+        && !isPreexistingPortalOffer(url)
+        && isPortalCallbackCaptureUrl(url, returnUrl)
+      ) {
         notifyPortalReturnUrl(url, 'getInitialURL')
       }
     })
-    const pending = readPendingPortalOfferFromStore()
+    const pending = readNewPendingPortalOffer()
     if (pending) {
       notifyPortalReturnUrl(pending, 'deeplink-store')
     }
@@ -198,16 +256,22 @@ export async function openCredentialRequestPortal(
           })
         },
         poll: async () => {
-          const pending = readPendingPortalOfferFromStore()
+          const pending = readNewPendingPortalOffer()
           if (pending) return pending
           const initial = await Linking.getInitialURL()
-          if (initial && isPortalCallbackCaptureUrl(initial, returnUrl)) return initial
+          if (
+            initial
+            && !isPreexistingPortalOffer(initial)
+            && isPortalCallbackCaptureUrl(initial, returnUrl)
+          ) {
+            return initial
+          }
           return readLastNotifiedPortalReturnUrl()
         },
       })
       const callbackUrl = notifiedUrl
         ?? readLastNotifiedPortalReturnUrl()
-        ?? readPendingPortalOfferFromStore()
+        ?? readNewPendingPortalOffer()
 
       if (!callbackUrl) {
         logWalletStep('wallet-home', 'issuer-portal-dismissed', {
@@ -286,7 +350,7 @@ export async function openCredentialRequestPortal(
     const sessionUrl = result.type === 'success' ? result.url : undefined
     const callbackUrl = sessionUrl
       ?? readLastNotifiedPortalReturnUrl()
-      ?? readPendingPortalOfferFromStore()
+      ?? readNewPendingPortalOffer()
 
     if (!callbackUrl) {
       logWalletStep('wallet-home', 'issuer-portal-dismissed', {

@@ -8,7 +8,7 @@ describe('issuerPortalUrls', () => {
   const originalReturnUrl = process.env.EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL
 
   beforeEach(() => {
-    process.env.EXPO_PUBLIC_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/Account/Login'
+    process.env.EXPO_PUBLIC_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/thaiid/login'
     process.env.EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL = 'walletapp://callback'
   })
 

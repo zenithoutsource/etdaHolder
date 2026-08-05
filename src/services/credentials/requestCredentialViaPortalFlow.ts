@@ -28,13 +28,14 @@ export async function requestCredentialViaPortalFlow(input: {
     return
   }
 
+  const offerGenerationAtStart = useDeeplinkStore.getState().offerGeneration
   const result = await openCredentialRequestPortal(credentialType)
   if (result.status === 'claimed') {
     router.push('/(tabs)/credential-offer')
     return
   }
   if (result.status === 'presentation_request') {
-    router.push('/(tabs)/scan')
+    router.push('/(tabs)/presentation-request')
     return
   }
   if (result.status === 'misconfigured') {
@@ -64,7 +65,8 @@ export async function requestCredentialViaPortalFlow(input: {
     })
     return
   }
-  const pendingOffer = useDeeplinkStore.getState().pendingUri
+  const { offerGeneration, pendingUri } = useDeeplinkStore.getState()
+  const pendingOffer = offerGeneration > offerGenerationAtStart ? pendingUri : null
   if (pendingOffer && isCredentialOfferDeeplink(pendingOffer)) {
     router.push('/(tabs)/credential-offer')
     return

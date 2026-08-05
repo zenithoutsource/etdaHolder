@@ -2,6 +2,7 @@ import {
   findDualFormatGroup,
   groupDualFormatConfigurations,
   isDualFormatOffer,
+  isDrivingLicenceDualFormatOffer,
 } from './logicalCredentialGrouping'
 import type { OfferedCredentialConfiguration } from '../vci/exchangeService'
 
@@ -86,6 +87,17 @@ test('groups direct Iso18013 metadata keys (mDL doctype + dc+sd-jwt) as dual-for
   expect(group?.sdJwt?.configurationId).toBe('Iso18013DriversLicenseCredential_dc+sd-jwt')
   expect(group?.sdJwt?.requestId).toBe('Iso18013DriversLicenseCredential_dc+sd-jwt')
   expect(isDualFormatOffer(configurations)).toBe(true)
+  expect(isDrivingLicenceDualFormatOffer(configurations)).toBe(true)
+})
+
+test('transcript dual-format offers are not treated as driving licence debug targets', () => {
+  const configurations = [
+    makeConfiguration('TranscriptCredential_dc+sd-jwt', 'dc+sd-jwt'),
+    makeConfiguration('TranscriptCredential_mso_mdoc', 'mso_mdoc'),
+  ]
+
+  expect(isDualFormatOffer(configurations)).toBe(true)
+  expect(isDrivingLicenceDualFormatOffer(configurations)).toBe(false)
 })
 
 test('issuer logical_credential_id wins over naming convention', () => {

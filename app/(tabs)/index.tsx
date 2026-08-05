@@ -446,7 +446,7 @@ export default function WalletHomeScreen() {
                         showPidGateDialog(
                           showDialog,
                           readPidGateStatus(credentials, renewalStatuses),
-                          () => router.push("/(tabs)/scan"),
+                          () => handleRequestCredentialViaPortal("ThaiNationalID"),
                         );
                         return;
                       }
@@ -474,7 +474,7 @@ export default function WalletHomeScreen() {
                           showPidGateDialog(
                             showDialog,
                             readPidGateStatus(credentials, renewalStatuses),
-                            () => router.push("/(tabs)/scan"),
+                            () => handleRequestCredentialViaPortal("ThaiNationalID"),
                           );
                           return;
                         }

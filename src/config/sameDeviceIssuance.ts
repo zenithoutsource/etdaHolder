@@ -1,6 +1,6 @@
 import type { IssuerPortalCredentialType } from './issuerPortalUrls'
 
-const DEFAULT_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/Account/Login'
+const DEFAULT_ISSUER_LOGIN_URL = 'https://issuer.zenithcomp.co.th:455/thaiid/login'
 const DEFAULT_WALLET_RETURN_URL = 'walletapp://callback'
 const DEFAULT_CREDENTIAL_ISSUER = 'https://issuer.zenithcomp.co.th:455'
 const DEFAULT_OAUTH_CLIENT_ID = 's6BhdRkqt3'

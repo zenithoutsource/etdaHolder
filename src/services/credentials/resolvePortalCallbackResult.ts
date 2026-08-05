@@ -2,6 +2,7 @@ import type { IssuerPortalCredentialType } from '../../config/issuerPortalUrls'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../../store/deeplinkStore'
 import { logWalletStep } from '../debug/walletLogger'
 import { parseIssuanceCallbackUrl } from './parseIssuanceCallbackUrl'
+import { isPresentationRequestConsumed } from '../vp/presentationRequestReplay'
 
 export type ResolvedPortalCallbackResult =
   | { status: 'claimed'; deeplink: string }
@@ -17,6 +18,14 @@ export function resolvePortalCallbackResult(
   credentialType: IssuerPortalCredentialType,
 ): ResolvedPortalCallbackResult | undefined {
   const parsed = parseIssuanceCallbackUrl(url, returnUrl)
+  if (
+    (parsed.kind === 'credential_offer' || parsed.kind === 'presentation_request')
+    && parsed.uri === useDeeplinkStore.getState().dismissedUri
+  ) {
+    logWalletStep('wallet-home', 'issuer-portal-return-dismissed-ignored', { credentialType })
+    return undefined
+  }
+
   if (parsed.kind === 'credential_offer') {
     logWalletStep('wallet-home', 'issuer-portal-return-offer', { credentialType })
     useDeeplinkStore.getState().setIncomingDeeplinkUri(parsed.uri)
@@ -24,6 +33,10 @@ export function resolvePortalCallbackResult(
   }
 
   if (parsed.kind === 'presentation_request') {
+    if (isPresentationRequestConsumed(parsed.uri)) {
+      logWalletStep('wallet-home', 'issuer-portal-return-presentation-replay-ignored', { credentialType })
+      return undefined
+    }
     logWalletStep('wallet-home', 'issuer-portal-return-presentation', { credentialType })
     useDeeplinkStore.getState().setIncomingDeeplinkUri(parsed.uri)
     return { status: 'presentation_request', deeplink: parsed.uri }

@@ -18,10 +18,11 @@ const OFFER_QUERY_KEYS = ['credential_offer_uri', 'offer_uri', 'uri', 'offer'] a
 function matchesWalletReturnUrl(url: URL, expectedReturnUrl: string): boolean {
   try {
     const expected = new URL(expectedReturnUrl)
+    const normalizedPath = (pathname: string) => pathname.replace(/\/+$/, '') || '/'
     return (
       url.protocol === expected.protocol
       && url.hostname === expected.hostname
-      && url.pathname === expected.pathname
+      && normalizedPath(url.pathname) === normalizedPath(expected.pathname)
     )
   } catch {
     return url.toString().startsWith(expectedReturnUrl)

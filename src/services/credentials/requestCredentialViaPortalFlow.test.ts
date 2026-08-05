@@ -97,7 +97,7 @@ describe('requestCredentialViaPortalFlow', () => {
     expect(router.push).not.toHaveBeenCalledWith('/(tabs)/scan')
   })
 
-  test('routes presentation_request to scan as VP fallback', async () => {
+  test('routes presentation_request to presentation-request', async () => {
     openCredentialRequestPortalMock.mockResolvedValueOnce({
       status: 'presentation_request',
       deeplink: 'openid4vp://request',
@@ -109,7 +109,7 @@ describe('requestCredentialViaPortalFlow', () => {
       showDialog,
     })
 
-    expect(router.push).toHaveBeenCalledWith('/(tabs)/scan')
+    expect(router.push).toHaveBeenCalledWith('/(tabs)/presentation-request')
   })
 
   test('shows empty-offer dialog with retry', async () => {
@@ -136,9 +136,11 @@ describe('requestCredentialViaPortalFlow', () => {
   })
 
   test('routes pending credential-offer deeplink to credential-offer', async () => {
-    openCredentialRequestPortalMock.mockResolvedValueOnce({ status: 'dismissed' })
-    useDeeplinkStore.setState({
-      pendingUri: 'openid-credential-offer://issuer.example/offer',
+    openCredentialRequestPortalMock.mockImplementationOnce(async () => {
+      useDeeplinkStore.getState().setIncomingDeeplinkUri(
+        'openid-credential-offer://issuer.example/offer',
+      )
+      return { status: 'dismissed' }
     })
 
     await requestCredentialViaPortalFlow({
@@ -148,6 +150,21 @@ describe('requestCredentialViaPortalFlow', () => {
     })
 
     expect(router.push).toHaveBeenCalledWith('/(tabs)/credential-offer')
+  })
+
+  test('does not route a pre-existing pending offer after the portal request is dismissed', async () => {
+    openCredentialRequestPortalMock.mockResolvedValueOnce({ status: 'dismissed' })
+    useDeeplinkStore.setState({
+      pendingUri: 'openid-credential-offer://issuer.example/previous-offer',
+    })
+
+    await requestCredentialViaPortalFlow({
+      credentialType: 'ThaiNationalID',
+      router,
+      showDialog,
+    })
+
+    expect(router.push).not.toHaveBeenCalled()
   })
 
   test('shows dialog for unrecognized last portal return', async () => {

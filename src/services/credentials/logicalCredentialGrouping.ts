@@ -151,6 +151,38 @@ export function isDualFormatOffer(configurations: OfferedCredentialConfiguration
   return Boolean(findDualFormatGroup(configurations))
 }
 
+export function isDrivingLicenceDualFormatOffer(
+  configurations: OfferedCredentialConfiguration[],
+): boolean {
+  const group = findDualFormatGroup(configurations)
+  if (!group?.sdJwt || !group.mdoc) return false
+  return isDrivingLicenceDualFormatGroup(group)
+}
+
+function isDrivingLicenceDualFormatGroup(group: DualFormatConfigurationGroup): boolean {
+  if (group.familyKey === ISO_18013_DRIVING_LICENCE_FAMILY_KEY) {
+    return true
+  }
+
+  const mdocDoctype = group.mdoc
+    ? readMdocDocTypeFromRaw(group.mdoc.rawConfiguration)
+    : undefined
+  if (mdocDoctype && isIsoMdlDoctypeFamilyId(mdocDoctype)) {
+    return true
+  }
+
+  const configurationIds = `${group.sdJwt?.configurationId ?? ''} ${group.mdoc?.configurationId ?? ''}`.toLowerCase()
+  return (
+    configurationIds.includes('driving')
+    || configurationIds.includes('mdl')
+    || configurationIds.includes('iso18013')
+  )
+}
+
+function readMdocDocTypeFromRaw(rawConfiguration: Record<string, unknown>): string | undefined {
+  return readString(rawConfiguration.doctype) ?? readString(rawConfiguration.docType)
+}
+
 export function readMdocDocType(configuration: OfferedCredentialConfiguration): string | undefined {
   const raw = readRecord(configuration.rawConfiguration)
   return readString(raw?.doctype) ?? readString(raw?.docType)
