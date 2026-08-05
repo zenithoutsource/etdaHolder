@@ -131,6 +131,16 @@ SDK-First Communication - All company backend operations must pass through the a
 
 Plan Before Execute - Always design data flow and verify interface mappings before writing UI or logic code.
 
+Fallback-First Resilience - Every intake path, async boundary, and user-facing flow must have a defined fallback when the primary path fails, is empty, stale, or arrives late. Never leave the user on an infinite loading state with no exit. Concretely:
+
+- **Deeplink / launch URLs:** Do not rely on a single API (`Linking.useURL()` alone). Also read `Linking.getInitialURL()` on cold start, queue pending state before PIN unlock, and re-route after auth when navigation was deferred.
+- **Store vs screen state:** If a URI moves from `pendingUri` to `activeUri` (or is consumed/dismissed/replayed), screens must recover from store state on remount — not only from the first pending value.
+- **Consumed or invalid requests:** Reject early with a user-visible outcome (error panel, return to Wallet) instead of spinning forever.
+- **Async / platform timing:** When the first read can be `null` or stale (Android Custom Tabs return, cold start, warm deeplink), add the secondary read or listener before declaring the flow missing.
+- **Errors:** Log the raw failure, then map to safe UI — the fallback UX is part of the feature, not optional polish.
+
+When adding a new flow, ask: *what happens if the primary source is null, late, already handled, or blocked by auth?* If there is no answer, the implementation is incomplete.
+
 ## Key Developer Rules and Constraints
 
 ### 1. Expo SDK 54 and Hermes Compliance

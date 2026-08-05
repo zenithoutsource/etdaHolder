@@ -123,11 +123,11 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
                 <View className={dialog.iconContainerClassName ?? `h-14 w-14 items-center justify-center rounded-full ${iconClassByTone[icon]}`}>
                   <MaterialCommunityIcons name={iconByTone[icon]} size={dialog.iconSize ?? 30} color={iconColorByTone[icon]} />
                 </View>
-                <Text className="mt-4 text-center text-[18px] font-bold leading-6 text-ink">
+                <Text className="mt-4 text-center text-[18px] font-bold leading-[26px] text-ink">
                   {dialog.title}
                 </Text>
                 {dialog.message ? (
-                  <Text className="mt-2 text-center text-[14px] leading-5 text-slate">
+                  <Text className="mt-2 text-center text-[14px] leading-[22px] text-slate">
                     {dialog.message}
                   </Text>
                 ) : null}
@@ -142,7 +142,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
                     onPress={() => {
                       void handleActionPress(action)
                     }}>
-                    <Text className={`text-[14px] font-bold ${actionTextClassName(action.variant)}`}>
+                    <Text className={`text-[14px] font-bold leading-[22px] ${actionTextClassName(action.variant)}`}>
                       {action.label}
                     </Text>
                   </Pressable>

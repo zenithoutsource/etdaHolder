@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { WalletKeyExpiryHost } from '@/src/components/WalletKeyExpiryHost';
 import { CredentialExpiryHost } from '@/src/components/CredentialExpiryHost';
+import { PresentationIntakeErrorHost } from '@/src/components/PresentationIntakeErrorHost';
 
 import { THEME } from '../../src/config/themeColors'
 
@@ -36,6 +37,7 @@ export default function TabLayout() {
     <>
       <WalletKeyExpiryHost />
       <CredentialExpiryHost />
+      <PresentationIntakeErrorHost />
       <Tabs
       screenOptions={{
         tabBarActiveTintColor: THEME.navy,

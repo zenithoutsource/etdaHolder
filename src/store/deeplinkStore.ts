@@ -10,6 +10,7 @@ type DeeplinkState = {
   dismissedUri: string | null
   offerGeneration: number
   vpGeneration: number
+  presentationIntakeError: string | null
 }
 
 type DeeplinkActions = {
@@ -19,6 +20,8 @@ type DeeplinkActions = {
   activateDeeplinkUri: (uri: string) => void
   setDismissedDeeplinkUri: (uri: string) => void
   consumePendingDeeplinkUri: () => string | null
+  setPresentationIntakeError: (message: string) => void
+  clearPresentationIntakeError: () => void
 }
 
 export function isSupportedWalletDeeplink(uri: string): boolean {
@@ -104,6 +107,7 @@ export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, ge
   dismissedUri: null,
   offerGeneration: 0,
   vpGeneration: 0,
+  presentationIntakeError: null,
 
   setPendingDeeplinkUri: (uri) => set((state) => storeDeeplinkUri(state, uri)),
 
@@ -140,4 +144,8 @@ export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, ge
     if (uri) get().activateDeeplinkUri(uri)
     return uri
   },
+
+  setPresentationIntakeError: (message) => set({ presentationIntakeError: message }),
+
+  clearPresentationIntakeError: () => set({ presentationIntakeError: null }),
 }))

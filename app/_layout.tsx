@@ -36,12 +36,20 @@ import {
 } from '@/src/services/startup/startupState';
 import { useAuthStore } from '@/src/store/authStore';
 import {
+  isPresentationRequestDeeplink,
   isSupportedWalletDeeplink,
   readPendingCredentialOfferRoute,
   readPendingPresentationRoute,
   useDeeplinkStore,
 } from '@/src/store/deeplinkStore';
 import { storePendingFromIssuanceCallbackUrl } from '@/src/services/credentials/resolveIssuanceCallbackResult';
+import { isPortalReturnUrlIgnoredDuringCapture } from '@/src/services/credentials/portalReturnBridge';
+import {
+  configurePresentationReplayStorage,
+  createWebPresentationReplayStorage,
+  isPresentationRequestConsumed,
+} from '@/src/services/vp/presentationRequestReplay';
+import { notifyPresentationIntakeRejection } from '@/src/services/vp/presentationIntakeRejection';
 import { useNotificationRouteStore } from '@/src/store/notificationRouteStore';
 
 import { THEME } from '../src/config/themeColors'
@@ -98,6 +106,7 @@ export default function RootLayout() {
   const isPinVerified = useAuthStore((s) => s.isPinVerified);
   const isAuthenticatedRef = useRef(isAuthenticated);
   const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri);
+  const setPendingPresentationRequest = useDeeplinkStore((s) => s.setPendingPresentationRequest);
   const setIncomingDeeplinkUri = useDeeplinkStore((s) => s.setIncomingDeeplinkUri);
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri);
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri);
@@ -106,6 +115,9 @@ export default function RootLayout() {
   const currentSegment = segments[0];
   const isTabRoute = currentSegment === '(tabs)';
   const lastRoutedDeeplinkRef = useRef<string | null>(null);
+  const handledLaunchUrlsRef = useRef(new Set<string>());
+  const handledRouteUrisRef = useRef(new Set<string>());
+  const initialLaunchUrlFetchedRef = useRef(false);
   const prepareWalletRunIdRef = useRef(0);
 
   useEffect(() => {
@@ -124,6 +136,8 @@ export default function RootLayout() {
       logWalletStep('startup', 'prepare-wallet-start', { platform: Platform.OS, storagePin: Boolean(storagePin) });
 
       if (Platform.OS === 'web') {
+        configurePresentationReplayStorage(createWebPresentationReplayStorage());
+        logWalletStep('startup', 'presentation-replay-ledger-ready');
         logWalletStep('startup', 'platform-web-ready');
         setStartupState({ status: 'ready' });
         return;
@@ -131,7 +145,7 @@ export default function RootLayout() {
 
       const [
         { generateWalletKeyIfNeeded, getHolderDid, ensureWalletKeyRegisteredAtBackfill },
-        { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock, needsStoragePinFallbackMigration },
+        { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock, needsStoragePinFallbackMigration, getCredentialStorage },
         { assertDeviceIntegrity },
         { assertConfiguredWalletApiRuntimePolicy },
       ] = await Promise.all([
@@ -150,13 +164,6 @@ export default function RootLayout() {
         }),
       );
       logWalletStep('startup', 'native-modules-imported');
-
-      if (__DEV__) {
-        void import('@/src/services/crypto/walletKeyDeviceDiagnostics')
-          .then((m) => m.readWalletKeyDeviceDiagnostics())
-          .then((device) => logWalletStep('startup', 'device-key-capabilities', device))
-          .catch(() => undefined);
-      }
 
       const { default: JailMonkey } = await import('jail-monkey');
       assertDeviceIntegrity({ isJailBroken: JailMonkey.isJailBroken() });
@@ -304,6 +311,8 @@ export default function RootLayout() {
       if (!isCurrentRun()) return;
 
       logWalletStep('startup', 'storage-init-complete');
+      configurePresentationReplayStorage(getCredentialStorage());
+      logWalletStep('startup', 'presentation-replay-ledger-ready');
       const { ensureWalletHistoryBackfill } = await import('@/src/services/history/walletEventLog');
       ensureWalletHistoryBackfill();
       logWalletStep('startup', 'wallet-history-backfill-complete');
@@ -359,10 +368,7 @@ export default function RootLayout() {
     } catch (error) {
       if (!isCurrentRun()) return;
 
-      const device = await import('@/src/services/crypto/walletKeyDeviceDiagnostics')
-        .then((m) => m.readWalletKeyDeviceDiagnostics())
-        .catch(() => undefined);
-      logWalletError('startup', 'prepare-wallet-failed', error, { device });
+      logWalletError('startup', 'prepare-wallet-failed', error);
       setStartupState({
         status: 'error',
         message: toUserMessage(toErrorMessage(error)),
@@ -487,12 +493,31 @@ export default function RootLayout() {
   const routeDeeplink = useCallback((url: string, { store = false }: { store?: boolean } = {}) => {
     if (!isSupportedWalletDeeplink(url)) return;
 
-    // Store before the dismissed check so a fresh warm event can clear a
-    // previously dismissed same URI (setPending/setIncoming reopen path).
-    if (store) setPendingDeeplinkUri(url);
+    if (isPortalReturnUrlIgnoredDuringCapture(url)) {
+      logWalletStep('deeplink', 'portal-stale-callback-ignored');
+      return;
+    }
+
+    if (isPresentationRequestDeeplink(url) && isPresentationRequestConsumed(url)) {
+      useDeeplinkStore.getState().setDismissedDeeplinkUri(url);
+      notifyPresentationIntakeRejection(url);
+      logWalletStep('deeplink', 'presentation-replay-ignored');
+      return;
+    }
 
     const dismissed = useDeeplinkStore.getState().dismissedUri;
-    if (url === dismissed) return;
+    if (url === dismissed) {
+      notifyPresentationIntakeRejection(url);
+      return;
+    }
+
+    if (store) {
+      if (isPresentationRequestDeeplink(url)) {
+        setPendingPresentationRequest({ uri: url, origin: 'same-device' });
+      } else {
+        setPendingDeeplinkUri(url);
+      }
+    }
 
     const pinExists = Platform.OS === 'web' || hasWalletPin();
     const pinVerified = useAuthStore.getState().isPinVerified;
@@ -514,53 +539,118 @@ export default function RootLayout() {
       hasWalletPin: pinExists,
     })
     if (presentationRoute) { router.push(presentationRoute); return; }
-  }, [router, setPendingDeeplinkUri]);
+  }, [router, setPendingDeeplinkUri, setPendingPresentationRequest]);
 
   useEffect(() => {
     if (startupState.status !== 'ready') return;
 
     const resolveRouteUri = (url: string) => {
+      if (isPortalReturnUrlIgnoredDuringCapture(url)) {
+        logWalletStep('deeplink', 'portal-stale-callback-ignored');
+        return null;
+      }
       const parsed = storePendingFromIssuanceCallbackUrl(url);
-      if (parsed.kind !== 'unsupported') return parsed.uri;
-      return isSupportedWalletDeeplink(url) ? url : null;
+      if (parsed.kind !== 'unsupported') {
+        if (
+          parsed.uri === useDeeplinkStore.getState().dismissedUri
+          || (
+            parsed.kind === 'presentation_request'
+            && isPresentationRequestConsumed(parsed.uri)
+          )
+        ) {
+          return null;
+        }
+        return parsed.uri;
+      }
+      if (!isSupportedWalletDeeplink(url)) return null;
+      if (url === useDeeplinkStore.getState().dismissedUri) return null;
+      if (isPresentationRequestDeeplink(url) && isPresentationRequestConsumed(url)) return null;
+      return url;
+    };
+
+    const queuePendingRouteUri = (routeUri: string) => {
+      if (isPresentationRequestDeeplink(routeUri)) {
+        setPendingPresentationRequest({ uri: routeUri, origin: 'same-device' });
+      } else {
+        setPendingDeeplinkUri(routeUri);
+      }
+    };
+
+    const processLaunchDeeplink = (url: string) => {
+      if (handledLaunchUrlsRef.current.has(url)) return;
+      handledLaunchUrlsRef.current.add(url);
+
+      const routeUri = resolveRouteUri(url);
+      if (!routeUri) {
+        notifyPresentationIntakeRejection(url);
+        return;
+      }
+      if (handledRouteUrisRef.current.has(routeUri)) return;
+      if (routeUri === lastRoutedDeeplinkRef.current) return;
+
+      const startupRoute = readStartupRoute({
+        isAuthenticated,
+        isPinVerified,
+        currentSegment,
+        platform: Platform.OS,
+        hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
+      });
+      handledRouteUrisRef.current.add(routeUri);
+      lastRoutedDeeplinkRef.current = routeUri;
+
+      if (
+        startupRoute !== '/auth'
+        && startupRoute !== '/pin-setup'
+        && startupRoute !== '/pin-lock'
+        && currentSegment !== 'forgot-pin'
+        && currentSegment !== 'callback'
+      ) {
+        routeDeeplink(routeUri, { store: true });
+        return;
+      }
+
+      queuePendingRouteUri(routeUri);
     };
 
     if (incomingUrl) {
-      const routeUri = resolveRouteUri(incomingUrl);
-      if (routeUri && routeUri !== lastRoutedDeeplinkRef.current) {
-        const startupRoute = readStartupRoute({
-          isAuthenticated,
-          isPinVerified,
-          currentSegment,
-          platform: Platform.OS,
-          hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
+      processLaunchDeeplink(incomingUrl);
+    }
+
+    let coldStartCancelled = false;
+    if (!initialLaunchUrlFetchedRef.current) {
+      initialLaunchUrlFetchedRef.current = true;
+      void Linking.getInitialURL()
+        .then((initialUrl) => {
+          if (coldStartCancelled || !initialUrl) return;
+          if (initialUrl === incomingUrl) return;
+          processLaunchDeeplink(initialUrl);
+        })
+        .catch((error) => {
+          logWalletError('deeplink', 'initial-url-read-failed', error);
         });
-        if (
-          startupRoute !== '/auth'
-          && startupRoute !== '/pin-setup'
-          && startupRoute !== '/pin-lock'
-          && currentSegment !== 'forgot-pin'
-          && currentSegment !== 'callback'
-        ) {
-          lastRoutedDeeplinkRef.current = routeUri;
-          routeDeeplink(routeUri, { store: true });
-        } else {
-          setPendingDeeplinkUri(routeUri);
-        }
-      }
     }
 
     const subscription = Linking.addEventListener('url', ({ url }) => {
       const routeUri = resolveRouteUri(url);
-      if (!routeUri) return;
+      if (!routeUri) {
+        notifyPresentationIntakeRejection(url);
+        return;
+      }
       // Warm-app events must hit the store so vpGeneration/offerGeneration bump
       // and PresentationRequestScreen / CredentialOfferClaimScreen remount.
       // setIncoming also clears a matching dismissedUri for same-URI reopen.
-      setIncomingDeeplinkUri(routeUri);
+      if (isPresentationRequestDeeplink(routeUri)) {
+        setPendingPresentationRequest({ uri: routeUri, origin: 'same-device' });
+      } else {
+        setIncomingDeeplinkUri(routeUri);
+      }
       routeDeeplink(routeUri);
     });
 
-    return () => { subscription.remove(); };
+    return () => {
+      coldStartCancelled = true;
+      subscription.remove();
+    };
   }, [
     startupState.status,
     incomingUrl,
@@ -571,11 +661,11 @@ export default function RootLayout() {
     routeDeeplink,
     setPendingDeeplinkUri,
     setIncomingDeeplinkUri,
+    setPendingPresentationRequest,
   ]);
 
   useEffect(() => {
     if (startupState.status !== 'ready' || !pendingDeeplinkUri || !isPinVerified) {
-      lastRoutedDeeplinkRef.current = null;
       return;
     }
     if (pendingDeeplinkUri === lastRoutedDeeplinkRef.current) return;

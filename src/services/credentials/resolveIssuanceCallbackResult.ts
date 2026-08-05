@@ -1,6 +1,7 @@
 import { parseIssuanceCallbackUrl, type ParsedIssuanceCallback } from './parseIssuanceCallbackUrl'
 import { readWalletReturnUrl } from '../../config/sameDeviceIssuance'
 import { useDeeplinkStore } from '../../store/deeplinkStore'
+import { isPresentationRequestConsumed } from '../vp/presentationRequestReplay'
 
 /**
  * Rebuild a walletapp://callback URL from Expo Router path params after
@@ -53,7 +54,23 @@ export function storePendingFromIssuanceCallbackUrl(
 ): ParsedIssuanceCallback {
   const parsed = parseIssuanceCallbackUrl(url, returnUrl)
   if (parsed.kind === 'credential_offer' || parsed.kind === 'presentation_request') {
-    useDeeplinkStore.getState().setPendingDeeplinkUri(parsed.uri)
+    if (
+      parsed.uri === useDeeplinkStore.getState().dismissedUri
+      || (
+        parsed.kind === 'presentation_request'
+        && isPresentationRequestConsumed(parsed.uri)
+      )
+    ) {
+      return parsed
+    }
+    if (parsed.kind === 'presentation_request') {
+      useDeeplinkStore.getState().setPendingPresentationRequest({
+        uri: parsed.uri,
+        origin: 'same-device',
+      })
+    } else {
+      useDeeplinkStore.getState().setPendingDeeplinkUri(parsed.uri)
+    }
   }
   return parsed
 }

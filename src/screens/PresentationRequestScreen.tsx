@@ -14,6 +14,7 @@ import { openCredentialRequestPortal } from '../services/credentials/openCredent
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
 import { resolvePresentationRequestUri } from '../services/credentials/resolvePresentationRequestUri'
 import { isPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
+import { notifyPresentationIntakeRejectionForUri } from '../services/vp/presentationIntakeRejection'
 import { describeUriForLog } from '../services/scan/scanLogDescriptors'
 import { isPresentationRequestDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
 import type { PresentationFlowOrigin } from '../services/vp/oid4vc/types'
@@ -37,6 +38,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   const { credentials } = useStoredCredentials()
   const incomingUrl = Linking.useURL()
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
+  const activeDeeplinkUri = useDeeplinkStore((s) => s.activeUri)
   const pendingPresentationFlowOrigin = useDeeplinkStore((s) => s.pendingPresentationFlowOrigin)
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
   const vpGeneration = useDeeplinkStore((s) => s.vpGeneration)
@@ -48,6 +50,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   const [requestUri, setRequestUri] = useState<string | null>(null)
   const [presentationFlowOrigin, setPresentationFlowOrigin] = useState<PresentationFlowOrigin>('same-device')
   const [missingRequestError, setMissingRequestError] = useState<string | null>(null)
+  const [isFinishing, setIsFinishing] = useState(false)
 
   const beginRequest = useCallback((uri: string, flowOrigin?: PresentationFlowOrigin) => {
     if (!isPresentationRequestDeeplink(uri)) return false
@@ -56,7 +59,9 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     if (uri === lastStartedRequestRef.current) return false
 
     const resolvedFlowOrigin = flowOrigin
-      ?? (uri === pendingDeeplinkUri ? pendingPresentationFlowOrigin ?? undefined : undefined)
+      ?? (uri === pendingDeeplinkUri || uri === activeDeeplinkUri
+        ? pendingPresentationFlowOrigin ?? undefined
+        : undefined)
       ?? 'same-device'
 
     lastStartedRequestRef.current = uri
@@ -69,11 +74,14 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     }
     logWalletStep('presentation-request', 'request-detected', describeUriForLog(uri))
     return true
-  }, [dismissedDeeplinkUri, pendingDeeplinkUri, pendingPresentationFlowOrigin])
+  }, [activeDeeplinkUri, dismissedDeeplinkUri, pendingDeeplinkUri, pendingPresentationFlowOrigin])
 
   useEffect(() => {
+    if (isFinishing) return
+
     if (initialRequestUri && beginRequest(initialRequestUri, pendingPresentationFlowOrigin ?? undefined)) return
     if (pendingDeeplinkUri && beginRequest(pendingDeeplinkUri, pendingPresentationFlowOrigin ?? undefined)) return
+    if (activeDeeplinkUri && beginRequest(activeDeeplinkUri, pendingPresentationFlowOrigin ?? undefined)) return
 
     const directRequest = resolvePresentationRequestUri(incomingUrl)
     if (directRequest && directRequest !== directUrlHandledRef.current && beginRequest(directRequest, 'same-device')) {
@@ -122,16 +130,79 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
       isMounted = false
       if (graceTimer) clearTimeout(graceTimer)
     }
-  }, [beginRequest, incomingUrl, initialRequestUri, pendingDeeplinkUri, pendingPresentationFlowOrigin, vpGeneration])
+  }, [
+    activeDeeplinkUri,
+    beginRequest,
+    incomingUrl,
+    initialRequestUri,
+    isFinishing,
+    pendingDeeplinkUri,
+    pendingPresentationFlowOrigin,
+    vpGeneration,
+  ])
+
+  useEffect(() => {
+    if (isFinishing || requestUri) return
+
+    const directRequest = resolvePresentationRequestUri(incomingUrl)
+    if (!directRequest || directRequest === directUrlHandledRef.current) return
+    if (beginRequest(directRequest, 'same-device')) {
+      directUrlHandledRef.current = directRequest
+    }
+  }, [beginRequest, incomingUrl, isFinishing, requestUri])
+
+  useEffect(() => {
+    if (isFinishing || requestUri) return
+
+    const blockedUri = [pendingDeeplinkUri, activeDeeplinkUri, resolvePresentationRequestUri(incomingUrl)]
+      .find((uri) => (
+        uri
+        && isPresentationRequestDeeplink(uri)
+        && (uri === dismissedDeeplinkUri || isPresentationRequestConsumed(uri))
+      ))
+
+    if (blockedUri) {
+      if (useDeeplinkStore.getState().pendingUri === blockedUri) {
+        useDeeplinkStore.getState().setDismissedDeeplinkUri(blockedUri)
+      }
+      logWalletStep('presentation-request', 'stale-request-rejected', describeUriForLog(blockedUri))
+      notifyPresentationIntakeRejectionForUri(blockedUri)
+      setIsFinishing(true)
+      returnToWallet()
+      return
+    }
+
+    if (pendingDeeplinkUri || activeDeeplinkUri) return
+    if (!initialUrlCheckedRef.current) return
+
+    const directRequest = resolvePresentationRequestUri(incomingUrl)
+    const staleUri = directRequest ?? lastStartedRequestRef.current
+    if (
+      staleUri
+      && (staleUri === dismissedDeeplinkUri || isPresentationRequestConsumed(staleUri))
+    ) {
+      notifyPresentationIntakeRejectionForUri(staleUri)
+      setIsFinishing(true)
+      returnToWallet()
+    }
+  }, [
+    activeDeeplinkUri,
+    dismissedDeeplinkUri,
+    incomingUrl,
+    isFinishing,
+    pendingDeeplinkUri,
+    requestUri,
+    returnToWallet,
+  ])
 
   const finish = useCallback(() => {
+    setIsFinishing(true)
     const uriToDismiss = activeRequestUriRef.current
     if (uriToDismiss) {
       setDismissedDeeplinkUri(uriToDismiss)
     }
     activeRequestUriRef.current = null
     lastStartedRequestRef.current = null
-    setRequestUri(null)
     returnToWallet()
   }, [returnToWallet, setDismissedDeeplinkUri])
 
@@ -148,6 +219,10 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
         <Text className="text-center text-sm text-gray600">{missingRequestError}</Text>
       </SafeAreaView>
     )
+  }
+
+  if (isFinishing) {
+    return null
   }
 
   if (!requestUri) {

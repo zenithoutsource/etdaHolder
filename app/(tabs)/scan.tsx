@@ -13,6 +13,10 @@ import { logWalletError, logWalletStep } from '../../src/services/debug/walletLo
 import { describeUriForLog } from '../../src/services/scan/scanLogDescriptors'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../../src/store/deeplinkStore'
 import { isOid4VpAuthorizationRequest } from '../../src/services/vp/presentationService'
+import {
+  notifyPresentationIntakeRejectionForUri,
+  readPresentationIntakeRejectionForUri,
+} from '../../src/services/vp/presentationIntakeRejection'
 
 type ScanPhase =
   | { tag: 'scanning' }
@@ -101,6 +105,14 @@ export default function ScanScreen() {
     processingRef.current = true
 
     if (isOid4VpAuthorizationRequest(uri)) {
+      if (readPresentationIntakeRejectionForUri(uri)) {
+        logWalletStep('scan', 'presentation-replay-ignored', describeUriForLog(uri))
+        notifyPresentationIntakeRejectionForUri(uri)
+        processingRef.current = false
+        resetScanner()
+        return
+      }
+
       logWalletStep('scan', 'presentation-qr-detected', describeUriForLog(uri))
       handoffPresentationRequest(uri)
       return

@@ -4,6 +4,10 @@ import {
   storePendingFromIssuanceCallbackUrl,
 } from './resolveIssuanceCallbackResult'
 import { useDeeplinkStore } from '../../store/deeplinkStore'
+import {
+  configurePresentationReplayStorage,
+  markPresentationRequestConsumed,
+} from '../vp/presentationRequestReplay'
 
 describe('resolveIssuanceCallbackFromSources', () => {
   const returnUrl = 'walletapp://callback'
@@ -86,6 +90,10 @@ describe('buildIssuanceCallbackUrlFromSearchParams', () => {
 describe('storePendingFromIssuanceCallbackUrl', () => {
   beforeEach(() => {
     useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
+    configurePresentationReplayStorage({
+      getString: () => undefined,
+      set: () => undefined,
+    })
   })
 
   test('stores normalized offer from walletapp callback before pin unlock', () => {
@@ -98,6 +106,18 @@ describe('storePendingFromIssuanceCallbackUrl', () => {
     )
   })
 
+  test('does not resurrect a dismissed credential offer when the initial URL is replayed', () => {
+    const offer = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer'
+    useDeeplinkStore.getState().setDismissedDeeplinkUri(offer)
+
+    storePendingFromIssuanceCallbackUrl(
+      'walletapp://callback?openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Foffer',
+    )
+
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+    expect(useDeeplinkStore.getState().dismissedUri).toBe(offer)
+  })
+
   test('stores normalized presentation request from walletapp callback before pin unlock', () => {
     const embedded = 'openid4vp://authorize?client_id=verifier.example&response_type=vp_token'
     storePendingFromIssuanceCallbackUrl(
@@ -106,5 +126,35 @@ describe('storePendingFromIssuanceCallbackUrl', () => {
 
     expect(useDeeplinkStore.getState().pendingUri).toBe(embedded)
     expect(useDeeplinkStore.getState().vpGeneration).toBe(1)
+  })
+
+  test('does not resurrect a dismissed presentation callback when the initial URL is replayed', () => {
+    const embedded = 'openid4vp://authorize?client_id=verifier.example&response_type=vp_token'
+    useDeeplinkStore.getState().setDismissedDeeplinkUri(embedded)
+
+    storePendingFromIssuanceCallbackUrl(
+      `walletapp://callback?openid4vp=${encodeURIComponent(embedded)}`,
+    )
+
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+    expect(useDeeplinkStore.getState().dismissedUri).toBe(embedded)
+  })
+
+  test('does not queue a presentation callback after its durable replay record survives restart', () => {
+    const embedded = 'openid4vp://authorize?client_id=verifier.example&response_type=vp_token'
+    const values = new Map<string, string>()
+    const storage = {
+      getString: (key: string) => values.get(key),
+      set: (key: string, value: string) => values.set(key, value),
+    }
+    configurePresentationReplayStorage(storage)
+    markPresentationRequestConsumed({ requestUri: embedded, nonce: 'nonce-123' })
+    configurePresentationReplayStorage(storage)
+
+    storePendingFromIssuanceCallbackUrl(
+      `walletapp://callback?openid4vp=${encodeURIComponent(embedded)}`,
+    )
+
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
   })
 })

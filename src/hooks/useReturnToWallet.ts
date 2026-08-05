@@ -17,7 +17,13 @@ export function useReturnToWallet(router: WalletRouter): () => void {
       rootNavigation.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: '(tabs)' }],
+          routes: [{
+            name: '(tabs)',
+            state: {
+              index: 0,
+              routes: [{ name: 'index' }],
+            },
+          }],
         }),
       )
       return

@@ -46,6 +46,10 @@ jest.mock('../services/debug/walletLogger', () => ({
   logWalletStep: jest.fn(),
 }))
 
+jest.mock('../services/vp/presentationRequestReplay', () => ({
+  isPresentationRequestConsumed: jest.fn(() => false),
+}))
+
 jest.mock('../components/Oid4VpDisclosureFlow', () => ({
   Oid4VpDisclosureFlow: ({
     authorizationRequestUri,
@@ -66,9 +70,16 @@ jest.mock('../components/Oid4VpDisclosureFlow', () => ({
     ),
 }))
 
+import { isPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
+
+const isPresentationRequestConsumedMock = isPresentationRequestConsumed as jest.MockedFunction<
+  typeof isPresentationRequestConsumed
+>
+
 describe('PresentationRequestScreen deeplink remount', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    isPresentationRequestConsumedMock.mockReturnValue(false)
     useDeeplinkStore.setState({
       pendingUri: null,
       pendingPresentationFlowOrigin: null,
@@ -76,6 +87,7 @@ describe('PresentationRequestScreen deeplink remount', () => {
       dismissedUri: null,
       offerGeneration: 0,
       vpGeneration: 0,
+      presentationIntakeError: null,
     })
   })
 
@@ -126,5 +138,51 @@ describe('PresentationRequestScreen deeplink remount', () => {
     })
     expect(useDeeplinkStore.getState().dismissedUri).toBeNull()
     expect(useDeeplinkStore.getState().vpGeneration).toBe(2)
+  })
+
+  it('restores the flow from activeUri after pending was consumed on remount', async () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=active'
+
+    useDeeplinkStore.getState().setPendingPresentationRequest({ uri: requestUri, origin: 'same-device' })
+    expect(useDeeplinkStore.getState().consumePendingDeeplinkUri()).toBe(requestUri)
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+    expect(useDeeplinkStore.getState().activeUri).toBe(requestUri)
+
+    render(<PresentationRequestRoute />)
+
+    await waitFor(() => {
+      expect(screen.getByText(`flow:${requestUri}`)).toBeTruthy()
+    })
+  })
+
+  it('does not show the loading spinner after the flow exits', async () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=exit'
+
+    useDeeplinkStore.getState().setPendingDeeplinkUri(requestUri)
+    render(<PresentationRequestRoute />)
+
+    await waitFor(() => {
+      expect(screen.getByText(`flow:${requestUri}`)).toBeTruthy()
+    })
+
+    fireEvent.press(screen.getByText('done'))
+
+    await waitFor(() => {
+      expect(screen.queryByText('กำลังเปิดคำขอตรวจสอบ…')).toBeNull()
+    })
+  })
+
+  it('returns to wallet when a consumed pending presentation request is queued', async () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=consumed'
+    isPresentationRequestConsumedMock.mockReturnValue(true)
+
+    useDeeplinkStore.getState().setPendingPresentationRequest({ uri: requestUri, origin: 'scan' })
+    render(<PresentationRequestRoute />)
+
+    await waitFor(() => {
+      expect(screen.queryByText('กำลังเปิดคำขอตรวจสอบ…')).toBeNull()
+    })
+    expect(useDeeplinkStore.getState().presentationIntakeError).toContain('ถูกดำเนินการแล้ว')
+    expect(mockRouterDismissTo).toHaveBeenCalled()
   })
 })

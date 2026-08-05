@@ -20,6 +20,7 @@ import { useAuthStore } from '@/src/store/authStore'
 import { useDeeplinkStore } from '@/src/store/deeplinkStore'
 import { isPortalReturnUrlIgnoredDuringCapture } from '@/src/services/credentials/portalReturnBridge'
 import { isPresentationRequestConsumed } from '@/src/services/vp/presentationRequestReplay'
+import { notifyPresentationIntakeRejectionForUri } from '@/src/services/vp/presentationIntakeRejection'
 
 /**
  * Handles Issuer portal return URLs such as
@@ -108,6 +109,9 @@ export default function IssuanceCallbackRoute() {
           ? 'presentation-replay-ignored'
           : 'credential-offer-dismissed-ignored',
       )
+      if (parsed.kind === 'presentation_request') {
+        notifyPresentationIntakeRejectionForUri(parsed.uri)
+      }
       router.replace('/(tabs)')
       return
     }

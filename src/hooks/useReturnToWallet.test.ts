@@ -32,7 +32,13 @@ describe('useReturnToWallet', () => {
       type: 'RESET',
       payload: {
         index: 0,
-        routes: [{ name: '(tabs)' }],
+        routes: [{
+          name: '(tabs)',
+          state: {
+            index: 0,
+            routes: [{ name: 'index' }],
+          },
+        }],
       },
     })
     expect(router.dismissTo).not.toHaveBeenCalled()

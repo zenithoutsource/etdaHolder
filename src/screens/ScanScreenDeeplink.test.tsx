@@ -3,6 +3,7 @@ import React from 'react'
 import { Text } from 'react-native'
 
 import ScanScreen from '../../app/(tabs)/scan'
+import { isPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
 import { useDeeplinkStore } from '../store/deeplinkStore'
 
 const mockReact = React
@@ -51,13 +52,29 @@ jest.mock('../services/vp/presentationService', () => ({
   isOid4VpAuthorizationRequest: jest.fn((uri: string) => uri.startsWith('openid4vp://')),
 }))
 
+jest.mock('../services/vp/presentationRequestReplay', () => ({
+  isPresentationRequestConsumed: jest.fn(() => false),
+}))
+
+const isPresentationRequestConsumedMock = isPresentationRequestConsumed as jest.MockedFunction<
+  typeof isPresentationRequestConsumed
+>
+
 describe('ScanScreen deeplink handling', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    isPresentationRequestConsumedMock.mockReturnValue(false)
     mockRouterReplace.mockClear()
     mockRouterPush.mockClear()
     cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
-    useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
+    useDeeplinkStore.setState({
+      pendingUri: null,
+      activeUri: null,
+      dismissedUri: null,
+      offerGeneration: 0,
+      vpGeneration: 0,
+      presentationIntakeError: null,
+    })
   })
 
   it('stores pending credential offer URI without navigating from Scan', async () => {
@@ -85,5 +102,20 @@ describe('ScanScreen deeplink handling', () => {
 
     expect(useDeeplinkStore.getState().pendingUri).toBe(requestUri)
     expect(mockRouterPush).toHaveBeenCalledWith('/(tabs)/presentation-request')
+  })
+
+  it('queues the shared intake error when a consumed presentation QR is scanned', async () => {
+    const requestUri = 'openid4vp://?client_id=did%3Aweb%3Averifier.example&response_type=vp_token'
+    isPresentationRequestConsumedMock.mockReturnValue(true)
+
+    render(<ScanScreen />)
+
+    await act(async () => {
+      cameraMock.CameraView.mock.calls.at(-1)?.[0].onBarcodeScanned({ data: requestUri })
+    })
+
+    expect(mockRouterPush).not.toHaveBeenCalled()
+    expect(useDeeplinkStore.getState().presentationIntakeError).toContain('ถูกดำเนินการแล้ว')
+    expect(screen.getByText('Scan Header')).toBeTruthy()
   })
 })
