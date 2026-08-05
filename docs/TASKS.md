@@ -1,5 +1,16 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-05 (PIN session: background-idle grace)
+
+- Wallet PIN session grace (`EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`, default
+  5 minutes) now measures continuous **background idle** only. Foreground use no
+  longer expires the session; brief `inactive` blips (biometric / system sheets)
+  do not start the idle clock — only `AppState` `background` does.
+- Resume clears background idle when the session is still valid so the next leave
+  starts a fresh window.
+- Verification: `walletPinSession` / `walletPinNavigation` / `walletPinPolicy`
+  focused tests pass (27).
+
 ### Session 2026-08-05 (ETDA demo learning web)
 
 - **Guide:** `docs/demo/etda-demo-learning.html` — standalone Thai tutorial for demo

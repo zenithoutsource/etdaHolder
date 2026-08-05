@@ -1,3 +1,4 @@
+/** Max continuous background idle before the wallet PIN session expires. */
 const DEFAULT_WALLET_PIN_SESSION_GRACE_MS = 5 * 60 * 1000
 
 export function readWalletPinSessionGraceMs(

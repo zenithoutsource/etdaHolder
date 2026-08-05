@@ -19,7 +19,11 @@ import { ForgotPinFlow } from '@/src/components/auth/ForgotPinFlow';
 import { StartupStoragePinUnlock } from '@/src/components/StartupStoragePinUnlock';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
 import { hasWalletPin, setWalletPin } from '@/src/services/auth/walletPin';
-import { isWalletPinSessionActive } from '@/src/services/auth/walletPinSession';
+import {
+  isWalletPinSessionActive,
+  markWalletPinSessionBackgrounded,
+  markWalletPinSessionForegrounded,
+} from '@/src/services/auth/walletPinSession';
 import { readStartupRoute, readWalletAccessRedirect } from '@/src/services/auth/walletPinNavigation';
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger';
 import {
@@ -445,6 +449,12 @@ export default function RootLayout() {
         return;
       }
 
+      // Idle grace counts only true background time — not foreground use, and not
+      // brief inactive blips (biometric / system sheets) that never reach background.
+      if (nextState === 'background') {
+        markWalletPinSessionBackgrounded();
+      }
+
       if (nextState !== 'active') {
         setIsResumePinCheckPending(true);
         return;
@@ -452,6 +462,7 @@ export default function RootLayout() {
 
       try {
         if (isWalletPinSessionActive()) {
+          markWalletPinSessionForegrounded();
           if (!authState.isPinVerified) {
             authState.setPinVerified(true);
             logWalletStep('wallet-unlock', 'session-restored');
