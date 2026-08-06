@@ -1,6 +1,6 @@
 # Security Policy
 
-This document defines mandatory security constraints for the ETDA Wallet. Any code that violates them must not be merged.
+This document defines mandatory security constraints for the the wallet. Any code that violates them must not be merged.
 
 ## 1. Cryptographic Key Policy
 
@@ -25,9 +25,10 @@ This satisfies protocol-level `alg: EdDSA` / Ed25519 compatibility. It does not 
 - random bytes
 - hashing
 - HMAC
+- AES-GCM wrapping for non-signing local storage keys
 - base64url and encoding support
 
-It must not be used for Ed25519 signing. Ed25519 signing is performed by `@noble/curves` using the Keychain-protected seed.
+It must not be used for Ed25519 signing. Ed25519 signing is performed by `@noble/ed25519` using the Keychain-protected seed.
 
 ### Public Key and Holder DID
 
@@ -47,7 +48,9 @@ The public JWK shape is `{ "kty": "OKP", "crv": "Ed25519", "x": "<base64url(raw_
 - MMKV encryption key is generated at first launch with a CSPRNG.
 - The encryption key is stored in `react-native-keychain`.
 - Production storage must use hardware-backed Keychain constraints when available.
+- A PIN-wrapped copy of the MMKV encryption key may be stored in unencrypted meta storage only for startup recovery after the user cancels the Keychain biometric prompt. This uses PBKDF2-SHA256 and AES-256-GCM, contains no raw PIN or raw MMKV key, and is a UX/security tradeoff with offline PIN-guessing risk if device storage is extracted.
 - Session data is stored in Keychain, not AsyncStorage.
+- Android application backup and restore is disabled (`expo.android.allowBackup = false`). Wallet Keychain entries, encrypted MMKV files, and their device-bound Android Keystore keys must not cross an installation boundary independently; a reinstall starts a new wallet and requires credential reissuance.
 
 ### Forbidden
 
@@ -61,7 +64,7 @@ Every signature operation must be gated by Keychain biometric/device authenticat
 
 - The gate applies at key usage time, not just wallet startup.
 - User cancellation rejects the sign call.
-- JavaScript must not implement a manual PIN fallback.
+- JavaScript must not implement a manual PIN fallback for signing-key release.
 - OID4VP and future ISO 18013-5 signing must reuse this gate.
 
 ## 4. Network and API Boundaries
@@ -73,6 +76,11 @@ Every signature operation must be gated by Keychain biometric/device authenticat
 - Mobile app never connects directly to MySQL.
 - Local development backend under `server/` is acceptable only behind the SDK/API boundary.
 - OID4VP online presentation must run device-to-Verifier directly.
+- Before sending an OID4VP response, the wallet stores only SHA-256 fingerprints
+  of the authorization-request URI and nonce in encrypted wallet storage. Callback,
+  startup, and PIN-unlock routing reject those fingerprints to prevent a stale
+  request from reopening after process death. This is a local replay guard; the
+  Verifier remains responsible for authoritative nonce validation.
 - OID4VP Verifier requests must be rejected unless both the `client_id` and `direct_post` origin are allowlisted. Production should use registered `did:web` Verifiers; the current `redirect_uri:` Verifier is development-only.
 
 ### Local Backend Hardening
@@ -87,6 +95,8 @@ The `server/` backend is development-only and is not the production Wallet Backe
 
 ## 5. Bundle and Build Security
 
+- Android application backup and restore is disabled through `expo.android.allowBackup = false`. Wallet Keychain entries, encrypted MMKV files, and their device-bound Android Keystore keys must not cross an installation boundary independently; a reinstall starts a new wallet and requires credential reissuance.
+- The existing PIN fallback is only a same-install recovery mechanism; it does not make the Ed25519 signing seed portable or authorize restoring wallet storage across installations.
 - MSW must not be included in production EAS builds.
 - Production source maps must not be committed or shipped.
 - API base URLs and local secrets belong in ignored `.env` files.
@@ -94,9 +104,11 @@ The `server/` backend is development-only and is not the production Wallet Backe
 
 ## 6. Current Security Findings
 
-See `SECURITY_FINDINGS.md` for the June 4 auth and crypto review. Latest resolved items:
+Resolved items from the June 4 auth and crypto review (predates ADR 0007 and ADR 0008; `SECURITY_FINDINGS.md` no longer exists in this repo):
 
 - Startup now asserts the hardware secure environment.
-- Software signing fallback was removed.
+- The temporary Noble software Ed25519 path from that review was removed at the time.
 - Android production MMKV key storage uses hardware-backed constraints where available.
 - Startup errors are mapped to user-facing messages.
+
+Superseded by later decisions: ADR 0008 (2026-06-16) reintroduced software Ed25519 signing as the accepted production design — see Section 1 above. The "software signing fallback was removed" finding above refers only to the pre-ADR-0007 temporary path, not the current signing key design.

@@ -3,9 +3,15 @@ import express from 'express'
 import type { ErrorRequestHandler, RequestHandler } from 'express'
 
 import { readConfig } from './config'
+import { areDevelopmentApisEnabled } from './developmentApiPolicy'
+import { installDevelopmentSwagger } from './openapi/installDevelopmentSwagger'
+import { installWalletSwagger } from './openapi/installWalletSwagger'
 import { authRouter } from './routes/auth'
 import { credentialsRouter } from './routes/credentials'
-import { devIssuerProxyRouter, devVerifierProxyRouter } from './routes/devIssuerProxy'
+import { devWalletRouter } from './routes/devWallet'
+import { vpSessionRouter } from './routes/vpSession'
+import { walletProviderAttestRouter } from './routes/walletProviderAttest'
+import { pushTokensRouter } from './routes/pushTokens'
 import { walletsRouter } from './routes/wallets'
 
 type HttpParserError = Error & {
@@ -62,7 +68,10 @@ function createAuthRateLimiter(): RequestHandler {
   const attempts = new Map<string, { count: number; resetAt: number }>()
 
   return (req, res, next) => {
-    if (req.method !== 'POST' || !['/login', '/register'].includes(req.path)) {
+    if (
+      req.method !== 'POST' ||
+      !['/login', '/register', '/email-status', '/pin-reset/request', '/pin-reset/verify', '/pin-reset/confirm'].includes(req.path)
+    ) {
       next()
       return
     }
@@ -89,21 +98,29 @@ function createAuthRateLimiter(): RequestHandler {
 
 export function createTestApp(): express.Express {
   const app = express()
+  const developmentApisEnabled = areDevelopmentApisEnabled()
 
+  installWalletSwagger(app)
+  if (developmentApisEnabled) {
+    installDevelopmentSwagger(app)
+  }
   app.use(createCorsMiddleware())
 
-  if (process.env.ENABLE_DEV_ISSUER_PROXY === 'true') {
-    app.use('/dev-issuer-proxy', devIssuerProxyRouter)
+  if (developmentApisEnabled) {
+    app.use('/dev', express.json({ limit: '1mb' }), vpSessionRouter)
   }
-  if (process.env.ENABLE_DEV_VERIFIER_PROXY === 'true') {
-    app.use('/dev-verifier-proxy', devVerifierProxyRouter)
-  }
+  app.use('/wallet-api', express.json({ limit: '1mb' }), walletProviderAttestRouter)
 
   app.use(express.json({ limit: '1mb' }))
+  app.use(express.urlencoded({ extended: false, limit: '1mb' }))
 
   app.use('/wallet-api/auth', createAuthRateLimiter())
   app.use('/wallet-api/auth', authRouter)
+  if (developmentApisEnabled) {
+    app.use('/wallet-api/dev', devWalletRouter)
+  }
   app.use('/wallet-api/wallet', walletsRouter)
+  app.use('/wallet-api/wallet', pushTokensRouter)
   app.use('/wallet-api/wallet', credentialsRouter)
   app.use(errorHandler)
 

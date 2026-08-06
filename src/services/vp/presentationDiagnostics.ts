@@ -1,12 +1,12 @@
 import { hashes, verify } from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha2.js'
-
-if (!hashes.sha512) hashes.sha512 = sha512
 import { createHash } from 'react-native-quick-crypto'
 
 import { readVerifierDcqlVpTokenShape } from '../../config/runtimeFlags'
 import { readRecord, readString } from '../../utils/jwtUtils'
 import type { ResolvedPresentationRequest } from './presentationService'
+
+if (!hashes.sha512) hashes.sha512 = sha512
 
 type JsonRecord = Record<string, unknown>
 

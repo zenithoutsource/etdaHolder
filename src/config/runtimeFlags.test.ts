@@ -44,29 +44,27 @@ describe('runtime flags', () => {
     expect(isSdJwtKbDisabledForTesting(true)).toBe(false)
   })
 
-  test('reads the verifier DCQL vp_token shape only in development', () => {
+  test('reads the verifier DCQL vp_token shape in preview and development', () => {
     process.env.EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE = 'raw'
 
-    expect(readVerifierDcqlVpTokenShape(true)).toBe('raw')
-    expect(readVerifierDcqlVpTokenShape(false)).toBe('object_array')
+    expect(readVerifierDcqlVpTokenShape()).toBe('raw')
   })
 
   test('defaults invalid verifier DCQL vp_token shapes to object_array', () => {
     process.env.EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE = 'invalid'
 
-    expect(readVerifierDcqlVpTokenShape(true)).toBe('object_array')
+    expect(readVerifierDcqlVpTokenShape()).toBe('object_array')
   })
 
-  test('reads the verifier KB audience mode only in development', () => {
+  test('reads the verifier KB audience mode in preview and development', () => {
     process.env.EXPO_PUBLIC_VERIFIER_KB_AUD = 'response_uri'
 
-    expect(readVerifierKbAudienceMode(true)).toBe('response_uri')
-    expect(readVerifierKbAudienceMode(false)).toBe('client_id')
+    expect(readVerifierKbAudienceMode()).toBe('response_uri')
   })
 
   test('defaults invalid verifier KB audience modes to client_id', () => {
     process.env.EXPO_PUBLIC_VERIFIER_KB_AUD = 'invalid'
 
-    expect(readVerifierKbAudienceMode(true)).toBe('client_id')
+    expect(readVerifierKbAudienceMode()).toBe('client_id')
   })
 })

@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wallet</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="phone">
+      <!-- STATUS BAR -->
+      <div class="status-bar">
+        <span class="time">9:51 PM</span>
+        <div class="status-icons">
+          <img src="../images/cellular.png" alt="" />
+          <img src="../images/wifi.png" alt="" />
+          <img src="../images/battery.png" alt="" />
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: WALLET HOME ══════════ -->
+      <div class="page active" id="page-home">
+        <div class="topbar"><h1>Wallet</h1></div>
+        <div class="content">
+          <div class="profile-card">
+            <div class="profile-photo">
+              <img src="../images/profile.png" alt="profile" />
+            </div>
+            <div class="profile-info">
+              <div class="name">นางสาว พิชญา รุ่งเรืองกิต</div>
+              <div class="id">ID card : 1-1009-000XX-XX-XX</div>
+            </div>
+          </div>
+          <div class="menu-list">
+            <button class="menu-item" onclick="goTo('page-idcard')">
+              <div class="menu-icon">
+                <img src="../images/card-2.png" alt="ID Card" />
+              </div>
+              <span class="menu-label">ID Card</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/car.png" alt="Driving License" />
+              </div>
+              <span class="menu-label">Driving License</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/document.png" alt="Transcript" />
+              </div>
+              <span class="menu-label">Transcript</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/doctor-bag.png" alt="Medical certificate" />
+              </div>
+              <span class="menu-label">Medical certificate</span>
+              <span class="menu-badge">ขอเอกสาร</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: ID CARD ══════════ -->
+      <div class="page" id="page-idcard">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="content">
+          <div class="id-card">
+            <div class="id-card-header"><h2>ID Card</h2></div>
+            <div class="id-card-body">
+              <div class="id-top-row">
+                <div class="id-photo">
+                  <img
+                    src="../images/profile.png"
+                    alt="profile photo"
+                    class="profile-image"
+                  />
+                </div>
+                <div class="id-main-info">
+                  <div class="info-label">ชื่อ - นามสกุล</div>
+                  <div class="info-value">นางสาว พิชญา รุ่งเรืองกิต</div>
+                  <div class="info-value-en">Miss Pitchaya Rungruangkit</div>
+                  <div class="info-label">เลขบัตรประจำตัวประชาชน</div>
+                  <div class="info-value-id">1-1009-000XX-XX-XX</div>
+                </div>
+              </div>
+              <div class="id-divider"></div>
+              <div class="id-bottom-grid">
+                <div class="id-col id-col-left">
+                  <div class="id-field">
+                    <div class="field-label">วันเดือนปีเกิด</div>
+                    <div class="field-value">15 พฤษภาคม 2546</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label">ที่อยู่ตามทะเบียนบ้าน</div>
+                    <div class="field-value">
+                      123/45 ถนนราชดำเนิน แขวง พระบรมมหาราชวัง เขตพระนคร
+                      กรุงเทพมหานคร 10200
+                    </div>
+                  </div>
+                </div>
+                <div class="id-col id-col-right">
+                  <div class="id-field">
+                    <div class="field-label">ศาสนา</div>
+                    <div class="field-value">พุทธ</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label">วันอนุญาต / Issue Date</div>
+                    <div class="field-value">8 กันยายน 2561</div>
+                  </div>
+                  <div class="id-field">
+                    <div class="field-label red">วันหมดอายุ / Expiry Date</div>
+                    <div class="field-value red">27 สิงหาคม 2570</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="qr-btn-row">
+            <div class="qr-btn" onclick="goTo('page-myqr')">
+              <img src="../images/qr-code-3.png" alt="QR" />
+              <span>My QR</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: MY QR ══════════ -->
+      <div class="page" id="page-myqr">
+        <div class="topbar"><h1>Wallet</h1></div>
+        <div class="content myqr-content">
+          <div class="myqr-title">
+            <div class="myqr-title-text">My ID Card</div>
+            <div class="myqr-title-text">QR Code</div>
+          </div>
+          <div
+            class="myqr-box"
+            onclick="goTo('page-verifier')"
+            id="qr-scan-wrap"
+          >
+            <div class="myqr-inner">
+              <img
+                src="../images/qr-code.png"
+                alt="QR Code"
+                class="myqr-image"
+              />
+            </div>
+          </div>
+          <div class="myqr-desc">
+            สแกน QR Code ของฉัน<br />เพื่อตรวจดูเอกสาร
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: SCAN ══════════ -->
+      <div class="page" id="page-scan">
+        <div class="topbar"><h1>Wallet</h1></div>
+        <div class="scan-area">
+          <div class="scan-label">Scan QR code</div>
+          <div class="scan-frame-wrap" onclick="startQrScan()">
+            <div class="corner-bl"></div>
+            <div class="corner-br"></div>
+            <div class="scan-inner"></div>
+            <div class="scan-line"></div>
+          </div>
+          <div class="scan-sublabel">กำลังสแกน QR Code...</div>
+          <button
+            class="scan-back-btn"
+            onclick="navTo('page-home', 'nav-wallet')"
+          >
+            ย้อนกลับ
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: VERIFIER ══════════ -->
+      <div class="page" id="page-verifier">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="navTo('page-scan', 'nav-scan')">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Verifier</h1>
+        </div>
+        <div class="content">
+          <div class="verifier-banner">
+            <img
+              src="../images/Rectangle 17.png"
+              alt="banner"
+              class="verifier-banner-img"
+            />
+            <div class="verifier-banner-text">ตรวจสอบข้อมูลเข้าสถานบันเทิง</div>
+          </div>
+          <div class="verifier-section-title">รายการข้อมูลที่ร้องขอ</div>
+          <div class="verifier-list">
+            <div class="verifier-item unlocked">
+              <div class="vi-icon green">
+                <img
+                  src="../images/check-2.png"
+                  alt="check"
+                  class="vi-icon-check-img"
+                />
+              </div>
+              <div class="vi-text">
+                <div class="vi-name">อายุ</div>
+                <div class="vi-status hidden">
+                  <img
+                    src="../images/eye.png"
+                    alt="hidden"
+                    class="vi-status-eye-img"
+                  />
+                  เปิดเผยข้อมูล
+                </div>
+              </div>
+              <button class="vi-info-btn">
+                <img
+                  src="../images/warning-sign.png"
+                  alt="info"
+                  class="vi-info-icon-img"
+                />
+              </button>
+            </div>
+            <div class="verifier-item locked">
+              <div class="vi-icon gray">
+                <img
+                  src="../images/padlock.png"
+                  alt="lock"
+                  class="vi-icon-lock-img"
+                />
+              </div>
+              <div class="vi-text">
+                <div class="vi-name">ชื่อ - นามสกุล</div>
+                <div class="vi-status hidden">
+                  <img
+                    src="../images/closed-eyes.png"
+                    alt="hidden"
+                    class="vi-status-eye-img"
+                  />
+                  ไม่เปิดเผยข้อมูล
+                </div>
+              </div>
+              <button class="vi-info-btn">
+                <img
+                  src="../images/question.png"
+                  alt="info"
+                  class="vi-info-icon-img"
+                />
+              </button>
+            </div>
+          </div>
+          <div class="verifier-item locked">
+            <div class="vi-icon gray">
+              <img
+                src="../images/padlock.png"
+                alt="lock"
+                class="vi-icon-lock-img"
+              />
+            </div>
+            <div class="vi-text">
+              <div class="vi-name">ประจำตัว 13 หลัก</div>
+              <div class="vi-status hidden">
+                <img
+                  src="../images/closed-eyes.png"
+                  alt="hidden"
+                  class="vi-status-eye-img"
+                />
+                ไม่เปิดเผยข้อมูล
+              </div>
+            </div>
+            <button class="vi-info-btn">
+              <img
+                src="../images/question.png"
+                alt="info"
+                class="vi-info-icon-img"
+              />
+            </button>
+          </div>
+          <div class="verifier-item locked">
+            <div class="vi-icon gray">
+              <img
+                src="../images/padlock.png"
+                alt="lock"
+                class="vi-icon-lock-img"
+              />
+            </div>
+            <div class="vi-text">
+              <div class="vi-name">หมู่เลือด</div>
+              <div class="vi-status hidden">
+                <img
+                  src="../images/closed-eyes.png"
+                  alt="hidden"
+                  class="vi-status-eye-img"
+                />
+                ไม่เปิดเผยข้อมูล
+              </div>
+            </div>
+            <button class="vi-info-btn">
+              <img
+                src="../images/question.png"
+                alt="info"
+                class="vi-info-icon-img"
+              />
+            </button>
+          </div>
+          <div class="verifier-item locked">
+            <div class="vi-icon gray">
+              <img
+                src="../images/padlock.png"
+                alt="lock"
+                class="vi-icon-lock-img"
+              />
+            </div>
+            <div class="vi-text">
+              <div class="vi-name">เชื้อชาติ</div>
+              <div class="vi-status hidden">
+                <img
+                  src="../images/closed-eyes.png"
+                  alt="hidden"
+                  class="vi-status-eye-img"
+                />
+                ไม่เปิดเผยข้อมูล
+              </div>
+            </div>
+            <button class="vi-info-btn">
+              <img
+                src="../images/question.png"
+                alt="info"
+                class="vi-info-icon-img"
+              />
+            </button>
+          </div>
+          <div class="verifier-item locked">
+            <div class="vi-icon gray">
+              <img
+                src="../images/padlock.png"
+                alt="lock"
+                class="vi-icon-lock-img"
+              />
+            </div>
+            <div class="vi-text">
+              <div class="vi-name">ศาสนา</div>
+              <div class="vi-status hidden">
+                <img
+                  src="../images/closed-eyes.png"
+                  alt="hidden"
+                  class="vi-status-eye-img"
+                />
+                ไม่เปิดเผยข้อมูล
+              </div>
+            </div>
+            <button class="vi-info-btn">
+              <img
+                src="../images/question.png"
+                alt="info"
+                class="vi-info-icon-img"
+              />
+            </button>
+          </div>
+          <button class="verifier-confirm-btn" onclick="goTo('page-consent')">
+            ยืนยันและส่งข้อมูล
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: CONSENT ══════════ -->
+      <div class="page" id="page-consent">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="consent-content">
+          <div class="consent-icon-box">
+            <img
+              src="../images/wine.png"
+              alt="Entertainment"
+              class="consent-main-icon"
+            />
+          </div>
+          <div class="consent-title">ข้อมูลที่สถานบันเทิงต้องการ</div>
+          <div class="consent-request-section">
+            <div class="consent-label">ข้อมูลที่ร้องขอ</div>
+            <div class="consent-request-card">
+              <div class="consent-request-info">
+                <div class="consent-request-title">อายุเกิน 20 ปี</div>
+                <div class="consent-request-subtitle">Age Verification</div>
+              </div>
+              <img
+                src="../images/check-2.png"
+                alt="Verified"
+                class="consent-check-icon"
+              />
+            </div>
+          </div>
+          <div class="consent-spacer"></div>
+          <div class="consent-auth-section">
+            <div class="consent-auth-title">ต้องใช้การยืนยันตัวตนโดย</div>
+            <div class="consent-auth-method">
+              <img
+                src="../images/face-id.png"
+                alt="Face ID"
+                class="consent-faceid-icon"
+              />
+              <span>Face ID</span>
+            </div>
+          </div>
+          <div class="consent-button-group">
+            <button
+              class="consent-btn-primary"
+              onclick="
+                faceIdFlow = 'consent';
+                goTo('page-faceid');
+              "
+            >
+              รับทราบและยืนยันข้อมูล
+            </button>
+            <button class="consent-btn-secondary" onclick="goBack()">
+              ไม่ยินยอม
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- ══════════ PAGE: PREPARE FACE ══════════ -->
+      <div class="page" id="page-face-prepare">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+
+        <div class="face-prepare-content">
+          <div class="face-prepare-title">สแกนใบหน้า</div>
+
+          <img
+            src="../images/face-id.png.webp"
+            alt="Face Scan"
+            class="face-prepare-image"
+          />
+
+          <div class="face-prepare-subtitle">เตรียมสแกนใบหน้า</div>
+
+          <div class="face-prepare-desc">
+            สำหรับใช้ในการยืนยันตัวตน<br />
+            เพื่อความปลอดภัยของคุณ
+          </div>
+
+          <div class="face-guide">
+            <div class="face-guide-item">
+              <img src="../images/light-bulb.png" />
+              <div class="face-guide-text">
+                อยู่ในที่ที่มีแสงเหมาะสม ไม่สว่างหรือมืดเกินไป
+              </div>
+            </div>
+
+            <div class="face-guide-item">
+              <div class="icon-circle green-circle">
+                <img src="../images/poker-face.png" />
+              </div>
+
+              <div class="face-guide-text">
+                ขยับใบหน้าให้อยู่ภายในกรอบ
+                <span class="green-text">จนกรอบเป็นสีเขียว</span>
+              </div>
+            </div>
+
+            <div class="face-guide-item">
+              <img src="../images/eye-2.png" />
+              <div class="face-guide-text">พยายามลืมตาให้กว้าง</div>
+            </div>
+
+            <div class="face-guide-item">
+              <div class="icon-circle red-circle">
+                <img src="../images/mask.png" />
+              </div>
+
+              <div class="face-guide-text">
+                <span class="bold-text">ต้องเห็น ตา จมูก ปาก</span>
+                ชัดเจน ไม่สวมแว่น<br />
+                หน้ากากอนามัยและไม่ใส่หมวก
+              </div>
+            </div>
+          </div>
+
+          <button
+            class="face-scan-btn"
+            onclick="
+              faceIdFlow = 'verifier';
+              goTo('page-faceid');
+            "
+          >
+            สแกนใบหน้า
+          </button>
+        </div>
+      </div>
+      <!-- ══════════ PAGE: FACE ID ══════════ -->
+      <div class="page" id="page-faceid">
+        <div class="topbar-back">
+          <h1>Wallet</h1>
+          <div onclick="goBack()">
+            <div class="close-btn">
+              <img src="../images/close.png" alt="close" />
+            </div>
+          </div>
+        </div>
+        <div class="content faceid-content">
+          <div class="faceid-title">กำลังสแกนใบหน้า...</div>
+          <div class="face-scan-ring">
+            <img
+              src="../images/face scan.png"
+              alt="Face Scan"
+              class="faceid-photo"
+            />
+          </div>
+          <div class="faceid-text">กรุณาวางใบหน้าให้อยู่ในกรอบและกระพริบตา</div>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: VERIFIED RESULT ══════════ -->
+      <div class="page" id="page-verified">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="verified-content">
+          <!-- ID Card compact -->
+          <div class="vr-idcard">
+            <div class="vr-idcard-header">
+              <h3>ID Card</h3>
+              <img
+                src="../images/check-5.png"
+                alt="verified"
+                class="vr-check-icon"
+              />
+            </div>
+            <div class="vr-idcard-body">
+              <img src="../images/profile.png" alt="photo" class="vr-photo" />
+              <div class="vr-info-block">
+                <div class="vr-info-label">ชื่อ - นามสกุล</div>
+                <div class="vr-info-value">นางสาว พิชญา รุ่งเรืองกิต</div>
+                <div class="vr-info-divider"></div>
+                <div class="vr-info-label">เลขบัตรประจำตัวประชาชน</div>
+                <div class="vr-info-value">1 1009 00xx xx xx</div>
+                <div class="vr-info-divider"></div>
+                <div class="vr-info-label">วันเดือนปีเกิด</div>
+                <div class="vr-info-value">15 พฤษภาคม 2546</div>
+              </div>
+            </div>
+            <div class="vr-dates-row">
+              <div class="vr-date-col">
+                <div class="vr-date-label">วันอนุญาต / Issue Date</div>
+                <div class="vr-date-value">8 กันยายน 2566</div>
+              </div>
+              <div class="vr-date-col">
+                <div class="vr-date-label red">วันหมดอายุ / Expiry Date</div>
+                <div class="vr-date-value red">7 พฤษภาคม 2573</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Approve by Wallet -->
+          <div class="vr-approve-card">
+            <div class="vr-approve-title">Approve by Wallet</div>
+            <div class="vr-device-row">
+              <img
+                src="../images/smartphone.png"
+                alt="device"
+                class="vr-device-icon"
+              />
+              <div>
+                <div class="vr-device-name">iPhone 15Pro</div>
+                <div class="vr-device-os">ios 21.6</div>
+              </div>
+            </div>
+            <div class="vr-approve-row">
+              <span>ลงทะเบียนเมื่อ</span>
+              <span class="highlight">15 มกราคม 2569</span>
+              <span>เวลา</span>
+              <span class="highlight">09 : 42 น.</span>
+            </div>
+            <div class="vr-approve-row">
+              <span>สถานการณ์ลงทะเบียน</span>
+              <span class="status-linked">ลงทะเบียนแล้ว</span>
+            </div>
+          </div>
+
+          <!-- POP Signature -->
+          <div class="vr-pop-section">
+            <div class="vr-pop-title">
+              ลายเซ็นดิจิทัล POP (Proof of Possession)
+            </div>
+            <div class="vr-pop-box">
+              <div class="vr-pop-toprow">
+                <span class="vr-pop-algo">ECDSA - 256</span>
+                <span class="vr-pop-hash">HASH SHA256</span>
+              </div>
+              <div class="vr-pop-hex">
+                8f2d9c0e1b2c3d4e5f6g7h8i9j0k112m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y1z2a3b4c5d6e7f8g9
+              </div>
+              <button class="vr-pop-copy-btn">คัดลอกลายเซ็น</button>
+            </div>
+          </div>
+
+          <!-- รายการที่ร้องขอ -->
+          <div class="vr-request-section">
+            <div class="vr-request-title">รายการที่ร้องขอ</div>
+            <div class="vr-request-item">
+              <img
+                src="../images/check-2.png"
+                alt="check"
+                class="vr-request-check"
+              />
+              <div class="vr-request-text">
+                <div class="vr-request-name">Age</div>
+                <div class="vr-request-sub">22 ปี</div>
+              </div>
+              <img
+                src="../images/warning-sign.png"
+                alt="info"
+                class="vr-request-info"
+              />
+            </div>
+          </div>
+
+          <!-- ยอมรับ -->
+          <button class="vr-accept-btn" onclick="goTo('page-face-prepare')">
+            ยอมรับ
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: SUCCESS ══════════ -->
+      <div class="page" id="page-success">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Consent</h1>
+        </div>
+        <div class="success-content">
+          <div class="success-title">แชร์ข้อมูลสำเร็จ</div>
+          <div class="success-date">
+            วันที่ 27 มีนาคม 2569 คุณได้แชร์ข้อมูล ตำรวจแห่งชาติ
+          </div>
+          <div class="success-card">
+            <div class="success-item">
+              <img src="../images/wine.png" alt="recipient" />
+              <div>
+                <div class="success-label">Recipient</div>
+                <div class="success-value">ร้านอาหาร</div>
+              </div>
+            </div>
+            <div class="success-item">
+              <img src="../images/calendar-2.png" alt="calendar" />
+              <div>
+                <div class="success-label">Shared Date</div>
+                <div class="success-value">1 มกราคม 2569</div>
+              </div>
+            </div>
+            <div class="success-item">
+              <img src="../images/check-2.png" alt="age" />
+              <div>
+                <div class="success-label">Age</div>
+                <div class="success-value">22 ปี</div>
+              </div>
+            </div>
+          </div>
+          <button class="consent-accept-btn" onclick="goTo('page-history')">
+            ยอมรับ
+          </button>
+        </div>
+      </div>
+
+      <!-- ══════════ PAGE: HISTORY LOG ══════════ -->
+      <div class="page" id="page-history">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet Transaction</h1>
+        </div>
+        <div class="history-content">
+          <div class="history-summary">
+            <div class="summary-label">รายการทั้งหมด</div>
+            <div class="summary-count">
+              <span class="count-number">10</span>
+              <span class="count-text">รายการ</span>
+            </div>
+          </div>
+          <!-- ITEM 1 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img src="../images/wine.png" alt="" class="history-logo" />
+                <div>
+                  <div class="history-name">ร้านอาหาร</div>
+                  <div class="history-datetime">
+                    <span class="history-date">29 มกราคม 2569</span>
+                    <span class="history-time"> 10:30 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status success">
+                <img src="../images/check-3.png" alt="" />สำเร็จแล้ว
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">การตรวจสอบอายุ ( Verified Age )</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="../images/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 2 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img
+                  src="../images/7-eleven_logo.svg.png"
+                  alt=""
+                  class="history-logo"
+                />
+                <div>
+                  <div class="history-name">บริษัท เซเว่น อีเลฟเว่น</div>
+                  <div class="history-datetime">
+                    <span class="history-date">24 กุมภาพันธ์ 2569</span>
+                    <span class="history-time"> 14:25 น.</span>
+                  </div>
+                </div>
+                <div class="status success">
+                  <img src="../images/check-3.png" alt="" />สำเร็จแล้ว
+                </div>
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">ข้อมูลบัตรประชาชน</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="../images/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 3 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img
+                  src="../images/Central.jpg.webp"
+                  alt=""
+                  class="history-logo"
+                />
+                <div>
+                  <div class="history-name">Central</div>
+                  <div class="history-datetime">
+                    <span class="history-date">1 มีนาคม 2569</span>
+                    <span class="history-time"> 12:00 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status success">
+                <img src="../images/check-3.png" alt="" />สำเร็จแล้ว
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">
+                ใบขับขี่ดิจิทัล (Digital Driving License)
+              </div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="../images/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 4 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img
+                  src="../images/red-cross.png"
+                  alt=""
+                  class="history-logo"
+                />
+                <div>
+                  <div class="history-name">โรงพยาบาล</div>
+                  <div class="history-datetime">
+                    <span class="history-date">10 มีนาคม 2569</span>
+                    <span class="history-time"> 13:00 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status success">
+                <img src="../images/check-3.png" alt="" />สำเร็จแล้ว
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">ใบรับรองแพทย์</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="../images/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- ══════════ PAGE: VERIFIER SUCCESS ══════════ -->
+      <div class="page" id="page-vsuccess">
+        <div class="topbar-back">
+          <h1>Verifier</h1>
+          <div onclick="navTo('page-home', 'nav-wallet')">
+            <div class="close-btn">
+              <img src="../images/close.png" alt="close" />
+            </div>
+          </div>
+        </div>
+        <div class="vsuccess-content">
+          <div class="vsuccess-check-circle">
+            <img src="../images/check-4.png" alt="success" />
+          </div>
+          <div class="vsuccess-title">ส่งข้อมูลสำเร็จ</div>
+          <div class="vsuccess-desc">
+            ข้อมูลของคุณถูกส่งให้<br />Verifier เรียบร้อยแล้ว
+          </div>
+          <button
+            class="vsuccess-btn"
+            onclick="navTo('page-presentLog', 'nav-history')"
+          >
+            เสร็จสิ้น
+          </button>
+        </div>
+      </div>
+      <!-- ══════════ PAGE: Present LOG ══════════ -->
+      <div class="page" id="page-presentLog">
+        <div class="topbar-back">
+          <div class="back-btn" onclick="goBack()">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet Transaction</h1>
+        </div>
+        <div class="history-content">
+          <div class="history-summary">
+            <div class="summary-label">รายการทั้งหมด</div>
+            <div class="summary-count">
+              <span class="count-number">4</span>
+              <span class="count-text">รายการ</span>
+            </div>
+          </div>
+          <!-- ITEM 1 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img src="../images/wine.png" alt="" class="history-logo" />
+                <div>
+                  <div class="history-name">ร้านอาหาร</div>
+                  <div class="history-datetime">
+                    <span class="history-date">29 มกราคม 2569</span>
+                    <span class="history-time"> 10:30 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status accept">ยอมรับ</div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">การตรวจสอบอายุ ( Verified Age )</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="../images/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 2 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img
+                  src="../images/7-eleven_logo.svg.png"
+                  alt=""
+                  class="history-logo"
+                />
+                <div>
+                  <div class="history-name">บริษัท เซเว่น อีเลฟเว่น</div>
+                  <div class="history-datetime">
+                    <span class="history-date">24 กุมภาพันธ์ 2569</span>
+                    <span class="history-time"> 14:25 น.</span>
+                  </div>
+                </div>
+                <div class="status accept">ยอมรับ</div>
+              </div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">ข้อมูลบัตรประชาชน</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="../images/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 3 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img
+                  src="../images/Central.jpg.webp"
+                  alt=""
+                  class="history-logo"
+                />
+                <div>
+                  <div class="history-name">Central</div>
+                  <div class="history-datetime">
+                    <span class="history-date">1 มีนาคม 2569</span>
+                    <span class="history-time"> 12:00 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status reject">ไม่ยอมรับ</div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">
+                ใบขับขี่ดิจิทัล (Digital Driving License)
+              </div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="../images/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+          <!-- ITEM 4 -->
+          <div class="history-card">
+            <div class="history-header">
+              <div class="history-left">
+                <img
+                  src="../images/red-cross.png"
+                  alt=""
+                  class="history-logo"
+                />
+                <div>
+                  <div class="history-name">โรงพยาบาล</div>
+                  <div class="history-datetime">
+                    <span class="history-date">10 มีนาคม 2569</span>
+                    <span class="history-time"> 13:00 น.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="status accept">ยอมรับ</div>
+            </div>
+            <div class="history-info-box">
+              <div class="info-label">ประเภทข้อมูลที่เข้าถึง</div>
+              <div class="info-value">ใบรับรองแพทย์</div>
+            </div>
+            <button class="revoke-btn">
+              <img
+                src="../images/delete-2.png"
+                alt=""
+              />ขอให้ระงับสิทธิ์เข้าถึงข้อมูลของฉันทันที
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- ══════════ NAVBAR ══════════ -->
+      <div class="bottom-nav">
+        <div
+          class="nav-item active"
+          id="nav-wallet"
+          onclick="navTo('page-home', 'nav-wallet')"
+        >
+          <img src="../images/wallet-2.png" alt="Wallet" />
+          <span>Wallet</span>
+          <div class="nav-indicator"></div>
+        </div>
+        <div
+          class="nav-item"
+          id="nav-qr"
+          onclick="navTo('page-myqr', 'nav-qr')"
+        >
+          <img src="../images/qr-code-3.png" alt="My QR" />
+          <span>My QR</span>
+        </div>
+        <div class="nav-item" id="nav-scan" onclick="startScanFlow()">
+          <img src="../images/scanner-4.png" alt="Scan" />
+          <span>Scan</span>
+        </div>
+        <div
+          class="nav-item"
+          id="nav-history"
+          onclick="navTo('page-history', 'nav-history')"
+        >
+          <img src="../images/restore.png" alt="History Log" />
+          <span>History Log</span>
+        </div>
+      </div>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>

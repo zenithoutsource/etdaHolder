@@ -10,19 +10,35 @@ import { PresentationRequestedItemsCard } from './PresentationRequestedItemsCard
 
 type Props = {
   request: ResolvedPresentationRequest
+  selectedClaimKeys: ReadonlySet<string>
+  onToggleClaim: (claimKey: string) => void
   onConfirm: () => void
+  submitting?: boolean
 }
 
-export function PresentationInfoPanel({ request, onConfirm }: Props) {
+export function PresentationInfoPanel({
+  request,
+  selectedClaimKeys,
+  onToggleClaim,
+  onConfirm,
+  submitting,
+}: Props) {
   const credentialSignature = readCompactTokenSignature(request.matchedCredential.rawVc) ?? 'Signature unavailable'
 
   return (
-    <View className="flex-1 bg-[#eef1f4] px-4 pt-6">
+    <View className="flex-1 bg-surface px-4 pt-6">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32, gap: 16 }}>
         <PresentationCredentialSummaryCard record={request.matchedCredential} />
         <PresentationApprovalDeviceCard registeredAt={getWalletKeyRegisteredAt()} />
         <PresentationPopCard signature={credentialSignature} />
-        <PresentationRequestedItemsCard disclosures={request.disclosures} onAccept={onConfirm} />
+        <PresentationRequestedItemsCard
+          documentType={request.matchedCredential.type}
+          disclosures={request.disclosures}
+          selectedClaimKeys={selectedClaimKeys}
+          onToggleClaim={onToggleClaim}
+          onAccept={onConfirm}
+          submitting={submitting}
+        />
       </ScrollView>
     </View>
   )

@@ -53,13 +53,34 @@ Only HTTP 201 is a sync success. TanStack Query invalidation belongs in caller/U
 
 ## 3. Offer Delivery and Presentation Channels
 
+### Holder channel matrix
+
+Use this table to choose the correct flow. **Scan and deep links are online paths** (network to Issuer or Verifier). **NFC HCE is proximity presentation only** (tap a physical reader; no OID4VCI/OID4VP over NFC in v1).
+
+| User action | Entry | Protocol | Direction | Status |
+|-------------|-------|----------|-----------|--------|
+| Claim credential | Scan tab — `openid-credential-offer://` QR | OID4VCI | Receive VC | Implemented |
+| Claim credential | Deep link `walletapp://callback` (issuance) | OID4VCI | Receive VC | Implemented |
+| Claim credential | NFC NDEF tag (offer URI on tag) | OID4VCI | Receive VC | Deferred until test device |
+| Present to verifier (online) | Scan tab — `openid4vp://` QR | OID4VP | Send VP (SD-JWT) | Implemented |
+| Present to verifier (online) | Deep link `walletapp://callback` (VP) | OID4VP | Send VP | Implemented |
+| Present to verifier (online) | My QR tab | OID4VP (broker → `direct_post`) | Send VP | Implemented |
+| Present to reader (proximity) | Credential detail → NFC → engagement QR → tap | ISO 18013-5 mdoc (Android HCE, AID `A0000002480400`) | Send mdoc | In progress — see [`2026-07-27-mdl-mdoc-only-nfc-v1-design.md`](./superpowers/specs/2026-07-27-mdl-mdoc-only-nfc-v1-design.md) |
+
+**Not in scope:** [mdoc-web-verifier](https://github.com/stelauconseil/mdoc-web-verifier) and other BLE browser verifiers — production proximity validation uses Samsung A26 + ACR1311U-N2 (NFC), not Web Bluetooth.
+
+The **engagement QR** on the NFC present screen is for the **reader** to obtain `DeviceEngagement` before tap. It is not the same as a Scan-tab OID4VP or issuance QR.
+
+### Channel status (implementation)
+
 | Channel | Purpose | Status |
 |---|---|---|
-| QR Scan | Reads `openid-credential-offer://...` and routes to `resolveOffer()` | Implemented with `expo-camera` |
+| QR Scan (Scan tab) | Issuance offers **and** Verifier OID4VP requests | Implemented with `expo-camera` |
+| Deep link | Same-device issuance or VP (`walletapp://callback`) | Implemented |
 | NFC NDEF | Reads issuance offer URI from an NFC tag | Deferred until test device |
 | In-app SDK | Backend returns an offer URL | Supported boundary; UI wiring is incremental |
-| NFC Presentation | ISO 18013-5 mdoc proximity presentation | Decided by ADR 0003; native module TBD |
-| Online Presentation | OID4VP 1.0 remote/cross-device presentation | First QR/direct_post slice implemented for ThaiNationalID age-over-20 |
+| NFC Presentation | ISO 18013-5 mdoc proximity via `modules/expo-mdoc-proximity` | ADR 0003; v1 mDL mdoc-only slice in progress |
+| Online Presentation | OID4VP 1.0 remote/cross-device presentation | Implemented (Scan, deep link, My QR) |
 
 Presentation is separate from acquisition. OID4VP online presentation does not supersede ADR 0003 because it uses a different transport.
 
@@ -75,7 +96,33 @@ The first OID4VP slice is intentionally narrow and Verifier-driven:
 6. Send `vp_token`, `presentation_submission`, and optional `state` to the Verifier using `direct_post`.
 7. Record successful presentations locally after the Verifier returns a successful HTTP response.
 
-The current development allowlist includes `http://192.100.10.48/openid4vc/verify` for the supplied Verifier API. Production deployments must replace this with registered `did:web` Verifiers.
+The current development allowlist includes `http://verifier.zenithcomp.co.th:455/openid4vc/verify` for the supplied Verifier API and is emitted only in development builds. Production deployments trust env-configured `decentralized_identifier:did:web:` Verifiers through `EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN`, and optional `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK`; unpinned DID document resolution uses HTTPS `did.json` with the `EXPO_PUBLIC_DID_WEB_FETCH_TIMEOUT_MS` and `EXPO_PUBLIC_DID_WEB_MAX_BYTES` policy.
+
+### Wallet-Initiated My QR (Broker Engagement + OID4VP)
+
+The **My QR** tab is wallet-initiated: the holder shows a broker engagement QR. After the checkpoint Verifier scans it, the Wallet Broker holds a standard OID4VP Authorization Request. The wallet then reuses the **Scan-tab disclosure path** (resolve → consent → sign → `direct_post`). The Broker does **not** verify VPs — crypto verification stays on the Verifier.
+
+```text
+Wallet App                      Wallet Broker                         Verifier
+  │ POST /broker/session            │                                    │
+  │ show QR = qr_payload            │                                    │
+  │ (waiting_scan)                  │                                    │
+  │                                 │  POST /verifier/scan               │
+  │                                 │  ◄─────────────────────────────────│
+  │                                 │  deposit OID4VP request            │
+  │ poll/push GET .../request       │                                    │
+  │ disclosure → direct_post ───────────────────────────────────────────►│
+```
+
+| Concern | Scan tab | My QR tab |
+|---------|----------|-----------|
+| Initiator | Verifier (`openid4vp://`) | Wallet (holder) |
+| Protocol | OID4VP 1.0 `direct_post` | Broker engagement → same OID4VP disclosure + `direct_post` |
+| Authority | Verifier OID4VP API | Verifier OID4VP API (Broker only relays the request) |
+| Wallet backend in path? | No | Yes — Broker session + push/poll only |
+
+Mobile: `createBrokerSessionClient()` + `Oid4VpDisclosureFlow`; base URL from `EXPO_PUBLIC_BROKER_BASE_URL` (default `https://wallet.zenithcomp.co.th:455`).  
+Spec: `docs/superpowers/specs/2026-07-16-my-qr-broker-oid4vp-design.md` (supersedes Option A VP-by-reference for production My QR).
 
 ## 4. Security Boundary
 
@@ -85,7 +132,7 @@ The current development allowlist includes `http://192.100.10.48/openid4vc/verif
 - Public key is cached in metadata storage as `wallet.ed25519_pub_key`.
 - Biometric/device authentication gates every Keychain seed retrieval for signing.
 - Signatures use `@noble/curves` Ed25519 and emit `alg: EdDSA`.
-- The Android native Ed25519 module remains diagnostic/experimental because target hardware returned EC keys for AndroidKeyStore Ed25519 requests.
+- The former Android native Ed25519 diagnostic module was removed after ADR 0008 settled on Keychain-protected software Ed25519 signing.
 
 ### Holder DID
 
@@ -115,7 +162,7 @@ Credential rendering is config-driven:
 
 - `ThaiNationalID`
 - `DLTDrivingLicence`
-- `BangkokUniversityTranscript`
+- `ChulalongkornUniversityTranscript`
 
 No issuer-specific card components should be added. Extend schemas instead.
 

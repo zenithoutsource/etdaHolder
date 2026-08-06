@@ -1,90 +1,144 @@
-import { Image, ScrollView, Text, View, type ImageSourcePropType } from 'react-native'
+import {
+  Image,
+  ScrollView,
+  Text,
+  View,
+  type ImageSourcePropType,
+} from "react-native";
 
-import { readCredentialHolderProfile } from '../services/credentials/credentialDisplay'
-import { readCredentialPreviewDisplay } from '../services/vci/qrIssuanceFlow'
-import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
-import { AppButton } from './AppButton'
+import { AppButton } from "./AppButton";
+import { DocumentCardLayout } from "./DocumentCardLayout";
+import { readCredentialHolderProfile } from "../services/credentials/credentialDisplay";
+import { readCredentialPreviewDisplay } from "../services/vci/qrIssuanceFlow";
+import type { VerifiableCredentialRecord } from "../services/vci/exchangeService";
+import { THEME } from "../config/themeColors";
 
 type Props = {
-  record: VerifiableCredentialRecord
-  profileImage: ImageSourcePropType
-  onAccept: () => void
+  record: VerifiableCredentialRecord;
+  profileImage: ImageSourcePropType;
+  onAccept: () => void;
+};
+type DetailValueProps = { label: string; value?: string; critical?: boolean };
+
+function DetailValue({ label, value, critical = false }: DetailValueProps) {
+  return (
+    <View className="mb-3">
+      <Text
+        className={`text-[11px] text-gray-cool ${critical ? "text-danger" : ""}`}
+      >
+        {label}
+      </Text>
+      <Text
+        className={`text-[13px] font-bold ${critical ? "text-danger" : "text-navy-royal"}`}
+      >
+        {value ?? "-"}
+      </Text>
+    </View>
+  );
 }
 
-type GridCell = { label: string; value?: string; red?: boolean }
-
-export function TranscriptPreviewPanel({ record, profileImage, onAccept }: Props) {
-  const preview = readCredentialPreviewDisplay(record)
-  const profile = readCredentialHolderProfile(record)
-  const getRow = (key: string) => preview.rows.find((r) => r.key === key)?.value
-  const thaiFullName = profile.thaiName ?? ''
-  const englishFullName = profile.englishName ?? ''
-  const dob = profile.birthDate ?? getRow('birthDate')
-  const studentId = getRow('studentId')
-  const gpa = getRow('gpa')
-  const faculty = getRow('faculty')
-  const graduationYear = getRow('graduationYear')
-  const degree = getRow('degree')
+export function TranscriptPreviewPanel({
+  record,
+  profileImage,
+  onAccept,
+}: Props) {
+  const preview = readCredentialPreviewDisplay(record);
+  const profile = readCredentialHolderProfile(record);
+  const getRow = (key: string) =>
+    preview.rows.find((row) => row.key === key)?.value;
+  const birthDate = profile.birthDate ?? getRow("birthDate");
   const expiryDate = record.expiresAt
-    ? new Date(record.expiresAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
-    : getRow('expiryDate')
-
-  const gridRows: [GridCell, GridCell][] = [
-    [
-      { label: 'เลขประจำตัวนิสิต', value: studentId },
-      { label: 'Cumulative GPA', value: gpa },
-    ],
-    [
-      { label: 'คณะ', value: faculty },
-      { label: 'Graduation Year :', value: graduationYear },
-    ],
-    [
-      { label: 'สาขาวิชา', value: degree },
-      { label: 'วันหมดอายุ / Expiry Date', value: expiryDate, red: true },
-    ],
-  ]
+    ? new Date(record.expiresAt).toLocaleDateString("th-TH-u-ca-buddhist", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : getRow("expiryDate");
 
   return (
-    <View className="flex-1 bg-[#eef1f4] px-4 pt-6">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+    <View
+      testID="transcript-preview-panel"
+      className="flex-1 items-center bg-surface px-4 pt-6"
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        className="w-full"
+        contentContainerClassName="items-center pb-8"
+      >
         <View
-          className="overflow-hidden rounded-2xl bg-white"
-          style={{ elevation: 4, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12 }}>
-          <View className="bg-[#cc0066] px-5 py-3">
-            <Text className="text-[15px] font-extrabold text-white">TRANSCRIPT</Text>
-          </View>
-          <View className="flex-row px-5 pb-4 pt-5">
-            <Image source={profileImage} style={{ width: 90, height: 110, borderRadius: 8 }} resizeMode="contain" />
-            <View className="ml-4 flex-1 justify-center">
-              <Text className="text-[11px] text-[#9aa1ad]">ชื่อ - นามสกุล / Name</Text>
-              <Text className="text-[14px] font-bold leading-5 text-[#071f5f]">{thaiFullName || '-'}</Text>
-              <Text className="text-[12px] leading-4 text-[#9aa1ad]">{englishFullName}</Text>
-              {dob ? (
-                <>
-                  <Text className="mt-3 text-[11px] text-[#9aa1ad]">วันเกิด / Date of Birth</Text>
-                  <Text className="text-[14px] font-bold text-[#071f5f]">{dob}</Text>
-                </>
-              ) : null}
-            </View>
-          </View>
-          <View className="mx-5 border-t border-[#e5e7eb]" />
-          <View className="px-5 pb-5 pt-3">
-            {gridRows.map((pair, i) => (
-              <View key={i} className="mt-3 flex-row">
-                {pair.map((cell, j) => (
-                  <View key={j} className="flex-1">
-                    <Text className="text-[11px] text-[#9aa1ad]">{cell.label}</Text>
-                    <Text className={`text-[13px] font-bold ${cell.red === true ? 'text-[#c00000]' : 'text-[#123b8c]'}`}>
-                      {cell.value ?? '-'}
-                    </Text>
-                  </View>
-                ))}
+          testID="transcript-preview-content"
+          className="w-full max-w-[380px]"
+        >
+          <DocumentCardLayout
+            primaryColor={THEME.pink}
+            banner={
+              <Text className="text-[15px] font-extrabold text-white">
+                TRANSCRIPT
+              </Text>
+            }
+            hero={
+              <View className="flex-row">
+                <Image
+                  source={profileImage}
+                  className="h-[110px] w-[90px] rounded-lg"
+                  resizeMode="cover"
+                />
+                <View className="ml-4 flex-1 justify-center">
+                  <Text className="text-[11px] text-gray-cool">
+                    ชื่อ - นามสกุล / Name
+                  </Text>
+                  <Text className="text-[14px] font-bold text-navy-deep">
+                    {profile.thaiName ?? "-"}
+                  </Text>
+                  <Text className="text-[12px] text-gray-cool">
+                    {profile.englishName ?? ""}
+                  </Text>
+                  {birthDate ? (
+                    <>
+                      <Text className="mt-3 text-[11px] text-gray-cool">
+                        วันเกิด / Date of Birth
+                      </Text>
+                      <Text className="text-[14px] font-bold text-navy-deep">
+                        {birthDate}
+                      </Text>
+                    </>
+                  ) : null}
+                </View>
               </View>
-            ))}
-          </View>
+            }
+            leftColumn={
+              <View>
+                <DetailValue
+                  label="เลขประจำตัวนิสิต"
+                  value={getRow("studentId")}
+                />
+                <DetailValue label="คณะ" value={getRow("faculty")} />
+                <DetailValue label="สาขาวิชา" value={getRow("degree")} />
+              </View>
+            }
+            rightColumn={
+              <View>
+                <DetailValue label="Cumulative GPA" value={getRow("gpa")} />
+                <DetailValue
+                  label="Graduation Year"
+                  value={getRow("graduationYear")}
+                />
+                <DetailValue
+                  label="วันหมดอายุ / Expiry Date"
+                  value={expiryDate}
+                  critical
+                />
+              </View>
+            }
+          />
+          <AppButton
+            variant="solid-block"
+            label="ยอมรับ"
+            onPress={onAccept}
+            className="mt-5 h-11 !bg-success"
+          />
         </View>
-        <AppButton variant="solid-block" label="ยอมรับ" onPress={onAccept} className="mt-5 h-11 !bg-[#18a05d]" />
       </ScrollView>
     </View>
-  )
+  );
 }

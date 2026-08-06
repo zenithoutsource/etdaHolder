@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Issuer Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- ══════════ PAGE 1: ISSUER WEB (full width) ══════════ -->
+    <div class="page active" id="page-issuer">
+      <div class="topbar">
+        <div class="back-btn">
+          <img src="../images/arrow.png" alt="back" />
+        </div>
+        <h1>Issuer</h1>
+      </div>
+      <div class="content">
+        <h2 class="page-title">ระบบจัดการสถานะผู้ถือครองเอกสาร</h2>
+
+        <div class="stat-grid">
+          <div class="stat-card blue">
+            <div class="stat-title">รายชื่อผู้ใช้ทั้งหมด</div>
+            <div class="stat-number">200</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-title">รอการระงับสิทธิ์</div>
+            <div class="stat-number">30</div>
+            <div class="stat-sub">รอการตรวจสอบ</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-title">ถูกเพิกถอนแล้ว</div>
+            <div class="stat-number">90</div>
+          </div>
+        </div>
+
+        <div class="table-title">
+          <div class="table-title-img">
+            <img src="list.png" alt="" />
+          </div>
+          <span>รายการทะเบียนเอกสาร</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>ชื่อผู้ใช้</th>
+                <th>ประเภทเอกสาร</th>
+                <th>สถานะปัจจุบัน</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="warning">
+                <td>1</td>
+                <td>นางสาว พิชญา รุ่งเรืองกิต</td>
+                <td>บัตรประชาชน</td>
+                <td>ใช้งานปกติ</td>
+                <td>
+                  <div class="btn-group">
+                    <button class="btn-cancel">ยกเลิก</button>
+                    <button class="btn-revoke" onclick="goTo('page-wallet')">
+                      ระงับชั่วคราว
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>นาย กิตติพงษ์ ศรีวัฒน์</td>
+                <td>บัตรประชาชน</td>
+                <td>ใช้งานปกติ</td>
+                <td>
+                  <div class="btn-group">
+                    <button class="btn-cancel">ยกเลิก</button>
+                    <button class="btn-revoke" onclick="goTo('page-wallet')">
+                      ระงับชั่วคราว
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>นาย อัครเดช อินทรา</td>
+                <td>บัตรประชาชน</td>
+                <td>เสียชีวิต</td>
+                <td>
+                  <div class="btn-group">
+                    <button class="btn-cancel">ยกเลิก</button>
+                    <button class="btn-revoke" onclick="goTo('page-wallet')">
+                      ระงับชั่วคราว
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td>นางสาว พิมพ์ชนก จันทร์ดี</td>
+                <td>บัตรประชาชน</td>
+                <td>ใช้งานปกติ</td>
+                <td>
+                  <div class="btn-group">
+                    <button class="btn-cancel">ยกเลิก</button>
+                    <button class="btn-revoke" onclick="goTo('page-wallet')">
+                      ระงับชั่วคราว
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td>นางสาว มนูญา วัฒนศรี</td>
+                <td>ใบรับรองแพทย์</td>
+                <td>ใช้งานปกติ</td>
+                <td>
+                  <div class="btn-group">
+                    <button class="btn-cancel">ยกเลิก</button>
+                    <button class="btn-revoke" onclick="goTo('page-wallet')">
+                      ระงับชั่วคราว
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination-row">
+            <div class="pagination-info">แสดง 1 ถึง 5 จาก 200 รายการ</div>
+            <div class="pagination">
+              <span class="arrow">&lt;</span>
+              <span class="active">1</span><span>2</span><span>3</span>
+              <span class="arrow">&gt;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ PAGE 2: WALLET PHONE (full screen, centered) ══════════ -->
+    <div class="page phone-page" id="page-wallet">
+      <div class="phone">
+        <div class="status-phone">
+          <span>9:51 PM</span>
+          <div class="status-icons">
+            <img src="../images/cellular.png" alt="" />
+            <img src="../images/wifi.png" alt="" />
+            <img src="../images/battery.png" alt="" />
+          </div>
+        </div>
+
+        <div class="phone-topbar with-back">
+          <div class="phone-back-btn" onclick="goTo('page-issuer')">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="phone-content">
+          <div class="profile-card">
+            <div class="profile-photo">
+              <img src="../images/profile.png" alt="profile" />
+            </div>
+            <div class="profile-info">
+              <div class="name">นางสาว พิชญา รุ่งเรืองกิต</div>
+              <div class="id">ID card : 1-1009-000XX-XX-XX</div>
+            </div>
+          </div>
+          <div class="menu-list">
+            <div class="menu-item-wrap">
+              <span class="menu-badge-float">ถูกระงับ</span>
+              <button class="menu-item" onclick="goTo('page-idcard')">
+                <div class="menu-icon">
+                  <img src="../images/card-2.png" alt="ID Card" />
+                </div>
+                <span class="menu-label">ID Card</span>
+                <span class="menu-arrow">›</span>
+              </button>
+            </div>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/car.png" alt="Driving License" />
+              </div>
+              <span class="menu-label">Driving Lincese</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <button class="menu-item">
+              <div class="menu-icon">
+                <img src="../images/document.png" alt="Transcript" />
+              </div>
+              <span class="menu-label">Transcript</span>
+              <span class="menu-arrow">›</span>
+            </button>
+            <div class="menu-item-wrap">
+              <div class="menu-badge-used">ถูกใช้แล้ว</div>
+              <button class="menu-item">
+                <div class="menu-icon">
+                  <img src="../images/doctor-bag.png" alt="Medical" />
+                </div>
+                <span class="menu-label">Medical certificate</span>
+                <span class="menu-arrow">›</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active">
+            <img src="../images/wallet-2.png" alt="Wallet" /><span>Wallet</span>
+            <div class="nav-indicator"></div>
+          </div>
+          <div class="nav-item">
+            <img src="../images/qr-code-3.png" alt="My QR" /><span>My QR</span>
+          </div>
+          <div class="nav-item">
+            <img src="../images/scanner-4.png" alt="Scan" /><span>Scan</span>
+          </div>
+          <div class="nav-item" onclick="goTo('page-history-log')">
+            <img src="../images/restore.png" alt="History Log" /><span
+              >History Log</span
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ PAGE 3: ID CARD DETAIL ══════════ -->
+    <div class="page phone-page" id="page-idcard">
+      <div class="phone">
+        <div class="status-phone">
+          <span>9:51 PM</span>
+          <div class="status-icons">
+            <img src="../images/cellular.png" alt="" />
+            <img src="../images/wifi.png" alt="" />
+            <img src="../images/battery.png" alt="" />
+          </div>
+        </div>
+        <div class="phone-topbar with-back">
+          <div class="phone-back-btn" onclick="goTo('page-wallet')">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="red-stripe"></div>
+        <div class="phone-content phone-content--top-pad">
+          <div class="id-card">
+            <div class="id-card-header">
+              <h2>ID Card</h2>
+              <button
+                class="dots-btn"
+                onclick="toggleDropdown(event, 'dropdown-p2')"
+              >
+                <img src="../images/menu.png" alt="menu" />
+              </button>
+            </div>
+            <div class="dropdown" id="dropdown-p2">
+              <button
+                class="dropdown-item red"
+                onclick="
+                  closeDropdown();
+                  goTo('page-idcard-revoked');
+                "
+              >
+                <img src="../images/file.png" alt="Revoke" />
+                Revoke
+              </button>
+              <button class="dropdown-item" onclick="closeDropdown()">
+                <img src="../images/delete-2.png" alt="Delete" />
+                Delete เอกสารนี้
+              </button>
+            </div>
+            <div class="id-card-body">
+              <div class="id-top-row">
+                <div class="id-photo">
+                  <img src="../images/profile.png" alt="profile photo" />
+                </div>
+                <div class="id-main-info">
+                  <div class="info-group">
+                    <div class="info-label">ชื่อ - นามสกุล</div>
+                    <div class="info-value">นางสาว พิชญา รุ่งเรืองกิต</div>
+                  </div>
+                  <div class="info-group">
+                    <div class="info-label">เลขบัตรประจำตัวประชาชน</div>
+                    <div class="info-value-id">1 1009 00xx xx xx</div>
+                  </div>
+                  <div class="info-group">
+                    <div class="info-label">วันเดือนปีเกิด</div>
+                    <div class="info-value">15 พฤษภาคม 2546</div>
+                  </div>
+                </div>
+              </div>
+              <div class="id-divider"></div>
+              <div class="id-bottom-grid">
+                <div class="id-col id-col-left">
+                  <div class="id-field">
+                    <div class="field-label">วันอนุญาต / Issue Date</div>
+                    <div class="field-value">8 กันยายน 2566</div>
+                  </div>
+                </div>
+                <div class="id-col id-col-right">
+                  <div class="id-field">
+                    <div class="field-label red">วันหมดอายุ / Expiry Date</div>
+                    <div class="field-value red">7 พฤษภาคม 2573</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="qr-btn-row">
+            <div class="qr-btn" onclick="goTo('page-myqr')">
+              <img src="../images/qr-code-3.png" alt="QR" />
+              <span>My QR</span>
+            </div>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active">
+            <img src="../images/wallet-2.png" alt="Wallet" /><span>Wallet</span>
+            <div class="nav-indicator"></div>
+          </div>
+          <div class="nav-item">
+            <img src="../images/qr-code-3.png" alt="My QR" /><span>My QR</span>
+          </div>
+          <div class="nav-item">
+            <img src="../images/scanner-4.png" alt="Scan" /><span>Scan</span>
+          </div>
+          <div class="nav-item" onclick="goTo('page-history-log')">
+            <img src="../images/restore.png" alt="History Log" /><span
+              >History Log</span
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ PAGE 4: ID CARD REVOKED ══════════ -->
+    <div class="page phone-page" id="page-idcard-revoked">
+      <div class="phone">
+        <div class="status-phone">
+          <span>9:51 PM</span>
+          <div class="status-icons">
+            <img src="../images/cellular.png" alt="" />
+            <img src="../images/wifi.png" alt="" />
+            <img src="../images/battery.png" alt="" />
+          </div>
+        </div>
+        <div class="phone-topbar with-back">
+          <div class="phone-back-btn" onclick="goTo('page-idcard')">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>Wallet</h1>
+        </div>
+        <div class="red-stripe"></div>
+        <div class="phone-content phone-content--top-pad">
+          <div class="id-card">
+            <div class="id-card-header">
+              <h2>ID Card</h2>
+            </div>
+            <div class="id-card-body">
+              <div class="id-top-row">
+                <div class="id-photo">
+                  <img src="../images/profile.png" alt="photo" />
+                </div>
+                <div class="id-main-info">
+                  <div class="info-group">
+                    <div class="info-label">ชื่อ - นามสกุล</div>
+                    <div class="info-value id-value-disabled">
+                      นางสาว พิชญา รุ่งเรืองกิต
+                    </div>
+                  </div>
+                  <div class="info-group">
+                    <div class="info-label">เลขบัตรประจำตัวประชาชน</div>
+                    <div class="info-value-id id-value-disabled">
+                      1 1009 00xx xx xx
+                    </div>
+                  </div>
+                  <div class="info-group">
+                    <div class="info-label">วันเดือนปีเกิด</div>
+                    <div class="info-value id-value-disabled">
+                      15 พฤษภาคม 2546
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="id-divider"></div>
+              <div class="id-bottom-grid">
+                <div class="id-col id-col-left">
+                  <div class="id-field">
+                    <div class="field-label id-value-disabled">
+                      วันอนุญาต / Issue Date
+                    </div>
+                    <div class="field-value id-value-disabled">
+                      8 กันยายน 2566
+                    </div>
+                  </div>
+                </div>
+                <div class="id-col id-col-right">
+                  <div class="id-field">
+                    <div class="field-label red">วันหมดอายุ / Expiry Date</div>
+                    <div class="field-value red">7 พฤษภาคม 2573</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="id-card-overlay"></div>
+          </div>
+          <div class="qr-btn-row">
+            <div class="qr-btn" onclick="goTo('page-myqr')">
+              <img src="../images/qr-code-3.png" alt="QR" />
+              <span>My QR</span>
+            </div>
+          </div>
+          <button class="btn-acknowledge" onclick="goTo('page-wallet-revoked')">
+            รับทราบการระงับ
+          </button>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active">
+            <img src="../images/wallet-2.png" alt="Wallet" /><span>Wallet</span>
+            <div class="nav-indicator"></div>
+          </div>
+          <div class="nav-item">
+            <img src="../images/qr-code-3.png" alt="My QR" /><span>My QR</span>
+          </div>
+          <div class="nav-item">
+            <img src="../images/scanner-4.png" alt="Scan" /><span>Scan</span>
+          </div>
+          <div class="nav-item" onclick="goTo('page-history-log')">
+            <img src="../images/restore.png" alt="History Log" /><span
+              >History Log</span
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ PAGE 6: MEDICAL CERTIFICATE (USED) ══════════ -->
+    <div class="page phone-page" id="page-medcert-used">
+      <div class="phone">
+        <div class="status-phone">
+          <span>9:51 PM</span>
+          <div class="status-icons">
+            <img src="../images/cellular.png" alt="" />
+            <img src="../images/wifi.png" alt="" />
+            <img src="../images/battery.png" alt="" />
+          </div>
+        </div>
+        <div class="phone-topbar">
+          <h1>Wallet</h1>
+        </div>
+
+        <div class="phone-content">
+          <div class="med-cert-doc">
+            <div class="med-cert-org">การควบคุมโรค กระทรวงสาธารณสุข</div>
+            <div class="med-cert-title">ใบรับรองแพทย์</div>
+
+            <div class="med-cert-box">
+              <div class="med-cert-label">Patient Name / ชื่อผู้รับการตรวจ</div>
+              <div class="med-cert-value">นางสาว พิมพ์ชนก รัตนโชติ</div>
+            </div>
+
+            <div class="med-cert-box med-cert-grid">
+              <div class="med-cert-col">
+                <div class="med-cert-label">
+                  Identification Number /<br />เลขบัตรประชาชน
+                </div>
+                <div class="med-cert-value">1-1009-000XX-XX-X</div>
+              </div>
+              <div class="med-cert-col">
+                <div class="med-cert-label">Nationality / สัญชาติ</div>
+                <div class="med-cert-value">ไทย (Thai)</div>
+              </div>
+            </div>
+
+            <div class="med-cert-box">
+              <div class="med-cert-label">Date of birth / วันเดือนปีเกิด</div>
+              <div class="med-cert-value">15 พฤษภาคม 2546</div>
+            </div>
+
+            <div class="med-cert-bottom-grid">
+              <div class="med-cert-diagnosis">
+                <div class="med-cert-label">Medical Dianosis / การวินิจฉัย</div>
+                <div class="med-cert-diagnosis-name">ไข้หวัดธรรมดา</div>
+
+                <div class="med-cert-section-title">ความเห็นและคำแนะนำ</div>
+                <div class="med-cert-section-text">
+                  ควรพักผ่อนอย่างเต็มที่และดื่มน้ำมากๆ
+                  งดใช้เสียงและหลีกเลี่ยงที่ชุมชน
+                  เพื่อป้องกันการแพร่กระจายของเชื้อ ฟื้นฟูร่างกาย
+                </div>
+
+                <div class="med-cert-restrow">
+                  <div class="med-cert-rest">
+                    <div class="med-cert-label">Recommended rest period</div>
+                    <div class="med-cert-value">1 - 2 พ.ย. 2568</div>
+                  </div>
+                  <div class="med-cert-absence">
+                    <div class="med-cert-label">Days of absence</div>
+                    <div class="med-cert-value">2 วัน</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="med-cert-issuer">
+                <div class="med-cert-label">
+                  Issuing Authory /<br />ผู้ออกใบรับรอง
+                </div>
+                <div class="med-cert-value">พญ. อรุณี รักษา</div>
+                <div class="med-cert-license">License No : ว.12345</div>
+                <div class="med-cert-hospital">โรงพยาบาลกรุงเทพ</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-overlay" id="medcert-used-modal">
+          <div class="modal-box">
+            <div class="modal-icon">
+              <img src="../images/check-3.png" alt="check" />
+            </div>
+            <div class="modal-title">ข้อมูลถูกใช้ไปแล้ว</div>
+            <div class="modal-subtitle">ใช้ไปเมื่อวันที่ 3 พ.ย. 2568</div>
+            <button class="modal-btn-ok" onclick="goTo('page-history-log')">
+              ตกลง
+            </button>
+          </div>
+        </div>
+
+        <div class="bottom-nav">
+          <div class="nav-item" onclick="goTo('page-wallet-revoked')">
+            <img src="../images/wallet-2.png" alt="Wallet" /><span>Wallet</span>
+          </div>
+          <div class="nav-item">
+            <img src="../images/qr-code-3.png" alt="My QR" /><span>My QR</span>
+          </div>
+          <div class="nav-item">
+            <img src="../images/scanner-4.png" alt="Scan" /><span>Scan</span>
+          </div>
+          <div class="nav-item" onclick="goTo('page-history-log')">
+            <img src="../images/restore.png" alt="History Log" /><span
+              >History Log</span
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ══════════ PAGE 5: WALLET AFTER REVOKE ══════════ -->
+
+    <div class="page phone-page" id="page-wallet-revoked">
+      <div class="phone">
+        <div class="status-phone">
+          <span>9:51 PM</span>
+          <div class="status-icons">
+            <img src="../images/cellular.png" alt="" />
+            <img src="../images/wifi.png" alt="" />
+            <img src="../images/battery.png" alt="" />
+          </div>
+        </div>
+        <div class="phone-topbar">
+          <h1>Wallet</h1>
+        </div>
+        <div class="phone-content">
+          <div class="profile-card">
+            <div class="profile-photo">
+              <img src="../images/profile.png" alt="profile" />
+            </div>
+            <div class="profile-info">
+              <div class="name">นางสาว พิชญา รุ่งเรืองกิต</div>
+              <div class="id">ID card : 1-1009-000XX-XX-XX</div>
+            </div>
+          </div>
+
+          <div class="revoked-card-block">
+            <div class="revoked-badge-top">ถูกระงับ</div>
+            <div class="revoked-inner">
+              <div class="revoked-inner-title">ID Card</div>
+              <div class="revoked-lock-icon-wrap">
+                <img src="../images/padlock.png" alt="lock" />
+              </div>
+              <div class="revoked-desc">เอกสารถูกระงับการใช้งาน</div>
+              <button
+                class="btn-request-doc"
+                onclick="goTo('page-idcard-revoked')"
+              >
+                ขอเอกสาร
+              </button>
+            </div>
+          </div>
+
+          <button class="menu-item">
+            <div class="menu-icon">
+              <img src="../images/car.png" alt="Driving License" />
+            </div>
+            <span class="menu-label">Driving Lincese</span>
+            <span class="menu-arrow">›</span>
+          </button>
+
+          <button class="menu-item">
+            <div class="menu-icon">
+              <img src="../images/document.png" alt="Transcript" />
+            </div>
+            <span class="menu-label">Transcript</span>
+            <span class="menu-arrow">›</span>
+          </button>
+
+          <div class="menu-item-wrap">
+            <div class="menu-badge-used">ถูกใช้แล้ว</div>
+            <button class="menu-item" onclick="goTo('page-medcert-used')">
+              <div class="menu-icon">
+                <img src="../images/doctor-bag.png" alt="Medical" />
+              </div>
+              <span class="menu-label">Medical certificate</span>
+              <span class="menu-arrow">›</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="bottom-nav">
+          <div class="nav-item active" onclick="goTo('page-wallet')">
+            <img src="../images/wallet-2.png" alt="Wallet" /><span>Wallet</span>
+            <div class="nav-indicator"></div>
+          </div>
+          <div class="nav-item">
+            <img src="../images/qr-code-3.png" alt="My QR" /><span>My QR</span>
+          </div>
+          <div class="nav-item">
+            <img src="../images/scanner-4.png" alt="Scan" /><span>Scan</span>
+          </div>
+          <div class="nav-item" onclick="goTo('page-history-log')">
+            <img src="../images/restore.png" alt="History Log" /><span
+              >History Log</span
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ PAGE 7: HISTORY LOG ══════════ -->
+    <div class="page phone-page" id="page-history-log">
+      <div class="phone">
+        <div class="status-phone">
+          <span>9:51 PM</span>
+          <div class="status-icons">
+            <img src="../images/cellular.png" alt="" />
+            <img src="../images/wifi.png" alt="" />
+            <img src="../images/battery.png" alt="" />
+          </div>
+        </div>
+        <div class="phone-topbar with-back">
+          <div class="phone-back-btn" onclick="goTo('page-wallet-revoked')">
+            <img src="../images/arrow.png" alt="Back" />
+          </div>
+          <h1>History Log</h1>
+        </div>
+
+        <div class="phone-content">
+          <div class="history-summary">
+            <div class="history-summary-label">รายการทั้งหมด</div>
+            <div class="history-summary-count">
+              <span class="history-summary-number">10</span> รายการ
+            </div>
+          </div>
+
+          <!-- Item 1: ร้านอาหาร - revoked -->
+          <div class="history-card">
+            <div class="history-card-bar"></div>
+            <div class="history-card-body">
+              <div class="history-card-top">
+                <div class="history-card-icon history-icon-purple">
+                  <img src="../images/wine.png" alt="ร้านอาหาร" />
+                </div>
+                <div class="history-card-titlewrap">
+                  <div class="history-card-title">ร้านอาหาร</div>
+                  <div class="history-card-date">29 มกราคม 2569 20:00 น.</div>
+                </div>
+                <div class="history-badge history-badge-revoked">
+                  ถูกเพิกถอนแล้ว
+                </div>
+              </div>
+              <div class="history-card-access">
+                <div class="history-access-label">ประเภทข้อมูลที่เข้าถึง</div>
+                <div class="history-access-value">
+                  การตรวจสอบอายุ ( Verified Age )
+                </div>
+              </div>
+              <button class="btn-delete-data">
+                <img src="../images/delete-2.png" alt="" />
+                ขอให้บริษัทนี้ลบข้อมูลของฉันทิ้ง
+              </button>
+            </div>
+          </div>
+
+          <!-- Item 2: โรงพยาบาล - used -->
+          <div class="history-card">
+            <div class="history-card-bar"></div>
+            <div class="history-card-body">
+              <div class="history-card-top">
+                <div class="history-card-icon history-icon-red">
+                  <img src="../images/red-cross.png" alt="โรงพยาบาล" />
+                </div>
+                <div class="history-card-titlewrap">
+                  <div class="history-card-title">โรงพยาบาล</div>
+                  <div class="history-card-date">
+                    24 กุมภาพันธ์ 2569 13:00 น.
+                  </div>
+                </div>
+                <div class="history-badge history-badge-used">
+                  <img src="../images/check-3.png" alt="" />
+                  ใช้ไปแล้ว
+                </div>
+              </div>
+              <div class="history-card-access">
+                <div class="history-access-label">ประเภทข้อมูลที่เข้าถึง</div>
+                <div class="history-access-value">ใบรับรองแพทย์</div>
+              </div>
+              <button class="btn-delete-data">
+                <img src="../images/delete-2.png" alt="" />
+                ขอให้บริษัทนี้ลบข้อมูลของฉันทิ้ง
+              </button>
+            </div>
+          </div>
+
+          <!-- Item 3: เซเว่น อีเลฟเว่น - revoked -->
+          <div class="history-card">
+            <div class="history-card-bar"></div>
+            <div class="history-card-body">
+              <div class="history-card-top">
+                <div class="history-card-icon history-icon-plain">
+                  <img src="../images/7-eleven_logo.svg.png" alt="7-Eleven" />
+                </div>
+                <div class="history-card-titlewrap">
+                  <div class="history-card-title">บริษัท เซเว่น อีเลฟเว่น</div>
+                  <div class="history-card-date">10 มีนาคม 2569 11:20 น.</div>
+                </div>
+                <div class="history-badge history-badge-revoked">
+                  ถูกเพิกถอนแล้ว
+                </div>
+              </div>
+              <div class="history-card-access">
+                <div class="history-access-label">ประเภทข้อมูลที่เข้าถึง</div>
+                <div class="history-access-value">ข้อมูลบัตรประชาชน</div>
+              </div>
+              <button class="btn-delete-data">
+                <img src="../images/delete-2.png" alt="" />
+                ขอให้บริษัทนี้ลบข้อมูลของฉันทิ้ง
+              </button>
+            </div>
+          </div>
+
+          <!-- Item 4: Central - revoked -->
+          <div class="history-card">
+            <div class="history-card-bar"></div>
+            <div class="history-card-body">
+              <div class="history-card-top">
+                <div class="history-card-icon history-icon-plain">
+                  <img src="../images/Central.jpg.webp" alt="Central" />
+                </div>
+                <div class="history-card-titlewrap">
+                  <div class="history-card-title">Central</div>
+                  <div class="history-card-date">1 มีนาคม 2569 12:00 น.</div>
+                </div>
+                <div class="history-badge history-badge-revoked">
+                  ถูกเพิกถอนแล้ว
+                </div>
+              </div>
+              <div class="history-card-access">
+                <div class="history-access-label">ประเภทข้อมูลที่เข้าถึง</div>
+                <div class="history-access-value">
+                  ใบขับขี่ดิจิทัล (Digital Driving License)
+                </div>
+              </div>
+              <button class="btn-delete-data">
+                <img src="../images/delete-2.png" alt="" />
+                ขอให้บริษัทนี้ลบข้อมูลของฉันทิ้ง
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bottom-nav">
+          <div class="nav-item" onclick="goTo('page-wallet-revoked')">
+            <img src="../images/wallet-2.png" alt="Wallet" /><span>Wallet</span>
+          </div>
+          <div class="nav-item">
+            <img src="../images/qr-code-3.png" alt="My QR" /><span>My QR</span>
+          </div>
+          <div class="nav-item">
+            <img src="../images/scanner-4.png" alt="Scan" /><span>Scan</span>
+          </div>
+          <div class="nav-item active">
+            <img src="../images/restore.png" alt="History Log" /><span
+              >History Log</span
+            >
+            <div class="nav-indicator"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>

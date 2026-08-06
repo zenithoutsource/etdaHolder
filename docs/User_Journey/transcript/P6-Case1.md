@@ -24,7 +24,7 @@ This is a future journey and contract note. The current app and local backend do
 
 ## Preconditions
 
-- The Holder has a stored `BangkokUniversityTranscript` credential in the Wallet.
+- The Holder has a stored `ChulalongkornUniversityTranscript` credential in the Wallet.
 - The credential is still known locally as usable before the request starts.
 - The Holder can complete local authentication when prompted.
 - The Wallet can produce Proof of Possession using the device-scoped Wallet Signing Key.

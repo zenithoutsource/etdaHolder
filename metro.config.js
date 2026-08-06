@@ -4,9 +4,10 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// Transpile packages that ship modern JS syntax (class static blocks, etc.)
-config.transformIgnorePatterns = [
-  'node_modules/(?!(react-native|@react-native|expo|@expo|@unimodules|@sphereon|@animo-id|react-native-quick-crypto|react-native-mmkv|nativewind|react-native-css-interop)/)',
+// Local git worktrees duplicate package names and can confuse Metro/Jest resolution.
+config.resolver.blockList = [
+  ...(Array.isArray(config.resolver.blockList) ? config.resolver.blockList : []),
+  /[\\/]\.worktrees[\\/].*/,
 ];
 
 function createResolveRequest(defaultResolveRequest) {

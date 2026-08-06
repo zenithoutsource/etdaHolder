@@ -1,4 +1,8 @@
-import { readStoredCredentials } from './storedCredentials'
+import {
+  readStoredCredentials,
+  removeStoredCredential,
+  subscribeCredentialsChange,
+} from './storedCredentials'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
@@ -24,7 +28,7 @@ function mockStorage(records: VerifiableCredentialRecord[]) {
 
 const firstRecord: VerifiableCredentialRecord = {
   id: 'transcript-old',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: 'old.header.payload.signature',
   claims: {},
   issuedAt: '2026-06-15T09:00:00.000Z',
@@ -48,5 +52,34 @@ describe('readStoredCredentials', () => {
 
     mockStorage([reissuedRecord])
     expect(readStoredCredentials()).toEqual([reissuedRecord])
+  })
+})
+
+describe('removeStoredCredential', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  test('notifies credential change listeners after removal', () => {
+    const values = new Map<string, string>()
+    values.set('credential:index', JSON.stringify(['transcript-old']))
+    values.set(`credential:${firstRecord.id}`, JSON.stringify(firstRecord))
+
+    const storage = {
+      getString: jest.fn((key: string) => values.get(key)),
+      set: jest.fn((key: string, value: string) => {
+        values.set(key, value)
+      }),
+      remove: jest.fn((key: string) => values.delete(key)),
+    }
+    getCredentialStorageMock.mockReturnValue(storage)
+
+    const listener = jest.fn()
+    const unsubscribe = subscribeCredentialsChange(listener)
+
+    removeStoredCredential(firstRecord.id)
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    unsubscribe()
   })
 })

@@ -3,7 +3,7 @@ import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 const record: VerifiableCredentialRecord = {
   id: 'transcript-2',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: 'header.payload.signature',
   claims: {},
   issuedAt: '2026-06-15T10:00:00.000Z',

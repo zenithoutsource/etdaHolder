@@ -16,7 +16,7 @@ A local 6-digit secret set by the Holder after first successful Wallet Account l
 
 ## Issuer
 
-A government or institutional authority that issues Verifiable Credentials. Initial issuers: ThaID for national ID, DLT for driving licence, and Bangkok University for transcript credentials. Issuers are identified by DIDs, initially `did:web`.
+A government or institutional authority that issues Verifiable Credentials. Initial issuers: ThaID for national ID, DLT for driving licence, and Chulalongkorn University for transcript credentials. Issuers are identified by DIDs, initially `did:web`.
 
 ## Verifier
 
@@ -114,4 +114,4 @@ TypeScript API client generated from the company's Swagger/OpenAPI spec via Orva
 
 ## Config-Driven UI
 
-Credential card rendering is controlled by `CardSchemaConfig` entries, not hardcoded screen components. Initial schemas cover ThaID, DLT Driving Licence, and Bangkok University Transcript.
+Credential card rendering is controlled by `CardSchemaConfig` entries, not hardcoded screen components. Initial schemas cover ThaID, DLT Driving Licence, and Chulalongkorn University Transcript.

@@ -1,11 +1,13 @@
-import { getCardSchema, getAllCardSchemas } from './cardSchemas'
+import { getCardSchema, getCardSchemaForConfigurationId, getAllCardSchemas, resolvePresentationDisclosureLabel } from './cardSchemas'
+
+import { THEME } from './themeColors'
 
 describe('getCardSchema', () => {
   test('returns ThaiNationalID schema', () => {
     const schema = getCardSchema('ThaiNationalID')
     expect(schema.type).toBe('ThaiNationalID')
     expect(schema.title).toBe('Thai National ID')
-    expect(schema.primaryColor).toBe('#002887')
+    expect(schema.primaryColor).toBe(THEME.navy)
     expect(schema.displayFields.length).toBeGreaterThan(0)
   })
 
@@ -16,11 +18,37 @@ describe('getCardSchema', () => {
     expect(schema.displayFields.some((f) => f.key === 'licenceNumber')).toBe(true)
   })
 
-  test('returns BangkokUniversityTranscript schema', () => {
-    const schema = getCardSchema('BangkokUniversityTranscript')
-    expect(schema.type).toBe('BangkokUniversityTranscript')
+  test('maps ISO mDL configuration id and doctype to DLTDrivingLicence', () => {
+    expect(getCardSchemaForConfigurationId('org.iso.18013.5.1.mDL').type).toBe('DLTDrivingLicence')
+    expect(getCardSchemaForConfigurationId('TestMdocDrivingLicence').type).toBe('DLTDrivingLicence')
+  })
+
+  test('returns ChulalongkornUniversityTranscript schema', () => {
+    const schema = getCardSchema('ChulalongkornUniversityTranscript')
+    expect(schema.type).toBe('ChulalongkornUniversityTranscript')
     expect(schema.title).toBe('Academic Transcript')
     expect(schema.displayFields.some((f) => f.key === 'gpa')).toBe(true)
+  })
+
+  test('provides issuer confirmation content for every supported issuance document', () => {
+    expect(getCardSchema('ThaiNationalID').issuanceConfirmation).toEqual({
+      documentLabel: 'บัตรประชาชน',
+      issuerLabel: 'กรมการปกครอง',
+      imageKey: 'dopa',
+      accent: 'navy',
+    })
+    expect(getCardSchema('DLTDrivingLicence').issuanceConfirmation).toEqual({
+      documentLabel: 'ใบอนุญาตขับขี่',
+      issuerLabel: 'กรมการขนส่งทางบก',
+      imageKey: 'dltt',
+      accent: 'navy',
+    })
+    expect(getCardSchema('ChulalongkornUniversityTranscript').issuanceConfirmation).toEqual({
+      documentLabel: 'ใบแสดงผลการเรียน',
+      issuerLabel: 'จุฬาลงกรณ์มหาวิทยาลัย',
+      imageKey: 'chulalongkorn',
+      accent: 'pink',
+    })
   })
 
   test('returns fallback for unknown type', () => {
@@ -45,12 +73,17 @@ describe('getCardSchema', () => {
     }
   })
 
-  test('getAllCardSchemas returns all 3 initial cards', () => {
+  test('resolvePresentationDisclosureLabel returns Thai presentation labels from schema aliases', () => {
+    expect(resolvePresentationDisclosureLabel('ThaiNationalID', 'full_name')).toBe('ชื่อ-นามสกุล')
+    expect(resolvePresentationDisclosureLabel('ChulalongkornUniversityTranscript', 'gpa')).toBe('เกรดเฉลี่ย')
+  })
+
+  test('getAllCardSchemas returns registered card types', () => {
     const schemas = getAllCardSchemas()
-    expect(schemas).toHaveLength(3)
+    expect(schemas.length).toBeGreaterThanOrEqual(3)
     const types = schemas.map((s) => s.type)
     expect(types).toContain('ThaiNationalID')
     expect(types).toContain('DLTDrivingLicence')
-    expect(types).toContain('BangkokUniversityTranscript')
+    expect(types).toContain('ChulalongkornUniversityTranscript')
   })
 })

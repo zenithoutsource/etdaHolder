@@ -4,25 +4,31 @@ Must Respond in English Only!
 
 This is a production-ready playbook defining strict architectural rules, security gates, coding styles, and roadmap tracking for the OID4VCI 1.0 Mobile Wallet.
 
+## Target Hardware
+
+This project targets Samsung Galaxy A26 devices paired with the ACR1311U-N2 Secure Bluetooth NFC Reader USB. NFC reader/writer work must account for the external Bluetooth reader path, which is intended to make Android smartphone/tablet connectivity straightforward, and must be physically validated on that device/reader pairing before production behavior is treated as supported.
+
 ---
 
-## HANDOFF STATE (2026-06-15)
+## HANDOFF STATE
 
-**Immediate Next Task:** Validate the new production Keychain-protected Ed25519 signer end to end on physical Android: reissue credentials with the new Ed25519 Holder DID, then retry OID4VP Verifier QR. Android `npx expo prebuild --clean` already succeeds in a headless Windows session; iOS prebuild is platform-gated by Expo CLI to macOS/Linux and cannot run on Windows. Remaining validation is EAS production builds for iOS and Android, then a golden-path walkthrough (enroll → claim credential via QR → confirm issuance → complete biometric-gated issuance → view saved credential detail) on physical hardware. Requires user-held EAS credentials, physical iOS and Android devices, and a real or test Issuer QR issuance source not available in a headless session — this is the user's manual step.
+Session-by-session progress, verification runs, and next steps live in `docs/TASKS.md` — treat that file as the current source of truth instead of dates in this section, which go stale fast.
 
-**Session 2026-06-15 verification:** root `yarn tsc --noEmit` pass, root `yarn lint` pass (2 pre-existing `no-require-imports` warnings in `src/services/vci/exchangeService.test.ts`, no errors), root `yarn test` 37 suites / 174 tests pass, server `yarn tsc` pass, server `yarn test` 5 suites / 16 tests pass. No regressions found in the current uncommitted working tree. See `docs/TASKS.md` Session 2026-06-15 notes for the PIN-setup-bypass fix, revoked-credential presentation filtering, stale Scan-tab credential refresh fix, and the Android `FaceScanPanel` crash fix landed this session.
+## Naming Rules
 
-**Phase 4 progress (2026-06-07):** Screen capture prevention, jailbreak/root detection (hard block, ADR 0004), backend-only certificate pinning (ADR 0005), and the production bundle/log leak scan script (`yarn scan:bundle-leaks`) are complete — see `docs/TASKS.md` Session 2026-06-07 notes. ADR 0006 records ISO 18013-5 mdoc native module selection criteria; final module selection remains parked on physical iOS/Android validation. Issuer signature validation remains parked on finalized trust metadata.
+- Do not use the customer organization name "ETDA" anywhere in the project: no new code identifiers, file names, module names, class names, docs, comments, or specs carrying that name. Use neutral names instead ("companion protocol", "companionV1", "reader profile", "wallet").
+- The native module `modules/etda-wallet-eddsa` has been removed; do not reference or recreate it. Keystore diagnostics/signing history lives in ADR 0007/0008.
+- Exception — wire-protocol constants: values already deployed on the wire (the companion AID byte sequence, the `urn:etda:companion:nfc:v1` KB-JWT `aud`) stay unchanged until a protocol version bump, because renaming them breaks reader compatibility. Treat them as opaque constants.
+- Existing `etda*`-named files/classes (e.g. remaining `etda-*` doc/spec mentions) are legacy: rename to neutral names when touching them, and do not add new references to the old names.
 
-**ETDA EdDSA direction (2026-06-16):** ETDA requires EdDSA/Ed25519 for both OID4VCI issuance PoP and OID4VP presentation KB-JWT. The target Galaxy S24 Ultra proved AndroidKeyStore Ed25519 generation is unavailable in practice because AndroidKeyStore returned EC keys for Ed25519 requests. Production now uses a Keychain-protected software Ed25519 seed with biometric/device authentication on signing, producing protocol-valid `alg: EdDSA` signatures. This is a security tradeoff versus hardware non-extractability and is recorded in ADR 0008. Existing credentials issued before this Holder DID must be reissued before Verifier holder-binding validation can pass.
+**Standing architecture note (ADR 0007 → ADR 0008, 2026-06-16):** The program requires EdDSA/Ed25519 for both OID4VCI issuance PoP and OID4VP presentation KB-JWT. The target Galaxy S24 Ultra proved AndroidKeyStore Ed25519 key generation unavailable in practice (AndroidKeyStore returned EC keys for Ed25519 requests). Production uses a Keychain-protected software Ed25519 seed with biometric/device authentication at every sign call, producing protocol-valid `alg: EdDSA` signatures — a documented security tradeoff versus hardware non-extractability (ADR 0008, `docs/SECURITY.md` Section 1).
 
 **Files to read before starting:**
 - `CLAUDE.md` - architecture rules and commands
 - `CONTEXT.md` - domain glossary
 - `docs/ARCHITECTURE.md` - protocol, storage, and UI boundaries
 - `docs/API.md` - generated SDK boundary and local backend URL adapter
-- `docs/SECURITY.md` - crypto, storage, biometric, network, and build rules
-- `docs/SECURITY_FINDINGS.md` - latest auth/crypto review status
+- `docs/SECURITY.md` - crypto, storage, biometric, network, and build rules (includes Section 6 "Current Security Findings")
 - `docs/TASKS.md` - active backlog and blockers
 - `docs/adr/0001-hardware-backed-signing-key.md`
 - `docs/adr/0002-native-signing-module.md`
@@ -31,7 +37,7 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `docs/adr/0005-backend-only-certificate-pinning.md`
 - `docs/adr/0006-mdoc-native-module-selection-criteria.md`
 - `src/services/crypto/crypto.ts`
-- `src/services/crypto/secureEnvironmentPolicy.ts`
+- `src/services/security/deviceIntegrityPolicy.ts`
 - `src/services/storage/storage.ts`
 - `src/services/vci/exchangeService.ts`
 - `src/services/auth/authService.ts`
@@ -45,7 +51,7 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `server/README.md`
 
 **Next concrete steps:**
-1. Add an ADR for ETDA EdDSA/Ed25519 requirements and the migration from P-256/ES256.
+1. Add an ADR for the EdDSA/Ed25519 requirements and the migration from P-256/ES256.
 2. Reissue test credentials through the dev-only EdDSA OID4VCI PoP path, then retry OID4VP Verifier QR.
 3. Reissue credentials using the Keychain Ed25519 Holder DID before OID4VP validation.
 4. Run Phase 4 release validation only after production EdDSA signing decisions are resolved: EAS production builds and physical-device golden-path walkthrough.
@@ -73,7 +79,7 @@ This is a production-ready playbook defining strict architectural rules, securit
 - `docs/ui-reference/home.html` is the current design reference for the Wallet home tab.
 - `app/(tabs)/index.tsx` uses React Native primitives and NativeWind classes.
 - `CardSchemaConfig` lives in `src/config/cardSchemas.ts`.
-- Initial card configs are ThaID, DLT Driving Licence, and Bangkok University Transcript.
+- Initial card configs are ThaID, DLT Driving Licence, and Chulalongkorn University Transcript.
 - `CredentialCard` renders from config; do not create issuer-specific card components.
 - `VerifiableCredentialRecord.type` maps to `CardSchemaConfig` through `getCardSchema()`.
 - QR scanner uses `expo-camera` `CameraView`; NFC NDEF issuance is deferred for lack of device verification.
@@ -91,6 +97,27 @@ This is a production-ready playbook defining strict architectural rules, securit
 - Keep screen files (`app/**`) thin: composition and data wiring only; push logic/layout into `src/components/**`.
 - `app/(tabs)/scan.tsx` P1 issuance sub-flow uses one component per step (`ThaIdVerificationPanel`, `ThaiIdSuccessConfirmationPanel`, `ThaiIdReceivePanel`) — each is a distinct phase, not a per-document split, so do not merge them. `ThaiIdReceivePanel` extracts its repeated label/value blocks via `CredentialFieldRow`; reuse `CredentialFieldRow` for any new label/value list instead of inlining `<Text>` pairs.
 - `ThaIdVerificationPanel` and `ThaiIdSuccessConfirmationPanel` are schema-driven via `CardSchemaConfig.issuanceVerification` / `issuanceConfirmation` in `src/config/cardSchemas.ts` (provider label, agency labels, image key). A new document type that reuses these steps needs only a schema entry plus the referenced image asset registered in the panel's image map — not a new component file.
+- Before writing any new UI or logic, search for an existing component/hook/service that already does it (or something close). If found, reuse or extend it — don't write a second implementation of the same concern next to the first.
+- If new UI/behavior is reusable across screens (a panel shape, a gating flow, a card row), it must ship as a component/hook under `src/components/` or `src/hooks/`, not copy-pasted or reimplemented per screen.
+- When two pieces of code do the same job, they must be written the same way — same naming, same structure, same patterns — as if one person wrote the whole codebase. Diverging implementations of a shared concern (e.g. two slightly different biometric-gate call sites, two slightly different card-row renderers) are a defect: consolidate to one shared implementation instead of leaving near-duplicates that read as inconsistent.
+- When touching a feature area, check sibling files in the same directory for the established pattern first, and match it rather than inventing a new one.
+
+## Planning Philosophy
+
+When planning any new system, feature, or integration:
+
+1. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs stated.
+2. **Best practice before convenience** — prefer APNs/FCM push with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant protocol flows over custom shortcuts.
+3. **Name the tradeoffs explicitly** — if recommending a simpler path, state what production capability is deferred and the trigger for when it must be addressed.
+4. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before writing implementation steps.
+
+## Master Branch Hygiene
+
+`master` may contain product documentation that is part of the durable project record: architecture/security/API docs, ADRs, `docs/TASKS.md`, user journeys, approved or active specs under `docs/superpowers/specs/`, implementation plans that explain committed or actively planned work under `docs/superpowers/plans/`, and UI references under `docs/ui-reference/`.
+
+Do not add these to `master`: local AI/tool settings, personal scratch notes, temporary prompts, review scratch output, `.superpowers/`, `.cursor/`, `.claude/*.local.json`, Office lock files such as `~$*.xlsx`, logs, caches, generated build output, secrets, env files, key material, abandoned duplicate generated docs, or one-off HTML/Markdown exports that are not intentionally approved as stakeholder-facing reference.
+
+Before staging docs, verify that each file is either referenced by `docs/TASKS.md`, an ADR, an active spec/plan, implementation code, or an explicit user request. If it is only session scratch, keep it ignored or outside the repo.
 
 ## Core Principles
 
@@ -103,6 +130,16 @@ Hardware-Backed Isolation - Never expose private keys or raw cryptographic seeds
 SDK-First Communication - All company backend operations must pass through the auto-generated TypeScript SDK generated by Orval from the company OpenAPI spec.
 
 Plan Before Execute - Always design data flow and verify interface mappings before writing UI or logic code.
+
+Fallback-First Resilience - Every intake path, async boundary, and user-facing flow must have a defined fallback when the primary path fails, is empty, stale, or arrives late. Never leave the user on an infinite loading state with no exit. Concretely:
+
+- **Deeplink / launch URLs:** Do not rely on a single API (`Linking.useURL()` alone). Also read `Linking.getInitialURL()` on cold start, queue pending state before PIN unlock, and re-route after auth when navigation was deferred.
+- **Store vs screen state:** If a URI moves from `pendingUri` to `activeUri` (or is consumed/dismissed/replayed), screens must recover from store state on remount — not only from the first pending value.
+- **Consumed or invalid requests:** Reject early with a user-visible outcome (error panel, return to Wallet) instead of spinning forever.
+- **Async / platform timing:** When the first read can be `null` or stale (Android Custom Tabs return, cold start, warm deeplink), add the secondary read or listener before declaring the flow missing.
+- **Errors:** Log the raw failure, then map to safe UI — the fallback UX is part of the feature, not optional polish.
+
+When adding a new flow, ask: *what happens if the primary source is null, late, already handled, or blocked by auth?* If there is no answer, the implementation is incomplete.
 
 ## Key Developer Rules and Constraints
 
@@ -132,8 +169,13 @@ The app claims credentials directly from Issuers. The company backend authentica
 - Current PoP JWT: uses `kid` header, not `jwk`; payload `iss`/`sub` is the Ed25519 Holder DID and `alg` is `EdDSA`.
 - No AsyncStorage: credentials are stored in encrypted MMKV; encryption key is held in `react-native-keychain`.
 - Biometric sign-time gate: biometric authentication fires on every `signProof()` call.
+- One biometric prompt per user action: a single user-initiated action (approve a presentation, claim a credential, rotate a key) must trigger exactly one authentication event. If the action requires a cryptographic sign call, that sign-time Keychain gate is the only prompt — do not add a separate app-level biometric/consent check in front of it for the same action. Only add a second, independent prompt when the action does no signing at all (so the sign-time gate never fires) and still needs its own auth.
 - NFC Presentation: ISO 18013-5 proximity channel; native mdoc module not yet selected.
 - Online Presentation: OID4VP 1.0 first slice is implemented. Production uses Keychain-protected Ed25519 EdDSA for SD-JWT KB-JWT.
+
+## Configurable Time/Duration Values
+
+Any constant that expresses a duration, TTL, or timing window for a system-wide policy (key rotation TTLs, expiry-warning windows, session grace periods, polling intervals, etc.) must be adjustable without a code change: read it from `process.env.EXPO_PUBLIC_<NAME>`, falling back to the current hardcoded value as the default (`Number(process.env.EXPO_PUBLIC_...) || <default>`). Document the new var in `.env.example` with a comment stating its unit, default, and effect. Existing examples: `EXPO_PUBLIC_WALLET_KEY_DEV_TTL_MS` / `EXPO_PUBLIC_WALLET_KEY_PROD_TTL_DAYS` (`src/config/walletKeyPolicy.ts`), `EXPO_PUBLIC_DOCUMENT_EXPIRY_WARNING_WINDOW_DAYS` (`src/config/documentExpiryPolicy.ts`), `EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`. Use whichever unit (ms vs days) is natural for how the value is tuned — short/testing values as ms, long-lived policy windows as days — matching the existing pattern rather than forcing everything to one unit.
 
 ## Coding Style
 
@@ -157,12 +199,12 @@ The app claims credentials directly from Issuers. The company backend authentica
 [ ] Phase 3.3: NFC NDEF issuance reader, deferred until test device
 [ ] Phase 4: Security hardening and release build
 [x] OID4VP 1.0 first Verifier QR slice
-[x] ETDA EdDSA OID4VCI PoP migration
+[x] EdDSA OID4VCI PoP migration
 [x] Production Keychain Ed25519 signer for OID4VCI/OID4VP
 
 ## Key Package Decisions
 
-- Production signing: `@noble/curves` Ed25519 with the 32-byte seed stored in `react-native-keychain` and retrieved under biometric/device authentication for signing.
+- Production signing: `@noble/ed25519` with the 32-byte seed stored in `react-native-keychain` and retrieved under biometric/device authentication for signing.
 - Storage: `react-native-mmkv` v4 via `createMMKV()`, requiring `react-native-nitro-modules`
 - Crypto, non-signing: `react-native-quick-crypto`
 - State: `zustand`, with TanStack Query for SDK-generated API hooks

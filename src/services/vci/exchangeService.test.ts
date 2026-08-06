@@ -1,8 +1,12 @@
 import {
   acquireCredentialRecord,
   claimCredential,
+  DeferredIssuancePending,
   InvalidProofError,
+  pollDeferredCredential,
   readCompactCredentialFromResponse,
+  readDeferredTransactionId,
+  readMdocCredentialFromResponse,
   resolveOffer,
   saveCredentialRecord,
   syncCredentialToBackend,
@@ -81,7 +85,9 @@ const idCardSdJwtOfferUri =
 const uppercaseIdCardSdJwtOfferUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22IDCard_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
 const remoteOfferUri =
-  'openid-credential-offer://?credential_offer_uri=http%3A%2F%2F192.100.10.46%2Fopenid4vc%2Frequest%2Fabc'
+  'openid-credential-offer://?credential_offer_uri=http%3A%2F%2Fissuer.zenithcomp.co.th:455%2Fopenid4vc%2Frequest%2Fabc'
+const mdlDoctypeOfferUri =
+  'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22org.iso.18013.5.1.mDL%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
 
 const realFetch = globalThis.fetch
 const originalEnv = process.env
@@ -189,19 +195,17 @@ async function txCodeContract(): Promise<void> {
 
 void txCodeContract()
 
-test('resolveOffer fetches credential_offer_uri through the development issuer proxy', async () => {
+test('resolveOffer fetches credential_offer_uri from its original public URL', async () => {
   jest.resetModules()
   process.env = {
     ...process.env,
-    EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET: 'http://192.100.10.46',
-    EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL: 'http://127.0.0.1:4000/dev-issuer-proxy',
   }
-  const { resolveOffer: resolveOfferWithProxy } = require('./exchangeService') as typeof import('./exchangeService')
+  const { resolveOffer: resolveOfferDirect } = require('./exchangeService') as typeof import('./exchangeService')
   const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
     async () =>
       new Response(
         JSON.stringify({
-          credential_issuer: 'http://192.100.10.46',
+          credential_issuer: 'http://issuer.zenithcomp.co.th:455',
           credential_configuration_ids: ['IDCard_dc+sd-jwt'],
           grants: {
             'urn:ietf:params:oauth:grant-type:pre-authorized_code': {
@@ -214,11 +218,11 @@ test('resolveOffer fetches credential_offer_uri through the development issuer p
   )
   globalThis.fetch = fetchMock as unknown as typeof fetch
 
-  const resolved = await resolveOfferWithProxy(remoteOfferUri, {
+  const resolved = await resolveOfferDirect(remoteOfferUri, {
     fetchIssuerMetadata: async () => ({
-      credential_issuer: 'http://192.100.10.46',
-      token_endpoint: 'http://192.100.10.46/token',
-      credential_endpoint: 'http://192.100.10.46/credential',
+      credential_issuer: 'http://issuer.zenithcomp.co.th:455',
+      token_endpoint: 'http://issuer.zenithcomp.co.th:455/token',
+      credential_endpoint: 'http://issuer.zenithcomp.co.th:455/credential',
       credential_configurations_supported: {
         IDCardCredential_dc_sd_jwt: {
           format: 'dc+sd-jwt',
@@ -229,22 +233,20 @@ test('resolveOffer fetches credential_offer_uri through the development issuer p
     }),
   })
 
-  expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4000/dev-issuer-proxy/openid4vc/request/abc', {
+  expect(fetchMock).toHaveBeenCalledWith('http://issuer.zenithcomp.co.th:455/openid4vc/request/abc', {
     headers: { Accept: 'application/json' },
   })
   expect(resolved.offerUri).toContain('credential_offer=')
-  expect(resolved.issuerMetadata.token_endpoint).toBe('http://127.0.0.1:4000/dev-issuer-proxy/token')
-  expect(resolved.issuerMetadata.credential_endpoint).toBe('http://127.0.0.1:4000/dev-issuer-proxy/credential')
+  expect(resolved.issuerMetadata.token_endpoint).toBe('http://issuer.zenithcomp.co.th:455/token')
+  expect(resolved.issuerMetadata.credential_endpoint).toBe('http://issuer.zenithcomp.co.th:455/credential')
 })
 
-test('default pre-authorized token exchange uses the development issuer proxy', async () => {
+test('default pre-authorized token exchange uses the original public URL', async () => {
   jest.resetModules()
   process.env = {
     ...process.env,
-    EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET: 'http://192.100.10.46',
-    EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL: 'http://127.0.0.1:4000/dev-issuer-proxy',
   }
-  const { acquireCredentialRecord: acquireCredentialRecordWithProxy } = require('./exchangeService') as typeof import('./exchangeService')
+  const { acquireCredentialRecord: acquireCredentialRecordDirect } = require('./exchangeService') as typeof import('./exchangeService')
   const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
     async () =>
       new Response(
@@ -257,15 +259,15 @@ test('default pre-authorized token exchange uses the development issuer proxy', 
   )
   globalThis.fetch = fetchMock as unknown as typeof fetch
 
-  await acquireCredentialRecordWithProxy(
+  await acquireCredentialRecordDirect(
     {
       offerUri,
-      issuer: 'http://192.100.10.46',
+      issuer: 'http://issuer.zenithcomp.co.th:455',
       credentialOffer: {} as ResolvedCredentialOffer['credentialOffer'],
       issuerMetadata: {
-        credential_issuer: 'http://192.100.10.46',
-        token_endpoint: 'http://192.100.10.46/token',
-        credential_endpoint: 'http://192.100.10.46/credential',
+        credential_issuer: 'http://issuer.zenithcomp.co.th:455',
+        token_endpoint: 'http://issuer.zenithcomp.co.th:455/token',
+        credential_endpoint: 'http://issuer.zenithcomp.co.th:455/credential',
         credential_configurations_supported: {},
       },
       credentialConfigurations: [
@@ -289,11 +291,65 @@ test('default pre-authorized token exchange uses the development issuer proxy', 
     },
   )
 
-  expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4000/dev-issuer-proxy/token', expect.objectContaining({
+  expect(fetchMock).toHaveBeenCalledWith('http://issuer.zenithcomp.co.th:455/token', expect.objectContaining({
     method: 'POST',
   }))
   const requestInit = fetchMock.mock.calls[0][1]
   expect(String(requestInit?.body)).toContain('pre-authorized_code=mock-preauth-code')
+})
+
+test('token request sends tx_code only and never user_pin', async () => {
+  jest.resetModules()
+  process.env = {
+    ...process.env,
+  }
+  const { acquireCredentialRecord: acquire } = require('./exchangeService') as typeof import('./exchangeService')
+  const txCodeFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+    async () =>
+      new Response(
+        JSON.stringify({ access_token: 'access-token', c_nonce: 'nonce' }),
+        { headers: { 'Content-Type': 'application/json' } },
+      ),
+  )
+  globalThis.fetch = txCodeFetchMock as unknown as typeof fetch
+
+  await acquire(
+    {
+      offerUri,
+      issuer: 'http://issuer.zenithcomp.co.th:455',
+      credentialOffer: {} as ResolvedCredentialOffer['credentialOffer'],
+      issuerMetadata: {
+        credential_issuer: 'http://issuer.zenithcomp.co.th:455',
+        token_endpoint: 'http://issuer.zenithcomp.co.th:455/token',
+        credential_endpoint: 'http://issuer.zenithcomp.co.th:455/credential',
+        credential_configurations_supported: {},
+      },
+      credentialConfigurations: [
+        {
+          id: 'ThaiNationalID',
+          requestId: 'ThaiNationalID',
+          format: 'dc+sd-jwt',
+          rawConfiguration: { format: 'dc+sd-jwt', vct: 'idcard' } as ResolvedCredentialOffer['credentialConfigurations'][number]['rawConfiguration'],
+        },
+      ],
+      preAuthorizedCode: 'mock-preauth-code',
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+      version: 10015,
+    },
+    {
+      tx_code: '123456',
+      dependencies: {
+        signProof: async () => 'proof.jwt',
+        requestCredential: async () => unsignedJwt({ vc: { type: ['VerifiableCredential', 'ThaiNationalID'] } }),
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    },
+  )
+
+  const requestInit = txCodeFetchMock.mock.calls[0][1]
+  const requestBody = String(requestInit?.body)
+  expect(requestBody).toContain('tx_code=123456')
+  expect(requestBody).not.toContain('user_pin=123456')
 })
 
 async function acquisitionOrchestrationContract(): Promise<void> {
@@ -559,7 +615,7 @@ test('saveCredentialRecord clears a stale local lifecycle status for a reissued 
   saveCredentialRecord(
     {
       id: 'transcript-1',
-      type: 'BangkokUniversityTranscript',
+      type: 'ChulalongkornUniversityTranscript',
       rawVc: 'new.header.payload',
       claims: {},
       issuedAt: '2026-06-08T11:00:00.000Z',
@@ -573,11 +629,54 @@ test('saveCredentialRecord clears a stale local lifecycle status for a reissued 
   expect(writes.has('credential:lifecycle:transcript-1')).toBe(false)
 })
 
+test('saveCredentialRecord clears a stale issuer suspension status for a reissued credential', () => {
+  const writes = new Map<string, string>([
+    [
+      'credential:suspension:transcript-1',
+      JSON.stringify({
+        credentialId: 'transcript-1',
+        suspendedAt: '2026-06-25T10:00:00.000Z',
+        updatedAt: '2026-06-25T10:00:00.000Z',
+      }),
+    ],
+  ])
+  const storage = {
+    getString: jest.fn((key: string) => writes.get(key)),
+    set: jest.fn((key: string, value: string) => {
+      writes.set(key, value)
+    }),
+    remove: jest.fn((key: string) => {
+      writes.delete(key)
+      return true
+    }),
+  }
+
+  saveCredentialRecord(
+    {
+      id: 'transcript-1',
+      type: 'ChulalongkornUniversityTranscript',
+      rawVc: 'new.header.payload',
+      claims: {},
+      issuedAt: '2026-06-25T11:00:00.000Z',
+    },
+    {
+      getCredentialStorage: () => storage,
+    },
+  )
+
+  expect(storage.remove).toHaveBeenCalledWith('credential:suspension:transcript-1')
+  expect(writes.has('credential:suspension:transcript-1')).toBe(false)
+})
+
 test('saveCredentialRecord replaces older local records of the same credential type', () => {
   const oldRecord: VerifiableCredentialRecord = {
     id: 'old-transcript',
-    type: 'BangkokUniversityTranscript',
-    rawVc: 'old.header.payload',
+    type: 'ChulalongkornUniversityTranscript',
+    rawVc: unsignedJwt({
+      cnf: {
+        kid: 'did:key:zHolder#zHolder',
+      },
+    }),
     claims: {},
     issuedAt: '2026-06-08T10:00:00.000Z',
   }
@@ -616,8 +715,12 @@ test('saveCredentialRecord replaces older local records of the same credential t
   saveCredentialRecord(
     {
       id: 'new-transcript',
-      type: 'BangkokUniversityTranscript',
-      rawVc: 'new.header.payload',
+      type: 'ChulalongkornUniversityTranscript',
+      rawVc: unsignedJwt({
+        cnf: {
+          kid: 'did:key:zHolder#zHolder',
+        },
+      }),
       claims: {},
       issuedAt: '2026-06-08T11:00:00.000Z',
     },
@@ -631,6 +734,64 @@ test('saveCredentialRecord replaces older local records of the same credential t
   expect(writes.has('credential:lifecycle:old-transcript')).toBe(false)
   expect(writes.has('credential:thai-id-1')).toBe(true)
   expect(writes.has('credential:new-transcript')).toBe(true)
+})
+
+test('saveCredentialRecord replaces issuer-suspended credentials even when holder DID changes', () => {
+  const suspendedPid: VerifiableCredentialRecord = {
+    id: 'old-thai-id',
+    type: 'ThaiNationalID',
+    rawVc: unsignedJwt({
+      cnf: {
+        kid: 'did:key:zOldHolder#zOldHolder',
+      },
+    }),
+    claims: {},
+    issuedAt: '2026-06-08T10:00:00.000Z',
+  }
+  const writes = new Map<string, string>([
+    ['credential:index', JSON.stringify(['old-thai-id'])],
+    ['credential:old-thai-id', JSON.stringify(suspendedPid)],
+    [
+      'credential:suspension:old-thai-id',
+      JSON.stringify({
+        credentialId: 'old-thai-id',
+        suspendedAt: '2026-06-25T10:00:00.000Z',
+        updatedAt: '2026-06-25T10:00:00.000Z',
+      }),
+    ],
+  ])
+  const storage = {
+    getString: jest.fn((key: string) => writes.get(key)),
+    set: jest.fn((key: string, value: string) => {
+      writes.set(key, value)
+    }),
+    remove: jest.fn((key: string) => {
+      writes.delete(key)
+      return true
+    }),
+  }
+
+  saveCredentialRecord(
+    {
+      id: 'new-thai-id',
+      type: 'ThaiNationalID',
+      rawVc: unsignedJwt({
+        cnf: {
+          kid: 'did:key:zNewHolder#zNewHolder',
+        },
+      }),
+      claims: {},
+      issuedAt: '2026-06-25T11:00:00.000Z',
+    },
+    {
+      getCredentialStorage: () => storage,
+    },
+  )
+
+  expect(JSON.parse(writes.get('credential:index') ?? '[]')).toEqual(['new-thai-id'])
+  expect(writes.has('credential:old-thai-id')).toBe(false)
+  expect(writes.has('credential:suspension:old-thai-id')).toBe(false)
+  expect(writes.has('credential:new-thai-id')).toBe(true)
 })
 
 async function transcriptSdJwtContract(): Promise<VerifiableCredentialRecord> {
@@ -681,7 +842,7 @@ async function transcriptSdJwtContract(): Promise<VerifiableCredentialRecord> {
   })
 
   if (record.id !== 'transcript-1') throw new Error('transcript id mismatch')
-  if (record.type !== 'BangkokUniversityTranscript') throw new Error('transcript type mismatch')
+  if (record.type !== 'ChulalongkornUniversityTranscript') throw new Error('transcript type mismatch')
   if (record.rawVc !== credential) throw new Error('transcript raw credential mismatch')
   if (record.claims.studentId !== 'BU-123') throw new Error('studentId disclosure missing')
   if (record.claims.gpa !== '3.91') throw new Error('gpa disclosure missing')
@@ -751,7 +912,7 @@ test('resolveOffer maps IDCard offer to IDCardCredential metadata key', async ()
       credential_endpoint: 'https://issuer.example.com/credential',
       credential_configurations_supported: {
         'IDCardCredential_dc+sd-jwt': {
-          vct: 'http://192.100.10.46/credentials/IDCard',
+          vct: 'http://issuer.zenithcomp.co.th:455/credentials/IDCard',
           format: 'dc+sd-jwt',
           cryptographic_binding_methods_supported: ['did'],
           cryptographic_suites_supported: ['EdDSA', 'ES256', 'ES256K', 'RSA'],
@@ -776,6 +937,160 @@ test('resolveOffer maps IDCard offer to IDCardCredential metadata key', async ()
       display: expect.objectContaining({ name: 'IDCard' }),
     }),
   )
+})
+
+test('resolveOffer maps mDL doctype offer to mso_mdoc metadata by doctype', async () => {
+  const resolved = await resolveOffer(mdlDoctypeOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        TestMdocDrivingLicence: {
+          format: 'mso_mdoc',
+          doctype: 'org.iso.18013.5.1.mDL',
+          display: [{ name: 'Mobile Driving Licence', locale: 'en' }],
+        },
+      },
+    }),
+  })
+
+  expect(resolved.credentialConfigurations[0]).toEqual(
+    expect.objectContaining({
+      id: 'org.iso.18013.5.1.mDL',
+      requestId: 'TestMdocDrivingLicence',
+      format: 'mso_mdoc',
+      display: expect.objectContaining({ name: 'Mobile Driving Licence' }),
+    }),
+  )
+})
+
+test('resolveOffer maps customer Iso18013 dual-format offer (mDL doctype + dc+sd-jwt alias)', async () => {
+  const offerUri =
+    'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22org.iso.18013.5.1.mDL%22%2C%22Iso18013DriversLicenseCredential_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
+
+  const resolved = await resolveOffer(offerUri, {
+    fetchIssuerMetadata: async () =>
+      ({
+        credential_issuer: 'https://issuer.example.com',
+        credential_endpoint: 'https://issuer.example.com/credential',
+        credential_configurations_supported: {
+          Iso18013DriversLicenseCredential_jwt_vc_json: {
+            format: 'jwt_vc_json',
+            types: ['VerifiableCredential', 'Iso18013DriversLicenseCredential'],
+          },
+          'Iso18013DriversLicenseCredential_vc+sd-jwt': {
+            format: 'vc+sd-jwt',
+            types: ['VerifiableCredential', 'VerifiableAttestation', 'Iso18013DriversLicenseCredential'],
+          },
+          Iso18013DriversLicenseCredential_mso_mdoc: {
+            format: 'mso_mdoc',
+            types: ['VerifiableCredential', 'VerifiableAttestation', 'Iso18013DriversLicenseCredential'],
+          },
+        },
+      }) as never,
+  })
+
+  expect(resolved.credentialConfigurations).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: 'org.iso.18013.5.1.mDL',
+        requestId: 'Iso18013DriversLicenseCredential_mso_mdoc',
+        format: 'mso_mdoc',
+      }),
+      expect.objectContaining({
+        id: 'Iso18013DriversLicenseCredential_dc+sd-jwt',
+        requestId: 'Iso18013DriversLicenseCredential_vc+sd-jwt',
+        format: 'vc+sd-jwt',
+      }),
+    ]),
+  )
+})
+
+test('resolveOffer uses direct Iso18013 keys when metadata advertises doctype + dc+sd-jwt', async () => {
+  const offerUri =
+    'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22org.iso.18013.5.1.mDL%22%2C%22Iso18013DriversLicenseCredential_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
+
+  const resolved = await resolveOffer(offerUri, {
+    fetchIssuerMetadata: async () =>
+      ({
+        credential_issuer: 'https://issuer.example.com',
+        credential_endpoint: 'https://issuer.example.com/credential',
+        credential_configurations_supported: {
+          'org.iso.18013.5.1.mDL': {
+            format: 'mso_mdoc',
+            doctype: 'org.iso.18013.5.1.mDL',
+            types: ['VerifiableCredential', 'VerifiableAttestation', 'Iso18013DriversLicenseCredential'],
+          },
+          'Iso18013DriversLicenseCredential_dc+sd-jwt': {
+            format: 'dc+sd-jwt',
+            types: ['VerifiableCredential', 'VerifiableAttestation', 'Iso18013DriversLicenseCredential'],
+          },
+          // Legacy siblings may still be present; direct keys must win for this offer.
+          Iso18013DriversLicenseCredential_mso_mdoc: {
+            format: 'mso_mdoc',
+            types: ['VerifiableCredential', 'VerifiableAttestation', 'Iso18013DriversLicenseCredential'],
+          },
+          'Iso18013DriversLicenseCredential_vc+sd-jwt': {
+            format: 'vc+sd-jwt',
+            types: ['VerifiableCredential', 'VerifiableAttestation', 'Iso18013DriversLicenseCredential'],
+          },
+        },
+      }) as never,
+  })
+
+  expect(resolved.credentialConfigurations).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: 'org.iso.18013.5.1.mDL',
+        requestId: 'org.iso.18013.5.1.mDL',
+        format: 'mso_mdoc',
+      }),
+      expect.objectContaining({
+        id: 'Iso18013DriversLicenseCredential_dc+sd-jwt',
+        requestId: 'Iso18013DriversLicenseCredential_dc+sd-jwt',
+        format: 'dc+sd-jwt',
+      }),
+    ]),
+  )
+  expect(
+    (resolved.credentialConfigurations.find((c) => c.id === 'org.iso.18013.5.1.mDL')
+      ?.rawConfiguration as { doctype?: string } | undefined)?.doctype,
+  ).toBe('org.iso.18013.5.1.mDL')
+})
+
+test('resolveOffer maps org.iso.18013.5.1.mDL offer to Iso18013DriversLicenseCredential_mso_mdoc without doctype field', async () => {
+  const resolved = await resolveOffer(mdlDoctypeOfferUri, {
+    fetchIssuerMetadata: async () =>
+      ({
+        credential_issuer: 'https://issuer.example.com',
+        credential_endpoint: 'https://issuer.example.com/credential',
+        credential_configurations_supported: {
+          Iso18013DriversLicenseCredential_jwt_vc_json: {
+            format: 'jwt_vc_json',
+            types: ['VerifiableCredential', 'Iso18013DriversLicenseCredential'],
+          },
+          Iso18013DriversLicenseCredential_mso_mdoc: {
+            format: 'mso_mdoc',
+            types: ['VerifiableCredential', 'VerifiableAttestation', 'Iso18013DriversLicenseCredential'],
+          },
+          TranscriptCredential_mso_mdoc: {
+            format: 'mso_mdoc',
+            types: ['VerifiableCredential', 'TranscriptCredential'],
+          },
+        },
+      }) as never,
+  })
+
+  expect(resolved.credentialConfigurations[0]).toEqual(
+    expect.objectContaining({
+      id: 'org.iso.18013.5.1.mDL',
+      requestId: 'Iso18013DriversLicenseCredential_mso_mdoc',
+      format: 'mso_mdoc',
+    }),
+  )
+  expect(
+    (resolved.credentialConfigurations[0]?.rawConfiguration as { doctype?: string } | undefined)?.doctype,
+  ).toBe('org.iso.18013.5.1.mDL')
 })
 
 test('resolveOffer maps uppercase IDCard offers to the only matching SD-JWT metadata entry', async () => {
@@ -835,7 +1150,7 @@ async function unsupportedFormatContract(): Promise<void> {
     credentialConfigurations: [
       {
         ...resolved.credentialConfigurations[0],
-        format: 'mso_mdoc',
+        format: 'ldp_vc',
       },
     ],
   }
@@ -1024,4 +1339,379 @@ test('acquireCredentialRecord retries once with a refreshed c_nonce on invalid_p
 
   expect(requestCredentialCalls).toBe(2)
   expect(signedNonces).toEqual(['nonce', 'fresh-nonce'])
+})
+
+test('acquireCredentialRecord uses one proof signing session for retry without a second auth call', async () => {
+  const resolved = await contract()
+  const sessionSignProof = jest.fn(async (cNonce: string) => `proof-${cNonce}.jwt`)
+  const dependencySignProof = jest.fn(async (cNonce: string) => `dependency-proof-${cNonce}.jwt`)
+  const close = jest.fn()
+  let requestCredentialCalls = 0
+
+  await acquireCredentialRecord(resolved, {
+    tx_code: '123456',
+    proofSession: {
+      signProof: sessionSignProof,
+      close,
+    },
+    dependencies: {
+      acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+      signProof: dependencySignProof,
+      requestCredential: async ({ proof }) => {
+        requestCredentialCalls += 1
+        if (requestCredentialCalls === 1) {
+          throw new InvalidProofError('CredentialRequestFailed: invalid_proof', 'fresh-nonce')
+        }
+        expect(proof).toBe('proof-fresh-nonce.jwt')
+        return unsignedJwt({ vc: { type: ['VerifiableCredential', 'ThaiNationalID'] } })
+      },
+      getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+    },
+  })
+
+  expect(sessionSignProof).toHaveBeenCalledTimes(2)
+  expect(sessionSignProof).toHaveBeenNthCalledWith(1, 'nonce', resolved.issuer, { keyBinding: 'did-kid' })
+  expect(sessionSignProof).toHaveBeenNthCalledWith(2, 'fresh-nonce', resolved.issuer, { keyBinding: 'did-kid' })
+  expect(dependencySignProof).not.toHaveBeenCalled()
+  expect(close).not.toHaveBeenCalled()
+})
+
+describe('readMdocCredentialFromResponse', () => {
+  test('reads OID4VCI 1.0 credentials array mDOC response', () => {
+    expect(
+      readMdocCredentialFromResponse({
+        successBody: {
+          credentials: [{ credential: 'AQIDBAUG' }],
+        },
+      }),
+    ).toBe('AQIDBAUG')
+  })
+
+  test('reads legacy format+credential mDOC response', () => {
+    expect(
+      readMdocCredentialFromResponse({
+        successBody: {
+          format: 'mso_mdoc',
+          credential: 'AQIDBA',
+        },
+      }),
+    ).toBe('AQIDBA')
+  })
+
+  test('reads plain credential when format is missing', () => {
+    expect(
+      readMdocCredentialFromResponse({
+        successBody: { credential: 'b64urlCborPayload' },
+      }),
+    ).toBe('b64urlCborPayload')
+  })
+
+  test('rejects empty credential string', () => {
+    expect(() =>
+      readMdocCredentialFromResponse({
+        successBody: { format: 'mso_mdoc', credential: '' },
+      }),
+    ).toThrow(/CredentialResponseUnsupported: mso_mdoc/)
+  })
+
+  test('throws CredentialResponseDeferred for transaction_id without credential', () => {
+    expect(() =>
+      readMdocCredentialFromResponse({
+        successBody: { transaction_id: 'txn-deferred-1' },
+      }),
+    ).toThrow(/CredentialResponseDeferred:.*transaction_id:true/)
+  })
+
+  test('throws CredentialResponseDeferred for acceptance_token without credential', () => {
+    expect(() =>
+      readMdocCredentialFromResponse({
+        successBody: { acceptance_token: 'accept-1' },
+      }),
+    ).toThrow(/CredentialResponseDeferred:.*acceptance_token:true/)
+  })
+
+  test('describes empty successBody / Sphereon wrapper on error', () => {
+    expect(() =>
+      readMdocCredentialFromResponse({
+        origResponse: { status: 200 },
+        successBody: undefined,
+        errorBody: undefined,
+        access_token: 'token-redacted-from-logs',
+      }),
+    ).toThrow(
+      /CredentialResponseUnsupported: mso_mdoc.*httpStatus:200.*successBody:undefined.*outerKeys:origResponse,successBody,errorBody,access_token/,
+    )
+  })
+
+  test('includes truncated string errorBody preview on HTTP 500 Sphereon wrapper', () => {
+    expect(() =>
+      readMdocCredentialFromResponse({
+        origResponse: { status: 500 },
+        successBody: undefined,
+        errorBody: 'The given key was not present in the dictionary.',
+        access_token: 'token-redacted-from-logs',
+      }),
+    ).toThrow(
+      /CredentialResponseUnsupported: mso_mdoc.*httpStatus:500.*errorBody:string:The given key was not present in the dictionary\./,
+    )
+  })
+
+  test('redacts JWT-like substrings in string errorBody preview', () => {
+    const jwtLike =
+      'eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJkaWQ6ZXhhbXBsZSJ9.dGVzdHNpZ25hdHVyZQ'
+    expect(() =>
+      readMdocCredentialFromResponse({
+        origResponse: { status: 500 },
+        successBody: undefined,
+        errorBody: `issuer failed near ${jwtLike} end`,
+      }),
+    ).toThrow(/errorBody:string:issuer failed near \[redacted\] end/)
+  })
+
+  test('describes string successBody without treating it as credential', () => {
+    expect(() =>
+      readMdocCredentialFromResponse({
+        successBody: 'not-a-json-object',
+        origResponse: { status: 200 },
+      }),
+    ).toThrow(/CredentialResponseUnsupported: mso_mdoc.*successBody:string/)
+  })
+
+  test('does not treat non-mso_mdoc format credential as mDOC', () => {
+    expect(() =>
+      readMdocCredentialFromResponse({
+        successBody: {
+          format: 'dc+sd-jwt',
+          credential: 'issuer.jwt.sd-jwt~disclosure~',
+        },
+      }),
+    ).toThrow(/CredentialResponseUnsupported: mso_mdoc/)
+  })
+})
+
+describe('readDeferredTransactionId', () => {
+  test('returns transaction_id when present without credential', () => {
+    expect(
+      readDeferredTransactionId({
+        successBody: { transaction_id: 'txn-abc' },
+      }),
+    ).toBe('txn-abc')
+  })
+
+  test('returns transaction_id from direct response body', () => {
+    expect(
+      readDeferredTransactionId({ transaction_id: 'txn-direct' }),
+    ).toBe('txn-direct')
+  })
+
+  test('returns undefined when credential is present alongside transaction_id', () => {
+    expect(
+      readDeferredTransactionId({
+        successBody: {
+          transaction_id: 'txn-abc',
+          credential: 'issuer.jwt.sd-jwt~disclosure~',
+        },
+      }),
+    ).toBeUndefined()
+  })
+
+  test('returns undefined when mso_mdoc credentials array is present alongside transaction_id', () => {
+    expect(
+      readDeferredTransactionId({
+        successBody: {
+          transaction_id: 'txn-abc',
+          credentials: [{ credential: 'AQIDBAUG' }],
+        },
+      }),
+    ).toBeUndefined()
+  })
+
+  test('returns undefined when no transaction_id', () => {
+    expect(
+      readDeferredTransactionId({
+        successBody: { credential: 'issuer.jwt.sd-jwt~disclosure~' },
+      }),
+    ).toBeUndefined()
+  })
+
+  test('returns undefined for empty response', () => {
+    expect(readDeferredTransactionId({})).toBeUndefined()
+    expect(readDeferredTransactionId(undefined)).toBeUndefined()
+  })
+})
+
+describe('acquireCredentialRecord deferred issuance', () => {
+  test('throws DeferredIssuancePending when requestCredential throws it', async () => {
+    const resolved = await contract()
+
+    try {
+      await acquireCredentialRecord(resolved, {
+        tx_code: '123456',
+        dependencies: {
+          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+          signProof: async () => 'proof.jwt',
+          requestCredential: async ({ accessToken, proof, resolvedOffer: offer }) => {
+            throw new DeferredIssuancePending(
+              'txn-123',
+              accessToken,
+              'https://issuer.example.com/deferred',
+              proof,
+              offer,
+              5,
+            )
+          },
+          getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+        },
+      })
+      throw new Error('should have thrown DeferredIssuancePending')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DeferredIssuancePending)
+      const deferred = error as DeferredIssuancePending
+      expect(deferred.transactionId).toBe('txn-123')
+      expect(deferred.accessToken).toBe('access-token')
+      expect(deferred.deferredEndpoint).toBe('https://issuer.example.com/deferred')
+      expect(deferred.proof).toBe('proof.jwt')
+      expect(deferred.interval).toBe(5)
+      expect(deferred.resolvedOffer).toBe(resolved)
+    }
+  })
+})
+
+describe('pollDeferredCredential', () => {
+  test('returns credential record when issuer responds with credential', async () => {
+    const resolved = await contract()
+    const vc = unsignedJwt({
+      jti: 'deferred-vc-1',
+      vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+      iat: 1760000000,
+    })
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(JSON.stringify({ credential: vc }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const record = await pollDeferredCredential({
+      transactionId: 'txn-ready',
+      accessToken: 'access-token',
+      deferredEndpoint: 'https://issuer.example.com/deferred',
+      proof: 'proof.jwt',
+      resolvedOffer: resolved,
+    })
+
+    expect(record.id).toBe('deferred-vc-1')
+    expect(record.type).toBe('ThaiNationalID')
+
+    expect(fetchMock).toHaveBeenCalledWith('https://issuer.example.com/deferred', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer access-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ transaction_id: 'txn-ready' }),
+    })
+  })
+
+  test('throws DeferredIssuancePending on issuance_pending error with interval', async () => {
+    const resolved = await contract()
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({ error: 'issuance_pending', interval: 10 }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    try {
+      await pollDeferredCredential({
+        transactionId: 'txn-pending',
+        accessToken: 'access-token',
+        deferredEndpoint: 'https://issuer.example.com/deferred',
+        proof: 'proof.jwt',
+        resolvedOffer: resolved,
+      })
+      throw new Error('should have thrown DeferredIssuancePending')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DeferredIssuancePending)
+      const deferred = error as DeferredIssuancePending
+      expect(deferred.transactionId).toBe('txn-pending')
+      expect(deferred.interval).toBe(10)
+      expect(deferred.proof).toBe('proof.jwt')
+    }
+  })
+
+  test('throws DeferredIssuancePending when success response has new transaction_id', async () => {
+    const resolved = await contract()
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({ transaction_id: 'txn-renewed' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    try {
+      await pollDeferredCredential({
+        transactionId: 'txn-pending',
+        accessToken: 'access-token',
+        deferredEndpoint: 'https://issuer.example.com/deferred',
+        proof: 'proof.jwt',
+        resolvedOffer: resolved,
+      })
+      throw new Error('should have thrown DeferredIssuancePending')
+    } catch (error) {
+      expect(error).toBeInstanceOf(DeferredIssuancePending)
+      const deferred = error as DeferredIssuancePending
+      expect(deferred.transactionId).toBe('txn-renewed')
+    }
+  })
+
+  test('throws hard error on invalid_transaction_id', async () => {
+    const resolved = await contract()
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({ error: 'invalid_transaction_id', error_description: 'Transaction not found' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    await expect(
+      pollDeferredCredential({
+        transactionId: 'txn-invalid',
+        accessToken: 'access-token',
+        deferredEndpoint: 'https://issuer.example.com/deferred',
+        proof: 'proof.jwt',
+        resolvedOffer: resolved,
+      }),
+    ).rejects.toThrow('DeferredCredentialFailed: HTTP 400: invalid_transaction_id - Transaction not found')
+  })
+
+  test('throws hard error on network failure', async () => {
+    const resolved = await contract()
+
+    globalThis.fetch = (() => {
+      throw new Error('Network unreachable')
+    }) as unknown as typeof fetch
+
+    await expect(
+      pollDeferredCredential({
+        transactionId: 'txn-net-fail',
+        accessToken: 'access-token',
+        deferredEndpoint: 'https://issuer.example.com/deferred',
+        proof: 'proof.jwt',
+        resolvedOffer: resolved,
+      }),
+    ).rejects.toThrow('DeferredCredentialFetchFailed')
+  })
 })

@@ -1,0 +1,81 @@
+.agents/
+.claude/
+.zed/
+modules/*/android/.gradle/
+
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env
+.env*.local
+env
+server/.env
+server/env
+
+# session scratch
+.codex-expo*.log
+server/.codex-server.log
+.claude/reviews/
+.claude/*.local.json
+.superpowers/
+.worktrees/
+.cursor/
+~$*
+**/~$*
+*.tmp
+*.bak
+*.backup
+
+# typescript
+*.tsbuildinfo
+
+app-example
+
+# generated native folders
+/ios
+/android
+
+# local Expo module build artifacts
+modules/**/android/build/
+modules/**/android/.gradle/
+modules/**/.cxx/
+google-services.json
+etda-wallet-firebase-adminsdk-fbsvc-5c08da928e.json
+.cursor/plans/
+.zed/
+.vscode/
+.claude/
+.agents/skills/
+
+# Firebase client configuration is required by app.json during EAS prebuild.
+!google-services.json

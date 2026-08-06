@@ -24,10 +24,10 @@ type Props = {
 
 export function FacePreparePanel({ onScan }: Props) {
   return (
-    <View className="flex-1 bg-[#eef1f4]">
+    <View className="flex-1 bg-surface">
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="items-center px-5 pb-10 pt-5">
-          <Text className="mb-5 text-[22px] font-extrabold text-[#071f5f]">
+          <Text className="mb-5 text-[22px] font-extrabold text-navy-deep">
             สแกนใบหน้า
           </Text>
 
@@ -37,21 +37,21 @@ export function FacePreparePanel({ onScan }: Props) {
             resizeMode="cover"
           />
 
-          <Text className="mt-5 text-[18px] font-extrabold text-[#071f5f]">
+          <Text className="mt-5 text-[18px] font-extrabold text-navy-deep">
             เตรียมสแกนใบหน้า
           </Text>
-          <Text className="mt-2 text-center text-[13px] leading-6 text-[#6b7280]">
+          <Text className="mt-2 text-center text-[13px] leading-6 text-gray500">
             สำหรับใช้ในการยืนยันตัวตน{"\n"}เพื่อความปลอดภัยของคุณ
           </Text>
 
-          <View className="mt-6 w-full gap-5 border-t border-[#e3e3e3] pt-5">
+          <View className="mt-6 w-full gap-5 border-t border-gray-light pt-5">
             <View className="flex-row items-start gap-3.5">
               <Image
                 source={lightBulbImage}
                 className="h-10 w-10"
                 resizeMode="contain"
               />
-              <Text className="flex-1 pt-2 text-[13px] leading-6 text-[#071f5f]">
+              <Text className="flex-1 pt-2 text-[13px] leading-6 text-navy-deep">
                 อยู่ในที่ที่มีแสงเหมาะสม ไม่สว่างหรือมืดเกินไป
               </Text>
             </View>
@@ -62,9 +62,9 @@ export function FacePreparePanel({ onScan }: Props) {
                 className="h-10 w-10"
                 resizeMode="contain"
               />
-              <Text className="flex-1 pt-2 text-[13px] leading-6 text-[#071f5f]">
+              <Text className="flex-1 pt-2 text-[13px] leading-6 text-navy-deep">
                 ขยับใบหน้าให้อยู่ภายในกรอบ{" "}
-                <Text className="font-bold text-[#1a8a3a]">
+                <Text className="font-bold text-green-dark">
                   จนกรอบเป็นสีเขียว
                 </Text>
               </Text>
@@ -76,7 +76,7 @@ export function FacePreparePanel({ onScan }: Props) {
                 className="h-10 w-10"
                 resizeMode="contain"
               />
-              <Text className="flex-1 pt-2 text-[13px] leading-6 text-[#071f5f]">
+              <Text className="flex-1 pt-2 text-[13px] leading-6 text-navy-deep">
                 พยายามลืมตาให้กว้าง
               </Text>
             </View>
@@ -87,7 +87,7 @@ export function FacePreparePanel({ onScan }: Props) {
                 className="h-10 w-10"
                 resizeMode="contain"
               />
-              <Text className="flex-1 pt-2 text-[13px] leading-6 text-[#071f5f]">
+              <Text className="flex-1 pt-2 text-[13px] leading-6 text-navy-deep">
                 <Text className="font-bold">ต้องเห็น ตา จมูก ปาก </Text>
                 ชัดเจน ไม่สวมแว่น หน้ากากอนามัยและไม่ใส่หมวก
               </Text>
@@ -98,7 +98,7 @@ export function FacePreparePanel({ onScan }: Props) {
             variant="solid-block"
             label="สแกนใบหน้า"
             onPress={onScan}
-            className="mt-9 h-[54px] w-[85%] bg-[#123b8c]"
+            className="mt-9 h-[54px] w-[85%] bg-navy-royal"
             textClassName="text-[17px] font-extrabold"
           />
         </View>

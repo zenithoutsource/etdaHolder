@@ -33,13 +33,23 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+env
 server/.env
+server/env
 
 # session scratch
 .codex-expo*.log
 server/.codex-server.log
 .claude/reviews/
-.superpowers/brainstorm/
+.claude/*.local.json
+.superpowers/
+.worktrees/
+.cursor/
+~$*
+**/~$*
+*.tmp
+*.bak
+*.backup
 
 # typescript
 *.tsbuildinfo
@@ -52,4 +62,13 @@ app-example
 
 # local Expo module build artifacts
 modules/**/android/build/
+modules/**/android/.gradle/
 modules/**/.cxx/
+google-services.json
+etda-wallet-firebase-adminsdk-fbsvc-5c08da928e.json
+.cursor/plans/
+.zed/
+.vscode/
+.claude/
+.agents/skills/
+server/.sdd-review/

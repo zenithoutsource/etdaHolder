@@ -26,6 +26,7 @@ const SECURITY_LEVEL = {
 
 const STORAGE_TYPE = {
   AES_GCM: 'AesGcm',
+  AES_GCM_NO_AUTH: 'KeystoreAESGCM_NoAuth',
 }
 
 type KeychainOptions = {
@@ -52,6 +53,10 @@ const resetGenericPassword = jest.fn(async (options?: KeychainOptions): Promise<
   return true
 })
 
+const getSupportedBiometryType = jest.fn(async (): Promise<string | null> => null)
+
+const getSecurityLevel = jest.fn(async (): Promise<string | null> => SECURITY_LEVEL.SECURE_HARDWARE)
+
 export function __resetStore(): void {
   _store = {}
 }
@@ -63,6 +68,8 @@ export {
   SECURITY_LEVEL,
   STORAGE_TYPE,
   getGenericPassword,
+  getSecurityLevel,
+  getSupportedBiometryType,
   resetGenericPassword,
   setGenericPassword,
 }
@@ -70,6 +77,8 @@ export {
 export default {
   setGenericPassword,
   getGenericPassword,
+  getSecurityLevel,
+  getSupportedBiometryType,
   resetGenericPassword,
   ACCESS_CONTROL,
   ACCESSIBLE,

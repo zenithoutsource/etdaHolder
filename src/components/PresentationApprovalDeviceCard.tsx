@@ -14,7 +14,7 @@ function formatRegisteredAt(value?: string): { date: string; time: string } | un
   if (Number.isNaN(parsed.getTime())) return undefined
 
   return {
-    date: new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'long', year: 'numeric' }).format(parsed),
+    date: new Intl.DateTimeFormat('th-TH-u-ca-buddhist', { day: 'numeric', month: 'long', year: 'numeric' }).format(parsed),
     time: new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit' }).format(parsed),
   }
 }
@@ -23,7 +23,7 @@ export function PresentationApprovalDeviceCard({ registeredAt }: Props) {
   const registered = formatRegisteredAt(registeredAt)
   return (
     <View className="rounded-2xl bg-white p-4">
-      <Text className="text-[13px] font-extrabold text-[#071f5f]">Approve by Wallet</Text>
+      <Text className="text-xl font-extrabold text-black">Approve by Wallet</Text>
       <View className="mt-3 flex-row items-center gap-3">
         <Image
           source={phoneImage}
@@ -31,18 +31,18 @@ export function PresentationApprovalDeviceCard({ registeredAt }: Props) {
           resizeMode="contain"
         />
         <View>
-          <Text className="text-[13px] font-bold text-[#071f5f]">{Device.brand?.toLocaleUpperCase()}</Text>
-          <Text className="text-[12px] text-[#6b7280]">Android {Device.osVersion}</Text>
+          <Text className="text-[13px] font-bold text-navy-deep">{Device.brand?.toLocaleUpperCase()}</Text>
+          <Text className="text-[12px] text-gray500">Android {Device.osVersion}</Text>
         </View>
       </View>
       {registered ? (
-        <Text className="mt-3 text-[12px] text-[#6b7280]">
-          ลงทะเบียนเมื่อ {registered.date} เวลา {registered.time} น.
+        <Text className="mt-3 text-[12px] text-gray500">
+          ลงทะเบียนเมื่อ <Text className="text-navy-deep font-bold">{registered.date} เวลา {registered.time} น.</Text>
         </Text>
       ) : null}
       <View className="mt-2 flex-row items-center gap-1.5">
-        <Text className="text-[12px] text-[#6b7280]">สถานะการลงทะเบียน</Text>
-        <Text className="text-[12px] font-bold text-[#118f4b]">{registered ? 'ลงทะเบียนแล้ว' : 'ยังไม่ลงทะเบียน'}</Text>
+        <Text className="text-[12px] text-gray500">สถานะการลงทะเบียน</Text>
+        <Text className="text-[12px] font-bold text-navy-deep">{registered ? 'ลงทะเบียนแล้ว' : 'ยังไม่ลงทะเบียน'}</Text>
       </View>
     </View>
   )

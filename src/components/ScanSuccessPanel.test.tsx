@@ -11,7 +11,7 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
 
 const record: VerifiableCredentialRecord = {
   id: 'credential-1',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   issuedAt: '2026-06-09T00:00:00.000Z',
   rawVc: 'vc',
   claims: {
@@ -30,6 +30,6 @@ describe('ScanSuccessPanel', () => {
     expect(screen.getByText(/เอกสาร :/)).toBeTruthy()
     expect(screen.getByText(/หน่วยงานที่รับรอง :/)).toBeTruthy()
     expect(screen.getByText(/Academic Transcript/)).toBeTruthy()
-    expect(screen.getByText(/Bangkok University/)).toBeTruthy()
+    expect(screen.getByText(/Chulalongkorn University/)).toBeTruthy()
   })
 })

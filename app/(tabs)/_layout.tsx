@@ -1,8 +1,13 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Image, type ImageSourcePropType } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { HapticTab } from '@/components/haptic-tab';
+import { WalletKeyExpiryHost } from '@/src/components/WalletKeyExpiryHost';
+import { CredentialExpiryHost } from '@/src/components/CredentialExpiryHost';
+import { PresentationIntakeErrorHost } from '@/src/components/PresentationIntakeErrorHost';
+
+import { THEME } from '../../src/config/themeColors'
 
 type TabIconProps = {
   color: string;
@@ -26,18 +31,24 @@ function TabAssetIcon({ color, focused, source }: TabIconProps) {
 }
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
-    <Tabs
+    <>
+      <WalletKeyExpiryHost />
+      <CredentialExpiryHost />
+      <PresentationIntakeErrorHost />
+      <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#002887',
-        tabBarInactiveTintColor: '#6d7a8d',
+        tabBarActiveTintColor: THEME.navy,
+        tabBarInactiveTintColor: THEME.slate,
         tabBarStyle: {
-          backgroundColor: '#ffffff',
-          borderTopColor: '#e5e7eb',
+          backgroundColor: THEME.white,
+          borderTopColor: THEME.gray200,
           borderTopWidth: 1,
           elevation: 8,
-          height: 66,
-          paddingBottom: 8,
+          height: 66 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
@@ -45,7 +56,6 @@ export default function TabLayout() {
           fontWeight: '600',
         },
         headerShown: false,
-        tabBarButton: HapticTab,
       }}>
       <Tabs.Screen
         name="index"
@@ -84,6 +94,34 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="history-event/[id]"
+        options={{
+          href: null,
+          title: 'History Log',
+        }}
+      />
+      <Tabs.Screen
+        name="present"
+        options={{
+          href: null,
+          title: 'Wallet',
+        }}
+      />
+      <Tabs.Screen
+        name="credential-offer"
+        options={{
+          href: null,
+          title: 'Wallet',
+        }}
+      />
+      <Tabs.Screen
+        name="presentation-request"
+        options={{
+          href: null,
+          title: 'Wallet',
+        }}
+      />
+      <Tabs.Screen
         name="credential/[id]"
         options={{
           href: null,
@@ -91,5 +129,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </>
   );
 }

@@ -1,3 +1,12 @@
+export function base64UrlToBytes(value: string): Uint8Array {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+  const binary = atob(padded)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
 export function base64UrlDecodeToString(value: string): string {
   const base64 = value.replace(/-/g, '+').replace(/_/g, '/')
   const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
@@ -21,6 +30,31 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> | undefin
   } catch {
     return undefined
   }
+}
+
+export function decodeJwtHeader(jwt: string): Record<string, unknown> | undefined {
+  const parts = jwt.split('.')
+  if (!parts[0]) return undefined
+
+  try {
+    const parsed = JSON.parse(base64UrlDecodeToString(parts[0])) as unknown
+    return isRecord(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function decodeJsonBase64Url<T = unknown>(segment: string): T | undefined {
+  try {
+    return JSON.parse(base64UrlDecodeToString(segment)) as T
+  } catch {
+    return undefined
+  }
+}
+
+export function looksLikeCompactJwt(value: string): boolean {
+  const parts = value.split('.')
+  return parts.length === 3 && Boolean(parts[0] && parts[1])
 }
 
 export function decodeJwtPayloadStrict(jwt: string): Record<string, unknown> {
@@ -72,4 +106,26 @@ export function isSameJwk(actual: Record<string, unknown>, expected: Record<stri
 export function isSameKid(actual: string, expected: string): boolean {
   const expectedDid = expected.split('#')[0]
   return actual === expected || actual === expectedDid
+}
+
+export function formatWalletHolderBindingHint(
+  holderJwk?: Record<string, unknown>,
+  holderKid?: string,
+): string {
+  if (holderKid) return holderKid.split('#')[0] ?? holderKid
+  const x = readString(holderJwk?.x)
+  const crv = readString(holderJwk?.crv)
+  if (x && crv) return `cnf.jwk ${crv} x=${x}`
+  return 'wallet signing key'
+}
+
+export function formatCredentialCnfHint(
+  cnfJwk?: Record<string, unknown>,
+  cnfKid?: string,
+): string {
+  if (cnfKid) return `cnf.kid=${cnfKid}`
+  const x = readString(cnfJwk?.x)
+  const crv = readString(cnfJwk?.crv)
+  if (x && crv) return `cnf.jwk ${crv} x=${x}`
+  return 'cnf missing'
 }

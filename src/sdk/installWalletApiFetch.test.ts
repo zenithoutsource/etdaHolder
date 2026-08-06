@@ -1,18 +1,28 @@
 import {
   installWalletApiFetch,
+  isWalletApiFetchInput,
   normalizeWalletApiBaseUrl,
   resolveNativeDevLoopbackBaseUrl,
-  resolveDevIssuerProxyUrl,
   resolveWalletApiUrl,
 } from './installWalletApiFetch'
+import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
+
+jest.mock('../services/debug/walletLogger', () => ({
+  logWalletError: jest.fn(),
+  logWalletStep: jest.fn(),
+}))
 
 describe('wallet API fetch installer', () => {
   const realFetch = globalThis.fetch
   const originalEnv = process.env
+  const logWalletErrorMock = logWalletError as jest.MockedFunction<typeof logWalletError>
+  const logWalletStepMock = logWalletStep as jest.MockedFunction<typeof logWalletStep>
 
   afterEach(() => {
     globalThis.fetch = realFetch
     process.env = { ...originalEnv }
+    logWalletErrorMock.mockClear()
+    logWalletStepMock.mockClear()
   })
 
   test('normalizes trailing slash from base URL', () => {
@@ -49,35 +59,9 @@ describe('wallet API fetch installer', () => {
     )
   })
 
-  test('rewrites configured issuer requests through the development issuer proxy', () => {
-    expect(
-      resolveDevIssuerProxyUrl('https://issuer.office.example/.well-known/openid-credential-issuer', {
-        target: 'https://issuer.office.example',
-        baseUrl: 'http://127.0.0.1:4000/dev-issuer-proxy',
-      }),
-    ).toBe('http://127.0.0.1:4000/dev-issuer-proxy/.well-known/openid-credential-issuer')
-  })
-
-  test('normalizes trailing slashes from development issuer proxy config', () => {
-    expect(
-      resolveDevIssuerProxyUrl('https://issuer.office.example/credential', {
-        target: 'https://issuer.office.example/',
-        baseUrl: 'http://127.0.0.1:4000/dev-issuer-proxy/',
-      }),
-    ).toBe(
-      'http://127.0.0.1:4000/dev-issuer-proxy/credential',
-    )
-  })
-
-  test('does not rewrite unrelated issuer requests', () => {
-    expect(
-      resolveDevIssuerProxyUrl('https://public-issuer.example/.well-known/openid-credential-issuer', {
-        target: 'https://issuer.office.example',
-        baseUrl: 'http://127.0.0.1:4000/dev-issuer-proxy',
-      }),
-    ).toBe(
-      'https://public-issuer.example/.well-known/openid-credential-issuer'
-    )
+  test('identifies generated wallet API paths only', () => {
+    expect(isWalletApiFetchInput('/wallet-api/auth/login')).toBe(true)
+    expect(isWalletApiFetchInput('https://exp.host/--/api/v2/push/updateDeviceToken')).toBe(false)
   })
 
   test('patched fetch prefixes generated SDK paths', async () => {
@@ -93,42 +77,34 @@ describe('wallet API fetch installer', () => {
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/wallet-api/auth/login', { method: 'POST' })
   })
 
-  test('patched fetch sends configured issuer calls through the development proxy', async () => {
+  test('patched fetch sends issuer calls to the original public URL', async () => {
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => new Response('{}'))
 
     installWalletApiFetch({
       baseUrl: 'http://127.0.0.1:4000',
       fetchImpl: fetchMock as unknown as typeof fetch,
-      devIssuerProxy: {
-        target: 'https://issuer.office.example',
-        baseUrl: 'http://127.0.0.1:4000/dev-issuer-proxy',
-      },
     })
 
     await fetch('https://issuer.office.example/credential', { method: 'POST', body: '{}' })
 
-    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:4000/dev-issuer-proxy/credential', {
+    expect(fetchMock).toHaveBeenCalledWith('https://issuer.office.example/credential', {
       method: 'POST',
       body: '{}',
     })
   })
 
-  test('patched fetch sends configured verifier calls through the development verifier proxy', async () => {
+  test('patched fetch sends verifier calls to the original public URL', async () => {
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => new Response('{}'))
 
     installWalletApiFetch({
       baseUrl: 'http://127.0.0.1:4000',
       fetchImpl: fetchMock as unknown as typeof fetch,
-      devVerifierProxy: {
-        target: 'http://192.100.10.48',
-        baseUrl: 'http://127.0.0.1:4000/dev-verifier-proxy',
-      },
     })
 
-    await fetch('http://192.100.10.48/openid4vc/request/request-1')
+    await fetch('http://verifier.zenithcomp.co.th:455/openid4vc/request/request-1')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:4000/dev-verifier-proxy/openid4vc/request/request-1',
+      'http://verifier.zenithcomp.co.th:455/openid4vc/request/request-1',
       undefined,
     )
   })
@@ -149,5 +125,47 @@ describe('wallet API fetch installer', () => {
     expect(response.status).toBe(400)
     expect(response.headers.get('Content-Type')).toBe('application/json')
     expect(JSON.parse(body)).toEqual({ message: 'Bad Request' })
+  })
+
+  test('does not log Expo push aborts as wallet SDK fetch failures', async () => {
+    const abortError = new Error('Aborted')
+    abortError.name = 'AbortError'
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => {
+      throw abortError
+    })
+
+    installWalletApiFetch({
+      baseUrl: 'http://localhost:3001',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    await expect(
+      fetch('https://exp.host/--/api/v2/push/updateDeviceToken', { method: 'POST' }),
+    ).rejects.toBe(abortError)
+
+    expect(logWalletErrorMock).not.toHaveBeenCalled()
+    expect(logWalletStepMock).not.toHaveBeenCalled()
+  })
+
+  test('logs wallet API AbortError as fetch-aborted, not fetch-failed', async () => {
+    const abortError = new Error('Aborted')
+    abortError.name = 'AbortError'
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => {
+      throw abortError
+    })
+
+    installWalletApiFetch({
+      baseUrl: 'http://localhost:3001',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    await expect(fetch('/wallet-api/auth/login', { method: 'POST' })).rejects.toBe(abortError)
+
+    expect(logWalletErrorMock).not.toHaveBeenCalled()
+    expect(logWalletStepMock).toHaveBeenCalledWith(
+      'sdk',
+      'fetch-aborted',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 })

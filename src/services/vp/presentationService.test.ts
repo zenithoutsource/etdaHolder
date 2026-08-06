@@ -1,18 +1,44 @@
 import {
   buildPresentationSubmission,
+  isDirectPostResponseEndpoint,
+  isHolderPortalReturnUrl,
   isOid4VpAuthorizationRequest,
+  isOpenId4VcApiEndpointUrl,
   readPresentationTokenMode,
   readPresentationTokenAudience,
+  readVerifierReturnUrl,
   resolvePresentationRequest,
   submitPresentationResponse,
 } from './presentationService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import {
+  configurePresentationReplayStorage,
+  markPresentationRequestConsumed,
+} from './presentationRequestReplay'
+import { execFileSync } from 'node:child_process'
+import path from 'node:path'
 
 function unsignedJwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) =>
     btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 
   return `${encode({ alg: 'none', typ: 'oauth-authz-req+jwt' })}.${encode(payload)}.`
+}
+
+function disclosure(
+  entry: {
+    key: string
+    label: string
+    value: string
+    mandatory?: boolean
+    selective?: boolean
+  },
+) {
+  return {
+    mandatory: false,
+    selective: true,
+    ...entry,
+  }
 }
 
 const thaiIdRecord: VerifiableCredentialRecord = {
@@ -32,10 +58,10 @@ const thaiIdRecord: VerifiableCredentialRecord = {
 
 const transcriptRecord: VerifiableCredentialRecord = {
   id: 'transcript-1',
-  type: 'BangkokUniversityTranscript',
+  type: 'ChulalongkornUniversityTranscript',
   rawVc: `${unsignedJwt({
     iss: 'https://issuer.example.com',
-    vct: 'http://192.100.10.48/credentials/TranscriptCredential',
+    vct: 'http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential',
   })}~disclosure~`,
   claims: {
     studentId: '6512345678',
@@ -68,13 +94,13 @@ const issuerTranscriptRecord: VerifiableCredentialRecord = {
   ...transcriptRecord,
   id: 'issuer-transcript-1',
   rawVc: `${unsignedJwt({
-    iss: 'http://192.100.10.46',
-    vct: 'http://192.100.10.46/credentials/TranscriptCredential',
+    iss: 'http://issuer.zenithcomp.co.th:455',
+    vct: 'http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential',
   })}~disclosure~`,
   claims: {
     ...transcriptRecord.claims,
-    iss: 'http://192.100.10.46',
-    vct: 'http://192.100.10.46/credentials/TranscriptCredential',
+    iss: 'http://issuer.zenithcomp.co.th:455',
+    vct: 'http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential',
   },
 }
 
@@ -111,7 +137,30 @@ function authorizationRequestUri(overrides: Record<string, string> = {}): string
 }
 
 function verifierRequestUri(id = 'request-123'): string {
-  return `openid4vp://authorize?client_id=redirect_uri:http://192.100.10.48/openid4vc/verify/${id}&request_uri=http://192.100.10.48/openid4vc/request/${id}`
+  return `openid4vp://authorize?client_id=redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/${id}&request_uri=http://verifier.zenithcomp.co.th:455/openid4vc/request/${id}`
+}
+
+function issuerPidRequestUri(): string {
+  const params = new URLSearchParams({
+    response_type: 'vp_token',
+    client_id: 'decentralized_identifier:did:web:issuer.example.com',
+    response_mode: 'direct_post',
+    state: 'issuer-state-123',
+    nonce: 'issuer-nonce-123',
+    response_uri: 'https://issuer.example.com/oid4vp/direct-post',
+    dcql_query: JSON.stringify({
+      credentials: [
+        {
+          id: 'pid_credential',
+          format: 'jwt_vc_json',
+          meta: { type_values: ['IDCardCredential'] },
+          claims: [{ path: ['birthDate'] }],
+        },
+      ],
+    }),
+  })
+
+  return `openid4vp://authorize?${params.toString()}`
 }
 
 describe('presentationService', () => {
@@ -133,9 +182,40 @@ describe('presentationService', () => {
     expect(isOid4VpAuthorizationRequest('openid-credential-offer://?credential_offer={}')).toBe(false)
   })
 
+  test('rejects a presentation nonce that was already consumed by another request URI', async () => {
+    const values = new Map<string, string>()
+    configurePresentationReplayStorage({
+      getString: (key) => values.get(key),
+      set: (key, value) => values.set(key, value),
+    })
+    markPresentationRequestConsumed({
+      requestUri: 'openid4vp://authorize?request_uri=https%3A%2F%2Fverifier.example%2Fr%2Fprevious',
+      nonce: 'nonce-123',
+    })
+
+    try {
+      await expect(resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        trustedVerifiers: [
+          {
+            clientId: 'did:web:verifier.example.com',
+            name: 'Entertainment Venue',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+      })).rejects.toThrow('PresentationRequestReplay')
+    } finally {
+      configurePresentationReplayStorage({
+        getString: () => undefined,
+        set: () => undefined,
+      })
+    }
+  })
+
   test('resolves trusted Verifier request and matches ThaiNationalID birth date disclosure', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-06-15T00:00:00.000Z'))
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -147,7 +227,98 @@ describe('presentationService', () => {
 
     expect(request.verifier.name).toBe('Entertainment Venue')
     expect(request.matchedCredential.id).toBe('thai-id-1')
-    expect(request.disclosures).toEqual([{ key: 'age', label: 'อายุ', value: '25' }])
+    expect(request.disclosures).toEqual([disclosure({ key: 'age', label: 'อายุ', value: '25' })])
+  })
+
+  test('resolves presentation_definition_uri after trusting the verifier', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-15T00:00:00.000Z'))
+    const fetchMock = jest.fn(async (input: RequestInfo) => {
+      const url = String(input)
+      if (url.includes('/pd/age-over-20.json')) {
+        return new Response(JSON.stringify(presentationDefinition), { status: 200 })
+      }
+      return new Response('not found', { status: 404 })
+    })
+
+    const params = new URLSearchParams({
+      client_id: 'did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      state: 'state-123',
+      presentation_definition_uri: 'https://verifier.example.com/pd/age-over-20.json',
+    })
+
+    const request = await resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'did:web:verifier.example.com',
+          name: 'Entertainment Venue',
+          allowedOrigins: ['https://verifier.example.com'],
+        },
+      ],
+    })
+
+    expect(request.matchedCredential.id).toBe('thai-id-1')
+    expect(request.disclosures).toEqual([disclosure({ key: 'age', label: 'อายุ', value: '25' })])
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://verifier.example.com/pd/age-over-20.json',
+      expect.objectContaining({ headers: { Accept: 'application/json' } }),
+    )
+  })
+
+  test('rejects presentation_definition combined with dcql_query', async () => {
+    const params = new URLSearchParams({
+      client_id: 'did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      presentation_definition: JSON.stringify(presentationDefinition),
+      dcql_query: JSON.stringify({
+        credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+      }),
+    })
+
+    await expect(
+      resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        trustedVerifiers: [
+          {
+            clientId: 'did:web:verifier.example.com',
+            name: 'Entertainment Venue',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+      }),
+    ).rejects.toThrow('PresentationRequestInvalid: Presentation Exchange and dcql_query are mutually exclusive')
+  })
+
+  test('rejects presentation_definition_uri combined with dcql_query', async () => {
+    const params = new URLSearchParams({
+      client_id: 'did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      presentation_definition_uri: 'https://verifier.example.com/pd/age-over-20.json',
+      dcql_query: JSON.stringify({
+        credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+      }),
+    })
+
+    await expect(
+      resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        trustedVerifiers: [
+          {
+            clientId: 'did:web:verifier.example.com',
+            name: 'Entertainment Venue',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+      }),
+    ).rejects.toThrow('PresentationRequestInvalid: Presentation Exchange and dcql_query are mutually exclusive')
   })
 
   test('resolves request_uri JWT using Verifier API redirect_uri client_id and DCQL', async () => {
@@ -156,11 +327,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -176,24 +347,116 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://192.100.10.48/openid4vc/request/request-123',
+      'http://verifier.zenithcomp.co.th:455/openid4vc/request/request-123',
       expect.objectContaining({ headers: { Accept: 'application/json, application/oauth-authz-req+jwt' } }),
     )
     expect(request.verifier.name).toBe('Verifier API')
-    expect(request.responseUri).toBe('http://192.100.10.48/openid4vc/verify/request-123')
+    expect(request.responseUri).toBe('http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123')
     expect(request.matchedCredential.id).toBe('thai-id-1')
-    expect(request.disclosures).toEqual([{ key: 'credential', label: 'Credential', value: 'Thai National ID' }])
+    expect(request.disclosures).toEqual([
+      disclosure({ key: 'credential', label: 'Credential', value: 'Thai National ID' }),
+    ])
+  })
+
+  test('resolves DCQL credential_sets OR when wallet holds only the first alternative', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'thai_id',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['IDCardCredential'] },
+                },
+                {
+                  id: 'driving_licence',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['DrivingLicenceCredential'] },
+                },
+              ],
+              credential_sets: [{ options: [['thai_id'], ['driving_licence']] }],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      ],
+    })
+
+    expect(request.dcqlQuery?.credentials).toHaveLength(1)
+    expect(request.dcqlQuery?.credentials[0]?.id).toBe('thai_id')
+    expect(request.matchedCredential.id).toBe('thai-id-1')
+  })
+
+  test('rejects no-set DCQL request when explicit claims are missing on stored credential', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'idcard_credential',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['IDCardCredential'] },
+                  claims: [{ path: ['religion'] }],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    await expect(
+      resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      }),
+    ).rejects.toThrow('PresentationCredentialMissing: requested credential is not available')
   })
 
   test('uses schema presentation labels for DCQL ThaiNationalID requested claim paths', async () => {
@@ -213,11 +476,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -241,27 +504,28 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdWithVerifierClaims], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
 
     expect(request.disclosures).toEqual([
-      { key: 'id_number', label: 'เลขบัตรประจำตัวประชาชน', value: '1234567890123' },
-      { key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' },
-      { key: 'birthdate', label: 'วันเดือนปีเกิด', value: '2001-05-15' },
-      { key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' },
-      { key: 'religion', label: 'ศาสนา', value: 'Buddhist' },
-      { key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' },
+      disclosure({ key: 'id_number', label: 'เลขบัตรประจำตัวประชาชน', value: '1234567890123' }),
+      disclosure({ key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' }),
+      disclosure({ key: 'birthdate', label: 'วันเดือนปีเกิด', value: '2001-05-15' }),
+      disclosure({ key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' }),
+      disclosure({ key: 'religion', label: 'ศาสนา', value: 'Buddhist' }),
+      disclosure({ key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' }),
     ])
   })
 
-  test('uses schema presentation labels for DCQL BangkokUniversityTranscript requested claim paths', async () => {
+  test('uses schema presentation labels for DCQL ChulalongkornUniversityTranscript requested claim paths', async () => {
     const transcriptWithVerifierClaims: VerifiableCredentialRecord = {
       ...transcriptRecord,
       claims: {
@@ -270,7 +534,7 @@ describe('presentationService', () => {
         faculty: 'Engineering',
         gpa: '3.75',
         graduation_date: '2026-05-31',
-        institution_name: 'Bangkok University',
+        institution_name: 'Chulalongkorn University',
         degree: 'Bachelor of Engineering',
       },
     }
@@ -279,17 +543,17 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
                   id: 'transcript_credential',
                   format: 'dc+sd-jwt',
-                  meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                  meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                   claims: [
                     { path: ['student_id'] },
                     { path: ['full_name'] },
@@ -308,24 +572,68 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [transcriptWithVerifierClaims], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
 
     expect(request.disclosures).toEqual([
-      { key: 'student_id', label: 'รหัสนักศึกษา', value: '6512345678' },
-      { key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' },
-      { key: 'faculty', label: 'คณะ / สาขาวิชา', value: 'Engineering' },
-      { key: 'gpa', label: 'เกรดเฉลี่ย', value: '3.75' },
-      { key: 'graduation_date', label: 'วันสำเร็จการศึกษา', value: '2026-05-31' },
-      { key: 'institution_name', label: 'ชื่อสถาบัน', value: 'Bangkok University' },
-      { key: 'degree', label: 'วุฒิการศึกษา', value: 'Bachelor of Engineering' },
+      disclosure({ key: 'student_id', label: 'รหัสนักศึกษา', value: '6512345678', mandatory: true, selective: false }),
+      disclosure({ key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี', mandatory: true, selective: false }),
+      disclosure({ key: 'faculty', label: 'คณะ / สาขาวิชา', value: 'Engineering', mandatory: true, selective: false }),
+      disclosure({ key: 'gpa', label: 'เกรดเฉลี่ย', value: '3.75' }),
+      disclosure({ key: 'graduation_date', label: 'วันสำเร็จการศึกษา', value: '2026-05-31' }),
+      disclosure({ key: 'institution_name', label: 'ชื่อสถาบัน', value: 'Chulalongkorn University', mandatory: true, selective: false }),
+      disclosure({ key: 'degree', label: 'วุฒิการศึกษา', value: 'Bachelor of Engineering', mandatory: true, selective: false }),
+    ])
+  })
+
+  test('uses schema presentation labels when DCQL requests student_id but claims store studentId', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'transcript_credential',
+                  format: 'dc+sd-jwt',
+                  meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
+                  claims: [{ path: ['student_id'] }],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const request = await resolvePresentationRequest(verifierRequestUri(), [transcriptRecord], {
+      presentationFlowOrigin: 'scan',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      ],
+    })
+
+    expect(request.disclosures).toEqual([
+      { key: 'studentId', label: 'รหัสนักศึกษา', value: '6512345678', mandatory: true, selective: false },
     ])
   })
 
@@ -335,11 +643,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -364,25 +672,26 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [drivingLicenceRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
 
     expect(request.matchedCredential.id).toBe('driving-licence-1')
     expect(request.disclosures).toEqual([
-      { key: 'licence_number', label: 'เลขที่ใบอนุญาตขับรถ', value: 'DLT-123456' },
-      { key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' },
-      { key: 'birthdate', label: 'วันเดือนปีเกิด', value: '2001-05-15' },
-      { key: 'licence_class', label: 'ประเภทใบอนุญาต', value: 'Private Car' },
-      { key: 'issue_date', label: 'วันที่ออกใบอนุญาต', value: '2026-01-01' },
-      { key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' },
-      { key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' },
+      disclosure({ key: 'licence_number', label: 'เลขที่ใบอนุญาตขับรถ', value: 'DLT-123456' }),
+      disclosure({ key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' }),
+      disclosure({ key: 'birthdate', label: 'วันเดือนปีเกิด', value: '2001-05-15' }),
+      disclosure({ key: 'licence_class', label: 'ประเภทใบอนุญาต', value: 'Private Car' }),
+      disclosure({ key: 'issue_date', label: 'วันที่ออกใบอนุญาต', value: '2026-01-01' }),
+      disclosure({ key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' }),
+      disclosure({ key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' }),
     ])
   })
 
@@ -393,11 +702,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -414,12 +723,13 @@ describe('presentationService', () => {
 
     await expect(
       resolvePresentationRequest(verifierRequestUri(), [sdJwtThaiIdRecord], {
+        presentationFlowOrigin: 'scan',
         fetchImpl: fetchMock as unknown as typeof fetch,
         trustedVerifiers: [
           {
-            clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
             name: 'Verifier API',
-            allowedOrigins: ['http://192.100.10.48'],
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
           },
         ],
       }),
@@ -433,11 +743,11 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
@@ -453,12 +763,13 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [sdJwtThaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -477,17 +788,17 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
                   id: 'transcript_credential',
                   format: 'dc+sd-jwt',
-                  meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                  meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                 },
               ],
             },
@@ -497,18 +808,21 @@ describe('presentationService', () => {
     )
 
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
 
     expect(request.matchedCredential.id).toBe('transcript-1')
-    expect(request.disclosures).toEqual([{ key: 'credential', label: 'Credential', value: 'Academic Transcript' }])
+    expect(request.disclosures).toEqual([
+      disclosure({ key: 'credential', label: 'Credential', value: 'Academic Transcript' }),
+    ])
     expect(infoSpy).toHaveBeenCalledWith(
       '[wallet:oid4vp] resolved-request-debug',
       expect.objectContaining({
@@ -518,7 +832,7 @@ describe('presentationService', () => {
             expect.objectContaining({
               id: 'transcript_credential',
               format: 'dc+sd-jwt',
-              meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+              meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
             }),
           ]),
         }),
@@ -532,17 +846,17 @@ describe('presentationService', () => {
         new Response(
           unsignedRequestJwt({
             response_type: 'vp_token',
-            client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             response_mode: 'direct_post',
             state: 'request-123',
             nonce: 'request-123',
-            response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
             dcql_query: {
               credentials: [
                 {
                   id: 'transcript_credential',
                   format: 'dc+sd-jwt',
-                  meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                  meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                 },
               ],
             },
@@ -553,39 +867,46 @@ describe('presentationService', () => {
 
     await expect(
       resolvePresentationRequest(verifierRequestUri(), [issuerTranscriptRecord], {
+        presentationFlowOrigin: 'scan',
         fetchImpl: fetchMock as unknown as typeof fetch,
         trustedVerifiers: [
           {
-            clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
             name: 'Verifier API',
-            allowedOrigins: ['http://192.100.10.48'],
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
           },
         ],
       }),
-    ).rejects.toThrow(
-      'PresentationCredentialMetadataMismatch: requested vct_values [http://192.100.10.48/credentials/TranscriptCredential]; stored vct [http://192.100.10.46/credentials/TranscriptCredential]',
-    )
+    ).rejects.toMatchObject({
+      name: 'PresentationCredentialUnavailableError',
+      reason: 'metadata-mismatch',
+      requestedVctValues: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'],
+      requestedCredentialTypes: [],
+      message:
+        'PresentationCredentialMetadataMismatch: requested vct_values [http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential]; stored vct [http://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential]',
+    })
   })
 
   test('uses raw credential presentation tokens for DCQL SD-JWT requests', async () => {
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               state: 'request-123',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [
                   {
                     id: 'transcript_credential',
                     format: 'dc+sd-jwt',
                     require_cryptographic_holder_binding: false,
-                    meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                    meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                   },
                 ],
               },
@@ -595,9 +916,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -607,22 +928,23 @@ describe('presentationService', () => {
 
   test('uses SD-JWT+KB presentation tokens for DCQL SD-JWT requests by default', async () => {
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               state: 'request-123',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [
                   {
                     id: 'transcript_credential',
                     format: 'dc+sd-jwt',
-                    meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                    meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                   },
                 ],
               },
@@ -632,9 +954,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -645,22 +967,23 @@ describe('presentationService', () => {
   test('uses raw credential presentation tokens for omitted holder binding only when the development bypass is enabled', async () => {
     process.env.EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING = 'true'
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               state: 'request-123',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [
                   {
                     id: 'transcript_credential',
                     format: 'dc+sd-jwt',
-                    meta: { vct_values: ['http://192.100.10.48/credentials/TranscriptCredential'] },
+                    meta: { vct_values: ['http://verifier.zenithcomp.co.th:455/credentials/TranscriptCredential'] },
                   },
                 ],
               },
@@ -670,9 +993,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -683,6 +1006,7 @@ describe('presentationService', () => {
 
   test('uses signed JWT VP tokens for Presentation Exchange requests', async () => {
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -697,7 +1021,10 @@ describe('presentationService', () => {
 
   test('rejects untrusted Verifier requests', async () => {
     await expect(
-      resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], { trustedVerifiers: [] }),
+      resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        trustedVerifiers: [],
+      }),
     ).rejects.toThrow('VerifierUntrusted')
   })
 
@@ -712,6 +1039,7 @@ describe('presentationService', () => {
         }),
         [thaiIdRecord],
         {
+          presentationFlowOrigin: 'scan',
           trustedVerifiers: [
             {
               clientId: 'did:web:verifier.example.com',
@@ -726,6 +1054,7 @@ describe('presentationService', () => {
 
   test('builds a Presentation Exchange submission for the matched credential', async () => {
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -757,6 +1086,7 @@ describe('presentationService', () => {
         }),
     )
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -779,21 +1109,59 @@ describe('presentationService', () => {
     expect(result).toEqual({ status: 'verified', message: 'Verification succeeded' })
   })
 
+  test('resolves issuer OID4VP PID DCQL request and posts VP body to issuer response_uri', async () => {
+    const submitFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify({ status: 'accepted' }), { status: 200 }),
+    )
+    const request = await resolvePresentationRequest(issuerPidRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      trustedVerifiers: [
+        {
+          clientId: 'decentralized_identifier:did:web:issuer.example.com',
+          name: 'PID Issuer',
+          allowedOrigins: ['https://issuer.example.com'],
+        },
+      ],
+    })
+
+    expect(request.verifier.name).toBe('PID Issuer')
+    expect(request.matchedCredential.id).toBe('thai-id-1')
+    expect(request.disclosures).toEqual([
+      expect.objectContaining({ key: 'birthDate', value: '2001-05-15' }),
+    ])
+
+    const result = await submitPresentationResponse(request, {
+      vpToken: 'issuer.vp.jwt',
+      fetchImpl: submitFetchMock as unknown as typeof fetch,
+    })
+
+    expect(submitFetchMock).toHaveBeenCalledWith(
+      'https://issuer.example.com/oid4vp/direct-post',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    const [, init] = submitFetchMock.mock.calls[0]
+    const body = new URLSearchParams(String(init?.body))
+    expect(JSON.parse(body.get('vp_token') ?? '')).toEqual({ pid_credential: ['issuer.vp.jwt'] })
+    expect(body.get('state')).toBe('issuer-state-123')
+    expect(result).toEqual({ status: 'accepted' })
+  })
+
   test('submits DCQL vp_token as a query-id response object', async () => {
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
       async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
     )
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               state: 'request-123',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -803,9 +1171,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -828,15 +1196,16 @@ describe('presentationService', () => {
       async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
     )
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -846,9 +1215,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -874,15 +1243,16 @@ describe('presentationService', () => {
       async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
     )
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -892,9 +1262,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -915,15 +1285,16 @@ describe('presentationService', () => {
 
   test('selects client_id as the default presentation token audience', async () => {
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -933,9 +1304,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -947,15 +1318,16 @@ describe('presentationService', () => {
     const originalAudience = process.env.EXPO_PUBLIC_VERIFIER_KB_AUD
     process.env.EXPO_PUBLIC_VERIFIER_KB_AUD = 'response_uri'
     const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
         async () =>
           new Response(
             unsignedRequestJwt({
               response_type: 'vp_token',
-              client_id: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               response_mode: 'direct_post',
               nonce: 'request-123',
-              response_uri: 'http://192.100.10.48/openid4vc/verify/request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
               dcql_query: {
                 credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
               },
@@ -965,9 +1337,9 @@ describe('presentationService', () => {
       ) as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'redirect_uri:http://192.100.10.48/openid4vc/verify',
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
           name: 'Verifier API',
-          allowedOrigins: ['http://192.100.10.48'],
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
         },
       ],
     })
@@ -979,6 +1351,101 @@ describe('presentationService', () => {
     }
   })
 
+  test('does not surface redirectUri when verifier POST body returns an API endpoint redirect', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'verified',
+            redirect_uri: 'https://verifier.zenithcomp.co.th:455/',
+          }),
+          { status: 200 },
+        ),
+    )
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+              },
+            }),
+            { status: 200 },
+          ),
+      ) as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      ],
+    })
+
+    const result = await submitPresentationResponse(request, {
+      vpToken: 'vp.jwt',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    expect(result.redirectUri).toBeUndefined()
+    expect(result.status).toBe('verified')
+  })
+
+  test('does not surface redirectUri for Verifier API direct_post even when body returns a portal path', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'verified',
+            redirect_uri: 'https://verifier.zenithcomp.co.th:455/portal/callback?session=1',
+          }),
+          { status: 200 },
+        ),
+    )
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      fetchImpl: jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+              },
+            }),
+            { status: 200 },
+          ),
+      ) as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      ],
+    })
+
+    const result = await submitPresentationResponse(request, {
+      vpToken: 'vp.jwt',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    expect(result.redirectUri).toBeUndefined()
+  })
+
   test('surfaces Verifier error descriptions from direct_post failures', async () => {
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
       async () =>
@@ -988,6 +1455,7 @@ describe('presentationService', () => {
         }),
     )
     const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
           clientId: 'did:web:verifier.example.com',
@@ -1000,5 +1468,440 @@ describe('presentationService', () => {
     await expect(
       submitPresentationResponse(request, { vpToken: 'vp.jwt', fetchImpl: fetchMock as unknown as typeof fetch }),
     ).rejects.toThrow('PresentationSubmissionFailed: HTTP 400: invalid_request - Present VP is invalid')
+  })
+
+  describe('oid4vc adapter integration', () => {
+    const originalOid4vcFlag = process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER
+
+    afterEach(() => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = originalOid4vcFlag
+    })
+
+    test('resolves request_uri JWT DCQL through oid4vc when flag is on for scan origin', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [
+                  {
+                    id: 'idcard_credential',
+                    format: 'jwt_vc_json',
+                    meta: { type_values: ['IDCardCredential'] },
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+
+      const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(request.protocolPath).toBe('oid4vc')
+      expect(request.oid4vcContext?.authorizationRequestPayload.response_uri).toBe(
+        'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+      )
+    })
+
+    test('submits oid4vc direct_post and preserves protocolPath on resolved request', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      const resolveFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [
+                  {
+                    id: 'idcard_credential',
+                    format: 'jwt_vc_json',
+                    meta: { type_values: ['IDCardCredential'] },
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+      const submitFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
+      )
+
+      const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: resolveFetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      })
+
+      expect(request.protocolPath).toBe('oid4vc')
+
+      const result = await submitPresentationResponse(request, {
+        vpToken: 'vp.jwt',
+        fetchImpl: submitFetchMock as unknown as typeof fetch,
+      })
+
+      expect(submitFetchMock).toHaveBeenCalledWith(
+        'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        expect.objectContaining({ method: 'POST' }),
+      )
+      expect(result).toEqual({ status: 'verified' })
+    })
+
+    test('keeps legacy protocolPath for my-qr origin when flag is on', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [
+                  {
+                    id: 'idcard_credential',
+                    format: 'jwt_vc_json',
+                    meta: { type_values: ['IDCardCredential'] },
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+
+      const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'my-qr',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      })
+
+      expect(request.protocolPath).toBe('legacy')
+      expect(request.oid4vcContext).toBeUndefined()
+    })
+
+    test('keeps legacy protocolPath for dual-format DCQL when flag is on', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+        async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              response_mode: 'direct_post',
+              state: 'request-123',
+              nonce: 'request-123',
+              response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+              dcql_query: {
+                credentials: [
+                  { id: 'sd_jwt_cred', format: 'dc+sd-jwt' },
+                  { id: 'mdoc_cred', format: 'mso_mdoc' },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+
+      await expect(
+        resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+          presentationFlowOrigin: 'scan',
+          fetchImpl: fetchMock as unknown as typeof fetch,
+          trustedVerifiers: [
+            {
+              clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+              name: 'Verifier API',
+              allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+            },
+          ],
+        }),
+      ).rejects.toThrow('PresentationCredentialMissing')
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('keeps legacy protocolPath for Presentation Exchange when flag is on', async () => {
+      process.env.EXPO_PUBLIC_OID4VC_VP_ADAPTER = 'true'
+      jest.useFakeTimers().setSystemTime(new Date('2026-06-15T00:00:00.000Z'))
+
+      const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        trustedVerifiers: [
+          {
+            clientId: 'did:web:verifier.example.com',
+            name: 'Entertainment Venue',
+            allowedOrigins: ['https://verifier.example.com'],
+          },
+        ],
+      })
+
+      expect(request.protocolPath).toBe('legacy')
+      expect(request.oid4vcContext).toBeUndefined()
+    })
+  })
+})
+
+describe('readVerifierReturnUrl', () => {
+  const verifier = {
+    clientId: 'redirect_uri:https://verifier.example.com/cb',
+    name: 'Verifier',
+    allowedOrigins: ['https://verifier.example.com'],
+  }
+
+  test('returns redirect_uri from verifier response body when allowlisted', () => {
+    const url = readVerifierReturnUrl(
+      { redirect_uri: 'https://verifier.example.com/done?session=1' },
+      {
+        clientId: verifier.clientId,
+        state: 'state-1',
+        responseUri: 'https://verifier.example.com/oid4vp/direct-post',
+        verifier,
+      },
+    )
+
+    expect(url).toBe('https://verifier.example.com/done?session=1')
+  })
+
+  test('falls back to redirect_uri client_id with state when it is a portal callback', () => {
+    const url = readVerifierReturnUrl(
+      {},
+      {
+        clientId: 'redirect_uri:https://verifier.example.com/portal/callback',
+        state: 'state-1',
+        responseUri: 'https://verifier.example.com/oid4vp/direct-post',
+        verifier,
+      },
+    )
+
+    expect(url).toBe('https://verifier.example.com/portal/callback?state=state-1')
+  })
+
+  test('does not open redirect_uri client_id when it matches the direct_post response_uri', () => {
+    const url = readVerifierReturnUrl(
+      {},
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return verifier POST redirect_uri when it matches response_uri under http/https mismatch', () => {
+    const url = readVerifierReturnUrl(
+      {
+        redirect_uri: 'https://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+      },
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:https://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return verifier POST redirect_uri when it points at the verifier site root', () => {
+    const url = readVerifierReturnUrl(
+      {
+        redirect_uri: 'https://verifier.zenithcomp.co.th:455/',
+      },
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:https://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return redirect_uri client_id when it is an openid4vc verify API path', () => {
+    const url = readVerifierReturnUrl(
+      {},
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return verifier POST redirect_uri when it points at another openid4vc request endpoint', () => {
+    const url = readVerifierReturnUrl(
+      {
+        redirect_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/request/request-123',
+      },
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+
+  test('does not return portal callback redirect for Verifier API direct_post flows', () => {
+    const url = readVerifierReturnUrl(
+      {
+        redirect_uri: 'https://verifier.zenithcomp.co.th:455/portal/callback?session=1',
+      },
+      {
+        clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        state: 'state-1',
+        responseUri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        verifier: {
+          clientId: 'redirect_uri:https://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
+        },
+      },
+    )
+
+    expect(url).toBeUndefined()
+  })
+})
+
+describe('verifier return URL helpers', () => {
+  test('isDirectPostResponseEndpoint treats http and https as equivalent', () => {
+    expect(
+      isDirectPostResponseEndpoint(
+        'https://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+        'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+      ),
+    ).toBe(true)
+  })
+
+  test('isOpenId4VcApiEndpointUrl detects verify and request routes', () => {
+    expect(isOpenId4VcApiEndpointUrl('http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123')).toBe(true)
+    expect(isOpenId4VcApiEndpointUrl('http://verifier.zenithcomp.co.th:455/openid4vc/request/request-123')).toBe(true)
+    expect(isOpenId4VcApiEndpointUrl('https://verifier.zenithcomp.co.th:455/portal/callback')).toBe(false)
+  })
+
+  test('isHolderPortalReturnUrl rejects API endpoints and verifier root for verify direct_post flows', () => {
+    const responseUri = 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123'
+    expect(isHolderPortalReturnUrl('https://verifier.zenithcomp.co.th:455/', responseUri)).toBe(false)
+    expect(isHolderPortalReturnUrl('https://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123', responseUri)).toBe(
+      false,
+    )
+    expect(isHolderPortalReturnUrl('https://verifier.zenithcomp.co.th:455/portal/callback', responseUri)).toBe(true)
+  })
+})
+
+describe('presentationService MSW harness', () => {
+  test('MSW verifier handler accepts issuer direct_post (node smoke)', () => {
+    const smokeScript = path.join(__dirname, '../../__tests__/setup/mswHarnessSmoke.cjs')
+    const output = execFileSync(process.execPath, [smokeScript], { encoding: 'utf8' })
+    expect(output.trim()).toBe('accepted')
+  })
+
+  test('submits issuer PID VP through issuer direct_post contract', async () => {
+    const request = await resolvePresentationRequest(issuerPidRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      trustedVerifiers: [
+        {
+          clientId: 'decentralized_identifier:did:web:issuer.example.com',
+          name: 'PID Issuer',
+          allowedOrigins: ['https://issuer.example.com'],
+        },
+      ],
+    })
+
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url === 'https://issuer.example.com/oid4vp/direct-post' && init?.method?.toUpperCase() === 'POST') {
+        const body = String(init.body ?? '')
+        if (!body.includes('vp_token')) {
+          return new Response(JSON.stringify({ error: 'invalid_request' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        return new Response(JSON.stringify({ status: 'accepted' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      throw new Error(`Unhandled fetch in MSW harness integration test: ${url}`)
+    }
+
+    const result = await submitPresentationResponse(request, {
+      vpToken: 'issuer.vp.jwt',
+      fetchImpl,
+    })
+
+    expect(request.verifier.name).toBe('PID Issuer')
+    expect(request.matchedCredential.id).toBe('thai-id-1')
+    expect(result).toEqual({ status: 'accepted' })
   })
 })

@@ -3,6 +3,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { resolveGradleEnvironment } = require('./gradle-env');
 
 const projectRoot = path.resolve(__dirname, '..');
 const defaultPort = '8081';
@@ -28,10 +29,14 @@ function run(command, args, options = {}) {
 }
 
 function runInherited(command, args, options = {}) {
+  const { env: optionEnv, ...rest } = options;
+  const needsShell = process.platform === 'win32' && /\.(bat|cmd)$/i.test(command);
   const result = spawnSync(command, args, {
     cwd: projectRoot,
     stdio: 'inherit',
-    ...options,
+    shell: needsShell,
+    ...rest,
+    env: resolveGradleEnvironment(optionEnv),
   });
 
   if (result.error) {
@@ -190,15 +195,11 @@ if (!fs.existsSync(gradlew)) {
 }
 
 console.log(`Using physical Android device: ${selectedDevice.name} (${selectedDevice.serial})`);
-runInherited(gradlew, [
-  'app:assembleDebug',
-  '-x',
-  'lint',
-  '-x',
-  'test',
-  '--configure-on-demand',
-  `-PreactNativeDevServerPort=${defaultPort}`,
-]);
+runInherited(
+  gradlew,
+  ['app:assembleDebug', '-x', 'lint', '-x', 'test', '--configure-on-demand', `-PreactNativeDevServerPort=${defaultPort}`],
+  { cwd: path.join(projectRoot, 'android') }
+);
 
 if (!fs.existsSync(apkPath)) {
   console.error(`Android APK was not found at ${apkPath}.`);
@@ -219,4 +220,7 @@ runInherited(adb, [
 ]);
 
 const expoCli = require.resolve('expo/bin/cli');
-runInherited(process.execPath, [expoCli, 'start', '--dev-client', '--port', defaultPort]);
+const isWifiDevice = selectedDevice.serial.includes(':') || selectedDevice.serial.includes('._adb-tls');
+const expoArgs = ['start', '--dev-client', '--port', defaultPort];
+if (isWifiDevice) expoArgs.push('--host', 'lan');
+runInherited(process.execPath, [expoCli, ...expoArgs]);

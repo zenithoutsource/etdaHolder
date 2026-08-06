@@ -1,6 +1,6 @@
 # Testing Standards
 
-This document defines mandatory testing practices for the ETDA Wallet.
+This document defines mandatory testing practices for the the wallet.
 
 ## 1. Coverage Target
 

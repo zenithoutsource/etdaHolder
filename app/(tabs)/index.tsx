@@ -1,9 +1,6 @@
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Image,
-  Pressable,
   ScrollView,
   Text,
   View,
@@ -11,24 +8,78 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { AppButton } from "../../src/components/AppButton";
 import { useAppDialog } from "../../src/components/AppDialog";
+import {
+  WalletCredentialSummaryCard,
+  WalletEmptyCredentialCard,
+} from "../../src/components/WalletCredentialSummaryCard";
+import { WalletDocumentMenuItem } from "../../src/components/WalletDocumentMenuItem";
 import { WalletHeader } from "../../src/components/WalletHeader";
+import { useScreenCaptureGuard } from "../../src/hooks/useScreenCaptureGuard";
 import { useStoredCredentials } from "../../src/hooks/useStoredCredentials";
+import { useWalletKeyExpired } from "../../src/hooks/useWalletKeyExpired";
 import {
   clearNewCredentialBadge,
   readNewCredentialBadgeIds,
 } from "../../src/services/credentials/credentialBadges";
-import { canRequestCredentialType } from "../../src/services/credentials/credentialGuard";
-import { readCredentialLifecycleStatuses } from "../../src/services/credentials/credentialLifecycle";
 import {
-  readCredentialHolderProfile,
-  readCredentialSummaryDisplay,
-} from "../../src/services/credentials/credentialDisplay";
+  canRequestCredentialType,
+  canSubmitCredentialRenewal,
+  hasUsablePidCredential,
+  pickPreferredHomeCredential,
+  readPidGateStatus,
+} from "../../src/services/credentials/credentialGuard";
+import {
+  readCredentialInactiveState,
+  type CredentialInactiveState,
+} from "../../src/services/credentials/credentialInactiveState";
+import {
+  shouldNavigateInactiveCredentialToDetail,
+  shouldShowInactivePortalRequestCta,
+  shouldShowReadyRenewalReceiveCta,
+} from "../../src/services/credentials/credentialHomeNavigation";
+import { shouldOfferDocumentReissueCta, shouldShowWalletKeyExpiredPrompt } from "../../src/services/credentials/documentReissueCtaGate";
+import { performWalletKeyRotationWithDialog } from "../../src/services/crypto/walletKeyRotationFlow";
+import { readWalletKeyExpiryLane } from "../../src/services/crypto/walletKeyExpiryLane";
+import { readWalletKeyRotationRecord } from "../../src/services/crypto/walletKeyRotation";
+import { isIssuerPortalCredentialType } from "../../src/config/issuerPortalUrls";
+import { requestCredentialViaPortalFlow } from "../../src/services/credentials/requestCredentialViaPortalFlow";
+import { isCredentialExpiringSoon } from "../../src/services/credentials/credentialDocumentExpiry";
+import {
+  readCredentialLifecycleStatuses,
+  type CredentialLifecycleStatus,
+} from "../../src/services/credentials/credentialLifecycle";
+import {
+  readCredentialRenewalStatuses,
+  type CredentialRenewalRecord,
+} from "../../src/services/credentials/credentialKeyRenewal";
+import {
+  claimReadyRenewal,
+  refreshCredentialRenewalStatuses,
+  submitRenewalRequest,
+} from "../../src/services/credentials/credentialRenewalService";
+import { shouldShowRenewedActiveBadge } from "../../src/services/credentials/credentialRenewalPresentation";
+import { findCleanupPendingForCredentialType } from "../../src/services/credentials/renewalCleanupNotification";
+import { showPidGateDialog } from "../../src/services/credentials/pidGateDialog";
+import {
+  hasPendingIssuerSuspensionAck,
+  readIssuerSuspensionStatuses,
+  refreshIssuerSuspensionsFromServer,
+  type IssuerSuspensionRecord,
+} from "../../src/services/credentials/issuerSuspension";
+import { logWalletError, logWalletStep } from "../../src/services/debug/walletLogger";
+import {
+  WALLET_HOME_COPY,
+  readWalletHomeBadgeLabel,
+} from "../../src/services/credentials/walletHomeCopy";
 import {
   clearSuccessfulPresentationBadge,
   readSuccessfullyPresentedCredentialIds,
 } from "../../src/services/history/presentationHistory";
+import {
+  readStoredCredentials,
+  subscribeCredentialsChange,
+} from "../../src/services/credentials/storedCredentials";
 import type { VerifiableCredentialRecord } from "../../src/services/vci/exchangeService";
 
 type DocumentMenuItem = {
@@ -38,10 +89,7 @@ type DocumentMenuItem = {
   credentialType?: string;
 };
 
-type LifecycleBadge = {
-  label: string;
-  className: string;
-};
+const RENEWAL_STATUS_POLL_INTERVAL_MS = 4000
 
 const documentMenuItems: DocumentMenuItem[] = [
   {
@@ -60,7 +108,7 @@ const documentMenuItems: DocumentMenuItem[] = [
     label: "Transcript",
     icon: require("../../assets/images/transcript.png"),
     iconStyle: { width: 40, height: 40 },
-    credentialType: "BangkokUniversityTranscript",
+    credentialType: "ChulalongkornUniversityTranscript",
   },
   {
     label: "Medical certificate",
@@ -69,99 +117,238 @@ const documentMenuItems: DocumentMenuItem[] = [
   },
 ];
 
-const credentialImages: Record<string, ImageSourcePropType> = {
-  profile: require("../../assets/images/profile.png"),
-  id: require("../../assets/images/user_profile.png"),
-  car: require("../../assets/images/car.png"),
-  transcript: require("../../assets/images/transcript.png"),
-};
-
-function CredentialSummaryCard({
-  record,
+function readCredentialBadge({
+  inactiveState,
+  isVerifiedCredential,
+  isNewCredential,
+  isRenewedActive,
+  credential,
 }: {
-  record: VerifiableCredentialRecord;
-}) {
-  const display = readCredentialSummaryDisplay(record);
-  const profile = readCredentialHolderProfile(record);
-  const idNumber = display.rows.find((row) => row.key === "nationalId")?.value;
-  const holderName =
-    profile.thaiName ?? profile.englishName ?? display.primaryText;
+  inactiveState: CredentialInactiveState;
+  isVerifiedCredential: boolean;
+  isNewCredential: boolean;
+  isRenewedActive: boolean;
+  credential?: VerifiableCredentialRecord;
+}): { label: string; className: string } | undefined {
+  if (inactiveState.kind !== "active") {
+    return {
+      label: inactiveState.badgeLabel,
+      className: inactiveState.badgeClassName,
+    };
+  }
 
-  return (
-    <View
-      className="h-[202px] justify-center overflow-hidden rounded-[18px] bg-[#003064] px-6"
-      style={{
-        elevation: 5,
-        shadowColor: "#0f2849",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.13,
-        shadowRadius: 10,
-      }}
-    >
-      <View className="flex-row items-center gap-6">
-        <Image
-          source={credentialImages[display.imageKey]}
-          style={{ width: 110, height: 140, borderRadius: 30 }}
-          resizeMode="cover"
-        />
-        <View className="min-w-0 flex-1">
-          <Text className="text-[12px] leading-6 text-white" numberOfLines={2}>
-            {holderName}
-          </Text>
-          <Text
-            className="mt-2 text-[12px] leading-5 text-white"
-            numberOfLines={2}
-          >
-            ID Card : {idNumber}
-          </Text>
-        </View>
-      </View>
-      {/*
-            .join(" • ") || display.issuerName}
-      */}
-    </View>
-  );
-}
+  if (credential && isCredentialExpiringSoon(credential)) {
+    return {
+      label: WALLET_HOME_COPY.expiringSoonBadge,
+      className: "bg-warning",
+    };
+  }
 
-function EmptyCredentialCard() {
-  return (
-    <View
-      className="h-[181px] justify-center rounded-[18px] bg-white px-5"
-      style={{
-        elevation: 5,
-        shadowColor: "#0f2849",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-      }}
-    >
-      <Text className="text-center text-base font-semibold leading-6 text-gray-400">
-        ไม่มีบัตรหรือเอกสารดิจิทัลใน Wallet
-      </Text>
-    </View>
-  );
+  if (isRenewedActive) {
+    return {
+      label: readWalletHomeBadgeLabel("active"),
+      className: "bg-success",
+    };
+  }
+
+  if (isVerifiedCredential) {
+    return {
+      label: readWalletHomeBadgeLabel("verified"),
+      className: "bg-success",
+    };
+  }
+
+  if (isNewCredential) {
+    return {
+      label: readWalletHomeBadgeLabel("new"),
+      className: "bg-success",
+    };
+  }
+
+  return undefined;
 }
 
 export default function WalletHomeScreen() {
-  const { credentials, error } = useStoredCredentials();
+  useScreenCaptureGuard();
+  const { credentials, error, refresh } = useStoredCredentials();
+  const { isExpired: walletKeyExpired } = useWalletKeyExpired();
+  const walletKeyExpiryLane = readWalletKeyExpiryLane({
+    keyExpired: walletKeyExpired,
+    hasRotationRecord: Boolean(readWalletKeyRotationRecord()),
+  });
   const router = useRouter();
   const { showDialog } = useAppDialog();
   const [expandedCredentialId, setExpandedCredentialId] = useState<
     string | null
   >(null);
   const [newCredentialIds, setNewCredentialIds] = useState<string[]>([]);
-  const [verifiedCredentialIds, setVerifiedCredentialIds] = useState<string[]>([]);
-  const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
-  const summaryCredential = credentials.find(
-    (record) => record.type === "ThaiNationalID",
+  const [verifiedCredentialIds, setVerifiedCredentialIds] = useState<string[]>(
+    [],
   );
+  const [issuerSuspensionStatuses, setIssuerSuspensionStatuses] = useState<
+    Record<string, IssuerSuspensionRecord>
+  >({});
+  const [renewalStatuses, setRenewalStatuses] = useState<
+    Record<string, CredentialRenewalRecord>
+  >({});
+  const [receivingRenewalCredentialId, setReceivingRenewalCredentialId] =
+    useState<string | null>(null);
+  const [isRotatingWalletKey, setIsRotatingWalletKey] = useState(false);
+  const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
+  const summaryCredential = pickPreferredHomeCredential(
+    credentials.filter((record) => record.type === "ThaiNationalID"),
+    renewalStatuses,
+  );
+
+  const syncLocalCredentialStatuses = useCallback(() => {
+    const latestCredentials = readStoredCredentials();
+    logWalletStep("wallet-home", "sync-local-credential-statuses", {
+      credentialCount: latestCredentials.length,
+    });
+    setNewCredentialIds(readNewCredentialBadgeIds());
+    setVerifiedCredentialIds(readSuccessfullyPresentedCredentialIds());
+    setIssuerSuspensionStatuses(
+      readIssuerSuspensionStatuses(latestCredentials),
+    );
+    setRenewalStatuses(readCredentialRenewalStatuses(latestCredentials));
+    refresh();
+  }, [refresh]);
+
+  const refreshCredentialStatuses = useCallback(async () => {
+    syncLocalCredentialStatuses();
+
+    const latestCredentials = readStoredCredentials();
+    const statuses = readCredentialRenewalStatuses(latestCredentials);
+    const needsServerPoll = Object.values(statuses).some(
+      (record) => record.state === "renewal-processing",
+    );
+    if (!needsServerPoll) {
+      return;
+    }
+
+    try {
+      await refreshIssuerSuspensionsFromServer();
+      await refreshCredentialRenewalStatuses();
+    } finally {
+      syncLocalCredentialStatuses();
+    }
+  }, [syncLocalCredentialStatuses]);
+
+  useEffect(() => {
+    return subscribeCredentialsChange(syncLocalCredentialStatuses);
+  }, [syncLocalCredentialStatuses]);
+
+  useEffect(() => {
+    setIssuerSuspensionStatuses(readIssuerSuspensionStatuses(credentials));
+    setRenewalStatuses(readCredentialRenewalStatuses(credentials));
+  }, [credentials]);
+
+  useEffect(() => {
+    if (
+      expandedCredentialId &&
+      !credentials.some((record) => record.id === expandedCredentialId)
+    ) {
+      setExpandedCredentialId(null);
+    }
+  }, [credentials, expandedCredentialId]);
 
   useFocusEffect(
     useCallback(() => {
-      setNewCredentialIds(readNewCredentialBadgeIds());
-      setVerifiedCredentialIds(readSuccessfullyPresentedCredentialIds());
-    }, []),
+      syncLocalCredentialStatuses();
+      void refreshCredentialStatuses();
+    }, [refreshCredentialStatuses, syncLocalCredentialStatuses]),
   );
+
+  const hasRenewalProcessing = useMemo(
+    () =>
+      Object.values(renewalStatuses).some(
+        (record) => record.state === "renewal-processing",
+      ),
+    [renewalStatuses],
+  );
+
+  useEffect(() => {
+    if (!hasRenewalProcessing) return;
+
+    const timer = setInterval(() => {
+      void refreshCredentialStatuses();
+    }, RENEWAL_STATUS_POLL_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, [hasRenewalProcessing, refreshCredentialStatuses]);
+
+  function handleInactiveCredentialPress(credentialId: string) {
+    setExpandedCredentialId((current) =>
+      current === credentialId ? null : credentialId,
+    );
+  }
+
+  function readInactiveState(
+    credential: VerifiableCredentialRecord | undefined,
+    lifecycleStatus: CredentialLifecycleStatus | undefined,
+  ): CredentialInactiveState {
+    return readCredentialInactiveState({
+      lifecycleStatus,
+      suspensionStatus: credential
+        ? issuerSuspensionStatuses[credential.id]
+        : undefined,
+      renewalStatus: credential ? renewalStatuses[credential.id] : undefined,
+      credential,
+    });
+  }
+
+  function handleRequestCredentialViaPortal(credentialType?: string) {
+    void requestCredentialViaPortalFlow({ credentialType, router, showDialog });
+  }
+
+  async function handleRenewalRequest(credentialId: string) {
+    try {
+      await submitRenewalRequest(credentialId);
+      const latestCredentials = readStoredCredentials();
+      setRenewalStatuses(readCredentialRenewalStatuses(latestCredentials));
+      refresh();
+      setExpandedCredentialId(credentialId);
+    } catch (renewalError) {
+      logWalletError("wallet-home", "renewal-request-failed", renewalError, {
+        credentialId,
+      });
+      const isPreviousKeyUnavailable =
+        renewalError instanceof Error &&
+        renewalError.message.includes("CredentialRenewalPreviousKeyUnavailable");
+      showDialog({
+        title: isPreviousKeyUnavailable
+          ? WALLET_HOME_COPY.renewalKeyUnavailableTitle
+          : "ไม่สามารถขอเอกสารใหม่ได้",
+        message: isPreviousKeyUnavailable
+          ? WALLET_HOME_COPY.renewalKeyUnavailableMessage
+          : "กรุณาลองใหม่อีกครั้ง",
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+    }
+  }
+
+  async function handleReceiveReadyRenewal(credentialId: string) {
+    if (receivingRenewalCredentialId === credentialId) return;
+
+    setReceivingRenewalCredentialId(credentialId);
+    try {
+      await claimReadyRenewal(credentialId);
+      await refreshCredentialStatuses();
+    } catch (renewalError) {
+      logWalletError("wallet-home", "renewal-receive-failed", renewalError, {
+        credentialId,
+      });
+      showDialog({
+        title: "Unable to receive new credential",
+        message: "Please try again.",
+        icon: "danger",
+        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
+      });
+    } finally {
+      setReceivingRenewalCredentialId(null);
+    }
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
@@ -174,9 +361,9 @@ export default function WalletHomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           {summaryCredential ? (
-            <CredentialSummaryCard record={summaryCredential} />
+            <WalletCredentialSummaryCard record={summaryCredential} />
           ) : (
-            <EmptyCredentialCard />
+            <WalletEmptyCredentialCard message={WALLET_HOME_COPY.emptyState} />
           )}
 
           {error ? (
@@ -187,14 +374,28 @@ export default function WalletHomeScreen() {
 
           <View className="gap-2.5">
             {documentMenuItems.map((item) => {
+              // When both an old (old-revoked) and a new (renewed-active) credential
+              // of the same type coexist after key renewal, prefer the renewed-active
+              // one so the home screen reflects the latest state immediately.
               const credential = item.credentialType
-                ? credentials.find(
-                    (record) => record.type === item.credentialType,
+                ? pickPreferredHomeCredential(
+                    credentials.filter((r) => r.type === item.credentialType),
+                    renewalStatuses,
                   )
+                : undefined;
+              const cleanupPendingForType = item.credentialType
+                ? findCleanupPendingForCredentialType(item.credentialType)
                 : undefined;
               const lifecycleStatus = credential
                 ? lifecycleStatuses[credential.id]
                 : undefined;
+              const renewalStatus = credential
+                ? renewalStatuses[credential.id]
+                : undefined;
+              const inactiveState = readInactiveState(
+                credential,
+                lifecycleStatus,
+              );
               const isNewCredential = credential
                 ? newCredentialIds.includes(credential.id)
                 : false;
@@ -203,94 +404,113 @@ export default function WalletHomeScreen() {
                 : false;
               const isExpanded =
                 credential?.id === expandedCredentialId &&
-                Boolean(lifecycleStatus);
-              const badge: LifecycleBadge | undefined = lifecycleStatus
-                ? {
-                    label:
-                      lifecycleStatus.action === "Revoke"
-                        ? "ถูกระงับ"
-                        : "ถูกลบ",
-                    className:
-                      lifecycleStatus.action === "Revoke"
-                        ? "bg-[#c00000]"
-                        : "bg-[#7a7a7a]",
-                  }
-                : isVerifiedCredential
-                  ? {
-                      label: "ตรวจสอบสำเร็จ",
-                      className: "bg-[#18a05d]",
-                    }
-                  : isNewCredential
-                  ? {
-                      label: "เอกสารใหม่",
-                      className: "bg-[#18a05d]",
-                    }
-                    : undefined;
+                inactiveState.kind !== "active";
+              const badge = readCredentialBadge({
+                inactiveState,
+                isVerifiedCredential,
+                isNewCredential,
+                isRenewedActive:
+                  credential && item.credentialType
+                    ? shouldShowRenewedActiveBadge(
+                        item.credentialType,
+                        renewalStatus,
+                      )
+                    : false,
+                credential,
+              });
 
               return (
-                <View
+                <WalletDocumentMenuItem
                   key={item.label}
-                  className={`relative mt-1 rounded-[14px] ${isExpanded ? "bg-[#e2e2e2] px-[18px] pb-4 pt-4" : "bg-white px-[18px] py-4"}`}
-                  style={{
-                    elevation: 2,
-                    shadowColor: "#0f2849",
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.08,
-                    shadowRadius: 12,
-                  }}
-                >
-                  {badge ? (
-                    <View
-                      className={`absolute -top-2 right-4 z-10 rounded-full px-3 py-1 ${badge.className}`}
-                    >
-                      <Text className="text-[11px] font-semibold text-white">
-                        {badge.label}
-                      </Text>
-                    </View>
-                  ) : null}
-                  <Pressable
-                    className="flex-row items-center gap-3.5 pt-3 pb-3 pr-4"
-                    onPress={() => {
+                  label={item.label}
+                  icon={item.icon}
+                  iconStyle={item.iconStyle}
+                  hasCredential={Boolean(credential)}
+                  isExpanded={isExpanded}
+                  badge={badge}
+                  requestLabel={WALLET_HOME_COPY.requestCredential}
+                  onPress={() => {
                       if (!credential) {
                         if (
                           canRequestCredentialType(
                             item.credentialType,
                             credentials,
+                            renewalStatuses,
                           )
                         ) {
-                          router.push("/(tabs)/scan");
+                          void handleRequestCredentialViaPortal(
+                            item.credentialType,
+                          );
                           return;
                         }
-                        showDialog({
-                          title: "ต้องมี ThaID ก่อน",
-                          message: "กรุณาขอ ThaID ก่อนขอเอกสารอื่น",
-                          icon: "warning",
-                          actions: [
-                            { label: "ยกเลิก", variant: "secondary" },
-                            {
-                              label: "ขอ ThaID",
-                              onPress: () => router.push("/(tabs)/scan"),
-                            },
-                          ],
-                        });
+                        showPidGateDialog(
+                          showDialog,
+                          readPidGateStatus(credentials, renewalStatuses),
+                          () => handleRequestCredentialViaPortal("ThaiNationalID"),
+                        );
                         return;
                       }
                       if (isNewCredential) {
                         clearNewCredentialBadge(credential.id);
                         setNewCredentialIds((current) =>
-                          current.filter((id) => id !== credential.id),
+                          current.filter(
+                            (entryId) => entryId !== credential.id,
+                          ),
                         );
                       }
                       if (isVerifiedCredential) {
                         clearSuccessfulPresentationBadge(credential.id);
                         setVerifiedCredentialIds((current) =>
-                          current.filter((id) => id !== credential.id),
+                          current.filter(
+                            (entryId) => entryId !== credential.id,
+                          ),
                         );
                       }
-                      if (lifecycleStatus) {
-                        setExpandedCredentialId((current) =>
-                          current === credential.id ? null : credential.id,
-                        );
+                      if (inactiveState.kind !== "active") {
+                        if (
+                          item.credentialType !== "ThaiNationalID" &&
+                          !hasUsablePidCredential(credentials, renewalStatuses)
+                        ) {
+                          showPidGateDialog(
+                            showDialog,
+                            readPidGateStatus(credentials, renewalStatuses),
+                            () => handleRequestCredentialViaPortal("ThaiNationalID"),
+                          );
+                          return;
+                        }
+                        if (
+                          shouldNavigateInactiveCredentialToDetail(
+                            inactiveState,
+                            {
+                              hasPendingSuspensionAck:
+                                hasPendingIssuerSuspensionAck(
+                                  issuerSuspensionStatuses[credential.id],
+                                ),
+                              renewalStatus,
+                            },
+                          )
+                        ) {
+                          router.push({
+                            pathname: "/(tabs)/credential/[id]",
+                            params: { id: credential.id },
+                          });
+                          return;
+                        }
+                        if (
+                          inactiveState.kind === "renewal-required" ||
+                          inactiveState.kind === "cleanup-pending"
+                        ) {
+                          handleInactiveCredentialPress(credential.id);
+                          return;
+                        }
+                        handleInactiveCredentialPress(credential.id);
+                        return;
+                      }
+                      if (renewalStatus?.state === "renewed-active") {
+                        router.push({
+                          pathname: "/(tabs)/credential/[id]",
+                          params: { id: credential.id },
+                        });
                         return;
                       }
                       router.push({
@@ -298,54 +518,98 @@ export default function WalletHomeScreen() {
                         params: { id: credential.id },
                       });
                     }}
-                  >
-                    <View className="h-11 w-11 items-center justify-center">
-                      <Image
-                        source={item.icon}
-                        style={item.iconStyle}
-                        resizeMode="contain"
-                      />
-                    </View>
-                    <Text className="min-w-0 flex-1 text-base font-medium text-[#1a2a42]">
-                      {item.label}
-                    </Text>
-                    {credential && !isExpanded ? (
-                      <MaterialCommunityIcons
-                        name="chevron-right"
-                        size={24}
-                        color="#6d7a8d"
-                      />
-                    ) : !credential ? (
-                      <View className="rounded-full bg-wallet-navy px-3.5 py-1.5">
-                        <Text className="text-[13px] font-medium text-white">
-                          ขอเอกสาร
-                        </Text>
-                      </View>
-                    ) : null}
-                  </Pressable>
-
-                  {isExpanded ? (
-                    <View className="items-center pt-3">
-                      <View className="h-12 w-12 items-center justify-center rounded-full border-2 border-wallet-navy">
-                        <MaterialCommunityIcons
-                          name="lock-outline"
-                          size={28}
-                          color="#002887"
-                        />
-                      </View>
-                      <Text className="mt-2 text-center text-xs text-[#4b5563]">
-                        เอกสารถูกยกเลิกการใช้งาน
-                      </Text>
-                      <AppButton
-                        variant="solid-block"
-                        label="ขอเอกสาร"
-                        onPress={() => router.push("/(tabs)/scan")}
-                        className="mt-3 min-w-[142px] px-5 py-2"
-                        textClassName="text-center text-xs font-bold"
-                      />
-                    </View>
-                  ) : null}
-                </View>
+                  oldCredentialLabel={
+                    cleanupPendingForType &&
+                    cleanupPendingForType.oldCredentialId !== credential?.id
+                      ? `${WALLET_HOME_COPY.viewCredential} (เอกสารเดิม)`
+                      : undefined
+                  }
+                  onViewOldCredential={
+                    cleanupPendingForType &&
+                    cleanupPendingForType.oldCredentialId !== credential?.id
+                      ? () => {
+                          router.push({
+                            pathname: "/(tabs)/credential/[id]",
+                            params: {
+                              id: cleanupPendingForType.oldCredentialId,
+                            },
+                          });
+                        }
+                      : undefined
+                  }
+                  inactivePanelMessage={
+                    isExpanded ? inactiveState.panelMessage : undefined
+                  }
+                  showRenewalCta={
+                    isExpanded &&
+                    inactiveState.kind === "renewal-required" &&
+                    credential
+                      ? canSubmitCredentialRenewal(
+                          credential.id,
+                          credentials,
+                          renewalStatuses,
+                        )
+                      : false
+                  }
+                  renewalCtaLabel={WALLET_HOME_COPY.requestCredential}
+                  onRenewalRequest={
+                    credential
+                      ? () => {
+                          void handleRenewalRequest(credential.id);
+                        }
+                      : undefined
+                  }
+                  showReceiveRenewalCta={shouldShowReadyRenewalReceiveCta(
+                    isExpanded,
+                    renewalStatus,
+                  )}
+                  receiveRenewalCtaLabel="Receive new document"
+                  onReceiveRenewal={
+                    credential
+                      ? () => {
+                          void handleReceiveReadyRenewal(credential.id);
+                        }
+                      : undefined
+                  }
+                  isReceivingRenewal={
+                    receivingRenewalCredentialId === credential?.id
+                  }
+                  showDocumentReissueCta={
+                    isExpanded &&
+                    ((inactiveState.kind === "document-expired" &&
+                      shouldOfferDocumentReissueCta({
+                        lane: walletKeyExpiryLane,
+                        documentExpired: true,
+                        renewalState: renewalStatus?.state,
+                      })) ||
+                      (shouldShowInactivePortalRequestCta(inactiveState) &&
+                        isIssuerPortalCredentialType(item.credentialType)))
+                  }
+                  documentReissueCtaLabel={WALLET_HOME_COPY.requestNewCredential}
+                  onDocumentReissue={() => {
+                    void handleRequestCredentialViaPortal(item.credentialType);
+                  }}
+                  showWalletKeyExpiredPrompt={
+                    isExpanded &&
+                    inactiveState.kind === "document-expired" &&
+                    shouldShowWalletKeyExpiredPrompt(walletKeyExpiryLane)
+                  }
+                  isRotatingWalletKey={isRotatingWalletKey}
+                  onCreateWalletKey={() => {
+                    setIsRotatingWalletKey(true);
+                    void performWalletKeyRotationWithDialog({
+                      showDialog,
+                      onSuccess: () => {
+                        void refreshCredentialStatuses();
+                      },
+                      navigateToCredential: (credentialId) => {
+                        router.push(`/(tabs)/credential/${credentialId}`);
+                      },
+                    }).finally(() => {
+                      setIsRotatingWalletKey(false);
+                    });
+                  }}
+                />
               );
             })}
           </View>

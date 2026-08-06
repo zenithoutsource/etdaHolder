@@ -1,9 +1,15 @@
+import { THEME } from './themeColors'
 export type DisplayField = {
   key: string;
   label: string;
   presentationLabel?: string;
   aliases?: string[];
   staticValue?: string;
+  /** OID4VP Holder disclosure policy fallback when Issuer metadata is unavailable. */
+  presentationDisclosure?: {
+    md?: boolean;
+    sd?: boolean;
+  };
 };
 
 export type IssuanceVerificationConfig = {
@@ -14,7 +20,8 @@ export type IssuanceVerificationConfig = {
 export type IssuanceConfirmationConfig = {
   documentLabel: string;
   issuerLabel: string;
-  imageKey: "dopa";
+  imageKey: "dopa" | "dltt" | "chulalongkorn" | "profile";
+  accent: "navy" | "pink";
 };
 
 export type CardSchemaConfig = {
@@ -24,6 +31,7 @@ export type CardSchemaConfig = {
   issuerName: string;
   primaryColor: string;
   imageKey: "profile" | "id" | "car" | "transcript";
+  issuerLogoKey?: "thaid" | "dltt" | "chulalongkorn";
   displayFields: DisplayField[];
   summaryFields?: DisplayField[];
   summaryRows?: DisplayField[][];
@@ -31,6 +39,8 @@ export type CardSchemaConfig = {
   summaryRowDivider?: "horizontal" | "vertical" | "both";
   /** Hide the Issue Date / Expiry Date footer row in PresentationCredentialSummaryCard. */
   hideSummaryValidityFooter?: boolean;
+  /** When true, first successful presentation marks credential Used (P6 Case 3). */
+  singleUse?: boolean;
   issuanceVerification?: IssuanceVerificationConfig;
   issuanceConfirmation?: IssuanceConfirmationConfig;
 };
@@ -40,7 +50,7 @@ const FALLBACK_SCHEMA: CardSchemaConfig = {
   title: "Credential",
   documentTitle: "DIGITAL DOCUMENT",
   issuerName: "Unknown Issuer",
-  primaryColor: "#374151",
+  primaryColor: THEME.gray700,
   imageKey: "profile",
   displayFields: [],
 };
@@ -51,8 +61,9 @@ const SCHEMAS: CardSchemaConfig[] = [
     title: "Thai National ID",
     documentTitle: "ID CARD",
     issuerName: "Department of Provincial Administration",
-    primaryColor: "#002887",
+    primaryColor: THEME.navy,
     imageKey: "id",
+    issuerLogoKey: "thaid",
     displayFields: [
       { key: "givenName", label: "Given Name" },
       { key: "familyName", label: "Family Name" },
@@ -130,6 +141,7 @@ const SCHEMAS: CardSchemaConfig[] = [
       documentLabel: "บัตรประชาชน",
       issuerLabel: "กรมการปกครอง",
       imageKey: "dopa",
+      accent: "navy",
     },
   },
   {
@@ -137,11 +149,20 @@ const SCHEMAS: CardSchemaConfig[] = [
     title: "Driving Licence",
     documentTitle: "DRIVING LICENSE",
     issuerName: "Department of Land Transport",
-    primaryColor: "#123b8c",
+    primaryColor: THEME.navyRoyal,
     imageKey: "car",
+    issuerLogoKey: "dltt",
     displayFields: [
-      { key: "givenName", label: "Given Name" },
-      { key: "familyName", label: "Family Name" },
+      {
+        key: "givenName",
+        label: "Given Name",
+        aliases: ["given_name"],
+      },
+      {
+        key: "familyName",
+        label: "Family Name",
+        aliases: ["family_name"],
+      },
       {
         key: "fullName",
         label: "Full Name",
@@ -164,13 +185,24 @@ const SCHEMAS: CardSchemaConfig[] = [
         key: "licenceNumber",
         label: "Licence Number",
         presentationLabel: "เลขที่ใบอนุญาตขับรถ",
-        aliases: ["licence_number", "licenseNumber", "license_number"],
+        aliases: [
+          "licence_number",
+          "licenseNumber",
+          "license_number",
+          "document_number",
+          "documentNumber",
+        ],
       },
       {
         key: "licenceClass",
         label: "Class",
         presentationLabel: "ประเภทใบอนุญาต",
         aliases: ["licence_class", "licenseClass", "license_class"],
+      },
+      {
+        key: "issuingCountry",
+        label: "Issuing Country",
+        aliases: ["issuing_country"],
       },
       {
         key: "issuanceDate",
@@ -195,7 +227,13 @@ const SCHEMAS: CardSchemaConfig[] = [
       {
         key: "licenceNumber",
         label: "Licence Number",
-        aliases: ["licence_number", "licenseNumber", "license_number"],
+        aliases: [
+          "licence_number",
+          "licenseNumber",
+          "license_number",
+          "document_number",
+          "documentNumber",
+        ],
       },
       {
         key: "licenceClass",
@@ -208,14 +246,21 @@ const SCHEMAS: CardSchemaConfig[] = [
         aliases: ["expiry_date", "expirationDate"],
       },
     ],
+    issuanceConfirmation: {
+      documentLabel: "ใบอนุญาตขับขี่",
+      issuerLabel: "กรมการขนส่งทางบก",
+      imageKey: "dltt",
+      accent: "navy",
+    },
   },
   {
-    type: "BangkokUniversityTranscript",
+    type: "ChulalongkornUniversityTranscript",
     title: "Academic Transcript",
     documentTitle: "TRANSCRIPT",
-    issuerName: "Bangkok University",
-    primaryColor: "#123b8c",
+    issuerName: "Chulalongkorn University",
+    primaryColor: THEME.navyRoyal,
     imageKey: "transcript",
+    issuerLogoKey: "chulalongkorn",
     displayFields: [
       { key: "givenName", label: "Given Name" },
       { key: "familyName", label: "Family Name" },
@@ -224,6 +269,7 @@ const SCHEMAS: CardSchemaConfig[] = [
         label: "Full Name",
         presentationLabel: "ชื่อ-นามสกุล",
         aliases: ["full_name", "name"],
+        presentationDisclosure: { md: true },
       },
       {
         key: "birthDate",
@@ -242,24 +288,35 @@ const SCHEMAS: CardSchemaConfig[] = [
         label: "Student ID",
         presentationLabel: "รหัสนักศึกษา",
         aliases: ["student_id", "studentID", "student_number", "studentNumber"],
+        presentationDisclosure: { md: true },
       },
       {
         key: "degree",
         label: "Degree",
         presentationLabel: "วุฒิการศึกษา",
         aliases: ["degreeName", "degree_name", "program", "programName"],
+        presentationDisclosure: { md: true },
       },
       {
         key: "faculty",
         label: "Faculty",
         presentationLabel: "คณะ / สาขาวิชา",
         aliases: ["facultyName", "faculty_name", "school", "schoolName"],
+        presentationDisclosure: { md: true },
       },
       {
         key: "gpa",
         label: "GPA",
         presentationLabel: "เกรดเฉลี่ย",
         aliases: ["GPAX", "gradePointAverage", "grade_point_average"],
+        presentationDisclosure: { sd: true },
+      },
+      {
+        key: "grades",
+        label: "Grades",
+        presentationLabel: "ผลการเรียน",
+        aliases: ["grade_list", "gradeList"],
+        presentationDisclosure: { sd: true },
       },
       {
         key: "graduationYear",
@@ -272,6 +329,7 @@ const SCHEMAS: CardSchemaConfig[] = [
           "graduationDate",
           "graduation_date",
         ],
+        presentationDisclosure: { sd: true },
       },
       {
         key: "institutionName",
@@ -283,6 +341,7 @@ const SCHEMAS: CardSchemaConfig[] = [
           "universityName",
           "university_name",
         ],
+        presentationDisclosure: { md: true, sd: false },
       },
       {
         key: "expiryDate",
@@ -338,12 +397,82 @@ const SCHEMAS: CardSchemaConfig[] = [
     ],
     summaryRowDivider: "both",
     hideSummaryValidityFooter: true,
+    issuanceConfirmation: {
+      documentLabel: "ใบแสดงผลการเรียน",
+      issuerLabel: "จุฬาลงกรณ์มหาวิทยาลัย",
+      imageKey: "chulalongkorn",
+      accent: "pink",
+    },
+  },
+  {
+    type: "MedicalCertificate",
+    title: "Medical Certificate",
+    documentTitle: "MEDICAL CERTIFICATE",
+    issuerName: "Licensed Medical Practitioner",
+    primaryColor: THEME.success,
+    imageKey: "profile",
+    singleUse: true,
+    displayFields: [
+      {
+        key: "fullName",
+        label: "Patient Name",
+        presentationLabel: "ชื่อ-นามสกุลผู้ป่วย",
+        aliases: ["full_name", "name", "givenName", "familyName"],
+      },
+      {
+        key: "diagnosis",
+        label: "Diagnosis",
+        presentationLabel: "การวินิจฉัย",
+        aliases: ["diagnosis_text", "condition"],
+      },
+      {
+        key: "issuedAt",
+        label: "Issue Date",
+        presentationLabel: "วันที่ออกใบรับรอง",
+        aliases: ["issuanceDate", "issuance_date", "issue_date"],
+      },
+      {
+        key: "expiryDate",
+        label: "Expiry Date",
+        presentationLabel: "วันหมดอายุ",
+        aliases: ["expiry_date", "expirationDate", "validUntil", "valid_until"],
+      },
+    ],
   },
 ];
 
 const SCHEMA_MAP = new Map<string, CardSchemaConfig>(
   SCHEMAS.map((s) => [s.type, s]),
 );
+
+import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization';
+
+export { normalizeClaimKey as normalizeClaimLabelKey };
+
+export function findDisplayFieldForClaimKey(
+  fields: DisplayField[],
+  claimKey: string,
+): DisplayField | undefined {
+  const normalizedKey = normalizeClaimKey(claimKey);
+  return fields.find(
+    (field) =>
+      normalizeClaimKey(field.key) === normalizedKey ||
+      (field.aliases ?? []).some(
+        (alias) => normalizeClaimKey(alias) === normalizedKey,
+      ),
+  );
+}
+
+export function resolvePresentationDisclosureLabel(
+  documentType: string,
+  claimKey: string,
+): string {
+  const field = findDisplayFieldForClaimKey(
+    getCardSchema(documentType).displayFields,
+    claimKey,
+  );
+  return field?.presentationLabel ?? field?.label ?? claimKey;
+}
 
 export function getCardSchema(type: string): CardSchemaConfig {
   return SCHEMA_MAP.get(type) ?? FALLBACK_SCHEMA;
@@ -360,11 +489,20 @@ export function getCardSchemaForConfigurationId(
 
   const normalized = configurationId.toLowerCase();
   if (normalized.includes("transcript"))
-    return getCardSchema("BangkokUniversityTranscript");
+    return getCardSchema("ChulalongkornUniversityTranscript");
+  if (
+    normalized.includes("medical") ||
+    normalized.includes("medicine") ||
+    normalized.includes("medcert")
+  ) {
+    return getCardSchema("MedicalCertificate");
+  }
   if (
     normalized.includes("driving") ||
     normalized.includes("licence") ||
-    normalized.includes("license")
+    normalized.includes("license") ||
+    normalized.includes("mdl") ||
+    normalized.includes("1801351mdl")
   ) {
     return getCardSchema("DLTDrivingLicence");
   }

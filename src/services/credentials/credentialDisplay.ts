@@ -1,5 +1,7 @@
 import { getCardSchema, type CardSchemaConfig, type DisplayField } from '../../config/cardSchemas'
+import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { isHiddenClaimKey, readClaimText, stringifyClaim } from './claimFormatting'
 
 export type CredentialDisplayRow = {
   key: string
@@ -30,8 +32,6 @@ export type CredentialHolderProfile = {
   birthDate?: string
 }
 
-const HIDDEN_CLAIM_KEYS = new Set(['vc', 'iss', 'iat', 'nbf', 'exp', 'jti', 'vct', 'cnf', 'status'])
-
 export function readCredentialSummaryDisplay(record: VerifiableCredentialRecord): CredentialSummaryDisplay {
   const schema = getCardSchema(record.type)
   const holderName = readHolderName(record)
@@ -54,7 +54,7 @@ export function readCredentialDetailDisplay(record: VerifiableCredentialRecord):
   const configuredKeys = new Set(schema.displayFields.flatMap((field) => [field.key, ...(field.aliases ?? [])]))
   const extraRows = Object.entries(record.claims)
     .filter(([key, value]) => {
-      if (configuredKeys.has(key) || key.startsWith('_') || HIDDEN_CLAIM_KEYS.has(key)) return false
+      if (configuredKeys.has(key) || key.startsWith('_') || isHiddenClaimKey(key)) return false
       return stringifyClaim(value).trim().length > 0
     })
     .sort(([left], [right]) => left.localeCompare(right))
@@ -122,18 +122,13 @@ export function readCredentialHolderProfile(record: VerifiableCredentialRecord):
 }
 
 export function readDisplayValue(claims: Record<string, unknown>, field: DisplayField): string | undefined {
-  for (const key of [field.key, ...(field.aliases ?? [])]) {
-    const text = stringifyClaim(claims[key]).trim()
-    if (text.length > 0) return text
-  }
-
-  return undefined
+  return readClaimText(claims, [field.key, ...(field.aliases ?? [])])
 }
 
 export function readHolderName(record: VerifiableCredentialRecord): string {
   return [
-    readFirstClaimText(record.claims, ['givenName', 'given_name', 'firstName', 'first_name']),
-    readFirstClaimText(record.claims, ['familyName', 'family_name', 'lastName', 'last_name']),
+    readClaimText(record.claims, ['givenName', 'given_name', 'firstName', 'first_name']),
+    readClaimText(record.claims, ['familyName', 'family_name', 'lastName', 'last_name']),
   ]
     .filter(Boolean)
     .join(' ')
@@ -146,15 +141,6 @@ function readRows(claims: Record<string, unknown>, fields: DisplayField[]): Cred
       return value ? { key: field.key, label: field.label, value } : undefined
     })
     .filter((row): row is CredentialDisplayRow => Boolean(row))
-}
-
-function readFirstClaimText(claims: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const text = stringifyClaim(claims[key]).trim()
-    if (text.length > 0) return text
-  }
-
-  return undefined
 }
 
 function readFirstClaimTextLoose(claims: Record<string, unknown>, keys: string[]): string | undefined {
@@ -191,15 +177,4 @@ function readThaiNamePart(claims: Record<string, unknown>, keys: string[]): stri
 function readLatinNamePart(claims: Record<string, unknown>, keys: string[]): string | undefined {
   const text = readFirstClaimTextLoose(claims, keys)
   return text && /[A-Za-z]/.test(text) && !/[\u0E00-\u0E7F]/.test(text) ? text : undefined
-}
-
-function normalizeClaimKey(key: string): string {
-  return key.replace(/[\s_\-.]/g, '').toLowerCase()
-}
-
-function stringifyClaim(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (value === null || value === undefined) return ''
-  return JSON.stringify(value)
 }

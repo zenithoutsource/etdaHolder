@@ -11,14 +11,14 @@ export const pool = mysql.createPool({
   namedPlaceholders: true,
 })
 
-const REQUIRED_TABLES = ['users', 'wallets', 'sessions', 'credentials'] as const
+const REQUIRED_TABLES = ['users', 'wallets', 'sessions', 'credentials', 'pin_reset_otps'] as const
 
 export async function assertSchemaReady(db: DbExecutor = pool): Promise<void> {
   const [rows] = await db.query<RowDataPacket[]>(
     `SELECT table_name
        FROM information_schema.tables
       WHERE table_schema = DATABASE()
-        AND table_name IN ('users', 'wallets', 'sessions', 'credentials')`,
+        AND table_name IN ('users', 'wallets', 'sessions', 'credentials', 'pin_reset_otps')`,
   )
   const found = new Set(rows.map((row) => String(row.TABLE_NAME ?? row.table_name)))
   const missing = REQUIRED_TABLES.filter((table) => !found.has(table))

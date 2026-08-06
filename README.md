@@ -1,4 +1,4 @@
-# ETDA OID4VCI Wallet
+# OID4VCI Wallet
 
 Expo SDK 54 mobile Holder Wallet for OID4VCI 1.0 credential issuance. The app claims credentials directly from Issuers, stores them in encrypted on-device MMKV storage, and can optionally sync finalized credentials to the company Wallet Backend through the Orval-generated SDK.
 
@@ -39,13 +39,15 @@ yarn add <package-name>
 
 ## Environment
 
-For local backend testing, create root `.env`:
+For first-time setup, run:
 
-```env
-EXPO_PUBLIC_WALLET_API_BASE_URL=http://<windows-lan-ip>:4000
+```bash
+yarn setup
 ```
 
-Use the Windows LAN IP when testing on a physical phone. `localhost` points to the phone itself.
+See **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** for the full 30-minute guide (XAMPP, backend, physical Android).
+
+Optional development overrides: `.env.development.local.example` → `.env.development.local`.
 
 ## Key Paths
 

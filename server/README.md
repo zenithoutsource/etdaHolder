@@ -16,6 +16,32 @@ Implemented local endpoints mirror the mobile wallet's allowed SDK boundary:
 
 The backend does not resolve credential offers, exchange OID4VCI tokens, sign PoP JWTs, or request credentials from Issuers.
 
+mDOC / OID4VCI issuance for proximity work uses the customer Issuer (e.g. `http://issuer.zenithcomp.co.th:455`), not a local mock issuer.
+
+## API documentation
+
+| Surface | Guide | Swagger UI | OpenAPI JSON | Production |
+|---|---|---|---|---|
+| Wallet Backend | `docs/wallet-backend-api.md` | `/wallet-api/docs` | `/wallet-api/openapi.json` | Yes |
+| Development APIs | `docs/development-api.md` | `/dev/docs` | `/dev/openapi.json` | No |
+
+Verifier-owned OID4VP (`openid4vc/*` on the external Verifier host) and Wallet Broker
+(`/broker/session` on the shared wallet host) are documented on those services'
+Swagger UIs — not in this Node wallet backend.
+
+Local examples:
+
+- Wallet Swagger UI: `http://localhost:4000/wallet-api/docs`
+- Development Swagger UI: `http://localhost:4000/dev/docs` (non-production only)
+
+On a shared HTTPS host, substitute your operator-configured Wallet API origin for `http://localhost:4000`.
+
+`/dev/*` and `/wallet-api/dev/*` return `404` when `NODE_ENV === "production"`. Development Swagger (`/dev/docs`, `/dev/openapi.json`) is mounted under the same gate.
+
+The Wallet Backend documentation covers normal `/wallet-api/auth/*`, `/wallet-api/wallet/*`, push-token registration, and the development-only Wallet attestation mock at `/wallet-api/wallet-attestations` (unsigned `alg: none` — not production attestations). Use Swagger **Authorize** with a Wallet login JWT for Bearer-protected Wallet operations.
+
+The reverse proxy must preserve complete `/wallet-api/*` paths when forwarding to the Node process on port `4000`. Examples use synthetic data only.
+
 ## Setup
 
 1. Start XAMPP MySQL.
@@ -31,9 +57,28 @@ Alternative PowerShell form:
 Get-Content server\src\migrations\001_init.sql | C:\xampp\mysql\bin\mysql.exe -u root
 ```
 
-3. Create `server/.env` from `server/.env.example`.
+For unified PIN auth (`refactor/auth`), also run:
+
+```powershell
+Get-Content server\src\migrations\002_pin_reset_otps.sql | C:\xampp\mysql\bin\mysql.exe -u root
+```
+
+3. Run `yarn setup` from the **repo root** (writes `server/.env`), or create `server/.env` manually from `server/.env.example`.
 4. Replace `JWT_SECRET=local-dev-change-me` with a local secret before testing real accounts.
-5. Start the backend:
+5. Configure SMTP for PIN reset emails (optional in dev). Example for Gmail with an app password:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-account@gmail.com
+SMTP_PASSWORD=your-app-password
+MAIL_FROM=your-account@gmail.com
+MAIL_FROM_NAME=Wallet
+```
+
+If `SMTP_HOST` is left empty, the backend logs OTP codes to the server terminal instead of sending email.
+6. Start the backend:
 
 ```powershell
 Set-Location server
@@ -42,39 +87,9 @@ yarn dev
 
 The API listens on `0.0.0.0:4000` so a phone on the same LAN can reach it. Keep this local development server off public networks.
 
-## VPN Issuer/Verifier Proxy for Physical Android Testing
+### Production configuration
 
-If the Issuer or Verifier is reachable from the Windows PC through VPN but the phone is not on the office Wi-Fi/VPN, run the local backend as a development proxy. The mobile app still performs OID4VCI/OID4VP on-device; only HTTP transport to the configured development host is forwarded by the local backend through the PC network.
-
-For full runbooks covering both USB + PC VPN proxy mode and direct office Wi-Fi mode, see `../docs/ANDROID_NETWORK_TESTING.md`.
-
-Server `server/.env`:
-
-```env
-ENABLE_DEV_ISSUER_PROXY=true
-ISSUER_PROXY_TARGET=https://<issuer-host-reachable-from-pc-vpn>
-ENABLE_DEV_VERIFIER_PROXY=true
-VERIFIER_PROXY_TARGET=http://192.100.10.48
-```
-
-Root app `.env` for USB testing with `adb reverse`:
-
-```env
-EXPO_PUBLIC_WALLET_API_BASE_URL=http://127.0.0.1:4000
-EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET=https://<issuer-host-reachable-from-pc-vpn>
-EXPO_PUBLIC_DEV_ISSUER_PROXY_BASE_URL=http://127.0.0.1:4000/dev-issuer-proxy
-EXPO_PUBLIC_VERIFIER_API_BASE_URL=http://192.100.10.48
-EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET=http://192.100.10.48
-EXPO_PUBLIC_DEV_VERIFIER_PROXY_BASE_URL=http://127.0.0.1:4000/dev-verifier-proxy
-```
-
-Then connect the Android phone by USB and run:
-
-```powershell
-adb reverse tcp:4000 tcp:4000
-```
-
-Restart the Expo dev server after changing root `.env`, then scan the original Issuer or Verifier QR. Requests whose URL starts with `EXPO_PUBLIC_DEV_ISSUER_PROXY_TARGET` are rewritten to `/dev-issuer-proxy/*`; requests whose URL starts with `EXPO_PUBLIC_DEV_VERIFIER_PROXY_TARGET` are rewritten to `/dev-verifier-proxy/*`. Do not enable these proxies in production.
+Production startup rejects the development JWT placeholder, loopback database hosts, development mail addresses, missing public presentation URLs, malformed endpoints, and non-HTTPS external URLs. Configure `JWT_SECRET`, database values, `WALLET_API_ALLOWED_ORIGINS`, `PUBLIC_BASE_URL`, and the relevant Issuer/Verifier URLs explicitly in the deployment environment. Startup errors identify only the invalid configuration key.
 
 ## Mobile App
 

@@ -4,31 +4,16 @@ import {
 } from './presentationService'
 import { confirmPresentationBiometric, createApprovedPresentationResponse } from './presentationApproval'
 
-const mockConstructorOptions: unknown[] = []
-const mockIsSensorAvailable = jest.fn()
-const mockSimplePrompt = jest.fn()
-const mockIsNativeWeakBiometricAvailable = jest.fn()
-const mockAuthenticateWeakBiometric = jest.fn()
+const mockHasHardwareAsync = jest.fn()
+const mockIsEnrolledAsync = jest.fn()
+const mockAuthenticateAsync = jest.fn()
 const mockLogWalletStep = jest.fn()
 const mockLogWalletError = jest.fn()
 
-const biometricPromptMessage =
-  '\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e15\u0e31\u0e27\u0e15\u0e19\u0e14\u0e49\u0e27\u0e22 Biometric'
-const biometricCancelText = '\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01'
-
-jest.mock('react-native-biometrics', () => {
-  return jest.fn().mockImplementation((options: unknown) => {
-    mockConstructorOptions.push(options)
-    return {
-      isSensorAvailable: mockIsSensorAvailable,
-      simplePrompt: mockSimplePrompt,
-    }
-  })
-})
-
-jest.mock('../crypto/nativeEddsaSigner', () => ({
-  authenticateWeakBiometric: (...args: unknown[]) => mockAuthenticateWeakBiometric(...args),
-  isNativeWeakBiometricAvailable: () => mockIsNativeWeakBiometricAvailable(),
+jest.mock('expo-local-authentication', () => ({
+  hasHardwareAsync: (...args: unknown[]) => mockHasHardwareAsync(...args),
+  isEnrolledAsync: (...args: unknown[]) => mockIsEnrolledAsync(...args),
+  authenticateAsync: (...args: unknown[]) => mockAuthenticateAsync(...args),
 }))
 
 jest.mock('../debug/walletLogger', () => ({
@@ -37,6 +22,7 @@ jest.mock('../debug/walletLogger', () => ({
 }))
 
 const rawCredential = 'issuer.sd.jwt~disclosure~'
+const filteredSdJwt = 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~'
 
 const baseRequest: ResolvedPresentationRequest = {
   requestUri: 'openid4vp://authorize',
@@ -45,6 +31,7 @@ const baseRequest: ResolvedPresentationRequest = {
   responseMode: 'direct_post',
   nonce: 'nonce-123',
   state: 'state-123',
+  protocolPath: 'legacy',
   verifier: {
     clientId: 'redirect_uri:https://verifier.example.com/verify',
     name: 'Verifier API',
@@ -52,7 +39,7 @@ const baseRequest: ResolvedPresentationRequest = {
   },
   matchedCredential: {
     id: 'credential-1',
-    type: 'BangkokUniversityTranscript',
+    type: 'ChulalongkornUniversityTranscript',
     rawVc: rawCredential,
     claims: {},
     issuedAt: '2026-06-01T10:00:00.000Z',
@@ -77,71 +64,44 @@ function requestWithDcql(requireHolderBinding: boolean): ResolvedPresentationReq
 
 describe('presentationApproval', () => {
   beforeEach(() => {
-    mockConstructorOptions.length = 0
-    mockIsSensorAvailable.mockReset()
-    mockSimplePrompt.mockReset()
-    mockIsNativeWeakBiometricAvailable.mockReset()
-    mockAuthenticateWeakBiometric.mockReset()
+    mockHasHardwareAsync.mockReset()
+    mockIsEnrolledAsync.mockReset()
+    mockAuthenticateAsync.mockReset()
     mockLogWalletStep.mockReset()
     mockLogWalletError.mockReset()
-    mockIsSensorAvailable.mockResolvedValue({ available: true, biometryType: 'Biometrics' })
-    mockSimplePrompt.mockResolvedValue({ success: true })
-    mockIsNativeWeakBiometricAvailable.mockReturnValue(false)
-    mockAuthenticateWeakBiometric.mockResolvedValue(true)
-  })
-
-  test('uses Android native weak biometric prompt when available', async () => {
-    mockIsNativeWeakBiometricAvailable.mockReturnValueOnce(true)
-
-    await confirmPresentationBiometric()
-
-    expect(mockAuthenticateWeakBiometric).toHaveBeenCalledWith(biometricPromptMessage, biometricCancelText)
-    expect(mockConstructorOptions).toEqual([])
-    expect(mockIsSensorAvailable).not.toHaveBeenCalled()
-    expect(mockSimplePrompt).not.toHaveBeenCalled()
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-native-weak-start')
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-complete', {
-      authenticator: 'android-native-biometric-weak',
-    })
-  })
-
-  test('rejects when Android native weak biometric prompt is cancelled', async () => {
-    mockIsNativeWeakBiometricAvailable.mockReturnValueOnce(true)
-    mockAuthenticateWeakBiometric.mockResolvedValueOnce(false)
-
-    await expect(confirmPresentationBiometric()).rejects.toThrow('PresentationBiometricCancelled')
-
-    expect(mockConstructorOptions).toEqual([])
+    mockHasHardwareAsync.mockResolvedValue(true)
+    mockIsEnrolledAsync.mockResolvedValue(true)
+    mockAuthenticateAsync.mockResolvedValue({ success: true })
   })
 
   test('uses biometric-only OS prompt without device credential fallback', async () => {
     await confirmPresentationBiometric()
 
-    expect(mockConstructorOptions).toEqual([{ allowDeviceCredentials: false }])
-    expect(mockIsSensorAvailable).toHaveBeenCalledTimes(1)
-    expect(mockSimplePrompt).toHaveBeenCalledWith({
+    expect(mockAuthenticateAsync).toHaveBeenCalledWith({
       promptMessage: 'ยืนยันตัวตนด้วย Biometric',
-      cancelButtonText: 'ยกเลิก',
+      cancelLabel: 'ยกเลิก',
+      disableDeviceFallback: true,
     })
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-rn-fallback-start')
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-sensor-available', {
-      biometryType: 'Biometrics',
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-expo-start')
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-sensor-available', {
+      hasHardware: true,
+      isEnrolled: true,
     })
-    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'presentation-biometric-complete', {
-      authenticator: 'react-native-biometrics',
+    expect(mockLogWalletStep).toHaveBeenCalledWith('oid4vp', 'biometric-complete', {
+      authenticator: 'expo-local-authentication',
     })
   })
 
   test('rejects when biometric sensor is unavailable', async () => {
-    mockIsSensorAvailable.mockResolvedValueOnce({ available: false, error: 'BIOMETRIC_ERROR_NONE_ENROLLED' })
+    mockIsEnrolledAsync.mockResolvedValueOnce(false)
 
     await expect(confirmPresentationBiometric()).rejects.toThrow('PresentationBiometricUnavailable')
 
-    expect(mockSimplePrompt).not.toHaveBeenCalled()
+    expect(mockAuthenticateAsync).not.toHaveBeenCalled()
   })
 
   test('rejects when the OS biometric prompt is cancelled', async () => {
-    mockSimplePrompt.mockResolvedValueOnce({ success: false })
+    mockAuthenticateAsync.mockResolvedValueOnce({ success: false, error: 'user_cancel' })
 
     await expect(confirmPresentationBiometric()).rejects.toThrow('PresentationBiometricCancelled')
   })
@@ -149,19 +109,49 @@ describe('presentationApproval', () => {
   test('returns raw credential presentation tokens without a second biometric prompt', async () => {
     const confirmBiometric = jest.fn().mockResolvedValue(undefined)
 
-    const response = await createApprovedPresentationResponse(requestWithDcql(false), {
+    const response = await createApprovedPresentationResponse(requestWithDcql(false), {}, {
       confirmBiometric,
-    })
+    } as never)
 
     expect(confirmBiometric).not.toHaveBeenCalled()
     expect(response).toEqual({ vpToken: rawCredential, presentationSubmission: undefined })
+  })
+
+  test('filters SD-JWT disclosures even when holder binding is not requested', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...requestWithDcql(false),
+      disclosures: [{ key: 'name', label: 'Name', value: 'Alice' }],
+      matchedCredential: {
+        ...baseRequest.matchedCredential,
+        rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
+      },
+      dcqlQuery: {
+        credentials: [
+          {
+            id: 'transcript_credential',
+            format: 'dc+sd-jwt',
+            claims: [{ path: ['name'] }],
+            require_cryptographic_holder_binding: false,
+          },
+        ],
+      },
+    }
+
+    const response = await createApprovedPresentationResponse(request, {}, {
+      confirmBiometric: jest.fn(),
+    } as never)
+
+    expect(response).toEqual({
+      vpToken: filteredSdJwt,
+      presentationSubmission: undefined,
+    })
   })
 
   test('signs SD-JWT+KB presentation tokens without the raw biometric helper', async () => {
     const confirmBiometric = jest.fn()
     const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
 
-    const response = await createApprovedPresentationResponse(requestWithDcql(true), {
+    const response = await createApprovedPresentationResponse(requestWithDcql(true), {}, {
       confirmBiometric,
       signSdJwtKbPresentationToken,
     })
@@ -171,8 +161,136 @@ describe('presentationApproval', () => {
       audience: baseRequest.clientId,
       nonce: 'nonce-123',
       sdJwt: rawCredential,
+      credentialId: baseRequest.matchedCredential.id,
     })
     expect(response).toEqual({ vpToken: 'sd-jwt~kb.jwt', presentationSubmission: undefined })
+  })
+
+  test('passes only DCQL-requested SD-JWT disclosures to the signer', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...requestWithDcql(true),
+      disclosures: [{ key: 'name', label: 'Name', value: 'Alice' }],
+      matchedCredential: {
+        ...baseRequest.matchedCredential,
+        rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
+      },
+      dcqlQuery: {
+        credentials: [
+          {
+            id: 'transcript_credential',
+            format: 'dc+sd-jwt',
+            claims: [{ path: ['name'] }],
+            require_cryptographic_holder_binding: true,
+          },
+        ],
+      },
+    }
+    const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
+
+    await createApprovedPresentationResponse(request, {}, { signSdJwtKbPresentationToken })
+
+    expect(signSdJwtKbPresentationToken).toHaveBeenCalledWith({
+      audience: request.clientId,
+      nonce: request.nonce,
+      sdJwt: filteredSdJwt,
+      credentialId: request.matchedCredential.id,
+    })
+  })
+
+  test('passes holder-selected SD-JWT disclosure keys to the signer', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...requestWithDcql(true),
+      disclosures: [
+        { key: 'name', label: 'Name', value: 'Alice', mandatory: false, selective: true },
+        { key: 'age', label: 'Age', value: '25', mandatory: true, selective: false },
+      ],
+      matchedCredential: {
+        ...baseRequest.matchedCredential,
+        rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
+      },
+      dcqlQuery: {
+        credentials: [
+          {
+            id: 'transcript_credential',
+            format: 'dc+sd-jwt',
+            claims: [{ path: ['name'] }, { path: ['age'] }],
+            require_cryptographic_holder_binding: true,
+          },
+        ],
+      },
+    }
+    const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
+
+    await createApprovedPresentationResponse(request, { selectedClaimKeys: ['age'] }, { signSdJwtKbPresentationToken })
+
+    expect(signSdJwtKbPresentationToken).toHaveBeenCalledWith({
+      audience: request.clientId,
+      nonce: request.nonce,
+      sdJwt: 'issuer.sd.jwt~WyJzYWx0LWFnZSIsImFnZSIsMjVd~',
+      credentialId: request.matchedCredential.id,
+    })
+  })
+
+  test('holder-selected keys exclude optional selective claims but keep selective:false locked claims', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...requestWithDcql(true),
+      disclosures: [
+        { key: 'name', label: 'Name', value: 'Alice', mandatory: false, selective: true },
+        { key: 'gpa', label: 'GPA', value: '3.75', mandatory: false, selective: true },
+        { key: 'institution_name', label: 'Institution', value: 'CU', mandatory: false, selective: false },
+      ],
+      matchedCredential: {
+        ...baseRequest.matchedCredential,
+        type: 'ChulalongkornUniversityTranscript',
+        rawVc:
+          'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWdwYSIsImdwYSIsIjMuNzUiXQ~WyJzYWx0LWluc3QiLCJpbnN0aXR1dGlvbl9uYW1lIiwiQ1UiXQ~',
+      },
+      dcqlQuery: {
+        credentials: [
+          {
+            id: 'transcript_credential',
+            format: 'dc+sd-jwt',
+            claims: [{ path: ['name'] }, { path: ['gpa'] }, { path: ['institution_name'] }],
+            require_cryptographic_holder_binding: true,
+          },
+        ],
+      },
+    }
+    const signSdJwtKbPresentationToken = jest.fn().mockResolvedValue('sd-jwt~kb.jwt')
+
+    await createApprovedPresentationResponse(request, { selectedClaimKeys: ['name'] }, { signSdJwtKbPresentationToken })
+
+    expect(signSdJwtKbPresentationToken).toHaveBeenCalledWith({
+      audience: request.clientId,
+      nonce: request.nonce,
+      sdJwt: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~WyJzYWx0LWluc3QiLCJpbnN0aXR1dGlvbl9uYW1lIiwiQ1UiXQ~',
+      credentialId: request.matchedCredential.id,
+    })
+  })
+
+  test('builds dual-format DCQL vp_token envelopes without presentation_submission', async () => {
+    const request: ResolvedPresentationRequest = {
+      ...baseRequest,
+      dcqlQuery: {
+        credentials: [
+          { id: 'transcript_sd_jwt', format: 'dc+sd-jwt', require_cryptographic_holder_binding: true },
+          { id: 'transcript_mdoc', format: 'mso_mdoc' },
+        ],
+      },
+    }
+
+    const buildApprovedPresentationResponse = jest
+      .fn()
+      .mockResolvedValue({
+        vpToken: '{"transcript_sd_jwt":["sd-jwt~kb.jwt"],"transcript_mdoc":["mdoc"]}',
+      })
+
+    const response = await createApprovedPresentationResponse(request, {}, {
+      buildApprovedPresentationResponse,
+    })
+
+    expect(buildApprovedPresentationResponse).toHaveBeenCalled()
+    expect(response.vpToken).toContain('transcript_sd_jwt')
   })
 
   test('signs Presentation Exchange VP JWT tokens and returns presentation_submission', async () => {
@@ -185,7 +303,7 @@ describe('presentationApproval', () => {
     }
     const signPresentationVpToken = jest.fn().mockResolvedValue('vp.jwt')
 
-    const response = await createApprovedPresentationResponse(request, {
+    const response = await createApprovedPresentationResponse(request, {}, {
       signPresentationVpToken,
     })
 
@@ -193,6 +311,7 @@ describe('presentationApproval', () => {
       audience: baseRequest.clientId,
       nonce: 'nonce-123',
       verifiableCredential: rawCredential,
+      credentialId: baseRequest.matchedCredential.id,
     })
     expect(response).toEqual({
       vpToken: 'vp.jwt',

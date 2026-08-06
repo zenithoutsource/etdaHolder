@@ -1,0 +1,65 @@
+import { Text, View } from 'react-native'
+
+import { AppButton } from '@/src/components/AppButton'
+import { PresentationDisclosureList } from '@/src/components/PresentationDisclosureList'
+import { formatMdocFieldLabel } from '@/src/services/proximity/mdocParser'
+
+type ConsentPanelProps = {
+  requestedFields: string[]
+  availableFields: string[]
+  onAllow: () => void
+  onDeny: () => void
+  isSubmitting?: boolean
+}
+
+export function ConsentPanel({
+  requestedFields,
+  availableFields,
+  onAllow,
+  onDeny,
+  isSubmitting = false,
+}: ConsentPanelProps) {
+  const requested = new Set(requestedFields)
+
+  return (
+    <View className="rounded-[12px] bg-white px-5 py-6">
+      <Text className="text-center text-lg font-semibold text-ink">
+        Share credential data?
+      </Text>
+      <Text className="mt-2 text-center text-sm text-slate">
+        The reader requested the fields below
+      </Text>
+
+      <View className="mt-5">
+        <PresentationDisclosureList
+          variant="selectable"
+          items={availableFields.map((fieldKey) => ({
+            key: fieldKey,
+            label: formatMdocFieldLabel(fieldKey),
+            selected: requested.has(fieldKey),
+          }))}
+        />
+      </View>
+
+      <View className="mt-6 flex-row gap-3">
+        <AppButton
+          variant="solid-block"
+          label="Allow"
+          onPress={onAllow}
+          loading={isSubmitting}
+          disabled={isSubmitting}
+          className="flex-1 border-0 bg-wallet-navy py-3"
+          textClassName="text-center text-sm font-bold"
+        />
+        <AppButton
+          variant="outline-block"
+          label="Deny"
+          onPress={onDeny}
+          disabled={isSubmitting}
+          className="flex-1 border-slate200 py-3"
+          textClassName="text-center text-sm font-semibold text-ink"
+        />
+      </View>
+    </View>
+  )
+}

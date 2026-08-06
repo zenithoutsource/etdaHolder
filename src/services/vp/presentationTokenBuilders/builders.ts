@@ -1,0 +1,101 @@
+import { resolveEffectiveDisclosureKeys } from '../claimDisclosurePolicy'
+import { isDualFormatDcqlRequest } from '../dualFormatPresentationMatch'
+import { buildPresentationSubmission, readPresentationTokenAudience, type ResolvedPresentationRequest } from '../presentationService'
+import { selectSdJwtDisclosures } from '../sdJwtSelectiveDisclosure'
+import type { PresentationTokenBuilder } from './types'
+
+function readEffectiveClaimKeys(context: {
+  request: ResolvedPresentationRequest
+  selectedClaimKeys?: readonly string[]
+}): readonly string[] | undefined {
+  const { request, selectedClaimKeys } = context
+  if (!request.dcqlQuery) return undefined
+
+  const dcqlClaimKeys = request.dcqlQuery.credentials.flatMap(
+    (credential) => credential.claims?.flatMap((claim) => (claim.path[0] ? [claim.path[0]] : [])) ?? [],
+  )
+
+  if (!selectedClaimKeys) {
+    if (dcqlClaimKeys.length === 0) return undefined
+    return request.disclosures.map((disclosure) => disclosure.key)
+  }
+
+  return resolveEffectiveDisclosureKeys(
+    request.disclosures.map((disclosure) => ({
+      key: disclosure.key,
+      mandatory: disclosure.mandatory === true,
+      selective: disclosure.selective !== false,
+    })),
+    new Set(selectedClaimKeys),
+  )
+}
+
+export const dualFormatDcqlPresentationBuilder: PresentationTokenBuilder = {
+  id: 'dual-format-dcql',
+  canBuild: (request) => Boolean(request.dcqlQuery && isDualFormatDcqlRequest(request.dcqlQuery)),
+  build: async (context) => {
+    const vpToken = await context.buildDualFormatDcqlVpToken(context.request, {
+      signSdJwtKb: context.signSdJwtKbPresentationToken,
+      selectedClaimKeys: readEffectiveClaimKeys(context),
+    })
+    return { vpToken }
+  },
+}
+
+export const standardDcqlPresentationBuilder: PresentationTokenBuilder = {
+  id: 'standard-dcql',
+  canBuild: (request) => Boolean(request.dcqlQuery && !isDualFormatDcqlRequest(request.dcqlQuery)),
+  build: async (context) => {
+    const mode = context.readTokenMode(context.request)
+    const audience = readPresentationTokenAudience(context.request)
+
+    if (mode === 'raw-credential') {
+      return {
+        vpToken: selectSdJwtDisclosures(
+          context.request.matchedCredential.rawVc,
+          readEffectiveClaimKeys(context),
+        ),
+      }
+    }
+
+    if (mode === 'sd-jwt-kb') {
+      const vpToken = await context.signSdJwtKbPresentationToken({
+        audience,
+        nonce: context.request.nonce,
+        sdJwt: selectSdJwtDisclosures(
+          context.request.matchedCredential.rawVc,
+          readEffectiveClaimKeys(context),
+        ),
+        credentialId: context.request.matchedCredential.id,
+      })
+      return { vpToken }
+    }
+
+    throw new Error('PresentationRequestUnsupported: unsupported DCQL token mode')
+  },
+}
+
+export const presentationExchangeBuilder: PresentationTokenBuilder = {
+  id: 'presentation-exchange',
+  canBuild: (request) => Boolean(request.presentationDefinition),
+  build: async (context) => {
+    const audience = readPresentationTokenAudience(context.request)
+    const vpToken = await context.signPresentationVpToken({
+      audience,
+      nonce: context.request.nonce,
+      verifiableCredential: context.request.matchedCredential.rawVc,
+      credentialId: context.request.matchedCredential.id,
+    })
+    return {
+      vpToken,
+      presentationSubmission: buildPresentationSubmission(context.request),
+    }
+  },
+}
+
+export function selectPresentationTokenBuilder(
+  request: ResolvedPresentationRequest,
+  builders: PresentationTokenBuilder[],
+): PresentationTokenBuilder | undefined {
+  return builders.find((builder) => builder.canBuild(request))
+}

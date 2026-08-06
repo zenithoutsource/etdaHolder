@@ -3,11 +3,19 @@ import type { Config } from 'jest'
 const config: Config = {
   preset: 'jest-expo',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-  testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.test.tsx'],
+  modulePathIgnorePatterns: ['<rootDir>/.worktrees/'],
+  testMatch: [
+    '<rootDir>/src/**/*.test.ts',
+    '<rootDir>/src/**/*.test.tsx',
+    '<rootDir>/scripts/**/*.test.js',
+  ],
   moduleNameMapper: {
+    '^react-native-ssl-pinning$': '<rootDir>/src/__mocks__/react-native-ssl-pinning.ts',
     '^react-native-mmkv$': '<rootDir>/src/__mocks__/react-native-mmkv.ts',
     '^react-native-quick-crypto$': '<rootDir>/src/__mocks__/react-native-quick-crypto.ts',
     '^react-native-keychain$': '<rootDir>/src/__mocks__/react-native-keychain.ts',
+    '^msw$': '<rootDir>/node_modules/msw/lib/core/index.js',
+    '^msw/node$': '<rootDir>/node_modules/msw/lib/node/index.js',
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
@@ -25,8 +33,11 @@ const config: Config = {
       statements: 80,
     },
   },
+  transform: {
+    '^.+\\.mjs$': 'babel-jest',
+  },
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|sentry-expo|native-base|@sphereon/.*|@craftzdog/.*|@noble/.*|uuid)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|sentry-expo|native-base|@sphereon/.*|@openid4vc/openid4vp|@openid4vc/oauth2|@openid4vc/utils|@craftzdog/.*|@noble/.*|uuid|msw|@mswjs|rettime|until-async|strict-event-emitter|outvariant|headers-polyfill)',
   ],
 }
 

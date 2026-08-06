@@ -1,12 +1,17 @@
 import { create } from 'zustand'
 
 import {
+  checkEmailStatus as authCheckEmailStatus,
+  confirmPinReset as authConfirmPinReset,
   login as authLogin,
   logout as authLogout,
   loadSession,
   register as authRegister,
+  requestPinReset as authRequestPinReset,
+  verifyPinResetOtp as authVerifyPinResetOtp,
   type SessionData,
 } from '../services/auth/authService'
+import { clearWalletPinSession, recordWalletPinUnlock } from '../services/auth/walletPinSession'
 
 type AuthState = {
   token: string | null
@@ -19,8 +24,12 @@ type AuthState = {
 
 type AuthActions = {
   loadSession: () => Promise<void>
-  login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, name: string) => Promise<void>
+  checkEmailStatus: (email: string) => Promise<{ exists: boolean }>
+  login: (email: string, pin: string) => Promise<void>
+  register: (name: string, email: string, pin: string) => Promise<void>
+  requestPinReset: (email: string) => Promise<void>
+  verifyPinResetOtp: (email: string, otp: string) => Promise<void>
+  confirmPinReset: (email: string, otp: string, pin: string) => Promise<void>
   logout: () => Promise<void>
   setPinVerified: (verified: boolean) => void
 }
@@ -45,25 +54,72 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
   loadSession: async () => {
     const session = await loadSession()
     if (session) {
-      set(applySession(session))
+      set({ ...applySession(session), isPinVerified: false })
     }
   },
 
-  login: async (email, password) => {
+  checkEmailStatus: async (email) => {
     set({ isLoading: true })
     try {
-      const session = await authLogin(email, password)
-      set({ ...applySession(session), isLoading: false })
+      const result = await authCheckEmailStatus(email)
+      set({ isLoading: false })
+      return result
     } catch (error) {
       set({ isLoading: false })
       throw error
     }
   },
 
-  register: async (email, password, name) => {
+  login: async (email, pin) => {
     set({ isLoading: true })
     try {
-      await authRegister(email, password, name)
+      const session = await authLogin(email, pin)
+      recordWalletPinUnlock()
+      set({ ...applySession(session), isLoading: false, isPinVerified: true })
+    } catch (error) {
+      set({ isLoading: false })
+      throw error
+    }
+  },
+
+  register: async (name, email, pin) => {
+    set({ isLoading: true })
+    try {
+      const session = await authRegister(name, email, pin)
+      recordWalletPinUnlock()
+      set({ ...applySession(session), isLoading: false, isPinVerified: true })
+    } catch (error) {
+      set({ isLoading: false })
+      throw error
+    }
+  },
+
+  requestPinReset: async (email) => {
+    set({ isLoading: true })
+    try {
+      await authRequestPinReset(email)
+      set({ isLoading: false })
+    } catch (error) {
+      set({ isLoading: false })
+      throw error
+    }
+  },
+
+  verifyPinResetOtp: async (email, otp) => {
+    set({ isLoading: true })
+    try {
+      await authVerifyPinResetOtp(email, otp)
+      set({ isLoading: false })
+    } catch (error) {
+      set({ isLoading: false })
+      throw error
+    }
+  },
+
+  confirmPinReset: async (email, otp, pin) => {
+    set({ isLoading: true })
+    try {
+      await authConfirmPinReset(email, otp, pin)
       set({ isLoading: false })
     } catch (error) {
       set({ isLoading: false })
@@ -73,8 +129,14 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
 
   logout: async () => {
     await authLogout()
+    clearWalletPinSession()
     set({ token: null, walletId: null, accountId: null, isAuthenticated: false, isPinVerified: false })
   },
 
-  setPinVerified: (verified) => set({ isPinVerified: verified }),
+  setPinVerified: (verified) => {
+    if (verified) {
+      recordWalletPinUnlock()
+    }
+    set({ isPinVerified: verified })
+  },
 }))

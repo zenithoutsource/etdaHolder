@@ -1,11 +1,16 @@
 {
   "expo": {
-    "name": "etdaWallet",
+    "name": "Document Wallet",
     "slug": "etdaWallet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "etdawallet",
+    "scheme": [
+      "etdawallet",
+      "walletapp",
+      "openid-credential-offer",
+      "openid4vp"
+    ],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -15,6 +20,8 @@
       }
     },
     "android": {
+      "allowBackup": false,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -22,8 +29,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.NFC",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "predictiveBackGestureEnabled": false,
-      "package": "com.thanaboon.chan.etdaWallet"
+      "package": "com.thanaboon.chan.etdaWallet",
+      "versionCode": 2
     },
     "web": {
       "output": "static",
@@ -31,7 +44,11 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/with-android-long-paths.js",
+      "./plugins/with-android-backup-rules.js",
+      "./modules/expo-mdoc-proximity/app.plugin.js",
       "expo-camera",
+      "expo-notifications",
       [
         "expo-splash-screen",
         {
@@ -43,11 +60,26 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 29
+          }
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "02e2e8d0-81d3-4e6f-9351-e80d60781966"
+      }
+    },
+    "owner": "etdawallet"
   }
 }

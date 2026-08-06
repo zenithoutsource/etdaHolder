@@ -3,9 +3,15 @@ import { getCredentialStorage } from '../storage/storage'
 
 jest.mock('../storage/storage', () => ({
   getCredentialStorage: jest.fn(),
+  persistWalletPinMeta: jest.fn(),
+  provisionStoragePinFallback: jest.fn(),
 }))
 
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
+const { persistWalletPinMeta, provisionStoragePinFallback } = jest.requireMock('../storage/storage') as {
+  persistWalletPinMeta: jest.Mock
+  provisionStoragePinFallback: jest.Mock
+}
 
 function mockStorage(initialValues: Record<string, string> = {}) {
   const values = new Map(Object.entries(initialValues))
@@ -43,6 +49,13 @@ describe('walletPin', () => {
     expect(hasWalletPin()).toBe(true)
     expect(verifyWalletPin('123456')).toBe(true)
     expect(verifyWalletPin('654321')).toBe(false)
+    expect(persistWalletPinMeta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        salt: expect.any(String),
+        hash: expect.any(String),
+      }),
+    )
+    expect(provisionStoragePinFallback).toHaveBeenCalledWith('123456')
   })
 
   test('rejects non-six-digit PIN values', () => {

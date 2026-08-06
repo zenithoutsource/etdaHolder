@@ -1,10 +1,15 @@
 import {
+  claimCredentialWithDualFormatSupport,
+  isDualFormatOffer,
+} from '../credentials/dualFormatIssuance'
+import {
   claimCredential as defaultClaimCredential,
   type ClaimCredentialOptions,
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from './exchangeService'
 import { getCardSchema, type DisplayField, type CardSchemaConfig } from '../../config/cardSchemas'
+import { isHiddenClaimKey, readClaimText, stringifyClaim } from '../credentials/claimFormatting'
 import { isRecord, readRecord } from '../../utils/jwtUtils'
 
 export type OfferConfirmationPreview = {
@@ -41,13 +46,14 @@ type ClaimConfirmedOfferOptions = {
 
 export function readOfferConfirmationPreview(offer: ResolvedCredentialOffer): OfferConfirmationPreview {
   const configuration = offer.credentialConfigurations[0]
+  const dualFormat = isDualFormatOffer(offer.credentialConfigurations)
   const credentialName = configuration?.display?.name ?? readFriendlyCredentialName(configuration?.id)
   const informationItems = readInformationItems(configuration?.rawConfiguration)
 
   return {
     issuerName: offer.issuerDisplay?.name ?? 'Unknown Issuer',
     credentialName,
-    format: configuration?.format ?? 'Unknown format',
+    format: dualFormat ? 'dc+sd-jwt + mso_mdoc' : (configuration?.format ?? 'Unknown format'),
     informationItems: informationItems.length > 0 ? informationItems : [{ key: 'credential', label: 'Credential to receive' }],
   }
 }
@@ -57,6 +63,11 @@ export async function claimConfirmedOffer(
   options: ClaimConfirmedOfferOptions = {},
 ): Promise<VerifiableCredentialRecord> {
   const { claimCredential = defaultClaimCredential, tx_code } = options
+  if (isDualFormatOffer(offer.credentialConfigurations)) {
+    const result = await claimCredentialWithDualFormatSupport(offer, { tx_code })
+    return result
+  }
+
   return claimCredential(offer, { tx_code })
 }
 
@@ -66,7 +77,7 @@ export function readCredentialInformationRows(
 ): CredentialInformationRow[] {
   const configuredRows = displayFields
     .map((field) => {
-      const value = readClaimValue(record.claims, [field.key, ...(field.aliases ?? [])])
+      const value = readClaimText(record.claims, [field.key, ...(field.aliases ?? [])])
       return value ? { key: field.key, label: field.label, value } : undefined
     })
     .filter((row): row is CredentialInformationRow => Boolean(row))
@@ -74,7 +85,7 @@ export function readCredentialInformationRows(
   if (configuredRows.length > 0) return configuredRows
 
   return Object.entries(record.claims)
-    .filter(([key, value]) => !key.startsWith('_') && !HIDDEN_CLAIM_KEYS.has(key) && stringifyClaim(value).trim().length > 0)
+    .filter(([key, value]) => !key.startsWith('_') && !isHiddenClaimKey(key) && stringifyClaim(value).trim().length > 0)
     .map(([key, value]) => ({ key, label: key, value: stringifyClaim(value) }))
 }
 
@@ -122,24 +133,6 @@ function readClaimDisplayName(value: unknown): string | undefined {
   }
 
   return undefined
-}
-
-const HIDDEN_CLAIM_KEYS = new Set(['vc', 'iss', 'iat', 'nbf', 'exp', 'jti', 'vct', 'cnf', 'status'])
-
-function readClaimValue(claims: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const text = stringifyClaim(claims[key]).trim()
-    if (text.length > 0) return text
-  }
-
-  return undefined
-}
-
-function stringifyClaim(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (value === null || value === undefined) return ''
-  return JSON.stringify(value)
 }
 
 function isPlaceholderDisplayName(value: string): boolean {

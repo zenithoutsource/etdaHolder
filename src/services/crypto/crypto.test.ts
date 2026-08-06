@@ -1,16 +1,21 @@
 import * as Keychain from 'react-native-keychain'
 
 import {
+  ensureWalletKeyRegisteredAtBackfill,
   generateWalletKeyIfNeeded,
+  getHolderCoseKeyBase64Url,
   getPublicKeyJwk,
   signSdJwtKbPresentationToken,
   getHolderDid,
   signPresentationVpToken,
   signProof,
+  createProofSigningSession,
   resetWalletKey,
   hasWalletKey,
   getWalletKeyRegisteredAt,
 } from './crypto'
+import { WALLET_CRYPTO_V2_META_KEY } from '@/src/config/walletCryptoPolicy'
+import { createPendingCredentialKey } from './credentialSigningKey'
 import { getMetaStorage } from '../storage/storage'
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
@@ -139,10 +144,80 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     }))
   })
 
+  test('signs both dual-format proofs after one authenticated Keychain read', async () => {
+    await generateWalletKeyIfNeeded()
+    jest.clearAllMocks()
+
+    const session = await createProofSigningSession()
+    await session.signProof('nonce-sd-jwt', 'https://issuer.example.com', { keyBinding: 'did-kid' })
+    await session.signProof('nonce-mdoc', 'https://issuer.example.com', { keyBinding: 'jwk' })
+    session.close()
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
+    expect(Keychain.getGenericPassword).toHaveBeenCalledWith(expect.objectContaining({
+      service: 'etda.wallet.ed25519_seed',
+      authenticationPrompt: {
+        title: 'Sign with Wallet Key',
+        cancel: 'Cancel',
+      },
+    }))
+  })
+
+  test('uses one authenticated per-credential proof session for both dual-format proofs', async () => {
+    getMetaStorage().set(WALLET_CRYPTO_V2_META_KEY, 'true')
+    const pendingKeyId = await createPendingCredentialKey()
+    jest.clearAllMocks()
+
+    const session = await createProofSigningSession(pendingKeyId)
+    expect(session.credentialKeyId).toBe(pendingKeyId)
+    await session.signProof('nonce-sd-jwt', 'https://issuer.example.com', { keyBinding: 'did-kid' })
+    await session.signProof('nonce-mdoc', 'https://issuer.example.com', { keyBinding: 'jwk' })
+    session.close()
+
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
+    expect(Keychain.getGenericPassword).toHaveBeenCalledWith(expect.objectContaining({
+      service: `wallet.ed25519_seed.cred.${pendingKeyId}`,
+      authenticationPrompt: {
+        title: 'Sign with Credential Key',
+        cancel: 'Cancel',
+      },
+    }))
+
+    expect(session.bindCredentialKey).toBeDefined()
+    await session.bindCredentialKey?.('dual-format-session-credential', 'ThaiNationalID')
+    expect(Keychain.getGenericPassword).toHaveBeenCalledTimes(1)
+  })
+
+  test('signs OID4VCI PoP JWT with EdDSA jwk header for cose_key binding', async () => {
+    await generateWalletKeyIfNeeded()
+    const jwt = await signProof('nonce-123', 'https://issuer.example.com', { keyBinding: 'jwk' })
+    const [encodedHeader, encodedPayload] = jwt.split('.')
+    const header = base64UrlDecode(encodedHeader) as Record<string, unknown>
+    const payload = base64UrlDecode(encodedPayload) as Record<string, unknown>
+
+    expect(header).toMatchObject({
+      alg: 'EdDSA',
+      typ: 'openid4vci-proof+jwt',
+      jwk: {
+        kty: 'OKP',
+        crv: 'Ed25519',
+        x: 'apUzt87kDqiT9GpHtFV8oCSzdAe5CFqnu-XE9_DAW_k',
+      },
+      cose_key: getHolderCoseKeyBase64Url(),
+    })
+    expect(header.kid).toBeUndefined()
+    expect(payload).toMatchObject({
+      aud: 'https://issuer.example.com',
+      nonce: 'nonce-123',
+    })
+    expect(payload.iss).toBeUndefined()
+    expect(payload.sub).toBeUndefined()
+  })
+
   test('signs OID4VP JWT VP token with Keychain EdDSA', async () => {
     await generateWalletKeyIfNeeded()
     const jwt = await signPresentationVpToken({
-      audience: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      audience: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
       verifiableCredential: 'issuer.vc.jwt',
     })
@@ -157,7 +232,7 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(payload).toMatchObject({
       iss: ED25519_DID_KEY_VECTOR,
       sub: ED25519_DID_KEY_VECTOR,
-      aud: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      aud: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
       vp: {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
@@ -176,7 +251,7 @@ describe('Keychain Ed25519 wallet crypto service', () => {
       cnf: { jwk: holderJwk },
     })}~disclosure~`
     const presentation = await signSdJwtKbPresentationToken({
-      audience: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      audience: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
       sdJwt,
     })
@@ -192,7 +267,7 @@ describe('Keychain Ed25519 wallet crypto service', () => {
       kid: `${ED25519_DID_KEY_VECTOR}#${ED25519_DID_KEY_VECTOR.replace('did:key:', '')}`,
     })
     expect(payload).toMatchObject({
-      aud: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+      aud: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
       nonce: 'request-123',
     })
     expect(typeof payload.iat).toBe('number')
@@ -208,7 +283,7 @@ describe('Keychain Ed25519 wallet crypto service', () => {
 
     await expect(
       signSdJwtKbPresentationToken({
-        audience: 'redirect_uri:http://192.100.10.48/openid4vc/verify/request-123',
+        audience: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
         nonce: 'request-123',
         sdJwt,
       }),
@@ -224,6 +299,36 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(Keychain.getGenericPassword).toHaveBeenLastCalledWith(expect.not.objectContaining({
       authenticationPrompt: expect.anything(),
     }))
+  })
+
+  test('maps Android Keychain negative-button signing cancellation to scoped cancellation', async () => {
+    await generateWalletKeyIfNeeded()
+    const cancellationError = Object.assign(new Error('code: 13, msg: Cancel'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(cancellationError)
+
+    await expect(signProof('nonce-123', 'https://issuer.example.com')).rejects.toThrow('WalletKeySigningCancelled')
+  })
+
+  test('maps Android Keychain user-cancel signing cancellation to scoped cancellation', async () => {
+    await generateWalletKeyIfNeeded()
+    const cancellationError = Object.assign(new Error('code: 10, msg: User cancelled'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(cancellationError)
+
+    await expect(signProof('nonce-123', 'https://issuer.example.com')).rejects.toThrow('WalletKeySigningCancelled')
+  })
+
+  test('maps bare code-13 cancellation without keychain wrapper metadata to scoped cancellation', async () => {
+    await generateWalletKeyIfNeeded()
+    const cancellationError = Object.assign(new Error('Cancel'), { code: 13 })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(cancellationError)
+
+    await expect(signProof('nonce-123', 'https://issuer.example.com')).rejects.toThrow('WalletKeySigningCancelled')
   })
 
   test('resetWalletKey deletes the Keychain Ed25519 seed and cached public key', async () => {
@@ -282,9 +387,24 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(hasWalletKey()).toBe(true)
   })
 
-  test('getWalletKeyRegisteredAt is undefined when key is synced from existing Keychain entry', async () => {
+  test('legacy keychain sync without registeredAt keeps TTL metadata unset', async () => {
     await generateWalletKeyIfNeeded()
+    getMetaStorage().remove('wallet.key_registered_at')
+
+    await generateWalletKeyIfNeeded()
+
     expect(getWalletKeyRegisteredAt()).toBeUndefined()
+  })
+
+  test('ensureWalletKeyRegisteredAtBackfill sets registeredAt for existing keys missing TTL metadata', async () => {
+    await generateWalletKeyIfNeeded()
+    getMetaStorage().remove('wallet.key_registered_at')
+
+    const backfilled = ensureWalletKeyRegisteredAtBackfill(new Date('2026-07-31T00:00:00.000Z'))
+
+    expect(backfilled).toBe(true)
+    expect(getWalletKeyRegisteredAt()).toBe('2026-07-31T00:00:00.000Z')
+    expect(ensureWalletKeyRegisteredAtBackfill()).toBe(false)
   })
 
   test('getWalletKeyRegisteredAt returns an ISO 8601 timestamp when a fresh key is generated', async () => {
@@ -327,6 +447,48 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(presentation.startsWith(sdJwt)).toBe(true)
     const kbJwt = presentation.slice(sdJwt.length)
     expect(kbJwt.split('.').length).toBe(3)
+  })
+
+  test('logs the failing step when the Keychain seed write fails during key init', async () => {
+    jest.mocked(Keychain.getGenericPassword).mockResolvedValueOnce(false)
+    jest.mocked(Keychain.setGenericPassword).mockResolvedValueOnce(false)
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      await expect(generateWalletKeyIfNeeded()).rejects.toThrow('Ed25519SeedKeychainWriteFailed')
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[wallet:crypto] wallet-key-init-failed'),
+        expect.objectContaining({
+          step: 'keychain-write',
+          existingKeyPresent: false,
+        }),
+        expect.objectContaining({ message: 'Ed25519SeedKeychainWriteFailed' }),
+      )
+    } finally {
+      consoleErrorSpy.mockRestore()
+    }
+  })
+
+  test('logs the failing step when the Keychain read rejects during key init', async () => {
+    const nativeError = Object.assign(new Error('code: 1, msg: Fingerprint hardware not available'), {
+      code: 'E_CRYPTO_FAILED',
+      name: 'com.oblador.keychain.exceptions.CryptoFailedException',
+    })
+    jest.mocked(Keychain.getGenericPassword).mockRejectedValueOnce(nativeError)
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    try {
+      await expect(generateWalletKeyIfNeeded()).rejects.toThrow('Fingerprint hardware not available')
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[wallet:crypto] wallet-key-init-failed'),
+        expect.objectContaining({ step: 'keychain-read' }),
+        expect.objectContaining({ code: 'E_CRYPTO_FAILED' }),
+      )
+    } finally {
+      consoleErrorSpy.mockRestore()
+    }
   })
 
   test('throws when the stored Keychain seed is not 32 bytes', async () => {

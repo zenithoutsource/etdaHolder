@@ -6,7 +6,7 @@ Date: 2026-06-15
 
 ## Context
 
-ETDA requires `alg: EdDSA` with Ed25519 for OID4VCI Proof of Possession JWTs and OID4VP SD-JWT Key Binding JWTs. The previously accepted signing module, `@animo-id/expo-secure-environment`, only supports P-256 / ES256. The temporary Noble software Ed25519 path exposed private key material to JavaScript memory and is not release-safe.
+The customer requires `alg: EdDSA` with Ed25519 for OID4VCI Proof of Possession JWTs and OID4VP SD-JWT Key Binding JWTs. The previously accepted signing module, `@animo-id/expo-secure-environment`, only supports P-256 / ES256. The temporary Noble software Ed25519 path exposed private key material to JavaScript memory and is not release-safe.
 
 iOS Secure Enclave does not support Ed25519. Android API 33+ documents Ed25519 `Signature` support, but AndroidKeyStore Ed25519 key generation and hardware backing must still be confirmed on the actual target devices.
 

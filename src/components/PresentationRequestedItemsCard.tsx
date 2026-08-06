@@ -1,34 +1,61 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
-import { AppButton } from './AppButton'
 import type { PresentationDisclosure } from '../services/vp/presentationService'
+import { AppButton } from './AppButton'
+import {
+  hasSelectedClaims,
+  isToggleablePresentationDisclosure,
+  readConsentItems,
+} from './PresentationConsentPanel'
+import { PresentationDisclosureList } from './PresentationDisclosureList'
 
 type Props = {
+  documentType: string
   disclosures: PresentationDisclosure[]
+  selectedClaimKeys: ReadonlySet<string>
+  onToggleClaim: (claimKey: string) => void
   onAccept: () => void
+  submitting?: boolean
 }
 
-export function PresentationRequestedItemsCard({ disclosures, onAccept }: Props) {
+export function PresentationRequestedItemsCard({
+  documentType,
+  disclosures,
+  selectedClaimKeys,
+  onToggleClaim,
+  onAccept,
+  submitting,
+}: Props) {
+  const consentItems = readConsentItems(disclosures, selectedClaimKeys, documentType)
+  const hasToggleableItems = consentItems.some((item) => item.toggleable === true)
+
+  const handleToggle = (claimKey: string) => {
+    const disclosure = disclosures.find((entry) => entry.key === claimKey)
+    if (!disclosure || !isToggleablePresentationDisclosure(disclosure)) return
+    onToggleClaim(claimKey)
+  }
+
   return (
     <View>
-      <Text className="text-[13px] font-extrabold text-[#071f5f]">รายการที่ร้องขอ</Text>
-      <View className="mt-2 gap-2">
-        {disclosures.map((disclosure) => (
-          <View
-            key={disclosure.key}
-            className="flex-row items-center gap-3 rounded-xl border-l-4 border-[#123b8c] bg-white px-4 py-3"
-            style={{ elevation: 2, shadowColor: '#0f2849', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 }}>
-            <MaterialCommunityIcons name="checkbox-marked" size={22} color="#123b8c" />
-            <View className="flex-1">
-              <Text className="text-[14px] font-extrabold text-[#071f5f]">{disclosure.label}</Text>
-              <Text className="text-[13px] font-bold text-[#123b8c]">{disclosure.value}</Text>
-            </View>
-            <MaterialCommunityIcons name="information-outline" size={20} color="#9aa1ad" />
-          </View>
-        ))}
+      <Text className="text-[13px] font-extrabold text-navy-deep">รายการที่ร้องขอ</Text>
+      {hasToggleableItems ? (
+        <Text className="mt-1 text-[12px] text-gray500">เลือกรายการเพื่อส่งตรวจสอบ</Text>
+      ) : null}
+      <View className="mt-2">
+        <PresentationDisclosureList
+          items={consentItems}
+          variant="review"
+          onToggle={handleToggle}
+        />
       </View>
-      <AppButton variant="solid-block" label="ยอมรับ" onPress={onAccept} className="mt-5 h-12" />
+      <AppButton
+        variant="solid-block"
+        label="ยอมรับ"
+        onPress={onAccept}
+        disabled={!hasSelectedClaims(disclosures, selectedClaimKeys)}
+        loading={submitting}
+        className="mt-5 h-12"
+      />
     </View>
   )
 }
