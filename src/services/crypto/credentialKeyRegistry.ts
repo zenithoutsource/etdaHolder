@@ -62,3 +62,11 @@ export function listCredentialKeyRecords(): CredentialKeyRecord[] {
 
   return records
 }
+
+/** Oldest credential Holder DID for push registration after cold-start key deferral. */
+export function readFirstCredentialHolderDid(): string | undefined {
+  const records = listCredentialKeyRecords()
+  if (records.length === 0) return undefined
+  records.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  return records[0]?.holderDid
+}

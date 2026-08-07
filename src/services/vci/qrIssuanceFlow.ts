@@ -10,6 +10,9 @@ import {
 } from './exchangeService'
 import { getCardSchema, type DisplayField, type CardSchemaConfig } from '../../config/cardSchemas'
 import { isHiddenClaimKey, readClaimText, stringifyClaim } from '../credentials/claimFormatting'
+import { getCredentialKeyRecord } from '../crypto/credentialKeyRegistry'
+import { logWalletError, logWalletStep } from '../debug/walletLogger'
+import { launchPushNotificationsInBackground } from '../notifications/pushNotificationService'
 import { isRecord, readRecord } from '../../utils/jwtUtils'
 
 export type OfferConfirmationPreview = {
@@ -63,12 +66,23 @@ export async function claimConfirmedOffer(
   options: ClaimConfirmedOfferOptions = {},
 ): Promise<VerifiableCredentialRecord> {
   const { claimCredential = defaultClaimCredential, tx_code } = options
-  if (isDualFormatOffer(offer.credentialConfigurations)) {
-    const result = await claimCredentialWithDualFormatSupport(offer, { tx_code })
-    return result
+  const record = isDualFormatOffer(offer.credentialConfigurations)
+    ? await claimCredentialWithDualFormatSupport(offer, { tx_code })
+    : await claimCredential(offer, { tx_code })
+
+  const credentialKey = getCredentialKeyRecord(record.id)
+  if (credentialKey?.holderDid) {
+    try {
+      launchPushNotificationsInBackground(credentialKey.holderDid)
+      logWalletStep('oid4vci', 'push-registration-after-claim-started')
+    } catch (error) {
+      logWalletError('oid4vci', 'push-registration-after-claim-failed', error)
+    }
+  } else {
+    logWalletStep('oid4vci', 'push-registration-after-claim-skipped-no-credential-did')
   }
 
-  return claimCredential(offer, { tx_code })
+  return record
 }
 
 export function readCredentialInformationRows(

@@ -36,6 +36,7 @@ import {
     type ProofSigningSession,
     type SignProofOptions,
 } from '../crypto/crypto'
+import { withIssuanceKeySession } from '../crypto/issuanceKeySession'
 import {
     isWalletCryptoV2Enabled,
     readCachedWalletAttestations,
@@ -215,6 +216,8 @@ export type ClaimCredentialOptions = {
   dependencies?: Partial<ClaimCredentialDependencies>
   /** Reuse one authenticated proof-signing session across related requests. */
   proofSession?: ProofSigningSession
+  /** Pending credential key id from an outer issuance key session. */
+  pendingCredentialKeyId?: string
   /** Reports a fresh c_nonce received while retrying an invalid proof. */
   onCNonceUpdated?: (cNonce: string) => void
   /** Reuse a pre-authorized access token (dual-format second credential request). */
@@ -428,10 +431,30 @@ export async function fetchIssuerMetadata(issuer: string): Promise<IssuerMetadat
   }
 }
 
+function shouldOpenIssuanceKeySession(options: ClaimCredentialOptions): boolean {
+  if (options.proofSession || options.pendingCredentialKeyId) return false
+  if (Object.prototype.hasOwnProperty.call(options.dependencies ?? {}, 'signProof')) return false
+  if (Object.prototype.hasOwnProperty.call(options.dependencies ?? {}, 'createProofSigningSession')) {
+    return false
+  }
+  return true
+}
+
 export async function claimCredential(
   resolvedOffer: ResolvedCredentialOffer,
   options: ClaimCredentialOptions = {},
 ): Promise<VerifiableCredentialRecord> {
+  if (shouldOpenIssuanceKeySession(options)) {
+    return withIssuanceKeySession(async (session) => {
+      await session.activateV2IfNeeded()
+      return claimCredential(resolvedOffer, {
+        ...options,
+        pendingCredentialKeyId: session.pendingCredentialKeyId,
+        proofSession: session.proofSession,
+      })
+    })
+  }
+
   const dependencies = {
     ...createDefaultClaimCredentialDependencies(),
     ...options.dependencies,
@@ -476,6 +499,7 @@ export async function acquireCredentialRecord(
     txCodeProvided: Boolean(options.tx_code),
     reuseToken: Boolean(options.reuseToken),
   })
+  const dpopSession = isDpopIssuanceEnabled() ? createDpopIssuanceSession() : undefined
   const token = options.reuseToken
     ?? await awaitCredentialAcquisition(
       Promise.resolve().then(() => dependencies.acquireAccessToken({
@@ -510,7 +534,6 @@ export async function acquireCredentialRecord(
   }
   const walletAttestations = readWalletAttestationsForCredentialRequest()
   const hasCustomSignProof = Object.prototype.hasOwnProperty.call(options.dependencies ?? {}, 'signProof')
-  const dpopSession = isDpopIssuanceEnabled() ? createDpopIssuanceSession() : undefined
   let ownedProofSession: ProofSigningSession | undefined
   try {
     throwIfCredentialAcquisitionAborted(options.signal)

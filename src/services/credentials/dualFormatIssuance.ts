@@ -45,6 +45,7 @@ import {
   discardPendingCredentialKey,
   destroyCredentialKey,
 } from '../crypto/credentialSigningKey'
+import { withIssuanceKeySession } from '../crypto/issuanceKeySession'
 import { isWalletCryptoV2Enabled } from '../crypto/walletCryptoActivation'
 
 const HOLDER_BINDING_REF = 'etda_wallet_signing_key'
@@ -1032,11 +1033,31 @@ export async function claimDualFormatCredential(
   }
 }
 
+function shouldOpenIssuanceKeySession(options: ClaimCredentialOptions): boolean {
+  if (options.proofSession || options.pendingCredentialKeyId) return false
+  if (Object.prototype.hasOwnProperty.call(options.dependencies ?? {}, 'signProof')) return false
+  if (Object.prototype.hasOwnProperty.call(options.dependencies ?? {}, 'createProofSigningSession')) {
+    return false
+  }
+  return true
+}
+
 export async function claimCredentialWithDualFormatSupport(
   resolvedOffer: ResolvedCredentialOffer,
   options: ClaimCredentialOptions = {},
 ): Promise<VerifiableCredentialRecord> {
   if (isDualFormatOffer(resolvedOffer.credentialConfigurations)) {
+    if (shouldOpenIssuanceKeySession(options)) {
+      return withIssuanceKeySession(async (session) => {
+        await session.activateV2IfNeeded()
+        const result = await claimDualFormatCredential(resolvedOffer, {
+          ...options,
+          pendingCredentialKeyId: session.pendingCredentialKeyId,
+          proofSession: session.proofSession,
+        })
+        return result.primaryRecord
+      })
+    }
     const result = await claimDualFormatCredential(resolvedOffer, options)
     return result.primaryRecord
   }

@@ -148,7 +148,7 @@ export default function RootLayout() {
       }
 
       const [
-        { generateWalletKeyIfNeeded, getHolderDid, ensureWalletKeyRegisteredAtBackfill },
+        { hasWalletKey, ensureWalletKeyRegisteredAtBackfill },
         { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock, needsStoragePinFallbackMigration, getCredentialStorage },
         { assertDeviceIntegrity },
         { assertConfiguredWalletApiRuntimePolicy },
@@ -320,15 +320,14 @@ export default function RootLayout() {
       const { ensureWalletHistoryBackfill } = await import('@/src/services/history/walletEventLog');
       ensureWalletHistoryBackfill();
       logWalletStep('startup', 'wallet-history-backfill-complete');
-      await generateWalletKeyIfNeeded();
-      if (!isCurrentRun()) return;
-      if (ensureWalletKeyRegisteredAtBackfill()) {
+      // Defer wallet-seed / k_attest Keychain create off cold start (see
+      // docs/superpowers/specs/2026-08-07-defer-first-install-keychain-biometric-design.md).
+      if (hasWalletKey() && ensureWalletKeyRegisteredAtBackfill()) {
         logWalletStep('startup', 'wallet-key-registered-at-backfilled');
       }
-      logWalletStep('startup', 'wallet-key-ready');
+      logWalletStep('startup', 'wallet-key-ready-deferred');
 
       const {
-        activateWalletCryptoV2,
         detectLegacySingleKeyWallet,
         isWalletCryptoV2Enabled,
       } = await import('@/src/services/crypto/walletCryptoActivation');
@@ -338,10 +337,10 @@ export default function RootLayout() {
         throw new Error('WalletCryptoLegacyWallet');
       }
 
-      if (!isWalletCryptoV2Enabled()) {
-        await activateWalletCryptoV2();
-        if (!isCurrentRun()) return;
-        logWalletStep('startup', 'wallet-crypto-v2-activated');
+      if (isWalletCryptoV2Enabled()) {
+        logWalletStep('startup', 'wallet-crypto-v2-already-enabled');
+      } else {
+        logWalletStep('startup', 'wallet-crypto-v2-activation-deferred');
       }
 
       await loadSession();
@@ -359,11 +358,20 @@ export default function RootLayout() {
         setPinVerified(true)
       }
       logWalletStep('startup', 'session-loaded');
-      void import('@/src/services/notifications/pushNotificationService')
-        .then(({ launchPushNotificationsInBackground }) => {
-          launchPushNotificationsInBackground(getHolderDid());
-          logWalletStep('startup', 'push-notifications-started');
-        })
+      void import('@/src/services/crypto/credentialKeyRegistry')
+        .then(({ readFirstCredentialHolderDid }) =>
+          import('@/src/services/notifications/pushNotificationService').then(
+            ({ launchPushNotificationsInBackground }) => {
+              const pushHolderDid = readFirstCredentialHolderDid()
+              if (!pushHolderDid) {
+                logWalletStep('startup', 'push-notifications-deferred-no-credential-did')
+                return
+              }
+              launchPushNotificationsInBackground(pushHolderDid)
+              logWalletStep('startup', 'push-notifications-started')
+            },
+          ),
+        )
         .catch((error: unknown) => {
           logWalletError('startup', 'push-notifications-module-load-failed', error);
         });
@@ -405,9 +413,18 @@ export default function RootLayout() {
   const handleStoragePinMigrationComplete = useCallback(async () => {
     try {
       setPinVerified(true);
-      const { getHolderDid } = await import('@/src/services/crypto/crypto');
-      const { initPushNotifications } = await import('@/src/services/notifications/pushNotificationService');
-      await initPushNotifications(getHolderDid());
+      const { readFirstCredentialHolderDid } = await import(
+        '@/src/services/crypto/credentialKeyRegistry'
+      );
+      const pushHolderDid = readFirstCredentialHolderDid();
+      if (pushHolderDid) {
+        const { initPushNotifications } = await import(
+          '@/src/services/notifications/pushNotificationService'
+        );
+        await initPushNotifications(pushHolderDid);
+      } else {
+        logWalletStep('startup', 'push-notifications-deferred-no-credential-did');
+      }
       setStartupState({ status: 'ready' });
       logWalletStep('startup', 'prepare-wallet-ready-after-migration');
     } catch (error) {

@@ -11,6 +11,7 @@ import { getMetaStorage } from '../storage/storage'
 import { notifyWalletKeyRegistrationChanged } from './walletKeyExpiryWatch'
 import {
   createCredentialKeySigningSession,
+  createMemoryPendingCredentialKeySession,
   getCredentialSigningHolderDid,
   readCredentialSigningPublicJwk,
   signWithCredentialKey,
@@ -544,6 +545,12 @@ function createCredentialProofSigningSession(
     },
     close: credentialSession.close,
   }
+}
+
+/** In-memory pending credential key + proof session (no Keychain get until bind). */
+export function createMemoryIssuanceProofSession(): ProofSigningSession {
+  const credentialSession = createMemoryPendingCredentialKeySession()
+  return createCredentialProofSigningSession(credentialSession.credentialKeyId, credentialSession)
 }
 
 async function signProofWithCredentialSession(

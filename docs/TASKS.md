@@ -1,5 +1,20 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-07 (Defer first-install Keychain biometric)
+
+- Blank cold start no longer creates wallet seed / `k_attest` or activates crypto
+  v2 (avoids "Authenticate to retrieve secret" on fresh install).
+- New `withIssuanceKeySession`: pending credential seed stays in memory through
+  PoP; one biometric Keychain write at bind to `cred.{credentialId}`; `k_attest`
+  is device-bound and cache-first (reuse, never overwrite on retry).
+- Push registers under the first credential Holder DID after claim (or on startup
+  when a credential DID already exists).
+- Spec/plan:
+  `docs/superpowers/specs/2026-08-07-defer-first-install-keychain-biometric-design.md`,
+  `docs/superpowers/plans/2026-08-07-defer-first-install-keychain-biometric.md`.
+- Device check still required on Galaxy A26: fresh install → no fingerprint;
+  first claim → exactly one fingerprint at bind.
+
 ### Session 2026-08-05 (PIN session: background-idle grace)
 
 - Wallet PIN session grace (`EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`, default
@@ -13,9 +28,9 @@
 
 ### Session 2026-08-05 (Wallet Holder learning web)
 
-- **Guide:** `docs/demo/etda-demo-learning.html` — standalone Thai explainer (app
-  overview, flows, Orval SDK, P-256/StrongBox, My QR architecture, FAQ). Docs
-  only — no demo checklist or presentation script. Open in a browser directly.
+- **Guide:** `docs/demo/etda-demo-learning.html` — standalone Thai explainer with
+  **★ สรุปทั้งหมด** one-pager (flows, Orval, openid4vc, walletApi vs issuerApi,
+  P-256/StrongBox). Docs only — no demo checklist. Open in a browser directly.
 
 ### Session 2026-08-03 (Android flow Back navigation)
 
