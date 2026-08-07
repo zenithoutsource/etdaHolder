@@ -5,7 +5,7 @@
 > **Supersedes (when implemented):** ADR 0008 (Keychain-protected software Ed25519) as the production **holder** signing algorithm and storage model  
 > **Updates:** ADR 0001 (hardware non-extractable restored for protocol holder keys); ADR 0010 (topology kept; algorithm/storage becomes hardware P-256); **P3 renewal journey** (old-key presentation superseded by fresh reissue for this cutover)  
 > **Related:** Stakeholder decision that EdDSA is no longer required for holder keys; Issuer/Verifier accept ES256 for holder proofs; target device Samsung Galaxy A26  
-> **Review input:** Independent grill ([spec review chat](7c08c567-c485-43b0-b406-8e4ef816d18f)); P1–P6 canvas alignment ([canvases/p1–p6-sequence-check.canvas.tsx](../canvases/)); biometric = action-scoped session; iOS production blocked; migration = fresh reissue with no old-key proof; WP remote attestation required for **`k_attest` only**
+> **Review input:** Independent grill ([spec review chat](7c08c567-c485-43b0-b406-8e4ef816d18f)); P1–P6 canvas alignment (review pass against `canvases/p1`–`p6` sequence-check canvases); biometric = action-scoped session; iOS production blocked; migration = fresh reissue with no old-key proof; WP remote attestation required for **`k_attest` only**
 
 ## Summary
 
