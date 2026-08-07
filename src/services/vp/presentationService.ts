@@ -26,6 +26,7 @@ import {
   readCredentialVct,
 } from './dcqlCredentialMatch'
 import { parseDcqlCredentialSets, resolveDcqlCredentialSelection } from './dcqlCredentialSetResolver'
+import { formatDcqlVpTokenEnvelope } from './oid4vc/formatDcqlVpTokenEnvelope'
 import { assertDualFormatPresentationReady, isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
 import { isSdJwtDcqlFormat } from './dualFormatQuery'
 import {
@@ -661,17 +662,12 @@ function formatVpTokenForResponse(request: ResolvedPresentationRequest, vpToken:
   if (!request.dcqlQuery) return vpToken
   if (isPreformattedDualFormatVpToken(request, vpToken)) return vpToken
 
-  const shape = readVerifierDcqlVpTokenShape()
-  if (shape === 'raw') return vpToken
-
-  return JSON.stringify(
-    Object.fromEntries(
-      request.dcqlQuery.credentials.map((credential) => [
-        credential.id,
-        shape === 'object_string' ? vpToken : [vpToken],
-      ]),
+  return formatDcqlVpTokenEnvelope({
+    entries: Object.fromEntries(
+      request.dcqlQuery.credentials.map((credential) => [credential.id, vpToken]),
     ),
-  )
+    shape: readVerifierDcqlVpTokenShape(),
+  })
 }
 
 function formatVerifierError(body: JsonRecord): string {

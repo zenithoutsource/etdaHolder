@@ -1,4 +1,4 @@
-import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
+import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import type { PresentationFlowOrigin } from './oid4vc/types'
 import {
   resolvePresentationRequest,

@@ -11,7 +11,9 @@ import { useReturnToWallet } from '../hooks/useReturnToWallet'
 import { useScreenCaptureGuard } from '../hooks/useScreenCaptureGuard'
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
 import { openCredentialRequestPortal } from '../services/credentials/openCredentialRequestPortal'
+import { resumeSameDeviceClaimAfterPidVp } from '../services/credentials/resumeSameDeviceClaim'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
+import { isAwaitingSameDevicePidVp } from '../store/sameDeviceIssuanceStore'
 import { resolvePresentationRequestUri } from '../services/credentials/resolvePresentationRequestUri'
 import { isPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
 import { notifyPresentationIntakeRejectionForUri } from '../services/vp/presentationIntakeRejection'
@@ -219,6 +221,25 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     returnToWallet()
   }, [returnToWallet, setDismissedDeeplinkUri])
 
+  const finishAfterPresentation = useCallback(() => {
+    void (async () => {
+      if (isAwaitingSameDevicePidVp()) {
+        try {
+          const resume = await resumeSameDeviceClaimAfterPidVp()
+          if (resume.status === 'claim_ready') {
+            logWalletStep('same-device-issuance', 'pid-vp-complete-resume-claim', {})
+            finish()
+            router.push('/(tabs)/credential-offer')
+            return
+          }
+        } catch (error) {
+          logWalletError('same-device-issuance', 'pid-vp-complete-resume-failed', error)
+        }
+      }
+      finish()
+    })()
+  }, [finish, router])
+
   const exitFlow = useAndroidBackNavigation(finish)
 
   const requestCredential = useCallback((credentialType: IssuerPortalCredentialType) => {
@@ -256,7 +277,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
       presentationOrigin={readPresentationUiOrigin(presentationFlowOrigin)}
       presentationFlowOrigin={presentationFlowOrigin}
       onRequestCredential={requestCredential}
-      onDone={exitFlow}
+      onDone={finishAfterPresentation}
       onCancel={exitFlow}
     />
   )

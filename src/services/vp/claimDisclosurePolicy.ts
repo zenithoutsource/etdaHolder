@@ -1,4 +1,4 @@
-import type { CredentialConfigurationSupportedV1_0_15, IssuerMetadataV1_0_15 } from '@sphereon/oid4vci-common'
+import type { CredentialConfigurationSupportedV1_0_15, IssuerMetadataV1_0_15 } from '../vci/walletVciTypes'
 
 import {
   findDisplayFieldForClaimKey,
