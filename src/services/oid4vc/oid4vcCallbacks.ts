@@ -15,6 +15,7 @@ export type CreateOid4vcCallbacksOptions = {
   fetchImpl?: typeof fetch
   mode?: Oid4vcCallbackMode
   signJwtImpl?: CallbackContext['signJwt']
+  verifyJwtImpl?: CallbackContext['verifyJwt']
 }
 
 export function createOid4vcCallbacks(options?: CreateOid4vcCallbacksOptions): CallbackContext {
@@ -27,7 +28,7 @@ export function createOid4vcCallbacks(options?: CreateOid4vcCallbacksOptions): C
       if (alg === HashAlgorithm.Sha512) return sha512(data)
       return sha256(data)
     },
-    verifyJwt: async (jwtSigner, jwt) => {
+    verifyJwt: options?.verifyJwtImpl ?? (async (jwtSigner, jwt) => {
       if (jwtSigner.method !== 'jwk') {
         return { verified: false as const }
       }
@@ -41,7 +42,7 @@ export function createOid4vcCallbacks(options?: CreateOid4vcCallbacksOptions): C
       return verified
         ? { verified: true as const, signerJwk: publicJwk }
         : { verified: false as const }
-    },
+    }),
     signJwt: async (signer, input) => {
       if (mode === 'vci' && options?.signJwtImpl) {
         return options.signJwtImpl(signer, input)

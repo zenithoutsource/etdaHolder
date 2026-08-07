@@ -1,4 +1,7 @@
-import { fetchAuthorizationRequestMaterial } from './fetchAuthorizationRequestMaterial'
+import {
+  fetchAuthorizationRequestMaterial,
+  readRoutingPreviewFromMaterial,
+} from './fetchAuthorizationRequestMaterial'
 
 function unsignedJwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) =>
@@ -66,5 +69,47 @@ describe('fetchAuthorizationRequestMaterial', () => {
         { fetchImpl: fetchImpl as unknown as typeof fetch },
       ),
     ).rejects.toThrow('PresentationRequestFetchFailed: HTTP 404')
+  })
+
+  it('throws PresentationRequestFetchFailed when transport fails', async () => {
+    const fetchImpl = jest.fn(async () => {
+      throw new TypeError('Network request failed')
+    })
+
+    await expect(
+      fetchAuthorizationRequestMaterial(
+        'openid4vp://authorize?request_uri=https%3A%2F%2Fverifier.example%2Fmissing',
+        { fetchImpl: fetchImpl as unknown as typeof fetch },
+      ),
+    ).rejects.toThrow('PresentationRequestFetchFailed: Network request failed')
+  })
+
+  it('reads JWT routing preview without Node Buffer', () => {
+    const jwt = unsignedJwt({
+      client_id: 'redirect_uri:http://verifier.example/openid4vc/verify/session',
+      response_uri: 'http://verifier.example/openid4vc/verify/session',
+      dcql_query: {
+        credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json' }],
+      },
+    })
+    const originalBuffer = global.Buffer
+
+    // Hermes does not provide Node Buffer.
+    // @ts-expect-error simulate Hermes runtime
+    delete global.Buffer
+
+    try {
+      const preview = readRoutingPreviewFromMaterial({ rawBody: jwt })
+      expect(preview.client_id).toContain('redirect_uri:')
+      expect(preview.dcql_query).toEqual(
+        expect.objectContaining({
+          credentials: expect.arrayContaining([
+            expect.objectContaining({ id: 'idcard_credential' }),
+          ]),
+        }),
+      )
+    } finally {
+      global.Buffer = originalBuffer
+    }
   })
 })

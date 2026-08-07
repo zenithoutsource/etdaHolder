@@ -1,5 +1,43 @@
+import { getPublicKey, hashes, sign } from '@noble/ed25519'
+import { sha512 } from '@noble/hashes/sha2.js'
+
 import { parseAuthorizationRequestBody } from '../authorizationRequestJar'
 import { parseAuthorizationRequestViaOid4vc } from './parseAuthorizationRequestViaOid4vc'
+
+if (!hashes.sha512) hashes.sha512 = sha512
+
+function encodePart(value: unknown): string {
+  return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+function base64UrlEncodeBytes(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+async function signedRequestJwt(
+  payload: Record<string, unknown>,
+  privateKey: Uint8Array,
+  headerOverrides: Record<string, unknown> = {},
+): Promise<string> {
+  const publicKey = getPublicKey(privateKey)
+  const publicJwk = {
+    kty: 'OKP',
+    crv: 'Ed25519',
+    x: base64UrlEncodeBytes(publicKey),
+  }
+  const header = {
+    alg: 'EdDSA',
+    typ: 'oauth-authz-req+jwt',
+    jwk: publicJwk,
+    ...headerOverrides,
+  }
+  const unsigned = `${encodePart(header)}.${encodePart(payload)}`
+  const signature = await sign(new TextEncoder().encode(unsigned), privateKey)
+
+  return `${unsigned}.${base64UrlEncodeBytes(signature)}`
+}
 
 function unsignedJwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) =>
@@ -100,5 +138,49 @@ describe('parseAuthorizationRequestViaOid4vc', () => {
 
     expect(result.authorizationRequest.client_id).toBe(requestPayload.client_id)
     expect(result.oid4vcContext.authorizationRequestPayload.response_uri).toBe(requestPayload.response_uri)
+  })
+
+  it('verifies signed decentralized_identifier JARs via adapter verifyJwt', async () => {
+    const privateKey = Uint8Array.from({ length: 32 }, (_, index) => index + 11)
+    const publicJwk = {
+      kty: 'OKP',
+      crv: 'Ed25519',
+      x: base64UrlEncodeBytes(getPublicKey(privateKey)),
+    }
+    const didPayload = {
+      response_type: 'vp_token',
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
+      response_mode: 'direct_post',
+      state: 'did-state',
+      nonce: 'did-nonce',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      dcql_query: requestPayload.dcql_query,
+    }
+    const jwt = await signedRequestJwt(didPayload, privateKey, {
+      kid: 'did:web:verifier.example.com#key-1',
+      jwk: undefined,
+    })
+    const didTrustedVerifiers = [
+      {
+        clientId: 'decentralized_identifier:did:web:verifier.example.com',
+        name: 'Trusted Verifier',
+        allowedOrigins: ['https://verifier.example.com'],
+        verificationJwk: publicJwk,
+      },
+    ]
+    const fetchImpl = jest.fn(async () => new Response('{}', { status: 200 }))
+
+    const adapterResult = await parseAuthorizationRequestViaOid4vc(
+      { rawBody: jwt },
+      { trustedVerifiers: didTrustedVerifiers, fetchImpl: fetchImpl as unknown as typeof fetch },
+    )
+    const legacyResult = await parseAuthorizationRequestBody(jwt, {
+      trustedVerifiers: didTrustedVerifiers,
+    })
+
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(adapterResult.authorizationRequest.client_id).toBe(legacyResult?.client_id)
+    expect(adapterResult.authorizationRequest.nonce).toBe('did-nonce')
+    expect(adapterResult.authorizationRequest.dcql_query).toEqual(legacyResult?.dcql_query)
   })
 })

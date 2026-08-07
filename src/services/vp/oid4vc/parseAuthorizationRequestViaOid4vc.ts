@@ -2,7 +2,9 @@ import {
   parseOpenid4vpAuthorizationRequest,
   resolveOpenid4vpAuthorizationRequest,
 } from '@openid4vc/openid4vp'
+import type { CallbackContext, JwtSignerJwk } from '@openid4vc/oauth2'
 
+import { verifyEdDsaCompactJwt } from '@/src/services/crypto/eddsaJwtVerify'
 import {
   decodeJsonBase64Url,
   isRecord,
@@ -10,9 +12,59 @@ import {
   readString,
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
+import { resolveRequestObjectVerificationJwk } from '../authorizationRequestJar'
 import { findTrustedVerifier, type TrustedVerifier } from '../trustedVerifierMatcher'
 import { createOid4vcCallbacks } from './oid4vcCallbacks'
 import type { AuthorizationRequestMaterial, Oid4vcAdapterContext } from './types'
+
+function createAdapterVerifyJwtImpl(input: {
+  trustedVerifiers: TrustedVerifier[]
+  fetchImpl?: typeof fetch
+}): CallbackContext['verifyJwt'] {
+  return async (jwtSigner, jwt) => {
+    try {
+      const header = jwt.header
+      const payload = jwt.payload
+      if (!isRecord(header) || !isRecord(payload)) {
+        return { verified: false as const }
+      }
+
+      const alg = readString(jwtSigner.alg) ?? readString(header.alg)
+      if (!alg || alg === 'none' || alg !== 'EdDSA') {
+        return { verified: false as const }
+      }
+
+      let verificationJwk: JwtSignerJwk['publicJwk'] | undefined
+
+      if (jwtSigner.method === 'jwk') {
+        verificationJwk = jwtSigner.publicJwk
+      } else if (jwtSigner.method === 'did') {
+        const clientId = readString(payload.client_id)
+        if (!clientId) {
+          return { verified: false as const }
+        }
+
+        verificationJwk = (await resolveRequestObjectVerificationJwk({
+          clientId,
+          responseUri: readString(payload.response_uri),
+          header,
+          trustedVerifiers: input.trustedVerifiers,
+          fetchImpl: input.fetchImpl ?? fetch,
+        })) as JwtSignerJwk['publicJwk']
+      } else {
+        return { verified: false as const }
+      }
+
+      if (!verificationJwk || !verifyEdDsaCompactJwt(jwt.compact, verificationJwk)) {
+        return { verified: false as const }
+      }
+
+      return { verified: true as const, signerJwk: verificationJwk }
+    } catch {
+      return { verified: false as const }
+    }
+  }
+}
 
 function buildAuthorizationRequestInput(material: AuthorizationRequestMaterial): string | Record<string, unknown> {
   const rawBody = material.rawBody?.trim()
@@ -25,10 +77,15 @@ function buildAuthorizationRequestInput(material: AuthorizationRequestMaterial):
 
       if (headerSegment && payloadSegment) {
         const header = decodeJsonBase64Url<Record<string, unknown>>(headerSegment)
+        const payload = decodeJsonBase64Url<Record<string, unknown>>(payloadSegment)
         const alg = readString(header?.alg)
         if (!signatureSegment || !alg || alg === 'none') {
-          const payload = decodeJsonBase64Url<Record<string, unknown>>(payloadSegment)
           if (isRecord(payload)) return payload
+        } else if (isRecord(payload)) {
+          const jarParams: Record<string, unknown> = { request: rawBody }
+          const clientId = readString(payload.client_id)
+          if (clientId) jarParams.client_id = clientId
+          return jarParams
         }
       }
     }
@@ -110,7 +167,13 @@ export async function parseAuthorizationRequestViaOid4vc(
     throw new Error('PresentationRequestInvalid: verifier is not trusted')
   }
 
-  const callbacks = createOid4vcCallbacks({ fetchImpl: options.fetchImpl })
+  const callbacks = createOid4vcCallbacks({
+    fetchImpl: options.fetchImpl,
+    verifyJwtImpl: createAdapterVerifyJwtImpl({
+      trustedVerifiers: options.trustedVerifiers,
+      fetchImpl: options.fetchImpl,
+    }),
+  })
 
   try {
     const authorizationRequestInput = buildAuthorizationRequestInput(material)

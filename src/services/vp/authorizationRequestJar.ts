@@ -140,7 +140,7 @@ function parseUnsignedAuthorizationRequestJson(text: string): Record<string, unk
   }
 }
 
-async function resolveRequestObjectVerificationJwk(input: {
+export async function resolveRequestObjectVerificationJwk(input: {
   clientId: string
   responseUri: string | undefined
   header: Record<string, unknown>

@@ -7,6 +7,7 @@ type DeeplinkState = {
   pendingUri: string | null
   pendingPresentationFlowOrigin: PresentationFlowOrigin | null
   activeUri: string | null
+  activePresentationFlowOrigin: PresentationFlowOrigin | null
   dismissedUri: string | null
   offerGeneration: number
   vpGeneration: number
@@ -104,6 +105,7 @@ export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, ge
   pendingUri: null,
   pendingPresentationFlowOrigin: null,
   activeUri: null,
+  activePresentationFlowOrigin: null,
   dismissedUri: null,
   offerGeneration: 0,
   vpGeneration: 0,
@@ -121,12 +123,17 @@ export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, ge
   activateDeeplinkUri: (uri) => set((state) => {
     if (state.activeUri === uri && state.pendingUri !== uri) return state
 
+    const consumingPendingVp = state.pendingUri === uri && isPresentationRequestDeeplink(uri)
+
     return {
       activeUri: uri,
       pendingUri: state.pendingUri === uri ? null : state.pendingUri,
-      pendingPresentationFlowOrigin: state.pendingUri === uri
-        ? clearPendingPresentationFlowOrigin(state, uri)
+      pendingPresentationFlowOrigin: consumingPendingVp
+        ? null
         : state.pendingPresentationFlowOrigin,
+      activePresentationFlowOrigin: consumingPendingVp
+        ? state.pendingPresentationFlowOrigin
+        : state.activePresentationFlowOrigin,
     }
   }),
 
@@ -137,6 +144,9 @@ export const useDeeplinkStore = create<DeeplinkState & DeeplinkActions>((set, ge
     pendingPresentationFlowOrigin: state.pendingUri === uri || state.activeUri === uri
       ? clearPendingPresentationFlowOrigin(state, uri)
       : state.pendingPresentationFlowOrigin,
+    activePresentationFlowOrigin: state.pendingUri === uri || state.activeUri === uri
+      ? null
+      : state.activePresentationFlowOrigin,
   })),
 
   consumePendingDeeplinkUri: () => {

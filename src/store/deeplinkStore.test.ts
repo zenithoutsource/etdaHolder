@@ -13,6 +13,7 @@ describe('deeplinkStore', () => {
       pendingUri: null,
       pendingPresentationFlowOrigin: null,
       activeUri: null,
+      activePresentationFlowOrigin: null,
       dismissedUri: null,
       offerGeneration: 0,
       vpGeneration: 0,
@@ -191,13 +192,14 @@ describe('deeplinkStore', () => {
     expect(useDeeplinkStore.getState().pendingPresentationFlowOrigin).toBe('same-device')
   })
 
-  it('clears pending presentation origin when the VP deeplink is consumed', () => {
+  it('persists scan origin on activeUri when the VP deeplink is consumed', () => {
     const requestUri = 'openid4vp://?response_type=vp_token&state=consume'
 
     useDeeplinkStore.getState().setPendingPresentationRequest({ uri: requestUri, origin: 'scan' })
     expect(useDeeplinkStore.getState().consumePendingDeeplinkUri()).toBe(requestUri)
 
     expect(useDeeplinkStore.getState().pendingPresentationFlowOrigin).toBeNull()
+    expect(useDeeplinkStore.getState().activePresentationFlowOrigin).toBe('scan')
   })
 
   it('reopens a previously dismissed VP URI on fresh incoming event and bumps vpGeneration', () => {

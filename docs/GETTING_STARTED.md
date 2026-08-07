@@ -112,6 +112,29 @@ Use this before a release build that must present to a customer Verifier over OI
 
 E2E validation still requires a live customer Verifier host — env configuration alone is not sufficient.
 
+## VP adapter re-E2E (dev build)
+
+Use this after the 2026-08-07 P1 blocker fixes (`docs/TASKS.md` session entry) before treating
+`EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` as validated on Hermes. Jest runs on Node and does not
+catch Hermes-only routing issues.
+
+1. Copy `.env.development.local.example` → `.env.development.local` if needed.
+2. Set `EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` (build-time — requires rebuild to toggle).
+3. Keep `EXPO_PUBLIC_VERIFIER_API_BASE_URL` for dev `redirect_uri` Scan golden path in `__DEV__`.
+4. Build and install a development client on target hardware (Samsung Galaxy A26):
+
+   ```powershell
+   npx expo prebuild --clean   # only if native deps changed
+   yarn start --reset-cache
+   ```
+
+   Or use an EAS development profile with the flag baked into env.
+
+5. Run checklist items 1–7 in `docs/TASKS.md` (Session 2026-08-07 VP adapter P1 table); record pass/fail there.
+6. Rebuild with `EXPO_PUBLIC_OID4VC_VP_ADAPTER=false` and repeat Scan + callback (item 4).
+
+Adapter remains **default false** in `.env.example` until staging rollout decision after re-E2E passes.
+
 ## Verification commands
 
 ```powershell

@@ -16,6 +16,7 @@ describe('presentationIntakeRejection', () => {
       pendingUri: null,
       pendingPresentationFlowOrigin: null,
       activeUri: null,
+      activePresentationFlowOrigin: null,
       dismissedUri: null,
       offerGeneration: 0,
       vpGeneration: 0,

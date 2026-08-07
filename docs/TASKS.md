@@ -1,5 +1,36 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-07 (VP adapter P1 blocker fixes + re-E2E gate)
+
+- Closed four implementation-review findings from conversation d796fc28 that blocked real
+  `EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` use on Hermes:
+  - Hermes-safe JWT routing preview (`decodeJsonBase64Url`, no `Buffer`) in
+    `fetchAuthorizationRequestMaterial.ts`
+  - DID signer support via exported `resolveRequestObjectVerificationJwk()` +
+    `verifyJwtImpl` in `parseAuthorizationRequestViaOid4vc.ts` / `oid4vcCallbacks.ts`
+  - Transport fetch failures mapped to `PresentationRequestFetchFailed`
+  - `activePresentationFlowOrigin` persisted when VP pending URI moves to active URI
+    (`deeplinkStore.ts`, `PresentationRequestScreen.tsx`)
+- Bonus: signed request-object JWTs wrapped as JAR by-value `{ request, client_id }` before
+  `@openid4vc/openid4vp` parse so `decentralized_identifier` client IDs enter the signed-JAR path.
+- Automated verification: 58/58 focused tests
+  (`src/services/vp/oid4vc`, `deeplinkStore.test.ts`, `PresentationRequestScreen.test.tsx`);
+  `yarn tsc --noEmit` clean; `yarn lint` 0 errors (pre-existing warnings).
+- **Re-E2E gate (pending Galaxy A26 Hermes dev build):** prior flag-on manual E2E (2026-08-06)
+  predates these fixes and may have silently used legacy routing. Run checklist in
+  `docs/GETTING_STARTED.md` § VP adapter re-E2E before enabling flag in staging builds.
+
+| # | Check | Flag | Status |
+|---|-------|------|--------|
+| 1 | Scan `request_uri` JWT → consent → biometric → `direct_post` success | `true` | [ ] pending device |
+| 2 | Same-device callback → `PresentationRequestScreen` completes | `true` | [ ] pending device |
+| 3 | Untrusted verifier → friendly error (no hang) | `true` | [ ] pending device |
+| 4 | Legacy Scan + callback regression | `false` | [ ] pending device |
+| 5 | Logs show oid4vc `protocolPath` (not silent legacy fallback) | `true` | [ ] pending device |
+| 6 | Scan-origin survives remount (`scan`, not `same-device`) | `true` | [ ] pending device |
+| 7 | Offline / bad `request_uri` → fetch-failed UX | `true` | [ ] pending device |
+| 8 | Signed `decentralized_identifier:did:web:` JAR (optional) | `true` | [ ] pending customer Verifier host |
+
 ### Session 2026-08-07 (Defer first-install Keychain biometric)
 
 - Blank cold start no longer creates wallet seed / `k_attest` or activates crypto

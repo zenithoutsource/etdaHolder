@@ -33,7 +33,10 @@ function readHydratedPresentationRequestUri(): string | null {
 }
 
 function readHydratedPresentationFlowOrigin(): PresentationFlowOrigin {
-  return useDeeplinkStore.getState().pendingPresentationFlowOrigin ?? 'same-device'
+  const state = useDeeplinkStore.getState()
+  return state.activePresentationFlowOrigin
+    ?? state.pendingPresentationFlowOrigin
+    ?? 'same-device'
 }
 
 function readPresentationUiOrigin(
@@ -55,6 +58,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri)
   const activeDeeplinkUri = useDeeplinkStore((s) => s.activeUri)
   const pendingPresentationFlowOrigin = useDeeplinkStore((s) => s.pendingPresentationFlowOrigin)
+  const activePresentationFlowOrigin = useDeeplinkStore((s) => s.activePresentationFlowOrigin)
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
   const setDismissedDeeplinkUri = useDeeplinkStore((s) => s.setDismissedDeeplinkUri)
   const activeRequestUriRef = useRef<string | null>(readHydratedPresentationRequestUri())
@@ -76,7 +80,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
 
     const resolvedFlowOrigin = flowOrigin
       ?? (uri === pendingDeeplinkUri || uri === activeDeeplinkUri
-        ? pendingPresentationFlowOrigin ?? undefined
+        ? activePresentationFlowOrigin ?? pendingPresentationFlowOrigin ?? undefined
         : undefined)
       ?? 'same-device'
 
@@ -90,7 +94,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     }
     logWalletStep('presentation-request', 'request-detected', describeUriForLog(uri))
     return true
-  }, [activeDeeplinkUri, dismissedDeeplinkUri, pendingDeeplinkUri, pendingPresentationFlowOrigin])
+  }, [activeDeeplinkUri, activePresentationFlowOrigin, dismissedDeeplinkUri, pendingDeeplinkUri, pendingPresentationFlowOrigin])
 
   useEffect(() => {
     if (isFinishing) return
