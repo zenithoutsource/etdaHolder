@@ -2,13 +2,6 @@
 
 Expo SDK 54 mobile Holder Wallet for OID4VCI 1.0 credential issuance. The app claims credentials directly from Issuers, stores them in encrypted on-device MMKV storage, and can optionally sync finalized credentials to the company Wallet Backend through the Orval-generated SDK.
 
-## Current Status
-
-- Phase 1 complete: hardware-backed P-256 Wallet Signing Key, Holder DID derivation, biometric-gated PoP signing, and encrypted MMKV credential storage.
-- Phase 2 complete: OID4VCI offer resolution, Pre-Authorized Code credential acquisition, JWT VC and SD-JWT VC normalization, encrypted local save, and separate backend sync.
-- Phase 3 in progress: Wallet home UI, dynamic card schemas, generic `CredentialCard`, credential detail route, QR scanner, and pre-save confirmation are implemented. NFC NDEF issuance is deferred until device testing is available.
-- Local development backend exists under `server/` for XAMPP MySQL-backed Wallet Account auth, wallet listing, and credential import.
-
 ## Development
 
 Install dependencies with Yarn:
