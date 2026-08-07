@@ -37,7 +37,7 @@ const config: Config = {
     '^.+\\.mjs$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|sentry-expo|native-base|@sphereon/.*|@openid4vc/openid4vp|@openid4vc/oauth2|@openid4vc/utils|@craftzdog/.*|@noble/.*|uuid|msw|@mswjs|rettime|until-async|strict-event-emitter|outvariant|headers-polyfill)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|sentry-expo|native-base|@openid4vc/openid4vp|@openid4vc/openid4vci|@openid4vc/oauth2|@openid4vc/utils|@craftzdog/.*|@noble/.*|uuid|msw|@mswjs|rettime|until-async|strict-event-emitter|outvariant|headers-polyfill)',
   ],
 }
 
