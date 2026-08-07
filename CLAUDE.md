@@ -39,7 +39,7 @@ When planning any new system, feature, or integration:
 
 - Mobile code must never connect directly to MySQL.
 - Company backend calls must go through `src/sdk/walletApi.ts` and the `src/sdk/installWalletApiFetch.ts` base URL adapter.
-- OID4VCI protocol work must run on-device through `@sphereon/oid4vci-client`; do not call backend `/exchange/*` endpoints.
+- OID4VCI protocol work must run on-device through `@openid4vc/openid4vci`; do not call backend `/exchange/*` endpoints.
 - Credentials are normalized into `VerifiableCredentialRecord` before encrypted MMKV storage.
 - Dynamic credential UI must use `src/config/cardSchemas.ts` and generic components, not issuer-specific card screens.
 - Production signing uses a Keychain-protected Ed25519 seed with `@noble/ed25519` EdDSA signing because target AndroidKeyStore hardware generated EC keys for Ed25519 requests. This satisfies protocol-level EdDSA but is not hardware non-extractable.

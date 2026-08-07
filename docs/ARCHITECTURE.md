@@ -11,7 +11,7 @@ The wallet acquires credentials directly from Issuer services, stores them local
 ```text
 Mobile UI
   -> QR / NFC / SDK offer delivery
-  -> @sphereon/oid4vci-client
+  -> @openid4vc/openid4vci (via src/services/vci/oid4vc/)
   -> src/services/vci/exchangeService.ts
   -> src/services/crypto/crypto.ts for biometric-gated PoP signing
   -> src/services/storage/storage.ts encrypted MMKV
@@ -188,7 +188,7 @@ No issuer-specific card components should be added. Extend schemas instead.
 
 | Package | Role |
 |---|---|
-| `@sphereon/oid4vci-client` | OID4VCI credential acquisition |
+| `@openid4vc/openid4vci` | OID4VCI credential acquisition |
 | `@noble/curves` | Ed25519 EdDSA signing |
 | `react-native-quick-crypto` | Non-signing hashing, random bytes, encoding support |
 | `react-native-mmkv` | Encrypted local key-value storage |

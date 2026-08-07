@@ -1,6 +1,6 @@
 # Testing Standards
 
-This document defines mandatory testing practices for the the wallet.
+This document defines mandatory testing practices for the wallet.
 
 ## 1. Coverage Target
 
@@ -67,9 +67,9 @@ Required behaviors:
 
 Each test must receive isolated state.
 
-### `@animo-id/expo-secure-environment`
+### `react-native-keychain` / Ed25519 signing
 
-Mock the module boundary. Tests should verify that signing is requested with expected payload bytes; they should not attempt to prove native ECDSA validity.
+Mock the Keychain boundary and `@noble/ed25519` sign path via `src/services/crypto/` test doubles. Tests should verify that signing is requested with expected payload bytes and the correct credential key service — they should not attempt to prove native Keychain or Ed25519 validity in Jest.
 
 ### `react-native-quick-crypto`
 

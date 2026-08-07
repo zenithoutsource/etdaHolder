@@ -157,7 +157,7 @@ Allowed path: Mobile Wallet App -> TypeScript SDK -> API Gateway or local develo
 
 ### 3. Decoupled Protocol Execution
 
-Use `@sphereon/oid4vci-client` for OID4VCI offer parsing and Pre-Authorized Code flows. Legacy `/exchange/*` endpoints in the backend spec are forbidden from mobile code.
+Use `@openid4vc/openid4vci` for OID4VCI offer parsing and Pre-Authorized Code flows. Legacy `/exchange/*` endpoints in the backend spec are forbidden from mobile code.
 
 ### 4. Self-Sovereign Architecture
 

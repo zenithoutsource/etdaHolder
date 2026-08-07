@@ -44,7 +44,7 @@ The generated file is committed so CI and team members do not need Orval at chec
 
 | Method | Path | Reason |
 |---|---|---|
-| `GET` | `/wallet-api/wallet/{walletId}/exchange/resolveCredentialOffer` | Offer resolution runs on-device via `@sphereon/oid4vci-client` |
+| `GET` | `/wallet-api/wallet/{walletId}/exchange/resolveCredentialOffer` | Offer resolution runs on-device via `@openid4vc/openid4vci` |
 | `POST` | `/wallet-api/wallet/{walletId}/exchange/useOfferRequest` | Token exchange, PoP signing, and credential request run on-device |
 
 Any PR that imports or calls forbidden exchange endpoints from app code must be rejected.

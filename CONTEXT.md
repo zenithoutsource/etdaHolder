@@ -12,7 +12,7 @@ The Holder's login identity in the Wallet Backend. Used for authentication, sess
 
 ## Wallet PIN
 
-A local 6-digit secret set by the Holder after first successful Wallet Account login. Used only to approve protected in-app actions. It is not a cold-start app unlock, not a resume-from-background lock, and not an Issuer transaction code.
+A unified 6-digit secret used for Wallet Account server authentication and local app lock. Set after first login; required on cold start and after a configurable background-idle grace period (`EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`). Distinct from Issuer `tx_code` and from the biometric sign-time gate on cryptographic operations.
 
 ## Issuer
 
@@ -38,17 +38,21 @@ The foundational personal identification credential in the Wallet. In this app i
 
 The app's local normalized credential record. It contains `id`, `type`, `rawVc`, decoded display `claims`, `issuedAt`, and optional `expiresAt`. It is the only credential shape the UI should read from local storage.
 
-## Wallet Signing Key
+## Wallet Attestation Key (`k_attest`)
 
-A single EC P-256 keypair scoped to the device, not per credential. Generated inside iOS Secure Enclave or Android Keystore via `@animo-id/expo-secure-environment`. Private key is non-extractable and never exists in JavaScript memory. Key alias: `etda_wallet_signing_key`.
+One Ed25519 keypair per wallet used for Wallet Provider attestation (WUA/WIA) at v2 crypto activation. Stored as a Keychain-protected seed; not used for VC Proof of Possession or presentation signing.
+
+## Credential Signing Key (`k_cred`)
+
+One Ed25519 keypair per issued credential (ADR 0010). Each credential's Holder `did:key` is derived from its public key. OID4VCI PoP JWTs, OID4VP presentation tokens, and SD-JWT KB-JWTs for that credential are signed with its key. Destroyed on P3 renewal or P6 lifecycle actions that remove the credential's cryptographic binding.
 
 ## Holder DID
 
-The Holder's decentralized identifier, derived deterministically from the Wallet Signing Key using the `did:key` method. Format: `did:key:z<base58btc(multicodec_prefix + compressed_P256_key)>`. Self-contained; no server is required for resolution.
+The Holder's decentralized identifier for a credential, derived from that credential's Ed25519 public key using `did:key` with multicodec prefix `[0xed, 0x01]`. Self-contained; no server is required for resolution.
 
 ## Proof of Possession (PoP)
 
-A JWT signed with the Wallet Signing Key and sent to the Issuer during credential request. Uses `jwt` proof type per OID4VCI 1.0. Header contains `kid: "<holderDid>#<multibaseValue>"`, not `jwk`. Payload `iss` is the Holder DID. Biometric authentication fires on every sign operation.
+A JWT signed with the credential's Ed25519 key and sent to the Issuer during credential request. Uses `jwt` proof type per OID4VCI 1.0 with `alg: EdDSA`. Header contains `kid`, not `jwk`. Payload `iss`/`sub` is the credential's Holder DID. Biometric authentication fires on every sign operation (the single auth prompt for that action).
 
 ## Verifiable Presentation (VP)
 
@@ -56,7 +60,7 @@ A Holder-approved presentation response sent to a Verifier. Depending on the Ver
 
 ## Key Binding JWT (KB-JWT)
 
-A JWT signed by the Wallet Signing Key and appended to an SD-JWT VC presentation to prove cryptographic Holder Binding. It binds the presentation to the Verifier request using the request nonce, audience, and hash of the presented SD-JWT.
+A JWT signed by the credential's Ed25519 key and appended to an SD-JWT VC presentation to prove cryptographic Holder Binding. It binds the presentation to the Verifier request using the request nonce, audience, and hash of the presented SD-JWT.
 
 ## Trusted Verifier
 
@@ -64,7 +68,7 @@ A Verifier allowed by local Wallet configuration. The current trust model requir
 
 ## Self-Sovereign Architecture
 
-The app runs the OID4VCI 1.0 protocol on-device. Keys never leave device hardware. The company backend authenticates the Holder and stores wallet-side backend state, but the app claims credentials directly from Issuers.
+The app runs OID4VCI and OID4VP protocol steps on-device. Ed25519 seeds are Keychain-protected and retrieved only at sign time under biometric/device authentication (ADR 0008 — software-protected, not hardware non-extractable). The company backend authenticates the Holder and stores wallet-side backend state, but the app claims credentials directly from Issuers and presents directly to Verifiers.
 
 ## Wallet Backend
 
@@ -76,7 +80,7 @@ The development backend under `server/`. It mirrors the allowed Wallet Backend b
 
 ## Credential Offer URL
 
-A URL such as `openid-credential-offer://...` returned by the company backend, read from a QR code, or received via NFC. Consumed by `@sphereon/oid4vci-client` to run issuance.
+A URL such as `openid-credential-offer://...` returned by the company backend, read from a QR code, or received via NFC. Consumed by `@openid4vc/openid4vci` via `src/services/vci/oid4vc/` to run issuance.
 
 ## Credential Configuration ID
 
@@ -97,8 +101,9 @@ A Holder-entered code required by some Issuers during the OID4VCI 1.0 Pre-Author
 ## Offer Delivery Channels
 
 1. QR Scan: camera reads a QR code containing the offer URL.
-2. NFC: NDEF tag read for issuance, or ISO 18013-5 proximity exchange for presentation.
-3. In-app SDK call: backend returns offer URL via the generated SDK.
+2. Deep link: `openid-credential-offer://` or issuer portal callback (`walletapp://callback`).
+3. NFC: NDEF tag read for issuance (Android, deferred full validation), or ISO 18013-5 proximity exchange for presentation.
+4. In-app SDK call: backend returns offer URL via the generated SDK.
 
 ## NFC Presentation
 
@@ -106,7 +111,7 @@ Proximity credential presentation via ISO 18013-5. User taps phone to the Verifi
 
 ## Online Presentation
 
-Remote credential presentation via OID4VP 1.0. The current first slice supports cross-device QR Authorization Requests, Presentation Exchange birth-date disclosure, and the development Verifier API's `request_uri` JWT + DCQL IDCard request shape. Responses use `direct_post`.
+Remote credential presentation via OID4VP 1.0. Implemented paths: Verifier QR and same-device deeplink (`walletapp://callback`), JAR-signed Authorization Requests, DCQL `credential_sets`, `did:web` verifier trust, holder selective disclosure, and My QR broker engagement. Responses use `direct_post`. SD-JWT credentials include a KB-JWT; mdoc credentials use proximity or dual-format VP assembly where configured.
 
 ## Generated SDK
 

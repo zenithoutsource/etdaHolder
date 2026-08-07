@@ -11,11 +11,11 @@
 - Verification: `walletPinSession` / `walletPinNavigation` / `walletPinPolicy`
   focused tests pass (27).
 
-### Session 2026-08-05 (ETDA demo learning web)
+### Session 2026-08-05 (Wallet Holder learning web)
 
-- **Guide:** `docs/demo/etda-demo-learning.html` — standalone Thai tutorial for demo
-  prep (flows, P-256/StrongBox, My QR checklist, demo script, FAQ, quiz). Open
-  directly in a browser; no build required.
+- **Guide:** `docs/demo/etda-demo-learning.html` — standalone Thai explainer (app
+  overview, flows, Orval SDK, P-256/StrongBox, My QR architecture, FAQ). Docs
+  only — no demo checklist or presentation script. Open in a browser directly.
 
 ### Session 2026-08-03 (Android flow Back navigation)
 
@@ -616,7 +616,7 @@ Status: Complete (core flow). Spec compliance gaps tracked below.
 
 [x] Orval SDK generation setup
 [x] Generated SDK endpoint filtering
-[x] `resolveOffer(offerUri)` through `@sphereon/oid4vci-client`
+[x] `resolveOffer(offerUri)` through `@openid4vc/openid4vci` (`src/services/vci/oid4vc/`)
 [x] Issuer metadata extraction for UI branding
 [x] Pre-Authorized Code credential acquisition
 [x] `tx_code` required when declared by offer
@@ -780,7 +780,8 @@ Implemented:
 [x] Device-to-Verifier `direct_post` transport
 [x] Scan tab Holder consent/result flow for OID4VP QR
 [x] Local encrypted history for successful presentations
-[x] Phase 1 `@openid4vc/openid4vp` adapter behind `EXPO_PUBLIC_OID4VC_VP_ADAPTER` (default false, build-time) — Scan + same-device DCQL `direct_post` parse/submit via `src/services/vp/oid4vc/`; legacy path retained for My QR, issuer renewal, PEX, and dual-format. Spec: `docs/superpowers/specs/2026-07-31-oid4vc-vp-adapter-design.md`; plan: `docs/superpowers/plans/2026-08-05-oid4vc-vp-adapter.md`. Manual E2E with flag-on dev build pending.
+[x] Phase 1 `@openid4vc/openid4vp` adapter behind `EXPO_PUBLIC_OID4VC_VP_ADAPTER` (default false, build-time) — Scan + same-device DCQL `direct_post` parse/submit via `src/services/vp/oid4vc/`; legacy path retained for My QR, issuer renewal, PEX, and dual-format. Spec: `docs/superpowers/specs/2026-07-31-oid4vc-vp-adapter-design.md`; plan: `docs/superpowers/plans/2026-08-05-oid4vc-vp-adapter.md`. Manual E2E with flag-on dev build: **passed** (2026-08-06).
+[x] Phase 2/3 `@openid4vc/openid4vci` VCI adapter — Pre-Authorized Code + Authorization Code + dual-format offer parse/token/credential request via `src/services/vci/oid4vc/`; legacy VCI client packages removed (Phase 3: oid4vc-only VCI complete). Spec: `docs/superpowers/specs/2026-08-06-oid4vc-vci-adapter-design.md`; plan: `docs/superpowers/plans/2026-08-06-oid4vc-vci-adapter.md`. Automated tests PASS; manual E2E with dev build recommended after rebuild.
 
 Remaining:
 
@@ -929,7 +930,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Fixed OID4VCI 1.0 credential identifier handling: if token exchange returns `authorization_details[].credential_identifiers`, the Wallet now sends `credential_identifier` in the Credential Request instead of `credential_configuration_id`.
 - Hardened ID card QR resolution for issuer metadata that uses a non-identical configuration key: `IdCard_dc+sd-jwt` offers can now match a compatible `dc+sd-jwt` metadata entry by `vct`, credential definition type, or display name, while still sending the issuer metadata key in the Credential Request.
 - Fixed the current ID card issuer shape: `IDCard_dc+sd-jwt` offers now resolve to metadata key `IDCardCredential_dc+sd-jwt` and request that exact issuer key.
-- Credential response parsing now accepts direct issuer response bodies and nested `credential_response` wrappers, not only Sphereon `successBody`, and reports response-shape failures separately from unsupported credential formats.
+- Credential response parsing now accepts direct issuer response bodies and nested `credential_response` wrappers, not only protocol client `successBody`, and reports response-shape failures separately from unsupported credential formats.
 - Credential endpoint failures now surface issuer `errorBody.error` / `error_description` in Scan instead of collapsing every request failure to a generic issuer-declined message.
 - Non-standard credential endpoint errors now include HTTP status and serialized `errorBody` when issuer response has no standard OAuth `error` field.
 - Credential Request client now builds from the matched issuer metadata configuration ID instead of the original Credential Offer, preventing `IDCard_dc+sd-jwt` from leaking into the request when the issuer metadata key is `IDCardCredential_dc+sd-jwt`.
@@ -944,7 +945,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Transcript detail now pulls holder Thai/English name and birth date from stored ThaiNationalID when the transcript credential omits them; name renders Thai on the first line and English on the second line instead of falling back to `Academic Transcript`.
 - ID Card Credential Detail now follows `docs/ui-reference/idcard_document.png` with an ID-card-specific blue card layout, portrait, Thai/English holder name, national ID, birth date, address, religion, issue date, expiry date, and existing My QR action.
 - Development Issuer proxy added for physical Android testing when the PC reaches the Issuer through VPN but the phone cannot join office Wi-Fi/VPN: matching Issuer fetches are rewritten through `/dev-issuer-proxy/*` on the local backend while OID4VCI protocol execution remains on-device. Documented USB `adb reverse` setup in `server/README.md` and `docs/API.md`.
-- Fixed the physical Android VPN proxy scan timeout: remote `credential_offer_uri` resolution and Pre-Authorized Code token exchange now use proxy-aware fetch before Sphereon handles the inline offer / credential request, avoiding Sphereon's internal `cross-fetch` direct calls to VPN-only Issuer URLs.
+- Fixed the physical Android VPN proxy scan timeout: remote `credential_offer_uri` resolution and Pre-Authorized Code token exchange now use proxy-aware fetch before the on-device OID4VCI client handles the inline offer / credential request, avoiding the legacy client's internal `cross-fetch` direct calls to VPN-only Issuer URLs.
 - Added `docs/ANDROID_NETWORK_TESTING.md` with physical Android runbooks for USB + PC VPN proxy mode and direct office Wi-Fi mode, including `.env`, `server/.env`, ADB, Expo, and quick-check commands.
 
 ### Session 2026-06-11
@@ -952,7 +953,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Implemented the first OID4VP P5 slice for ThaiNationalID age-over-20 checks: the Scan tab now accepts `openid4vp://` QR Authorization Requests, validates local `did:web` Verifier allowlist entries, supports Presentation Exchange birth-date disclosure, shows native Holder consent, signs a JWT VP token with the hardware Wallet Signing Key, and submits `vp_token` / `presentation_submission` through `direct_post`.
 - Added compatibility for the supplied Verifier API at `http://verifier.zenithcomp.co.th:455`: `POST /generate-vp-qr` returns an `openid4vp://` QR with `request_uri`; `GET /openid4vc/request/{id}` returns a JWT request object using DCQL for `IDCardCredential`; `POST /openid4vc/verify/{id}` accepts `vp_token` and `state`.
 - Successful Verifier responses are now recorded in encrypted local presentation history and displayed in History Log. `src/config/trustedVerifiers.ts` contains the development `redirect_uri:` Verifier entry and must be replaced for production.
-- Attempted to add a Sphereon OID4VP package, but the expected package name was not available from the registry in this environment; the implementation uses a narrow local service boundary under `src/services/vp/` that can be replaced or adapted when the correct library is confirmed.
+- Attempted to add a third-party OID4VP package, but the expected package name was not available from the registry in this environment; the implementation uses a narrow local service boundary under `src/services/vp/` that can be replaced or adapted when the correct library is confirmed.
 - Added a development Verifier proxy for USB + PC VPN testing: matching Verifier calls are rewritten through `/dev-verifier-proxy/*` so the phone can scan Verifier QR codes even when only the PC can reach `http://verifier.zenithcomp.co.th:455`.
 - Hardened Verifier submission after `Present VP is invalid`: DCQL `vp_token` is now encoded as a credential-query-id response object, Verifier error descriptions surface in Scan, JWT VP tokens include `jti`/`nbf`/`exp`, and the Wallet blocks submission when the stored ThaiNationalID format does not match the Verifier's requested DCQL format. Current known mismatch: the Issuer flow in this repo uses `IDCard_dc+sd-jwt`, while the supplied Verifier requests `jwt_vc_json`; the Verifier should request `format: "dc+sd-jwt"` with `meta.vct_values: ["IDCardCredential"]`.
 - Wallet DCQL parsing now supports `meta.vct_values` for SD-JWT VC requests, so it accepts the corrected `dc+sd-jwt` Verifier request against a stored SD-JWT ThaiNationalID.

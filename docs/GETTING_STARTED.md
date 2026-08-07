@@ -1,8 +1,8 @@
 # Getting Started (30 minutes)
 
-First-run guide for a new developer on **Windows + XAMPP + physical Android**. Goal: register, set a PIN, and reach **Wallet home** (empty credentials are fine).
+First-run guide for a new developer on **Windows + XAMPP + physical Android**. Goal: register, set a PIN, unlock the app, and reach **Wallet home** (empty credentials are fine).
 
-OID4VCI issuance, OID4VP presentation, NFC, and VPN proxies are **not** required for this path.
+OID4VCI issuance, OID4VP presentation, NFC proximity, and production Verifier trust configuration are **advanced paths** documented separately — not required for this 30-minute setup.
 
 ## Prerequisites
 
@@ -96,11 +96,11 @@ If the app cannot reach the backend, re-run `yarn setup` and confirm `EXPO_PUBLI
 
 ## Advanced configuration (not needed for first run)
 
-- **Optional mobile overrides:** copy `.env.development.local.example` → `.env.development.local`
+- **Optional mobile overrides:** copy `.env.development.local.example` → `.env.development.local` (issuer/verifier URLs, OID4VP trust, SSL pins, broker base URL)
 - **Optional server overrides:** copy `server/.env.development.local.example` → `server/.env.development.local`
-- **Office VPN / issuer / verifier proxies:** `docs/ANDROID_NETWORK_TESTING.md`
-- **Full backend docs:** `server/README.md`
-- **Architecture:** `docs/ARCHITECTURE.md`
+- **Full backend docs:** [server/README.md](../server/README.md) (Wallet Swagger at `/wallet-api/docs`, dev APIs at `/dev/docs`)
+- **Architecture & channels:** [ARCHITECTURE.md](./ARCHITECTURE.md)
+- **Production OID4VP verifier trust:** checklist below and `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md`
 
 ## Production Verifier OID4VP checklist
 
