@@ -1,11 +1,11 @@
 # Hardware P-256 / ES256 Production Signing
 
 > **Date:** 2026-08-04  
-> **Status:** Approved for implementation planning (revised after fourth grill pass)  
+> **Status:** Approved for implementation planning (revised after fifth grill pass — implementation-ready)  
 > **Supersedes (when implemented):** ADR 0008 (Keychain-protected software Ed25519) as the production **holder** signing algorithm and storage model  
-> **Updates:** ADR 0001 (hardware non-extractable restored for protocol holder keys); ADR 0010 (topology kept; algorithm/storage becomes hardware P-256)  
+> **Updates:** ADR 0001 (hardware non-extractable restored for protocol holder keys); ADR 0010 (topology kept; algorithm/storage becomes hardware P-256); **P3 renewal journey** (old-key presentation superseded by fresh reissue for this cutover)  
 > **Related:** Stakeholder decision that EdDSA is no longer required for holder keys; Issuer/Verifier accept ES256 for holder proofs; target device Samsung Galaxy A26  
-> **Review input:** Independent grill ([spec review chat](7c08c567-c485-43b0-b406-8e4ef816d18f)); biometric = action-scoped session; iOS production blocked; migration = fresh reissue with no old-key proof; first-production WP remote attestation required
+> **Review input:** Independent grill ([spec review chat](7c08c567-c485-43b0-b406-8e4ef816d18f)); P1–P6 canvas alignment ([canvases/p1–p6-sequence-check.canvas.tsx](../canvases/)); biometric = action-scoped session; iOS production blocked; migration = fresh reissue with no old-key proof; WP remote attestation required for **`k_attest` only**
 
 ## Summary
 
@@ -19,7 +19,7 @@ Replace production **holder** signing (**EdDSA / Ed25519** Keychain software see
 - **Verify path:** Algorithm **allowlist** from trusted local/build policy or an authenticated trust registry; Issuer/Verifier metadata may **narrow** the list, never expand it. Holder ES256 must **not** strip EdDSA verification while the allowlist still includes EdDSA.
 - **Proximity:** ISO 18013-5 device auth signs **natively during HCE/APDU** using an **opaque session handle only** (handle bound internally to alias / purpose / expiry / max signatures); no TypeScript round-trip at tap time; no raw seed handoff.
 - **mdoc COSE_Key (P-256):** locked `{1: 2, 3: -7, -1: 1, -2: x, -3: y}`.
-- **Attestation (first production):** Wallet Provider **must** remotely verify hardware backing. Android attestation challenge is supplied at **`createKey`** for `k_attest`; WP verifies challenge, certificate chain, trusted roots, revocation, package/signing identity, security level, and user-auth properties. Not a post-hoc `attestKey(alias, challenge)`.
+- **Attestation (first production):** Wallet Provider **must** remotely verify **`k_attest` hardware backing only** (WUA/WIA). Challenge at **`createKey`**; WP verifies chain, roots, revocation, app identity, security level, user-auth. **`k_cred`** uses local hardware enforcement + `did:key`/PoP — no remote attestation chain to Issuer/Verifier in P1–P6. Optional per-credential attestation at create retained for future issuer policy.
 - **Platform:** **Android-only production** until iOS Secure Enclave lands; iOS issuance/presentation is **blocked**.
 - **Migration:** Fresh issuer **reissue requiring no old-key proof**; legacy Ed25519 deletion is **per credential / per alias** after that credential’s validated re-issue + presentation. No migration-only legacy signing path.
 - **Deletion:** Keystore alias first → verify absence → then remove encrypted registry row (retryable).
@@ -39,11 +39,11 @@ The stakeholder now accepts **P-256 / ES256 for holder signing**. Android Strong
 4. Preserve ADR 0010 lifecycle with alias-stable bind in **encrypted** registry storage; destroy on renewal/revoke/delete; **one biometric prompt per user action** via action-scoped signing session.
 5. Preserve dual-format issuance: one pending key and one proof-signing **session** for `dc+sd-jwt` + `mso_mdoc` (and fresh-nonce retries inside that session).
 6. Keep trust/credential **verification** on an explicit algorithm allowlist sourced from trusted local/build policy or authenticated trust registry (Issuer/Verifier metadata may narrow only).
-7. Require Wallet Provider **remote hardware attestation verification** for `k_attest` in the first production release (not local-only assertion).
+7. Require Wallet Provider **remote hardware attestation verification** for **`k_attest` only** in the first production release (not local-only assertion; does not extend to each `k_cred`).
 8. Migrate existing credentials via **fresh issuer reissue with no old-key presentation/signing** (avoids renewal deadlock with blocked legacy signing).
 9. Gate production cutover on Galaxy A26 physical evidence (StrongBox P-256, explicit-StrongBox TEE fallback, capacity stress, E2E issue/present/proximity, WP attestation acceptance).
 10. Block iOS production issuance/presentation until a Secure Enclave slice lands.
-11. Document the decision in a new ADR and update SECURITY.md / TASKS.md / ADR 0010 algorithm notes.
+11. Document the decision in a new ADR and update SECURITY.md / TASKS.md / ADR 0010 algorithm notes; supersede P3 old-key renewal presentation in journey docs where it conflicts with fresh reissue.
 
 ## Non-goals
 
@@ -58,6 +58,7 @@ The stakeholder now accepts **P-256 / ES256 for holder signing**. Android Strong
 - Treating cached `securityLevelHint` as authoritative proof of hardware backing.
 - Assuming `close()` immediately invalidates Android’s hardware authentication token.
 - Post-hoc attestation challenges on already-generated keys (`attestKey(alias, challenge)`).
+- Requiring remote Android attestation chain for every `k_cred` in first production (P1–P6 do not require it; Issuer/Verifier validate public key + PoP).
 
 ## Terminology
 
@@ -70,6 +71,7 @@ The stakeholder now accepts **P-256 / ES256 for holder signing**. Android Strong
 | **Action-scoped signing session** | Native session for one user action: one biometric unlock, then multiple hardware signs until app TTL expiry / `close()` (hardware auth window may outlive `close()` — see residual exposure) |
 | **Opaque session handle** | Native-only handle bound to alias, purpose, expiry, and max signature count; proximity receives the handle alone |
 | **Fresh reissue** | Issuer issues a new credential bound to a new hardware key without requiring presentation/signing with the previous credential key |
+| **Attestation boundary** | Remote Android attestation proves **`k_attest`** hardware backing to WP; **`k_cred`** hardware is enforced locally and proven to Issuer/Verifier via `did:key`/COSE + PoP/KB-JWT, not attestation chain |
 
 ## Decision drivers (locked)
 
@@ -82,7 +84,8 @@ The stakeholder now accepts **P-256 / ES256 for holder signing**. Android Strong
 | Migration | Fresh issuer reissue **without old-key proof**; legacy delete **per credential/alias** after validated cutover |
 | Key topology | Keep ADR 0010; bind = encrypted registry map only (no Keystore rename) |
 | Registry storage | Encrypted MMKV (not unencrypted meta storage) |
-| WP attestation (first production) | **Required** for `k_attest` — challenge at `createKey`; WP verifies chain, roots, revocation, app identity, security level, user-auth |
+| WP attestation (first production) | **Required for `k_attest` only** — challenge at `createKey`; WP verifies chain, roots, revocation, app identity, security level, user-auth |
+| `k_cred` assurance | **Local hardware only** (StrongBox/TEE + encrypted registry); Issuer/Verifier trust via public key binding + PoP; optional future per-cred attestation at create |
 | Key deletion | Delete Keystore alias → verify absence → remove encrypted registry row (retryable) |
 | Native stack | Animo spike is go/no-go; custom module if contract unmet |
 | Platform | Android Galaxy A26 first; **iOS production blocked** until Secure Enclave |
@@ -129,6 +132,11 @@ Trust verify (JAR / issuer VC) ──→ alg allowlist verifier (ES256 + EdDSA a
 ```ts
 type HardwareSecurityLevel = 'STRONGBOX' | 'TEE'
 
+/** Thrown when an alias does not exist in Keystore (e.g. after delete or stale registry). */
+class HardwareKeyNotFoundError extends Error {
+  readonly alias: string
+}
+
 interface EcP256Jwk {
   kty: 'EC'
   crv: 'P-256'
@@ -167,6 +175,9 @@ interface HardwareEcdsaSigner {
   /** Authoritative: read KeyInfo from native; do not trust MMKV cache alone. */
   getSecurityLevel(alias: string): Promise<HardwareSecurityLevel>
 
+  /** Returns false when alias is absent; used by deletion and registry-repair flows. */
+  hasKey(alias: string): Promise<boolean>
+
   /**
    * Open one user-action session:
    * - Key generated with user-authentication required + non-zero
@@ -186,7 +197,7 @@ interface HardwareEcdsaSigner {
 
   /**
    * Deletes the Keystore alias. Callers that also drop registry rows must
-   * follow: deleteKey → verify key absent → remove encrypted registry row.
+   * follow: deleteKey → hasKey(alias) === false → remove encrypted registry row.
    * Registry removal is retryable if interrupted after Keystore delete.
    */
   deleteKey(alias: string): Promise<void>
@@ -215,9 +226,9 @@ interface HardwareSigningSession {
 
 **StrongBox fallback rule:** Catch only explicit StrongBox-availability failures when deciding to retry without StrongBox. Invalid params, attestation errors, or other keygen failures must not trigger TEE fallback.
 
-**Attestation rule:** Challenge is only accepted at `createKey`. Production `k_attest` **must** be created with `attestationChallenge` and a non-empty `certificateChainDer`. Keys created without a challenge cannot later produce an attestation chain; regenerate instead.
+**Attestation rule:** Challenge is only accepted at `createKey`. Production `k_attest` **must** be created with `attestationChallenge` and a non-empty `certificateChainDer`. Keys created without a challenge cannot later produce an attestation chain; regenerate instead. Remote attestation **does not** prove each `k_cred` to Issuer/Verifier — see Attestation boundary below.
 
-**Deletion rule:** `destroyCredentialKey` / equivalent: (1) `deleteKey(alias)`, (2) verify alias absent via native lookup, (3) remove encrypted registry row. If step 3 fails, retry registry cleanup without recreating the key.
+**Deletion rule:** `destroyCredentialKey` / equivalent: (1) `deleteKey(alias)`, (2) `hasKey(alias) === false`, (3) remove encrypted registry row. If step 3 fails, retry registry cleanup without recreating the key. `getPublicJwk` / `openSigningSession` on missing alias throw `HardwareKeyNotFoundError`.
 
 ### Key aliases and registry
 
@@ -278,7 +289,29 @@ Wallet Provider **must** verify at least:
 
 Activation fails closed if WP rejects attestation. Changing roots/policy later means **regenerating** `k_attest` and repeating activation — not a post-create attest API.
 
-Ordinary `k_cred` keys default to public JWK / PoP only (no attestation challenge) unless a future policy adds per-credential attestation.
+Ordinary `k_cred` keys default to public JWK / PoP only (no attestation challenge) unless a future issuer policy adds per-credential attestation. The facade retains optional `attestationChallenge` on `k_cred` create for that future path.
+
+### Attestation boundary (P1–P6 aligned)
+
+Remote Android attestation and local hardware enforcement serve **different trust roles**:
+
+| Key | Remote attestation? | What peers verify | P1–P6 evidence |
+|-----|---------------------|-------------------|----------------|
+| **`k_attest`** | **Yes** — WP WUA/WIA | Attestation chain + public JWK | P1: attestation for wallet activation |
+| **`k_cred`** | **No (default)** | Credential-bound public key (`did:key`/COSE) + Holder PoP/KB-JWT | P1/P2: per-credential PoP; P4/P5/P6: presentation PoP, not attestation chain |
+
+**Implications:**
+- WP remote attestation proves **wallet instance / activation trust**, not that every document key is hardware-backed to Issuers.
+- **`k_cred` hardware** is enforced **locally** (StrongBox/TEE create policy, no software keys, encrypted registry, native signing). Issuers and Verifiers rely on **cryptographic binding + signatures**, matching journey diagrams.
+- Optional per-credential `attestationChallenge` at `createKey` remains available if a future regulated issuer policy requires it; it is **out of scope for first production** per P1–P6 review.
+
+### Journey supersession (P3)
+
+The P3 canvas (`canvases/p3-key-rotation-sequence-check.canvas.tsx`) shows renewal with **presentation of the old VC using the old credential key**. This cutover spec **supersedes** that path for the Ed25519 → hardware P-256 migration:
+
+- **Instead:** fresh issuer reissue without old-key proof (same as P1/P2 issuance with a new hardware `k_cred`).
+- **After cutover is complete:** post-renewal lifecycle (destroy old key, bind new key) still follows ADR 0010 topology; only the **migration** step drops old-key presentation.
+- Journey docs and canvas P3 must be revised to note this supersession during implementation docs.
 
 ### Platform gate (iOS)
 
@@ -324,7 +357,7 @@ Until Secure Enclave P-256 work is specified and implemented:
 
 1. Resolve encrypted registry → alias.
 2. `deleteKey(alias)` (Keystore).
-3. Verify alias is absent.
+3. Confirm `hasKey(alias) === false`.
 4. Remove encrypted registry row (retryable if interrupted after step 2/3).
 
 Post-cutover renewal (after hardware keys exist) continues to create a **new** pending hardware key for the replacement credential; cutover itself does not sign with the old key.
@@ -376,8 +409,8 @@ Production Android posture: wallet crypto is not OPERATIONAL for issuance/presen
 
 ### CI
 
-- Facade + mock native: create with StrongBox-unavailable → TEE; generic keygen error → no fallback; create with `attestationChallenge` returns chain; JOSE 64-byte `r‖s`; session multi-sign with maxSignatures; delete; authoritative `getSecurityLevel`.
-- Destroy ordering: Keystore delete → verify absent → registry remove; registry retry after interrupted delete.
+- Facade + mock native: create with StrongBox-unavailable → TEE; generic keygen error → no fallback; create with `attestationChallenge` returns chain; JOSE 64-byte `r‖s`; session multi-sign with maxSignatures; `hasKey` false after delete; `HardwareKeyNotFoundError` on missing alias; authoritative `getSecurityLevel`.
+- Destroy ordering: Keystore delete → `hasKey === false` → registry remove; registry retry after interrupted delete.
 - Registry bind without alias rename; **encrypted** store usage.
 - `did:key` vectors for `[0x80, 0x24]` + 33-byte compressed key.
 - COSE_Key fixture for `{1: 2, 3: -7, -1: 1, -2: x, -3: y}`.
@@ -418,7 +451,9 @@ On Galaxy A26 (exact production-intent firmware):
 - TASKS.md session note + backlog updates.
 - ADR 0010 related-decision pointer updated (topology unchanged; storage/alg superseded).
 - Explicit Issuer migration note: cutover reissue must not require old holder-key proof.
-- Explicit WP attestation verification checklist (challenge, chain, roots, revocation, app identity, security level, user-auth).
+- Explicit WP attestation verification checklist (challenge, chain, roots, revocation, app identity, security level, user-auth) — **`k_attest` only**.
+- Explicit attestation boundary note: `k_cred` = local hardware + PoP; not remote attestation in P1–P6.
+- Revise P3 journey canvas/docs to supersede old-key renewal presentation with fresh reissue for this cutover.
 
 ## Alternatives considered
 
@@ -436,6 +471,8 @@ On Galaxy A26 (exact production-intent firmware):
 12. **Migration-only legacy Ed25519 signing for old-key renewal** — rejected; Issuer supports fresh reissue without old-key proof.
 13. **Local-only StrongBox/TEE assertion without WP remote attestation in first production** — rejected; WP must verify hardware backing.
 14. **Peer metadata expanding verify algorithms** — rejected; metadata may narrow trusted base only.
+15. **Remote attestation for every `k_cred` in first production** — rejected; P1–P6 require WP attestation for `k_attest` and PoP/public-key binding for credentials.
+16. **P3 old-key renewal presentation during Ed25519→P-256 cutover** — rejected; superseded by fresh reissue without old-key proof.
 
 ## Open points for implementation plan (not design blockers)
 
@@ -452,9 +489,9 @@ On Galaxy A26 (exact production-intent firmware):
 - A26 StrongBox P-256 evidence recorded; explicit-StrongBox-unavailable TEE create proven; capacity stress recorded.
 - Action-scoped session: one biometric for dual-format + nonce retry; residual auth window documented and TTL-aligned.
 - New Android issuance, online presentation, and proximity device auth succeed with hardware aliases; APDU signing stays native via opaque handle only.
-- Production `k_attest` created with attestation challenge; WP accepts full remote verification; no post-hoc attest API.
+- Production `k_attest` created with attestation challenge; WP accepts full remote verification; no post-hoc attest API; attestation boundary documented (`k_attest` remote, `k_cred` local).
 - Verify allowlist sourced from trusted policy/registry; metadata cannot expand algorithms.
-- Registry lives in encrypted MMKV; deletion is Keystore-first then registry; no production software private keys for holder signing.
+- Registry lives in encrypted MMKV; deletion uses `hasKey`; no production software private keys for holder signing.
 - Cutover uses fresh reissue without old-key signing; legacy Ed25519 deletion is per credential/alias after validated cutover.
 - iOS production issuance/presentation blocked until Secure Enclave follow-up.
 - Docs/ADR/SECURITY reflect supersession of ADR 0008 for holder signing.
