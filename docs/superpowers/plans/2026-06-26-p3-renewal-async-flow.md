@@ -1,12 +1,14 @@
 # P3 Async Renewal Flow Implementation Plan
 
+> **Superseded:** VCI now uses `@openid4vc/openid4vci` only (2026-08-06).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Refactor P3 credential renewal so **ขอเอกสาร** submits once to the issuer, wallet polls on focus while waiting, auto-claims when ready, then shows green ribbon + Active before holder confirms old VC deletion.
 
 **Architecture:** Split `credentialRenewalService` into `submitRenewalRequest` (POST only) and `refreshAndCompleteRenewals` (poll + auto-claim). Dev server exposes `requested` → `offer-ready` states. UI hides request CTA after successful submit; home prefers `renewed-active` credential per type.
 
-**Tech Stack:** Expo SDK 54, React Native, NativeWind, Jest, Express (`server/`), `@sphereon/oid4vci-client` via `exchangeService`
+**Tech Stack:** Expo SDK 54, React Native, NativeWind, Jest, Express (`server/`), `@openid4vc/openid4vci` via `exchangeService`
 
 ## Global Constraints
 

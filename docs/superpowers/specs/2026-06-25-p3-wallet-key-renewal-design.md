@@ -1,5 +1,7 @@
 # P3 Wallet `did:key` Expiry & Credential Renewal — Design Spec
 
+> **Superseded:** VCI now uses `@openid4vc/openid4vci` only (2026-08-06).
+
 > **Status:** Approved (canonical — merged 2026-06-26)
 > **Initial date:** 2026-06-25
 > **Last updated:** 2026-06-26
@@ -61,7 +63,7 @@ UI reference: `docs/ui-reference/P3/`
 
 ### Architecture constraints (unchanged)
 
-- OID4VCI runs on-device via `@sphereon/oid4vci-client`; no mobile `/exchange/*` calls.
+- OID4VCI runs on-device via `@openid4vc/openid4vci`; no mobile `/exchange/*` calls.
 - Company backend sync stays on generated SDK path when applicable.
 - Credential UI remains config-driven (`cardSchemas.ts`, generic components).
 - P6 lifecycle/suspension states remain separate; P3 adds parallel renewal state.

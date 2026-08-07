@@ -53,7 +53,7 @@ The stakeholder now accepts **P-256 / ES256 for holder signing**. Android Strong
 - Soft dual-alg **holder** migration (present old Ed25519-bound credentials indefinitely alongside new ES256 holder keys).
 - Forcing all issuer/verifier JWTs to ES256 in the same slice (verification allowlist handles coexistence).
 - Shipping iOS production holder crypto in this slice (blocked until Secure Enclave ADR/implementation).
-- Changing OID4VCI client boundary (still on-device Sphereon), card UI config model, or company API SDK path.
+- Changing OID4VCI client boundary (still on-device `@openid4vc/openid4vci`), card UI config model, or company API SDK path.
 - Requiring StrongBox on every SKU with no TEE create fallback.
 - Treating cached `securityLevelHint` as authoritative proof of hardware backing.
 - Assuming `close()` immediately invalidates Android’s hardware authentication token.
