@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>คู่มือสอน — เตรียม Demo Digital Wallet</title>
+    <title>คู่มือเรียนรู้ — Digital Wallet (Holder)</title>
     <link
       href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -20,12 +20,6 @@
         --navy-dark: #001a52;
         --navy-soft: #e8eef8;
         --accent: #0066cc;
-        --success: #0d7a4a;
-        --success-bg: #e6f4ed;
-        --warn: #b45309;
-        --warn-bg: #fef3c7;
-        --danger: #b91c1c;
-        --danger-bg: #fee2e2;
         --bg: #f0f3f8;
         --card: #ffffff;
         --text: #1a2a42;
@@ -46,7 +40,6 @@
         line-height: 1.65;
       }
 
-      /* ── Header ── */
       .hero {
         background: linear-gradient(135deg, var(--navy) 0%, var(--navy-dark) 100%);
         color: #fff;
@@ -78,7 +71,6 @@
         margin: 0 auto;
       }
 
-      /* ── Layout ── */
       .layout {
         display: grid;
         grid-template-columns: 260px 1fr;
@@ -98,7 +90,6 @@
         }
       }
 
-      /* ── Sidebar nav ── */
       .sidebar {
         position: sticky;
         top: 20px;
@@ -138,7 +129,6 @@
         border-left-color: var(--navy);
       }
 
-      /* ── Main content ── */
       .main {
         display: flex;
         flex-direction: column;
@@ -207,53 +197,6 @@
         margin-bottom: 6px;
       }
 
-      /* ── Status cards ── */
-      .status-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 12px;
-        margin: 16px 0;
-      }
-
-      .status-card {
-        border-radius: 10px;
-        padding: 14px 16px;
-        border: 1px solid var(--border);
-      }
-
-      .status-card.done {
-        background: var(--success-bg);
-        border-color: #a7d4bc;
-      }
-
-      .status-card.pending {
-        background: var(--warn-bg);
-        border-color: #fcd34d;
-      }
-
-      .status-card.blocked {
-        background: var(--danger-bg);
-        border-color: #fca5a5;
-      }
-
-      .status-card .label {
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 4px;
-      }
-
-      .status-card.done .label { color: var(--success); }
-      .status-card.pending .label { color: var(--warn); }
-      .status-card.blocked .label { color: var(--danger); }
-
-      .status-card .value {
-        font-weight: 700;
-        font-size: 15px;
-      }
-
-      /* ── Tables ── */
       table {
         width: 100%;
         border-collapse: collapse;
@@ -279,7 +222,6 @@
         border-bottom: none;
       }
 
-      /* ── Flow diagram ── */
       .flow {
         background: #0f172a;
         color: #e2e8f0;
@@ -293,7 +235,6 @@
         white-space: pre;
       }
 
-      /* ── Compare boxes ── */
       .compare {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -337,62 +278,6 @@
         margin-bottom: 0;
       }
 
-      /* ── Quiz ── */
-      .quiz {
-        background: var(--navy-soft);
-        border-radius: 10px;
-        padding: 20px;
-        margin: 16px 0;
-      }
-
-      .quiz-q {
-        font-weight: 700;
-        margin-bottom: 12px;
-        color: var(--navy);
-      }
-
-      .quiz-options {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
-      .quiz-btn {
-        background: var(--card);
-        border: 2px solid var(--border);
-        border-radius: 8px;
-        padding: 12px 16px;
-        text-align: left;
-        cursor: pointer;
-        font-family: inherit;
-        font-size: 14px;
-        transition: all 0.15s;
-      }
-
-      .quiz-btn:hover {
-        border-color: var(--navy);
-      }
-
-      .quiz-btn.correct {
-        background: var(--success-bg);
-        border-color: var(--success);
-        color: var(--success);
-      }
-
-      .quiz-btn.wrong {
-        background: var(--danger-bg);
-        border-color: var(--danger);
-        color: var(--danger);
-      }
-
-      .quiz-feedback {
-        margin-top: 12px;
-        font-size: 14px;
-        font-weight: 600;
-        min-height: 20px;
-      }
-
-      /* ── Accordion ── */
       .accordion-item {
         border: 1px solid var(--border);
         border-radius: 10px;
@@ -440,7 +325,6 @@
         display: block;
       }
 
-      /* ── Tags ── */
       .tag {
         display: inline-block;
         font-size: 11px;
@@ -450,12 +334,9 @@
         margin-right: 6px;
       }
 
-      .tag-ok { background: var(--success-bg); color: var(--success); }
-      .tag-warn { background: var(--warn-bg); color: var(--warn); }
-      .tag-no { background: var(--danger-bg); color: var(--danger); }
       .tag-info { background: var(--navy-soft); color: var(--navy); }
+      .tag-muted { background: #f1f5f9; color: var(--text-muted); }
 
-      /* ── Callout ── */
       .callout {
         border-left: 4px solid var(--navy);
         background: var(--navy-soft);
@@ -465,22 +346,12 @@
         font-size: 14px;
       }
 
-      .callout.warn {
-        border-color: var(--warn);
-        background: var(--warn-bg);
-      }
-
       .callout strong {
         display: block;
         margin-bottom: 4px;
         color: var(--navy);
       }
 
-      .callout.warn strong {
-        color: var(--warn);
-      }
-
-      /* ── Footer ── */
       footer {
         text-align: center;
         padding: 24px;
@@ -499,11 +370,11 @@
   </head>
   <body>
     <header class="hero">
-      <div class="hero-badge">📚 คู่มือสอน — ทีม Demo</div>
-      <h1>Digital Wallet Demo Guide</h1>
+      <div class="hero-badge">📚 เอกสารอธิบาย</div>
+      <h1>Digital Wallet — Holder</h1>
       <p>
-        เรียนรู้แอป Wallet ฝั่ง Holder ก่อน demo — flow การรับเอกสาร การแสดงเอกสาร
-        ความปลอดภัย P-256/StrongBox และสิ่งที่ต้องเตรียม
+        เรียนรู้ว่าแอป Wallet ทำอะไร flow การรับและแสดงเอกสาร Orval SDK
+        และความปลอดภัย P-256 / StrongBox ทำงานอย่างไร
       </p>
     </header>
 
@@ -511,23 +382,20 @@
       <nav class="sidebar">
         <div class="sidebar-title">สารบัญ</div>
         <a href="#overview">ภาพรวมแอป</a>
-        <a href="#status">สถานะ Demo ปัจจุบัน</a>
-        <a href="#flows">Flow หลัก 3 แบบ</a>
-        <a href="#myqr">My QR (ยังขาด)</a>
-        <a href="#crypto">P-256 &amp; StrongBox</a>
+        <a href="#orval-sdk">Orval SDK</a>
+        <a href="#flows">Flow หลัก</a>
+        <a href="#myqr">My QR</a>
+        <a href="#crypto">P-256 / ES256</a>
         <a href="#strongbox-tee">StrongBox vs TEE</a>
-        <a href="#demo-script">Script Demo 15 นาที</a>
-        <a href="#faq">คำถาม ETDA</a>
-        <a href="#quiz">ทดสอบความเข้าใจ</a>
+        <a href="#faq">คำถามที่พบบ่อย</a>
       </nav>
 
       <main class="main">
-        <!-- 1. Overview -->
         <section id="overview">
           <h2><span class="num">1</span> แอปนี้คืออะไร?</h2>
           <p class="lead">
-            Digital Wallet ฝั่ง <strong>Holder (ผู้ถือเอกสาร)</strong> — รับ VC จาก Issuer เก็บในเครื่องเข้ารหัส
-            แล้วแสดงให้ Verifier เมื่อยินยอม
+            Digital Wallet ฝั่ง <strong>Holder (ผู้ถือเอกสาร)</strong> — รับ Verifiable Credential จาก Issuer
+            เก็บในเครื่องเข้ารหัส แล้วแสดงให้ Verifier เมื่อผู้ใช้ยินยอม
           </p>
 
           <h3>3 เรื่องหลักที่แอปทำ</h3>
@@ -536,467 +404,336 @@
               <tr>
                 <th>เรื่อง</th>
                 <th>มาตรฐาน</th>
-                <th>ความหมายง่ายๆ</th>
+                <th>ความหมาย</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><strong>รับเอกสาร</strong></td>
                 <td><code>OID4VCI 1.0</code></td>
-                <td>ขอ VC จาก ThaID / ใบขับขี่ / Transcript แล้วเก็บในเครื่อง</td>
+                <td>ขอ VC จาก Issuer (ThaID, ใบขับขี่, Transcript) แล้วเก็บในเครื่อง</td>
               </tr>
               <tr>
                 <td><strong>แสดงออนไลน์</strong></td>
                 <td><code>OID4VP 1.0</code></td>
-                <td>สแกน QR Verifier หรือ My QR → ส่งเฉพาะข้อมูลที่เลือก</td>
+                <td>สแกน QR ของ Verifier หรือใช้ My QR → ส่งเฉพาะข้อมูลที่เลือก</td>
               </tr>
               <tr>
-                <td><strong>แสดงใกล้ตัว (NFC)</strong></td>
+                <td><strong>แสดงใกล้ตัว</strong></td>
                 <td><code>ISO 18013-5</code></td>
-                <td>แตะเครื่องอ่าน NFC — <span class="tag tag-no">ยังไม่ demo</span></td>
+                <td>แตะเครื่องอ่าน NFC (mdoc proximity) — <span class="tag tag-muted">กำลังพัฒนา</span></td>
               </tr>
             </tbody>
           </table>
 
-          <h3>เอกสาร 3 ชนิด</h3>
+          <h3>เอกสารที่รองรับ</h3>
           <ul>
-            <li><strong>Thai National ID (ThaID / PID)</strong> — ต้องมีก่อน ถึงจะขอเอกสารอื่นได้</li>
-            <li><strong>DLT Driving Licence</strong> — ต้องมี ThaID ก่อน</li>
-            <li><strong>Chulalongkorn Transcript</strong> — ต้องมี ThaID ก่อน</li>
+            <li><strong>Thai National ID (ThaID / PID)</strong> — เอกสารหลัก ต้องมีก่อนขอเอกสารอื่น</li>
+            <li><strong>DLT Driving Licence</strong> — ต้องมี ThaID ที่ใช้งานได้ก่อน</li>
+            <li><strong>Chulalongkorn Transcript</strong> — ต้องมี ThaID ที่ใช้งานได้ก่อน</li>
           </ul>
 
-          <h3>4 แท็บในแอป</h3>
+          <h3>แท็บในแอป</h3>
           <table>
-            <tr><td><strong>Wallet</strong></td><td>หน้าแรก — ดูการ์ดเอกสาร, กดขอเอกสาร</td></tr>
-            <tr><td><strong>My QR</strong></td><td>Wallet แสดง QR ให้ Verifier มาสแกน</td></tr>
-            <tr><td><strong>Scan</strong></td><td>สแกน QR รับเอกสาร หรือแสดงให้ Verifier</td></tr>
-            <tr><td><strong>History Log</strong></td><td>ประวัติการรับ/แสดงเอกสาร</td></tr>
+            <tr><td><strong>Wallet</strong></td><td>หน้าแรก — ดูการ์ดเอกสาร, ขอเอกสารจาก Issuer portal</td></tr>
+            <tr><td><strong>My QR</strong></td><td>Holder แสดง QR — Verifier มาสแกนแล้วขอข้อมูล</td></tr>
+            <tr><td><strong>Scan</strong></td><td>สแกน QR รับเอกสาร (OID4VCI) หรือแสดงให้ Verifier (OID4VP)</td></tr>
+            <tr><td><strong>History Log</strong></td><td>ประวัติการรับและแสดงเอกสาร</td></tr>
           </table>
-        </section>
 
-        <!-- 2. Status -->
-        <section id="status">
-          <h2><span class="num">2</span> สถานะ Demo ปัจจุบัน</h2>
-          <p class="lead">อัปเดตล่าสุดจากการเตรียมงาน — ใช้เป็น checklist ก่อน demo</p>
-
-          <div class="status-grid">
-            <div class="status-card done">
-              <div class="label">✓ ผ่านแล้ว</div>
-              <div class="value">ThaID ผ่าน Portal</div>
+          <h3>สองทางสื่อสารของแอป </h3>
+          <div class="compare">
+            <div class="compare-box strongbox">
+              <h4>Issuer (หน่วยออกเอกสาร)</h4>
+              <ul>
+                <li>OID4VCI — รับ VC ตรงบนมือถือ</li>
+                <li>ไม่ผ่าน Wallet Backend บริษัท</li>
+                <li>เก็บใน MMKV เข้ารหัส</li>
+              </ul>
             </div>
-            <div class="status-card done">
-              <div class="label">✓ ผ่านแล้ว</div>
-              <div class="value">ประสาน Issuer (callback)</div>
-            </div>
-            <div class="status-card done">
-              <div class="label">✓ ผ่านแล้ว</div>
-              <div class="value">เครือข่าย public</div>
-            </div>
-            <div class="status-card done">
-              <div class="label">✓ ผ่านแล้ว</div>
-              <div class="value">Scan VP</div>
-            </div>
-            <div class="status-card pending">
-              <div class="label">⏳ ยังขาด</div>
-              <div class="value">My QR E2E</div>
-            </div>
-            <div class="status-card pending">
-              <div class="label">⏳ ก่อน demo</div>
-              <div class="value">P-256 / ES256 cutover</div>
-            </div>
-            <div class="status-card blocked">
-              <div class="label">✗ ไม่ demo</div>
-              <div class="value">NFC proximity</div>
-            </div>
-            <div class="status-card blocked">
-              <div class="label">✗ ไม่ demo</div>
-              <div class="value">ใบขับขี่ dual-format เต็ม</div>
-            </div>
-          </div>
-
-          <div class="callout warn">
-            <strong>⚠️ ก่อน demo ต้อง reissue credential ใหม่</strong>
-            หลัง migrate ไป P-256/ES256 — credential ที่ออกด้วย Ed25519 เก่าใช้ sign ไม่ได้
-            ต้องขอเอกสารใหม่จาก Issuer บน build ใหม่
-          </div>
-        </section>
-
-        <!-- 3. Flows -->
-        <section id="flows">
-          <h2><span class="num">3</span> Flow หลัก 3 แบบ</h2>
-          <p class="lead">เข้าใจ 3 flow นี้ = พร้อม demo 80%</p>
-
-          <h3>Flow A — รับเอกสารผ่าน Portal (OID4VCI)</h3>
-          <div class="flow">Wallet Home → กด "ขอเอกสาร"
-  → เปิด browser Issuer (/thaiid/login)
-  → login + verify ตัวตน (DL/Transcript ทำบนเว็บ Issuer)
-  → redirect: walletapp://callback?credential_offer_uri=https://...
-  → แอป parse → หน้ารับเอกสาร
-  → biometric (sign PoP) → บันทึก VC เข้า MMKV เข้ารหัส
-  → การ์ดเอกสารโผล่หน้า Wallet</div>
-          <p><span class="tag tag-ok">ThaID ผ่านแล้ว</span> Issuer ต้อง whitelist <code>walletapp://callback</code></p>
-
-          <h3>Flow B — แสดงเอกสาร Scan tab (OID4VP)</h3>
-          <div class="flow">Scan tab → สแกน QR Verifier (openid4vp://...)
-  → ตรวจ trust Verifier (allowlist)
-  → หน้า Consent → Info (เลือก claim ที่จะเปิด)
-  → กดยอมรับ → biometric (sign KB-JWT)
-  → direct_post ไป Verifier
-  → Success + บันทึก History</div>
-          <p><span class="tag tag-ok">ผ่านแล้ว</span> Verifier เริ่ม flow นี้</p>
-
-          <h3>Flow C — My QR (Wallet เริ่มก่อน)</h3>
-          <div class="flow">My QR tab → POST /broker/session → แสดง QR
-  → Verifier สแกน QR → POST /verifier/scan
-  → Verifier deposit OID4VP request กลับ Broker
-  → Wallet poll GET .../request (ทุก 2 วิ)
-  → flow ยินยอม/sign เหมือน Scan tab
-  → direct_post → Success</div>
-          <p><span class="tag tag-warn">ยังขาด E2E</span> ต้องประสาน Verifier scan + deposit request</p>
-
-          <h3>Scan vs My QR ต่างกันยังไง?</h3>
-          <table>
-            <thead>
-              <tr><th></th><th>Scan tab</th><th>My QR tab</th></tr>
-            </thead>
-            <tbody>
-              <tr><td><strong>ใครเริ่ม</strong></td><td>Verifier (แสดง QR)</td><td>Holder (แสดง QR)</td></tr>
-              <tr><td><strong>Protocol</strong></td><td>OID4VP ตรง</td><td>Broker → OID4VP เดิม</td></tr>
-              <tr><td><strong>UI หลัง scan</strong></td><td>Consent → Info → Sign</td><td>เหมือนกัน</td></tr>
-            </tbody>
-          </table>
-        </section>
-
-        <!-- 4. My QR detail -->
-        <section id="myqr">
-          <h2><span class="num">4</span> My QR — วิธีทดและแก้ปัญหา</h2>
-          <p class="lead">Golden path ที่ยังขาด — ทำให้ผ่านก่อน demo</p>
-
-          <h3>Checklist ฝั่ง Wallet</h3>
-          <ol>
-            <li>มี ThaID แบบ SD-JWT ใน wallet (presentable)</li>
-            <li>Build มี <code>EXPO_PUBLIC_BROKER_BASE_URL</code> ชี้ Broker ที่ถูก</li>
-            <li>เปิด My QR → เห็น QR + countdown (~5 นาที)</li>
-          </ol>
-
-          <h3>Checklist ฝั่ง Verifier (ประสานทีม)</h3>
-          <ol>
-            <li>Scan QR แล้วเรียก <code>POST /verifier/scan</code></li>
-            <li>Body: <code>{ "scannedValue": "&lt;qr_payload verbatim&gt;", "docType": "IDCard" }</code></li>
-            <li>Deposit OID4VP request กลับ Broker ภายใน TTL</li>
-          </ol>
-
-          <h3>ถ้า My QR ไม่ทำงาน</h3>
-          <div class="accordion-item">
-            <button class="accordion-header" type="button">
-              ไม่ขึ้น QR / "ไม่สามารถสร้าง QR ได้"
-              <span class="arrow">▼</span>
-            </button>
-            <div class="accordion-body">
-              Broker <code>POST /broker/session</code> ล้ม — เช็ค SSL pin, URL, backend online.
-              ดู log tag <code>[vp-broker] session-start-failed</code>
-            </div>
-          </div>
-          <div class="accordion-item">
-            <button class="accordion-header" type="button">
-              QR ขึ้นแต่ไม่มีอะไรเกิด
-              <span class="arrow">▼</span>
-            </button>
-            <div class="accordion-body">
-              Verifier ยังไม่ scan หรือยังไม่ deposit request กลับ Broker.
-              Wallet poll ทุก 2 วิ — รอให้ Verifier ทำครบ
-            </div>
-          </div>
-          <div class="accordion-item">
-            <button class="accordion-header" type="button">
-              "ไม่มีเอกสารที่ใช้แสดงได้"
-              <span class="arrow">▼</span>
-            </button>
-            <div class="accordion-body">
-              ThaID ไม่ใช่ SD-JWT หรือ status ไม่ presentable — ต้อง reissue หรือ renew
+            <div class="compare-box tee">
+              <h4>Wallet Backend (บริษัท)</h4>
+              <ul>
+                <li>Login, บัญชี, sync credential (optional)</li>
+                <li>ผ่าน Orval SDK</li>
+                <li>แยกจาก protocol Issuer</li>
+              </ul>
             </div>
           </div>
         </section>
 
-        <!-- 5. Crypto -->
-        <section id="crypto">
-          <h2><span class="num">5</span> P-256 / ES256 — กุญแจใหม่ก่อน Demo</h2>
+        <section id="orval-sdk">
+          <h2><span class="num">2</span> Orval SDK คืออะไร?</h2>
           <p class="lead">
-            Spec: <code>docs/superpowers/specs/2026-08-04-hardware-p256-es256-signing-design.md</code>
+            โค้ดที่ generate อัตโนมัติสำหรับเรียก API ของ Wallet Backend — ไม่เกี่ยวกับการขอเอกสารจาก Issuer
           </p>
 
-          <h3>เปลี่ยนจากอะไร → อะไร</h3>
+          <div class="callout">
+            <strong>สรุป</strong>
+            Orval อ่านสเปก API (<code>walletApi.json</code>) แล้วสร้าง TypeScript ใน
+            <code>src/sdk/walletApi.ts</code> — แอป เรียกฟังก์ชันเช่น <code>loginUser()</code>
+            แทนการเขียน HTTP เองทีละ endpoint
+          </div>
+
+          <h3>เปรียบเทียบ</h3>
           <table>
             <thead>
-              <tr><th>หัวข้อ</th><th>เดิม (build ปัจจุบัน)</th><th>ใหม่ (ก่อน demo)</th></tr>
+              <tr><th>ไม่มี SDK</th><th>Orval SDK</th></tr>
             </thead>
             <tbody>
-              <tr><td>Curve</td><td>Ed25519 software</td><td>P-256 hardware (Keystore)</td></tr>
-              <tr><td>Algorithm</td><td><code>EdDSA</code></td><td><code>ES256</code></td></tr>
-              <tr><td>ที่เก็บ key</td><td>Keychain seed</td><td>Android Keystore (StrongBox/TEE)</td></tr>
-              <tr><td>Private key ใน JS</td><td>มีตอน sign</td><td><strong>ไม่มี</strong> — sign ผ่าน native</td></tr>
-              <tr><td>Holder DID</td><td><code>did:key</code> Ed25519</td><td><code>did:key</code> P-256</td></tr>
+              <tr><td>อ่านเอกสาร API เอง</td><td>เรียกฟังก์ชันที่ generate แล้ว</td></tr>
+              <tr><td>เขียน URL/body เอง — พิมพ์ผิดได้</td><td>TypeScript ช่วยตรวจ type</td></tr>
+              <tr><td>API เปลี่ยน → แก้หลายจุด</td><td><code>yarn sdk:generate</code> แล้วแก้ตาม type error</td></tr>
             </tbody>
           </table>
 
-          <h3>ทำไมเปลี่ยน?</h3>
+          <h3>ขั้นตอนในโปรเจกต์</h3>
+          <div class="flow">walletApi.json
+        ↓  yarn sdk:generate (Orval — รันตอน develop)
+src/sdk/walletApi.ts  (ห้ามแก้มือ)
+        ↓
+แอป เรียก login, register, importCredential ฯลฯ</div>
+
+          <h3>ฟังก์ชันที่ mobile ใช้ (ตัวอย่าง)</h3>
+          <table>
+            <thead>
+              <tr><th>ฟังก์ชัน</th><th>หน้าที่</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>loginUser</code></td><td>เข้าสู่ระบบ Wallet Backend</td></tr>
+              <tr><td><code>registerUser</code></td><td>สมัครบัญชี</td></tr>
+              <tr><td><code>getWallets</code></td><td>ดูรายการ wallet ของ user</td></tr>
+              <tr><td><code>importCredential</code></td><td>sync VC ที่เก็บในเครื่องไป backend (optional)</td></tr>
+            </tbody>
+          </table>
+
+          <p>
+            <span class="tag tag-info">หมายเหตุ</span>
+            OID4VCI (ขอ VC จาก Issuer) รันบน device ผ่าน <code>@sphereon/oid4vci-client</code> — ไม่ผ่าน Orval SDK
+          </p>
+        </section>
+
+        <section id="flows">
+          <h2><span class="num">3</span> Flow หลัก</h2>
+          <p class="lead">เส้นทางที่ผู้ใช้และระบบทำงานร่วมกัน</p>
+
+          <h3>รับเอกสาร — Portal + OID4VCI</h3>
+          <div class="flow">Wallet Home → ขอเอกสาร
+  → เปิด browser Issuer (/thaiid/login)
+  → login (DL/Transcript: verify PID บนเว็บ Issuer)
+  → redirect: walletapp://callback?credential_offer_uri=https://...
+  → แอป parse offer → token → proof (sign) → รับ VC
+  → บันทึก MMKV เข้ารหัส → แสดงการ์ดบน Wallet</div>
+          <p>Issuer ต้อง redirect เป็น <code>walletapp://callback?credential_offer_uri=...</code> (HTTPS offer URL)</p>
+
+          <h3>แสดงเอกสาร — Scan tab (OID4VP)</h3>
+          <div class="flow">Scan → สแกน openid4vp://...
+  → ตรวจ trusted Verifier
+  → Consent → Info (เลือก claim)
+  → ยอมรับ → sign (biometric) → direct_post ไป Verifier
+  → บันทึก History</div>
+
+          <h3>แสดงเอกสาร — My QR (Wallet เริ่มก่อน)</h3>
+          <div class="flow">My QR → POST /broker/session → แสดง qr_payload
+  → Verifier สแกน → POST /verifier/scan
+  → Verifier deposit OID4VP request ที่ Broker
+  → Wallet poll GET .../request
+  → flow ยินยอม/sign เหมือน Scan tab → direct_post</div>
+
+          <h3>Scan vs My QR</h3>
+          <table>
+            <thead>
+              <tr><th></th><th>Scan</th><th>My QR</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>ใครเริ่ม</td><td>Verifier แสดง QR</td><td>Holder แสดง QR</td></tr>
+              <tr><td>ช่องทางกลาง</td><td>ไม่มี</td><td>Wallet Broker</td></tr>
+              <tr><td>หลังได้ request</td><td colspan="2">UI และการ sign เหมือนกัน</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="myqr">
+          <h2><span class="num">4</span> My QR ทำงานอย่างไร</h2>
+          <p class="lead">
+            Holder เปิด QR → Broker เป็นตัวกลางรอ Verifier → ได้ OID4VP request แล้วเข้า flow แสดงเอกสารปกติ
+          </p>
+
+          <h3>บทบาทแต่ละฝ่าย</h3>
+          <table>
+            <thead>
+              <tr><th>ฝ่าย</th><th>ทำอะไร</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Wallet</strong></td><td><code>POST /broker/session</code> → แสดง QR → poll request</td></tr>
+              <tr><td><strong>Broker</strong></td><td>เก็บ session, รับ request จาก Verifier, ให้ Wallet ดึง</td></tr>
+              <tr><td><strong>Verifier</strong></td><td>สแกน QR → <code>POST /verifier/scan</code> → deposit OID4VP request</td></tr>
+            </tbody>
+          </table>
+
+          <h3>เอกสารที่ใช้แสดง</h3>
+          <p>
+            แอป เลือก credential อัตโนมัติ: ใบขับขี่ dual-format (ถ้าพร้อม) หรือ ThaID SD-JWT ที่ presentable
+          </p>
+
+          <h3>รายละเอียด API (Verifier scan)</h3>
+          <div class="flow">POST /verifier/scan
+{
+  "scannedValue": "&lt;qr_payload จาก QR verbatim&gt;",
+  "docType": "IDCard"
+}</div>
+          <p>Wallet poll <code>GET /broker/session/{id}/request</code> ทุก 2 วินาที จนได้ authorization request</p>
+        </section>
+
+        <section id="crypto">
+          <h2><span class="num">5</span> P-256 / ES256 (การลงนาม)</h2>
+          <p class="lead">
+            แผน production: hardware P-256 ใน Android Keystore — spec
+            <code>2026-08-04-hardware-p256-es256-signing-design.md</code>
+          </p>
+
+          <h3>ทิศทางการเปลี่ยน</h3>
+          <table>
+            <thead>
+              <tr><th>หัวข้อ</th><th>แนวทาง production</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Curve</td><td>P-256 (<code>secp256r1</code>) ใน Keystore</td></tr>
+              <tr><td>JWT algorithm</td><td><code>ES256</code></td></tr>
+              <tr><td>Private key</td><td>อยู่ใน hardware — JavaScript ไม่เห็น</td></tr>
+              <tr><td>Holder DID</td><td><code>did:key</code> แบบ P-256</td></tr>
+              <tr><td>ใช้ sign</td><td>PoP (รับ VC), KB-JWT (แสดง VC), attestation, mdoc proximity</td></tr>
+            </tbody>
+          </table>
+
+          <h3>เหตุผล</h3>
           <ul>
-            <li>Galaxy ไม่รองรับ Ed25519 ใน Keystore → เลยใช้ software seed (ไม่ ideal)</li>
-            <li>Stakeholder ยอมรับ <strong>P-256 / ES256</strong> แล้ว → กลับไป hardware non-extractable ได้</li>
-            <li>StrongBox รองรับ P-256 เป็น baseline</li>
+            <li>Android Keystore รองรับ P-256 ใน StrongBox/TEE ได้ดี</li>
+            <li>Ed25519 ใน Keystore ไม่ reliable บนอุปกรณ์เป้าหมาย → เคย fallback เป็น software seed</li>
+            <li>Stakeholder ยอมรับ ES256 สำหรับ holder proofs → กลับไป hardware-backed ได้</li>
           </ul>
 
           <h3>กฎสำคัญ</h3>
           <ul>
-            <li><strong>StrongBox ก่อน</strong> → ถ้าไม่มีค่อย TEE → ไม่มี software fallback</li>
-            <li><strong>Biometric ครั้งเดียว</strong> ต่อ action (action-scoped signing session)</li>
-            <li><strong>Fresh reissue</strong> — credential เก่า sign ไม่ได้ ต้องขอใหม่จาก Issuer</li>
-            <li><strong>iOS production blocked</strong> จนกว่าจะมี Secure Enclave</li>
+            <li>StrongBox ก่อน → TEE เมื่อ StrongBox ไม่มี → ไม่มี software fallback</li>
+            <li>Biometric ครั้งเดียวต่อ user action (action-scoped signing session)</li>
+            <li>เปลี่ยน algorithm ต้อง <strong>reissue</strong> credential ใหม่จาก Issuer</li>
+            <li>iOS production รอ Secure Enclave slice</li>
           </ul>
-
-          <div class="callout">
-            <strong>พูดกับ ETDA (1 นาที)</strong>
-            "กุญแจ P-256 เก็บใน Android Keystore ไม่ extract ได้ — ลอง StrongBox ก่อน
-            ลงนาม ES256 ทุกจุดที่ wallet sign — demo ใช้ build ที่ migrate แล้ว credential ออกใหม่บน hardware key"
-          </div>
         </section>
 
-        <!-- 6. StrongBox vs TEE -->
         <section id="strongbox-tee">
-          <h2><span class="num">6</span> StrongBox vs TEE — ต่างกันยังไง?</h2>
-          <p class="lead">ทั้งคู่อยู่ใน Android Keystore — private key ไม่ออกมาในแอป</p>
+          <h2><span class="num">6</span> StrongBox vs TEE</h2>
+          <p class="lead">ทั้งคู่เป็น Android Keystore — private key ไม่ออกมาในแอป</p>
 
           <div class="compare">
             <div class="compare-box strongbox">
-              <h4>🔒 StrongBox</h4>
+              <h4>StrongBox</h4>
               <ul>
-                <li>ชิปความปลอดภัย <strong>แยก</strong> จาก CPU หลัก</li>
-                <li>ความปลอดภัย <strong>สูงสุด</strong> — ทน physical attack</li>
+                <li>ชิปความปลอดภัยแยกจาก CPU</li>
+                <li>ความปลอดภัยสูงสุด — ทน tampering</li>
                 <li>ช้ากว่า, จำกัดจำนวน key</li>
-                <li>Galaxy A26 (Knox Vault) — <strong>น่าจะมี</strong></li>
-                <li>Flagship, Pixel 3+, Samsung S21+</li>
+                <li>ม частоใน flagship / Knox Vault (เช่น Galaxy A26 คาดว่ามี)</li>
               </ul>
             </div>
             <div class="compare-box tee">
-              <h4>🛡️ TEE</h4>
+              <h4>TEE</h4>
               <ul>
-                <li>โซนปลอดภัย <strong>ในชิป</strong> หลัก (TrustZone)</li>
-                <li>ความปลอดภัย <strong>ดี</strong> — ยัง hardware-backed</li>
+                <li>โซนปลอดภัยในชิปหลัก (TrustZone)</li>
+                <li>hardware-backed — ดีกว่า software key</li>
                 <li>เร็วกว่า, รองรับ key มากกว่า</li>
-                <li>Mid-range หลายรุ่น (A15, A35 ไม่มี StrongBox แต่มี TEE)</li>
-                <li>Fallback เมื่อ StrongBox ไม่มี</li>
+                <li>Fallback เมื่อไม่มี StrongBox (เช่น Galaxy A15, A35)</li>
               </ul>
             </div>
           </div>
 
-          <h3>แอปเราเลือกยังไง?</h3>
-          <div class="flow">สร้าง key ครั้งแรก:
+          <h3>นโยบายในแอป</h3>
+          <div class="flow">createKey:
   1. ลอง StrongBox (P-256)
   2. StrongBoxUnavailableException → สร้างใน TEE
-  3. TEE ก็ไม่ได้ → fail closed (ไม่ใช้ software key)
+  3. TEE ไม่ได้ → fail closed
 
-ตอน sign:
-  → ใช้ key เดิมเท่านั้น — ไม่สร้าง key ใหม่แอบๆ</div>
+sign:
+  ใช้ key เดิมเท่านั้น — ไม่สร้าง key ใหม่เมื่อ sign ล้ม</div>
 
-          <h3>มือถือไหนมักไม่มี StrongBox?</h3>
-          <ul>
-            <li>Budget / entry (Redmi A, realme C, Samsung A0x/A1x บางรุ่น)</li>
-            <li>Mid-range หลายรุ่น — ยืนยันแล้ว: <strong>Galaxy A15, A35</strong></li>
-            <li>Android 8 ลงไป — ไม่มี StrongBox API</li>
-          </ul>
           <p>
-            <span class="tag tag-info">ไม่มี list ครบ</span>
-            เช็คบนเครื่อง: <code>PackageManager.FEATURE_STRONGBOX_KEYSTORE</code>
-          </p>
-          <p>
-            <strong>ไม่มี StrongBox ≠ ใช้แอpไม่ได้</strong> — ยังใช้ TEE ได้ (security ต่ำกว่า StrongBox แต่ยัง hardware-backed)
+            ไม่มี StrongBox ไม่ได้หมายความว่าใช้แอปไม่ได้ — ยังใช้ TEE ได้ถ้ามี hardware-backed keystore
           </p>
         </section>
 
-        <!-- 7. Demo script -->
-        <section id="demo-script">
-          <h2><span class="num">7</span> Script Demo ~15 นาที</h2>
-          <p class="lead">ลำดับที่แนะนำ + สิ่งที่ไม่ต้องโชว์</p>
-
-          <table>
-            <thead>
-              <tr><th>ลำดับ</th><th>Flow</th><th>เวลา</th><th>พูดอะไร</th></tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>1</td>
-                <td>เปิด Wallet → แสดง ThaID card</td>
-                <td>1 นาที</td>
-                <td>"เอกสารเก็บในเครื่องเข้ารหัส"</td>
-              </tr>
-              <tr>
-                <td>2</td>
-                <td>Scan → Verifier QR → VP สำเร็จ</td>
-                <td>3 นาที</td>
-                <td>"เลือกข้อมูลที่เปิด + biometric ครั้งเดียว"</td>
-              </tr>
-              <tr>
-                <td>3</td>
-                <td>My QR → Verifier scan → VP สำเร็จ</td>
-                <td>3 นาที</td>
-                <td>"Holder เริ่ม engagement — crypto verify ที่ Verifier"</td>
-              </tr>
-              <tr>
-                <td>4</td>
-                <td>(ถ้ามี) Transcript ผ่าน Portal</td>
-                <td>3 นาที</td>
-                <td>"Protocol OID4VCI รันบนเครื่อง"</td>
-              </tr>
-              <tr>
-                <td>5</td>
-                <td>History Log + Security</td>
-                <td>2 นาที</td>
-                <td>"P-256 Keystore, MMKV เข้ารหัส, SSL pinning"</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <h3>Plan B ถ้า My QR ล้ม</h3>
-          <p>โชว์ Scan VP เป็นหลัก — บอกว่า My QR เป็น wallet-initiated variant ของ flow เดียวกัน</p>
-
-          <h3>อย่า demo (บอกเป็น roadmap)</h3>
-          <ul>
-            <li>NFC แตะเครื่องอ่าน</li>
-            <li>ใบขับขี่ dual-format เต็ม (ตอนนี้ debug mDOC-only)</li>
-          </ul>
-        </section>
-
-        <!-- 8. FAQ -->
         <section id="faq">
-          <h2><span class="num">8</span> คำถามที่ ETDA มักถาม</h2>
+          <h2><span class="num">7</span> คำถามที่พบบ่อย</h2>
 
           <div class="accordion-item open">
             <button class="accordion-header" type="button">
-              ใช้ algorithm อะไร?
+              Orval SDK กับ OID4VCI ต่างกันยังไง?
               <span class="arrow">▼</span>
             </button>
             <div class="accordion-body">
-              Build demo = <strong>ES256 / P-256 hardware</strong> ใน Android Keystore.
-              ไม่ใช้ Ed25519 software อีกต่อไปหลัง cutover.
+              OID4VCI = ขอ VC จาก Issuer บนมือถือ (Sphereon client).
+              Orval SDK = เรียก Wallet Backend บริษัท (login, sync) — คนละระบบ
             </div>
           </div>
           <div class="accordion-item">
             <button class="accordion-header" type="button">
-              กุญแจอยู่ที่ไหน ปลอดภัยไหม?
+              Backend เห็น credential ตอนรับจาก Issuer ไหม?
               <span class="arrow">▼</span>
             </button>
             <div class="accordion-body">
-              P-256 ใน Keystore (StrongBox หรือ TEE) — private key ไม่ออกมาในแอป.
-              Biometric ทุกครั้งที่ sign. WP remote attestation verify hardware backing.
+              ไม่โดยอัตโนมัติ — รับและเก็บ local ก่อน.
+              Sync ไป backend เป็น optional ผ่าน <code>importCredential</code>
             </div>
           </div>
           <div class="accordion-item">
             <button class="accordion-header" type="button">
-              Backend เห็น credential ไหม?
+              ทำไมต้องมี ThaID ก่อนเอกสารอื่น?
               <span class="arrow">▼</span>
             </button>
             <div class="accordion-body">
-              ขอ credential จาก Issuer <strong>ตรงบนเครื่อง</strong> (OID4VCI).
-              Backend sync เป็น optional หลัง save local.
+              ThaID เป็น PID (เอกสารยืนยันตัวตนหลัก).
+              ใบขับขี่และ Transcript ต้อง verify ผ่าน PID ก่อน — ตรวจใน <code>credentialGuard</code>
             </div>
           </div>
           <div class="accordion-item">
             <button class="accordion-header" type="button">
-              ทำไมต้องมี ThaID ก่อน?
+              Biometric กี่ครั้งต่อการอนุมัติ?
               <span class="arrow">▼</span>
             </button>
             <div class="accordion-body">
-              ThaID = PID (เอกสารหลักยืนยันตัวตน).
-              ใบขับขี่และ Transcript ต้อง verify ผ่าน PID ก่อน — logic ใน credentialGuard.
+              ครั้งเดียวต่อ action ที่ต้อง sign — ผ่าน action-scoped signing session
+              ไม่ prompt ซ้ำหน้า consent
             </div>
           </div>
           <div class="accordion-item">
             <button class="accordion-header" type="button">
-              Biometric กี่ครั้งต่อ action?
+              เก็บ credential ที่ไหน?
               <span class="arrow">▼</span>
             </button>
             <div class="accordion-body">
-              <strong>ครั้งเดียว</strong> ตอน sign — action-scoped session.
-              ไม่ prompt ซ้ำหน้า consent.
+              Encrypted MMKV บน device — กุญแจเข้ารหัสอยู่ใน Keychain/Keystore.
+              ไม่ใช้ AsyncStorage
             </div>
           </div>
           <div class="accordion-item">
             <button class="accordion-header" type="button">
-              StrongBox กับ TEE ต่างกันยังไง?
+              StrongBox กับ TEE ต่างกันอย่างไร?
               <span class="arrow">▼</span>
             </button>
             <div class="accordion-body">
-              StrongBox = ชิปแยก (แข็งแกร่งกว่า). TEE = โซนในชิปหลัก (fallback).
-              ไม่มี StrongBox ยังใช้แอpได้ถ้ามี TEE.
+              StrongBox = ชิปแยก (แข็งแกร่งกว่า). TEE = โซนในชิปหลัก.
+              แอป ลอง StrongBox ก่อน แล้ว fallback TEE ถ้าไม่มี
             </div>
-          </div>
-        </section>
-
-        <!-- 9. Quiz -->
-        <section id="quiz">
-          <h2><span class="num">9</span> ทดสอบความเข้าใจ</h2>
-          <p class="lead">กดเลือกคำตอบ — มี feedback ทันที</p>
-
-          <div class="quiz" data-quiz="1">
-            <div class="quiz-q">Q1: เอกสารไหนต้องมีก่อนถึงจะขอใบขับขี่ได้?</div>
-            <div class="quiz-options">
-              <button class="quiz-btn" type="button" data-correct="true">Thai National ID (ThaID / PID)</button>
-              <button class="quiz-btn" type="button">Transcript</button>
-              <button class="quiz-btn" type="button">ใบขับขี่เก่า</button>
-            </div>
-            <div class="quiz-feedback"></div>
-          </div>
-
-          <div class="quiz" data-quiz="2">
-            <div class="quiz-q">Q2: My QR ต่าง Scan tab ตรงไหน?</div>
-            <div class="quiz-options">
-              <button class="quiz-btn" type="button">Protocol คนละมาตรฐาน</button>
-              <button class="quiz-btn" type="button" data-correct="true">Holder แสดง QR ให้ Verifier มาสแกน (Wallet เริ่มก่อน)</button>
-              <button class="quiz-btn" type="button">ไม่ต้อง biometric</button>
-            </div>
-            <div class="quiz-feedback"></div>
-          </div>
-
-          <div class="quiz" data-quiz="3">
-            <div class="quiz-q">Q3: ถ้าเครื่องไม่มี StrongBox แอpทำยังไง?</div>
-            <div class="quiz-options">
-              <button class="quiz-btn" type="button">ใช้ software key ใน JavaScript</button>
-              <button class="quiz-btn" type="button" data-correct="true">Fallback ไป TEE (hardware-backed) — fail closed ถ้า TEE ก็ไม่มี</button>
-              <button class="quiz-btn" type="button">ใช้ Ed25519 ใน Keychain แทน</button>
-            </div>
-            <div class="quiz-feedback"></div>
-          </div>
-
-          <div class="quiz" data-quiz="4">
-            <div class="quiz-q">Q4: หลัง migrate P-256 credential เก่าทำยังไง?</div>
-            <div class="quiz-options">
-              <button class="quiz-btn" type="button">Auto migrate key เก่า</button>
-              <button class="quiz-btn" type="button" data-correct="true">Fresh reissue จาก Issuer — ขอเอกสารใหม่ ไม่ sign ด้วย key เก่า</button>
-              <button class="quiz-btn" type="button">ใช้ credential เก่าต่อได้</button>
-            </div>
-            <div class="quiz-feedback"></div>
-          </div>
-
-          <div class="quiz" data-quiz="5">
-            <div class="quiz-q">Q5: Issuer redirect หลัง login ต้องเป็นแบบไหน?</div>
-            <div class="quiz-options">
-              <button class="quiz-btn" type="button">openid-credential-offer:// ตรงจาก browser</button>
-              <button class="quiz-btn" type="button" data-correct="true">walletapp://callback?credential_offer_uri=https://...</button>
-              <button class="quiz-btn" type="button">HTTP redirect ไป Wallet Backend</button>
-            </div>
-            <div class="quiz-feedback"></div>
           </div>
         </section>
       </main>
     </div>
 
     <footer>
-      Digital Wallet Demo Learning Guide · เปิดไฟล์นี้ใน browser ได้เลย ·
+      Digital Wallet Holder — เอกสารอธิบาย ·
       <code>docs/demo/etda-demo-learning.html</code>
     </footer>
 
     <script>
-      // Sidebar active link on scroll
       const sections = document.querySelectorAll("section[id]");
       const navLinks = document.querySelectorAll(".sidebar a");
 
@@ -1015,7 +752,6 @@
 
       sections.forEach((s) => observer.observe(s));
 
-      // Accordion
       document.querySelectorAll(".accordion-header").forEach((btn) => {
         btn.addEventListener("click", () => {
           const item = btn.closest(".accordion-item");
@@ -1024,26 +760,6 @@
             ?.querySelectorAll(".accordion-item")
             .forEach((i) => i.classList.remove("open"));
           if (!wasOpen) item.classList.add("open");
-        });
-      });
-
-      // Quiz
-      document.querySelectorAll(".quiz").forEach((quiz) => {
-        const feedback = quiz.querySelector(".quiz-feedback");
-        quiz.querySelectorAll(".quiz-btn").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            if (quiz.dataset.answered) return;
-            quiz.dataset.answered = "1";
-            const isCorrect = btn.dataset.correct === "true";
-            btn.classList.add(isCorrect ? "correct" : "wrong");
-            if (!isCorrect) {
-              quiz.querySelector('[data-correct="true"]')?.classList.add("correct");
-            }
-            feedback.textContent = isCorrect
-              ? "✓ ถูกต้อง!"
-              : "✗ ลองอ่าน section ที่เกี่ยวข้องอีกครั้ง";
-            feedback.style.color = isCorrect ? "var(--success)" : "var(--danger)";
-          });
         });
       });
     </script>
