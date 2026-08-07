@@ -30,8 +30,12 @@ export async function requestCredentialViaPortalFlow(input: {
 
   const offerGenerationAtStart = useDeeplinkStore.getState().offerGeneration
   const result = await openCredentialRequestPortal(credentialType)
-  if (result.status === 'claimed') {
+  if (result.status === 'claimed' || result.status === 'auth_code_claim_ready') {
     router.push('/(tabs)/credential-offer')
+    return
+  }
+  if (result.status === 'auth_code_awaiting_pid_vp') {
+    router.push('/(tabs)/presentation-request')
     return
   }
   if (result.status === 'presentation_request') {

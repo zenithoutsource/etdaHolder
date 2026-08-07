@@ -9,6 +9,7 @@ import {
 } from './dualFormatIssuance'
 import type { ResolvedCredentialOffer, VerifiableCredentialRecord } from '../vci/exchangeService'
 import { saveCredentialRecord } from '../vci/exchangeService'
+import { makeTestOid4vcContext } from '../vci/testFixtures'
 import { readLogicalCredential } from './logicalCredentialStorage'
 import { getMetaStorage } from '../storage/storage'
 import { WALLET_CRYPTO_V2_META_KEY } from '@/src/config/walletCryptoPolicy'
@@ -57,6 +58,11 @@ function makeDrivingLicenceDualOffer(): ResolvedCredentialOffer {
     preAuthorizedCode: 'pre-auth',
     supportedFlows: ['pre-authorized_code'],
     version: 1,
+    protocolPath: 'oid4vc',
+    oid4vcContext: makeTestOid4vcContext('https://issuer.example.com', [
+      'Iso18013DriversLicenseCredential_dc+sd-jwt',
+      'org.iso.18013.5.1.mDL',
+    ]),
   }
 }
 
@@ -91,6 +97,11 @@ function makeDualOffer(): ResolvedCredentialOffer {
     preAuthorizedCode: 'pre-auth',
     supportedFlows: ['pre-authorized_code'],
     version: 1,
+    protocolPath: 'oid4vc',
+    oid4vcContext: makeTestOid4vcContext('https://issuer.example.com', [
+      'TranscriptCredential_dc+sd-jwt',
+      'TranscriptCredential_mso_mdoc',
+    ]),
   }
 }
 

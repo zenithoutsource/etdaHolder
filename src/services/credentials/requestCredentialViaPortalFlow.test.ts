@@ -65,6 +65,30 @@ describe('requestCredentialViaPortalFlow', () => {
     )
   })
 
+  test('routes auth_code_claim_ready portal result to credential-offer', async () => {
+    openCredentialRequestPortalMock.mockResolvedValueOnce({ status: 'auth_code_claim_ready' })
+
+    await requestCredentialViaPortalFlow({
+      credentialType: 'ThaiNationalID',
+      router,
+      showDialog,
+    })
+
+    expect(router.push).toHaveBeenCalledWith('/(tabs)/credential-offer')
+  })
+
+  test('routes auth_code_awaiting_pid_vp portal result to presentation-request', async () => {
+    openCredentialRequestPortalMock.mockResolvedValueOnce({ status: 'auth_code_awaiting_pid_vp' })
+
+    await requestCredentialViaPortalFlow({
+      credentialType: 'DLTDrivingLicence',
+      router,
+      showDialog,
+    })
+
+    expect(router.push).toHaveBeenCalledWith('/(tabs)/presentation-request')
+  })
+
   test('routes claimed portal result to credential-offer', async () => {
     openCredentialRequestPortalMock.mockResolvedValueOnce({
       status: 'claimed',

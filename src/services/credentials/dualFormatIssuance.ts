@@ -126,7 +126,7 @@ export function selectOfferForSingleFormatAcquire(
 
 /**
  * DEBUG_SLICE_MDOC_ONLY — temporary driving-licence issuance path that acquires
- * mso_mdoc only via the existing Sphereon exchange path. Remove when dual-format
+ * mso_mdoc only via the existing VCI exchange path. Remove when dual-format
  * issuance is validated on device.
  */
 export async function acquireDrivingLicenceMdocOnlyForPreview(

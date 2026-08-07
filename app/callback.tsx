@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { ActivityIndicator, Platform, View } from 'react-native'
 
 import { readWalletReturnUrl } from '@/src/config/sameDeviceIssuance'
+import { continueSameDeviceIssuanceAfterPortal } from '@/src/services/credentials/sameDeviceIssuance'
 import {
   describeIssuanceCallbackForLog,
   describeIssuanceCallbackSearchParamsForLog,
@@ -13,6 +14,7 @@ import { notifyPortalReturnUrl } from '@/src/services/credentials/portalReturnBr
 import {
   buildIssuanceCallbackUrlFromSearchParams,
   resolveIssuanceCallbackFromSources,
+  storePendingFromIssuanceCallbackUrl,
 } from '@/src/services/credentials/resolveIssuanceCallbackResult'
 import { hasWalletPin } from '@/src/services/auth/walletPin'
 import { logWalletStep } from '@/src/services/debug/walletLogger'
@@ -94,6 +96,45 @@ export default function IssuanceCallbackRoute() {
     }
 
     handledRef.current = true
+
+    if (parsed.kind === 'authorization_code' || parsed.kind === 'authorization_error') {
+      const returnUrl = readWalletReturnUrl()
+      const callbackUrl = buildIssuanceCallbackUrlFromSearchParams(
+        searchParams as Record<string, string | string[] | undefined>,
+        returnUrl,
+      ) ?? incomingUrl
+      if (callbackUrl && parsed.kind === 'authorization_code') {
+        storePendingFromIssuanceCallbackUrl(callbackUrl, returnUrl)
+      }
+      logWalletStep('deeplink', 'callback-routed', {
+        kind: parsed.kind,
+        linking: describeIssuanceCallbackForLog(incomingUrl),
+        searchParams: describeIssuanceCallbackSearchParamsForLog(
+          searchParams as Record<string, string | string[] | undefined>,
+        ),
+      })
+      if (parsed.kind === 'authorization_code') {
+        void (async () => {
+          try {
+            const continuation = await continueSameDeviceIssuanceAfterPortal()
+            if (continuation.status === 'claim_ready') {
+              router.replace('/(tabs)/credential-offer')
+              return
+            }
+            if (continuation.status === 'awaiting_pid_vp') {
+              router.replace('/(tabs)/presentation-request')
+              return
+            }
+          } catch {
+            // fall through to home
+          }
+          router.replace('/(tabs)')
+        })()
+        return
+      }
+      router.replace('/(tabs)')
+      return
+    }
 
     if (
       parsed.uri === dismissedDeeplinkUri

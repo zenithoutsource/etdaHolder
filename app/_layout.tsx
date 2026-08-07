@@ -561,6 +561,9 @@ export default function RootLayout() {
         return null;
       }
       const parsed = storePendingFromIssuanceCallbackUrl(url);
+      if (parsed.kind === 'authorization_code' || parsed.kind === 'authorization_error') {
+        return null;
+      }
       if (parsed.kind !== 'unsupported') {
         if (
           parsed.uri === useDeeplinkStore.getState().dismissedUri

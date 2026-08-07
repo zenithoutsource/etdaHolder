@@ -50,7 +50,11 @@ export function isPortalReturnUrlIgnoredDuringCapture(
   if (activeCapture.ignoredUrls.has(url)) return true
 
   const parsed = parseIssuanceCallbackUrl(url, returnUrl)
-  return parsed.kind !== 'unsupported' && activeCapture.ignoredUris.has(parsed.uri)
+  if (parsed.kind === 'credential_offer' || parsed.kind === 'presentation_request') {
+    return activeCapture.ignoredUris.has(parsed.uri)
+  }
+
+  return false
 }
 
 export function notifyPortalReturnUrl(url: string, source: string): void {

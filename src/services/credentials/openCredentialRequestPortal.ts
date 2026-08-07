@@ -7,6 +7,7 @@ import {
   readIssuerPortalReturnUrl,
   type IssuerPortalCredentialType,
 } from '../../config/issuerPortalUrls'
+import { readSameDeviceAuthCodeIssuanceEnabled } from '../../config/sameDeviceIssuance'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../../store/deeplinkStore'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { describeIssuanceCallbackForLog } from './describeIssuanceCallbackForLog'
@@ -26,18 +27,96 @@ import {
   resolvePortalCallbackResult,
 } from './resolvePortalCallbackResult'
 import { parseIssuanceCallbackUrl } from './parseIssuanceCallbackUrl'
+import { storePendingFromIssuanceCallbackUrl } from './resolveIssuanceCallbackResult'
 
 import type { PortalEmptyOfferReason } from './portalEmptyOfferDialog'
 
 export type OpenCredentialRequestPortalResult =
   | { status: 'claimed'; deeplink: string }
   | { status: 'presentation_request'; deeplink: string }
+  | { status: 'auth_code_claim_ready' }
+  | { status: 'auth_code_awaiting_pid_vp' }
   | { status: 'dismissed' }
   | { status: 'empty_offer'; reason: PortalEmptyOfferReason; diagnostic: string }
   | { status: 'misconfigured' }
   | { status: 'error' }
 
+export type OpenCredentialRequestPortalOptions = {
+  androidFallbackMs?: number
+  /** Override portal URL (used by auth-code path after session start). */
+  portalUrlOverride?: string
+  /** When true, callback ?code= is exchanged via same-device session instead of offer URI. */
+  authorizationCodeMode?: boolean
+}
+
 const PORTAL_RETURN_WAIT_MS = 3 * 60 * 1000
+
+async function finishAuthorizationCodeCallback(
+  callbackUrl: string,
+  returnUrl: string,
+  credentialType: IssuerPortalCredentialType,
+  source: 'auth-session' | 'linking-event' | 'android-fallback' | 'callback-route' | 'none',
+  resultType: string,
+): Promise<OpenCredentialRequestPortalResult> {
+  const summary = describeIssuanceCallbackForLog(callbackUrl)
+
+  logWalletStep('wallet-home', 'issuer-portal-auth-code-return', {
+    credentialType,
+    resultType,
+    source,
+    ...summary,
+  })
+
+  storePendingFromIssuanceCallbackUrl(callbackUrl, returnUrl)
+
+  try {
+    const { continueSameDeviceIssuanceAfterPortal } = await import('./sameDeviceIssuance')
+    const continuation = await continueSameDeviceIssuanceAfterPortal()
+    if (continuation.status === 'awaiting_pid_vp') {
+      recordLastPortalReturn({
+        at: Date.now(),
+        credentialType,
+        resultType,
+        source,
+        summary,
+        outcome: 'offer',
+      })
+      return { status: 'auth_code_awaiting_pid_vp' }
+    }
+    if (continuation.status === 'claim_ready') {
+      recordLastPortalReturn({
+        at: Date.now(),
+        credentialType,
+        resultType,
+        source,
+        summary,
+        outcome: 'offer',
+      })
+      return { status: 'auth_code_claim_ready' }
+    }
+  } catch (error) {
+    logWalletError('wallet-home', 'issuer-portal-auth-code-continuation-failed', error, {
+      credentialType,
+      resultType,
+      source,
+    })
+    return { status: 'error' }
+  }
+
+  recordLastPortalReturn({
+    at: Date.now(),
+    credentialType,
+    resultType,
+    source,
+    summary,
+    outcome: 'empty-callback',
+  })
+  return {
+    status: 'empty_offer',
+    reason: 'no_offer_in_callback',
+    diagnostic: 'Authorization code callback received without an active same-device session.',
+  }
+}
 
 function finishWithCallbackUrl(
   callbackUrl: string,
@@ -102,16 +181,56 @@ function finishWithCallbackUrl(
   }
 }
 
+async function finishPortalCallbackUrl(
+  callbackUrl: string,
+  returnUrl: string,
+  credentialType: IssuerPortalCredentialType,
+  source: 'auth-session' | 'linking-event' | 'android-fallback' | 'callback-route' | 'none',
+  resultType: string,
+  authorizationCodeMode: boolean,
+): Promise<OpenCredentialRequestPortalResult> {
+  const parsed = parseIssuanceCallbackUrl(callbackUrl, returnUrl)
+  if (authorizationCodeMode && parsed.kind === 'authorization_code') {
+    return finishAuthorizationCodeCallback(callbackUrl, returnUrl, credentialType, source, resultType)
+  }
+  if (authorizationCodeMode && parsed.kind === 'authorization_error') {
+    logWalletStep('wallet-home', 'issuer-portal-auth-code-error', {
+      credentialType,
+      error: parsed.error,
+      hasState: Boolean(parsed.state),
+    })
+    return { status: 'error' }
+  }
+  return finishWithCallbackUrl(callbackUrl, returnUrl, credentialType, source, resultType)
+}
+
 export async function openCredentialRequestPortal(
   credentialType: IssuerPortalCredentialType,
-  options: { androidFallbackMs?: number } = {},
+  options: OpenCredentialRequestPortalOptions = {},
 ): Promise<OpenCredentialRequestPortalResult> {
-  let portalUrl: string
-  try {
-    portalUrl = resolveIssuerPortalUrl(credentialType)
-  } catch (error) {
-    logWalletError('wallet-home', 'issuer-portal-url-build-failed', error, { credentialType })
-    return { status: 'misconfigured' }
+  const authorizationCodeMode = options.authorizationCodeMode
+    ?? readSameDeviceAuthCodeIssuanceEnabled()
+
+  let portalUrl: string | undefined = options.portalUrlOverride
+  if (!portalUrl) {
+    if (authorizationCodeMode) {
+      try {
+        const { beginSameDeviceIssuanceSession } = await import('./sameDeviceIssuanceSession')
+        const { buildSameDeviceAuthorizationRequestUrl } = await import('./buildSameDeviceAuthorizationRequestUrl')
+        await beginSameDeviceIssuanceSession(credentialType)
+        portalUrl = await buildSameDeviceAuthorizationRequestUrl(credentialType)
+      } catch (error) {
+        logWalletError('wallet-home', 'issuer-portal-auth-url-build-failed', error, { credentialType })
+        return { status: 'error' }
+      }
+    } else {
+      try {
+        portalUrl = resolveIssuerPortalUrl(credentialType)
+      } catch (error) {
+        logWalletError('wallet-home', 'issuer-portal-url-build-failed', error, { credentialType })
+        return { status: 'misconfigured' }
+      }
+    }
   }
 
   if (!portalUrl) {
@@ -298,12 +417,13 @@ export async function openCredentialRequestPortal(
         }
       }
 
-      return finishWithCallbackUrl(
+      return finishPortalCallbackUrl(
         callbackUrl,
         returnUrl,
         credentialType,
         'android-fallback',
         'browser-deep-link',
+        authorizationCodeMode,
       )
     }
 
@@ -325,12 +445,13 @@ export async function openCredentialRequestPortal(
       } catch {
         // iOS-only; ignore on other platforms
       }
-      return finishWithCallbackUrl(
+      return finishPortalCallbackUrl(
         raced.url,
         returnUrl,
         credentialType,
         'linking-event',
         'notify',
+        authorizationCodeMode,
       )
     }
 
@@ -368,12 +489,13 @@ export async function openCredentialRequestPortal(
       return { status: 'dismissed' }
     }
 
-    return finishWithCallbackUrl(
+    return finishPortalCallbackUrl(
       callbackUrl,
       returnUrl,
       credentialType,
       sessionUrl ? 'auth-session' : 'linking-event',
       result.type,
+      authorizationCodeMode,
     )
   } catch (error) {
     logWalletError('wallet-home', 'issuer-portal-open-failed', error, {

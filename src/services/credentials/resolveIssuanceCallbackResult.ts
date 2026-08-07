@@ -1,7 +1,9 @@
 import { parseIssuanceCallbackUrl, type ParsedIssuanceCallback } from './parseIssuanceCallbackUrl'
 import { readWalletReturnUrl } from '../../config/sameDeviceIssuance'
 import { useDeeplinkStore } from '../../store/deeplinkStore'
+import { logWalletStep } from '../debug/walletLogger'
 import { isPresentationRequestConsumed } from '../vp/presentationRequestReplay'
+import { storeSameDeviceAuthorizationCode } from './sameDeviceIssuanceSession'
 
 /**
  * Rebuild a walletapp://callback URL from Expo Router path params after
@@ -47,12 +49,33 @@ export function resolveIssuanceCallbackFromSources(input: {
   return { kind: 'unsupported' }
 }
 
+function persistAuthorizationCodeCallback(parsed: Extract<ParsedIssuanceCallback, { kind: 'authorization_code' }>): void {
+  const session = storeSameDeviceAuthorizationCode(parsed.code)
+  if (session) {
+    logWalletStep('same-device-issuance', 'authorization-code-callback-stored', {
+      sessionId: session.id,
+      credentialType: session.credentialType,
+    })
+    return
+  }
+
+  // Portal offer-URI flow does not call beginSameDeviceIssuanceSession(); auth-code callbacks
+  // are stored when same-device session was started before opening the authorize URL.
+  logWalletStep('same-device-issuance', 'authorization-code-callback-without-session', {
+    hasState: Boolean(parsed.state),
+  })
+}
+
 /** Persist portal return offers before PIN unlock so pin-lock can route to claim afterward. */
 export function storePendingFromIssuanceCallbackUrl(
   url: string,
   returnUrl: string = readWalletReturnUrl(),
 ): ParsedIssuanceCallback {
   const parsed = parseIssuanceCallbackUrl(url, returnUrl)
+  if (parsed.kind === 'authorization_code') {
+    persistAuthorizationCodeCallback(parsed)
+    return parsed
+  }
   if (parsed.kind === 'credential_offer' || parsed.kind === 'presentation_request') {
     if (
       parsed.uri === useDeeplinkStore.getState().dismissedUri
