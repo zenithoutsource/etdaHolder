@@ -8,6 +8,7 @@ import type {
   ResolvedCredentialOffer,
   VerifiableCredentialRecord,
 } from './exchangeService'
+import { makeTestOid4vcContext } from './testFixtures'
 
 function makeResolvedOffer(overrides: Partial<ResolvedCredentialOffer> = {}): ResolvedCredentialOffer {
   return {
@@ -35,6 +36,8 @@ function makeResolvedOffer(overrides: Partial<ResolvedCredentialOffer> = {}): Re
     supportedFlows: ['pre-authorized_code'],
     version: 1,
     ...overrides,
+    protocolPath: overrides.protocolPath ?? 'oid4vc',
+    oid4vcContext: overrides.oid4vcContext ?? makeTestOid4vcContext('https://issuer.example.com', ['ChulalongkornUniversityTranscript']),
   }
 }
 

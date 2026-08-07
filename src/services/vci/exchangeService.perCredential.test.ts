@@ -7,6 +7,7 @@ import {
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from './exchangeService'
+import { makeTestOid4vcContext } from './testFixtures'
 
 const mockIsWalletCryptoV2Enabled = jest.fn()
 const mockReadCachedWalletAttestations = jest.fn()
@@ -36,6 +37,8 @@ function resolvedOffer(): ResolvedCredentialOffer {
     preAuthorizedCode: 'pre-auth',
     supportedFlows: ['pre-authorized_code'],
     version: 10015,
+    protocolPath: 'oid4vc',
+    oid4vcContext: makeTestOid4vcContext(),
   }
 }
 

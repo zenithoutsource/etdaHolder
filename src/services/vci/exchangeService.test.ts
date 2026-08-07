@@ -1,3 +1,48 @@
+jest.mock('./oid4vc/parseCredentialOfferViaOid4vc', () => ({
+  parseCredentialOfferViaOid4vc: jest.fn(async (offerUri: string) => {
+    let credentialOfferObject: Record<string, unknown> | undefined
+    try {
+      const parsed = new URL(offerUri)
+      const inline = parsed.searchParams.get('credential_offer')
+      if (inline) {
+        const decoded = JSON.parse(inline) as unknown
+        credentialOfferObject = decoded && typeof decoded === 'object' ? (decoded as Record<string, unknown>) : undefined
+      }
+    } catch {
+      credentialOfferObject = undefined
+    }
+    if (!credentialOfferObject) {
+      throw new Error('CredentialOfferParseFailed: inline credential_offer is required in tests')
+    }
+    return {
+      credentialOfferObject,
+      oid4vcContext: { credentialOfferObject },
+    }
+  }),
+  resolveIssuerMetadataViaOid4vc: jest.fn(async (issuer: string) => {
+    const normalized = issuer.replace(/\/$/, '')
+    return {
+      issuerMetadataResult: {
+        credentialIssuer: { credential_issuer: normalized },
+        credentialEndpoint: `${normalized}/credential`,
+        tokenEndpoint: `${normalized}/token`,
+      },
+    }
+  }),
+}))
+
+const mockRetrievePreAuthorizedTokenViaOid4vc = jest.fn()
+
+jest.mock('./oid4vc/retrieveViaOid4vc', () => {
+  const actual = jest.requireActual<typeof import('./oid4vc/retrieveViaOid4vc')>('./oid4vc/retrieveViaOid4vc')
+  return {
+    ...actual,
+    retrievePreAuthorizedTokenViaOid4vc: (...args: unknown[]) => mockRetrievePreAuthorizedTokenViaOid4vc(...args),
+    retrieveAuthorizationCodeTokenViaOid4vc: jest.fn(),
+    retrieveCredentialViaOid4vc: jest.fn(),
+  }
+})
+
 import {
   acquireCredentialRecord,
   claimCredential,
@@ -13,6 +58,7 @@ import {
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from './exchangeService'
+import { makeTestOid4vcContext } from './testFixtures'
 
 test('exchange service contract module loads', () => {
   expect(typeof resolveOffer).toBe('function')
@@ -85,12 +131,19 @@ const idCardSdJwtOfferUri =
 const uppercaseIdCardSdJwtOfferUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22IDCard_dc%2Bsd-jwt%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
 const remoteOfferUri =
-  'openid-credential-offer://?credential_offer_uri=http%3A%2F%2Fissuer.zenithcomp.co.th:455%2Fopenid4vc%2Frequest%2Fabc'
+  'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.zenithcomp.co.th%3A455%2Fopenid4vc%2Frequest%2Fabc'
 const mdlDoctypeOfferUri =
   'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%22https%3A%2F%2Fissuer.example.com%22%2C%22credential_configuration_ids%22%3A%5B%22org.iso.18013.5.1.mDL%22%5D%2C%22grants%22%3A%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%7B%22pre-authorized_code%22%3A%22mock-preauth-code%22%7D%7D%7D'
 
 const realFetch = globalThis.fetch
 const originalEnv = process.env
+
+beforeEach(() => {
+  mockRetrievePreAuthorizedTokenViaOid4vc.mockResolvedValue({
+    access_token: 'access-token',
+    c_nonce: 'nonce',
+  })
+})
 
 afterEach(() => {
   globalThis.fetch = realFetch
@@ -205,7 +258,7 @@ test('resolveOffer fetches credential_offer_uri from its original public URL', a
     async () =>
       new Response(
         JSON.stringify({
-          credential_issuer: 'http://issuer.zenithcomp.co.th:455',
+          credential_issuer: 'https://issuer.zenithcomp.co.th:455',
           credential_configuration_ids: ['IDCard_dc+sd-jwt'],
           grants: {
             'urn:ietf:params:oauth:grant-type:pre-authorized_code': {
@@ -220,9 +273,9 @@ test('resolveOffer fetches credential_offer_uri from its original public URL', a
 
   const resolved = await resolveOfferDirect(remoteOfferUri, {
     fetchIssuerMetadata: async () => ({
-      credential_issuer: 'http://issuer.zenithcomp.co.th:455',
-      token_endpoint: 'http://issuer.zenithcomp.co.th:455/token',
-      credential_endpoint: 'http://issuer.zenithcomp.co.th:455/credential',
+      credential_issuer: 'https://issuer.zenithcomp.co.th:455',
+      token_endpoint: 'https://issuer.zenithcomp.co.th:455/token',
+      credential_endpoint: 'https://issuer.zenithcomp.co.th:455/credential',
       credential_configurations_supported: {
         IDCardCredential_dc_sd_jwt: {
           format: 'dc+sd-jwt',
@@ -233,41 +286,30 @@ test('resolveOffer fetches credential_offer_uri from its original public URL', a
     }),
   })
 
-  expect(fetchMock).toHaveBeenCalledWith('http://issuer.zenithcomp.co.th:455/openid4vc/request/abc', {
+  expect(fetchMock).toHaveBeenCalledWith('https://issuer.zenithcomp.co.th:455/openid4vc/request/abc', {
     headers: { Accept: 'application/json' },
   })
   expect(resolved.offerUri).toContain('credential_offer=')
-  expect(resolved.issuerMetadata.token_endpoint).toBe('http://issuer.zenithcomp.co.th:455/token')
-  expect(resolved.issuerMetadata.credential_endpoint).toBe('http://issuer.zenithcomp.co.th:455/credential')
+  expect(resolved.issuerMetadata.token_endpoint).toBe('https://issuer.zenithcomp.co.th:455/token')
+  expect(resolved.issuerMetadata.credential_endpoint).toBe('https://issuer.zenithcomp.co.th:455/credential')
+  expect(resolved.protocolPath).toBe('oid4vc')
 })
 
-test('default pre-authorized token exchange uses the original public URL', async () => {
-  jest.resetModules()
-  process.env = {
-    ...process.env,
-  }
+test('default pre-authorized token exchange uses oid4vc retrieve path', async () => {
+  const issuer = 'https://issuer.zenithcomp.co.th:455'
+  const oid4vcContext = makeTestOid4vcContext(issuer, ['ThaiNationalID'])
+
   const { acquireCredentialRecord: acquireCredentialRecordDirect } = require('./exchangeService') as typeof import('./exchangeService')
-  const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
-    async () =>
-      new Response(
-        JSON.stringify({
-          access_token: 'access-token',
-          c_nonce: 'nonce',
-        }),
-        { headers: { 'Content-Type': 'application/json' } },
-      ),
-  )
-  globalThis.fetch = fetchMock as unknown as typeof fetch
 
   await acquireCredentialRecordDirect(
     {
       offerUri,
-      issuer: 'http://issuer.zenithcomp.co.th:455',
+      issuer,
       credentialOffer: {} as ResolvedCredentialOffer['credentialOffer'],
       issuerMetadata: {
-        credential_issuer: 'http://issuer.zenithcomp.co.th:455',
-        token_endpoint: 'http://issuer.zenithcomp.co.th:455/token',
-        credential_endpoint: 'http://issuer.zenithcomp.co.th:455/credential',
+        credential_issuer: issuer,
+        token_endpoint: `${issuer}/token`,
+        credential_endpoint: `${issuer}/credential`,
         credential_configurations_supported: {},
       },
       credentialConfigurations: [
@@ -281,6 +323,8 @@ test('default pre-authorized token exchange uses the original public URL', async
       preAuthorizedCode: 'mock-preauth-code',
       supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
       version: 10015,
+      protocolPath: 'oid4vc',
+      oid4vcContext,
     },
     {
       dependencies: {
@@ -291,37 +335,28 @@ test('default pre-authorized token exchange uses the original public URL', async
     },
   )
 
-  expect(fetchMock).toHaveBeenCalledWith('http://issuer.zenithcomp.co.th:455/token', expect.objectContaining({
-    method: 'POST',
-  }))
-  const requestInit = fetchMock.mock.calls[0][1]
-  expect(String(requestInit?.body)).toContain('pre-authorized_code=mock-preauth-code')
+  expect(mockRetrievePreAuthorizedTokenViaOid4vc).toHaveBeenCalledWith(
+    expect.objectContaining({
+      oid4vcContext,
+    }),
+  )
 })
 
-test('token request sends tx_code only and never user_pin', async () => {
-  jest.resetModules()
-  process.env = {
-    ...process.env,
-  }
+test('oid4vc pre-authorized token exchange passes tx_code when supplied', async () => {
+  const issuer = 'https://issuer.zenithcomp.co.th:455'
+  const oid4vcContext = makeTestOid4vcContext(issuer, ['ThaiNationalID'])
+
   const { acquireCredentialRecord: acquire } = require('./exchangeService') as typeof import('./exchangeService')
-  const txCodeFetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
-    async () =>
-      new Response(
-        JSON.stringify({ access_token: 'access-token', c_nonce: 'nonce' }),
-        { headers: { 'Content-Type': 'application/json' } },
-      ),
-  )
-  globalThis.fetch = txCodeFetchMock as unknown as typeof fetch
 
   await acquire(
     {
       offerUri,
-      issuer: 'http://issuer.zenithcomp.co.th:455',
+      issuer,
       credentialOffer: {} as ResolvedCredentialOffer['credentialOffer'],
       issuerMetadata: {
-        credential_issuer: 'http://issuer.zenithcomp.co.th:455',
-        token_endpoint: 'http://issuer.zenithcomp.co.th:455/token',
-        credential_endpoint: 'http://issuer.zenithcomp.co.th:455/credential',
+        credential_issuer: issuer,
+        token_endpoint: `${issuer}/token`,
+        credential_endpoint: `${issuer}/credential`,
         credential_configurations_supported: {},
       },
       credentialConfigurations: [
@@ -335,6 +370,8 @@ test('token request sends tx_code only and never user_pin', async () => {
       preAuthorizedCode: 'mock-preauth-code',
       supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
       version: 10015,
+      protocolPath: 'oid4vc',
+      oid4vcContext,
     },
     {
       tx_code: '123456',
@@ -346,10 +383,12 @@ test('token request sends tx_code only and never user_pin', async () => {
     },
   )
 
-  const requestInit = txCodeFetchMock.mock.calls[0][1]
-  const requestBody = String(requestInit?.body)
-  expect(requestBody).toContain('tx_code=123456')
-  expect(requestBody).not.toContain('user_pin=123456')
+  expect(mockRetrievePreAuthorizedTokenViaOid4vc).toHaveBeenCalledWith(
+    expect.objectContaining({
+      txCode: '123456',
+      oid4vcContext,
+    }),
+  )
 })
 
 async function acquisitionOrchestrationContract(): Promise<void> {
@@ -1255,7 +1294,7 @@ async function backendSyncFailureContract(): Promise<void> {
 
 void backendSyncFailureContract()
 
-test('pre-authorized token exchange discovers token_endpoint via authorization_servers metadata', async () => {
+test('pre-authorized token exchange uses oid4vc retrieve with resolved offer context', async () => {
   const resolved = await resolveOffer(offerUri, {
     fetchIssuerMetadata: async () => ({
       credential_issuer: 'https://issuer.example.com',
@@ -1271,25 +1310,6 @@ test('pre-authorized token exchange discovers token_endpoint via authorization_s
     }),
   })
 
-  const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async (input) => {
-    const url = String(input)
-
-    if (url === 'https://as.example.com/.well-known/oauth-authorization-server') {
-      return new Response(JSON.stringify({ token_endpoint: 'https://as.example.com/token' }), {
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (url === 'https://as.example.com/token') {
-      return new Response(JSON.stringify({ access_token: 'access-token', c_nonce: 'nonce' }), {
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    throw new Error(`unexpected fetch ${url}`)
-  })
-  globalThis.fetch = fetchMock as unknown as typeof fetch
-
   await acquireCredentialRecord(resolved, {
     tx_code: '123456',
     dependencies: {
@@ -1299,11 +1319,12 @@ test('pre-authorized token exchange discovers token_endpoint via authorization_s
     },
   })
 
-  expect(fetchMock).toHaveBeenCalledWith(
-    'https://as.example.com/.well-known/oauth-authorization-server',
-    expect.objectContaining({ headers: { Accept: 'application/json' } }),
+  expect(mockRetrievePreAuthorizedTokenViaOid4vc).toHaveBeenCalledWith(
+    expect.objectContaining({
+      txCode: '123456',
+      oid4vcContext: resolved.oid4vcContext,
+    }),
   )
-  expect(fetchMock).toHaveBeenCalledWith('https://as.example.com/token', expect.objectContaining({ method: 'POST' }))
 })
 
 test('acquireCredentialRecord retries once with a refreshed c_nonce on invalid_proof', async () => {
@@ -1430,7 +1451,7 @@ describe('readMdocCredentialFromResponse', () => {
     ).toThrow(/CredentialResponseDeferred:.*acceptance_token:true/)
   })
 
-  test('describes empty successBody / Sphereon wrapper on error', () => {
+  test('describes empty successBody / client response wrapper on error', () => {
     expect(() =>
       readMdocCredentialFromResponse({
         origResponse: { status: 200 },
@@ -1443,7 +1464,7 @@ describe('readMdocCredentialFromResponse', () => {
     )
   })
 
-  test('includes truncated string errorBody preview on HTTP 500 Sphereon wrapper', () => {
+  test('includes truncated string errorBody preview on HTTP 500 client response wrapper', () => {
     expect(() =>
       readMdocCredentialFromResponse({
         origResponse: { status: 500 },
@@ -1588,7 +1609,7 @@ describe('pollDeferredCredential', () => {
 
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
       async () =>
-        new Response(JSON.stringify({ credential: vc }), {
+        new Response(JSON.stringify({ credentials: [{ credential: vc }] }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -1606,14 +1627,15 @@ describe('pollDeferredCredential', () => {
     expect(record.id).toBe('deferred-vc-1')
     expect(record.type).toBe('ThaiNationalID')
 
-    expect(fetchMock).toHaveBeenCalledWith('https://issuer.example.com/deferred', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer access-token',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ transaction_id: 'txn-ready' }),
+    expect(fetchMock).toHaveBeenCalled()
+    const [deferredUrl, deferredInit] = fetchMock.mock.calls[0] ?? []
+    expect(deferredUrl).toBe('https://issuer.example.com/deferred')
+    expect(deferredInit?.method).toBe('POST')
+    expect(deferredInit?.headers).toMatchObject({
+      Authorization: 'Bearer access-token',
+      'Content-Type': 'application/json',
     })
+    expect(JSON.parse(String(deferredInit?.body))).toMatchObject({ transaction_id: 'txn-ready' })
   })
 
   test('throws DeferredIssuancePending on issuance_pending error with interval', async () => {
@@ -1646,13 +1668,13 @@ describe('pollDeferredCredential', () => {
     }
   })
 
-  test('throws DeferredIssuancePending when success response has new transaction_id', async () => {
+  test('throws DeferredIssuancePending when success response repeats transaction_id without credential', async () => {
     const resolved = await contract()
 
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
       async () =>
         new Response(
-          JSON.stringify({ transaction_id: 'txn-renewed' }),
+          JSON.stringify({ transaction_id: 'txn-pending', interval: 10 }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
     )
@@ -1670,7 +1692,8 @@ describe('pollDeferredCredential', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(DeferredIssuancePending)
       const deferred = error as DeferredIssuancePending
-      expect(deferred.transactionId).toBe('txn-renewed')
+      expect(deferred.transactionId).toBe('txn-pending')
+      expect(deferred.interval).toBe(10)
     }
   })
 
