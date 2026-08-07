@@ -31,6 +31,11 @@
 | 7 | Offline / bad `request_uri` → fetch-failed UX | `true` | [ ] pending device |
 | 8 | Signed `decentralized_identifier:did:web:` JAR (optional) | `true` | [ ] pending customer Verifier host |
 
+**Close-out (2026-08-07):** Code + docs committed (`9df4f4e`). Dev-build env and checklist:
+`docs/GETTING_STARTED.md` § VP adapter re-E2E; set `EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` in
+`.env.development.local`, rebuild dev client on Galaxy A26, then mark table rows pass/fail.
+Adapter default remains `false` until this table is green.
+
 ### Session 2026-08-07 (Defer first-install Keychain biometric)
 
 - Blank cold start no longer creates wallet seed / `k_attest` or activates crypto
