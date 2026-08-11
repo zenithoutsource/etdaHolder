@@ -46,7 +46,7 @@ describe('wallet-initiated presentation failure history', () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.kind).toBe('presentation-failed')
     expect(events[0]?.channel).toBe('wallet')
-    expect(events[0]?.partyName).toBe('Verifier')
+    expect(events[0]?.partyName).toBe('ผู้ตรวจสอบ')
     expect(events[0]?.reasonCode).toBe('verifier-rejected')
   })
 })

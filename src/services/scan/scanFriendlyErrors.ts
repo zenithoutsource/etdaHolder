@@ -10,6 +10,14 @@ export function toFriendlyError(raw: string): string {
 
   if (raw.includes('CredentialTokenExchangeFailed')) return 'Authentication with the issuer failed. The transaction code may be incorrect or may belong to another request.'
 
+  if (raw.includes('invalid_token')) {
+    return 'This issuance link or access token has expired. Request the document again from the issuer (do not reuse an old offer link).'
+  }
+
+  if (raw.includes('invalid_grant') && raw.includes('pre-authorized_code')) {
+    return 'This issuance link has already been used or has expired. Request the document again from the issuer.'
+  }
+
   if (raw.includes('CredentialHolderBindingMissing')) return formatHolderBindingMissingFriendlyError('issuance')
 
   if (raw.includes('PresentationCredentialHolderBindingMissing')) return formatHolderBindingMissingFriendlyError('presentation')
@@ -98,6 +106,14 @@ export function toFriendlyError(raw: string): string {
 
   }
 
+  if (raw.includes('WalletHardwareUserAuthenticationRequired') || raw.toLowerCase().includes('user not authenticated')) {
+    return 'Biometric authentication is required to sign. Confirm with fingerprint or device PIN and try again.'
+  }
+
+  if (raw.includes('WalletHardwareEcdsaActivityUnavailable')) {
+    return 'The Wallet screen was not ready for biometric authentication. Return to the home screen and scan again.'
+  }
+
   if (raw.includes('PresentationBiometricUnavailable')) return 'Biometric authentication is not available on this device. Enroll biometrics in device settings and try again.'
 
   if (raw.includes('WalletKeySigningCancelled')) return 'Biometric authentication was cancelled. Try again when you are ready to continue.'
@@ -107,23 +123,11 @@ export function toFriendlyError(raw: string): string {
   if (raw.includes('PresentationBiometricFailed')) return 'Biometric authentication failed. Please try again.'
 
   if (raw.includes('PresentationSubmissionFailed:issuer')) {
-
-    const detail = raw.replace(/^PresentationSubmissionFailed:issuer:\s*/, '')
-
-    return detail
-
-      ? `The Issuer rejected the PID presentation. ${detail}`
-
-      : 'The Issuer rejected the PID presentation. Try again or contact the Issuer.'
-
+    return 'The Issuer rejected the presentation response. Try again or contact the Issuer.'
   }
 
   if (raw.includes('PresentationSubmissionFailed')) {
-
-    const detail = raw.replace(/^PresentationSubmissionFailed:\s*/, '')
-
-    return detail ? `The Verifier rejected the presentation response. ${detail}` : 'The Verifier rejected the presentation response.'
-
+    return 'The Verifier rejected the presentation response. Try again or contact the Verifier.'
   }
 
   if (raw.includes('PresentationRequestInvalid')) return 'Invalid presentation request. Try scanning again.'

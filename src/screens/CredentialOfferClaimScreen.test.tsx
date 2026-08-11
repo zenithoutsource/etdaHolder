@@ -23,11 +23,13 @@ jest.mock('expo-camera', () => {
 })
 
 const mockRouterDismissTo = jest.fn()
+const mockRouterReplace = jest.fn()
 let mockRouteFocused = true
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     dismissTo: mockRouterDismissTo,
+    replace: mockRouterReplace,
   }),
   useNavigation: () => ({
     getParent: () => null,
@@ -238,8 +240,8 @@ describe('CredentialOfferClaimScreen', () => {
 
     expect(useDeeplinkStore.getState().activeUri).toBeNull()
     expect(useDeeplinkStore.getState().dismissedUri).toBe(offerUri)
-    expect(mockRouterDismissTo).toHaveBeenCalledWith('/(tabs)')
-    expect(mockRouterDismissTo).toHaveBeenCalledTimes(1)
+    expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)')
+    expect(mockRouterReplace).toHaveBeenCalledTimes(1)
   })
 
   it('does not register Android Back while the claim route is unfocused', () => {
@@ -710,7 +712,7 @@ describe('CredentialOfferClaimScreen', () => {
     fireEvent.press(screen.getByText('Back to Wallet'))
 
     expect(useDeeplinkStore.getState().dismissedUri).toBe(offerUri)
-    expect(mockRouterDismissTo).toHaveBeenCalledWith('/(tabs)')
+    expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)')
   })
 
   it('reopens a fresh offer after the user dismisses the claim screen and requests again', async () => {
@@ -807,6 +809,6 @@ describe('CredentialOfferClaimScreen', () => {
     await screen.findByText('Back to Wallet')
     fireEvent.press(screen.getByText('Back to Wallet'))
 
-    expect(mockRouterDismissTo).toHaveBeenCalledWith('/(tabs)')
+    expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)')
   })
 })

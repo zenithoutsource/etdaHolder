@@ -8,12 +8,28 @@ describe('toFriendlyError', () => {
     )
   })
 
+  test('maps invalid_token credential request to a fresh-offer message', () => {
+    expect(
+      toFriendlyError('CredentialRequestFailed: invalid_token - Token is invalid or expired'),
+    ).toContain('do not reuse an old offer link')
+  })
+
   test('maps Issuer OID4VP untrusted error', () => {
     expect(toFriendlyError('IssuerOid4VpUntrusted: client_id not allowlisted')).toContain('Issuer is not trusted')
   })
 
   test('maps Issuer OID4VP submission failure', () => {
     expect(toFriendlyError('PresentationSubmissionFailed:issuer: HTTP 400')).toContain('Issuer rejected')
+    expect(toFriendlyError('PresentationSubmissionFailed:issuer: HTTP 400')).not.toContain('HTTP 400')
+  })
+
+  test('maps Verifier presentation submission failure without raw HTTP detail', () => {
+    const message = toFriendlyError(
+      'PresentationSubmissionFailed: HTTP 400: invalid_request. Presentation debug: kb_header_alg=ES256',
+    )
+    expect(message).toContain('Verifier rejected')
+    expect(message).not.toContain('Presentation debug')
+    expect(message).not.toContain('invalid_request')
   })
 
   test('maps missing PID for Issuer presentation', () => {
@@ -61,6 +77,11 @@ describe('toFriendlyError', () => {
     expect(message).toContain('could not be saved')
     expect(message).toContain('did not link it to your wallet key')
     expect(message).toContain('Sign out of the Issuer website')
+  })
+
+  test('maps hardware user authentication required to biometric guidance', () => {
+    expect(toFriendlyError('WalletHardwareUserAuthenticationRequired')).toContain('Biometric authentication is required')
+    expect(toFriendlyError('SignatureException: User not authenticated')).toContain('Biometric authentication is required')
   })
 
   test('maps dual-format total failure with underlying causes', () => {

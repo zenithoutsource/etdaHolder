@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from 'react-native'
 
 import type { PresentationDisclosure, ResolvedPresentationRequest } from '../services/vp/presentationService'
 import { resolvePresentationDisclosureLabel } from '../config/cardSchemas'
+import { readPresentationConsentPartyLabel } from '../config/presentationVerifierMocks'
 import { resolveDisclosedClaimLabels, resolveEffectiveDisclosureKeys } from '../services/vp/claimDisclosurePolicy'
 import { AppButton } from './AppButton'
 import { PresentationDisclosureList } from './PresentationDisclosureList'
@@ -72,6 +73,11 @@ export function PresentationConsentPanel({
   onReject,
   submitting,
 }: Props) {
+  const consentPartyLabel = readPresentationConsentPartyLabel(
+    request.matchedCredential.type,
+    request.verifier.name,
+  )
+
   return (
     <View className="flex-1 bg-white px-6 pt-8">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-8 items-center">
@@ -80,7 +86,7 @@ export function PresentationConsentPanel({
         </View>
 
         <Text className="mt-5 text-center text-[18px] font-extrabold text-navy-deep">
-          ข้อมูลที่{request.verifier.name}ต้องการ
+          ข้อมูลที่{consentPartyLabel}ต้องการ
         </Text>
 
         <Text className="mt-1 text-[13px] text-gray500">ข้อมูลที่ร้องขอ</Text>

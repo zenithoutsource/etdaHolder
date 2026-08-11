@@ -20,6 +20,7 @@ import {
   endPortalReturnCapture,
   notifyPortalReturnUrl,
   readLastNotifiedPortalReturnUrl,
+  readPortalReturnCaptureGeneration,
   waitForPortalReturnNotification,
 } from './portalReturnBridge'
 import {
@@ -37,6 +38,8 @@ export type OpenCredentialRequestPortalResult =
   | { status: 'auth_code_claim_ready' }
   | { status: 'auth_code_awaiting_pid_vp' }
   | { status: 'dismissed' }
+  /** Older in-flight portal wait replaced by a newer request — no user-facing error. */
+  | { status: 'superseded' }
   | { status: 'empty_offer'; reason: PortalEmptyOfferReason; diagnostic: string }
   | { status: 'misconfigured' }
   | { status: 'error' }
@@ -291,12 +294,15 @@ export async function openCredentialRequestPortal(
       )
   }
 
-  beginPortalReturnCapture({
+  const captureGeneration = beginPortalReturnCapture({
     ...(initialUrlBeforePortal ? { ignoredUrls: [initialUrlBeforePortal] } : {}),
     ignoredUris: [previousOfferUri, initialOfferUri].filter(
       (uri): uri is string => Boolean(uri),
     ),
   })
+
+  const isCaptureSuperseded = (): boolean =>
+    readPortalReturnCaptureGeneration() !== captureGeneration
 
   const linkingSubscription = Linking.addEventListener('url', ({ url }) => {
     logWalletStep('wallet-home', 'issuer-portal-link-seen', {
@@ -364,6 +370,7 @@ export async function openCredentialRequestPortal(
       })
 
       const notifiedUrl = await waitForPortalReturnNotification(waitMs, {
+        captureGeneration,
         heartbeatMs: 3000,
         pollMs: 1000,
         onHeartbeat: (elapsedMs) => {
@@ -375,6 +382,7 @@ export async function openCredentialRequestPortal(
           })
         },
         poll: async () => {
+          if (isCaptureSuperseded()) return undefined
           const pending = readNewPendingPortalOffer()
           if (pending) return pending
           const initial = await Linking.getInitialURL()
@@ -388,6 +396,16 @@ export async function openCredentialRequestPortal(
           return readLastNotifiedPortalReturnUrl()
         },
       })
+
+      if (isCaptureSuperseded()) {
+        logWalletStep('wallet-home', 'issuer-portal-dismissed', {
+          credentialType,
+          resultType: 'superseded',
+          reason: 'newer-portal-request',
+        })
+        return { status: 'superseded' }
+      }
+
       const callbackUrl = notifiedUrl
         ?? readLastNotifiedPortalReturnUrl()
         ?? readNewPendingPortalOffer()
@@ -428,12 +446,28 @@ export async function openCredentialRequestPortal(
     }
 
     const authPromise = WebBrowser.openAuthSessionAsync(portalUrl, returnUrl)
-    const notifyPromise = waitForPortalReturnNotification(waitMs)
+    const notifyPromise = waitForPortalReturnNotification(waitMs, {
+      captureGeneration,
+    })
 
     const raced = await Promise.race([
       authPromise.then((result) => ({ kind: 'auth' as const, result })),
       notifyPromise.then((url) => ({ kind: 'notify' as const, url })),
     ])
+
+    if (isCaptureSuperseded()) {
+      logWalletStep('wallet-home', 'issuer-portal-dismissed', {
+        credentialType,
+        resultType: 'superseded',
+        reason: 'newer-portal-request',
+      })
+      try {
+        WebBrowser.dismissAuthSession()
+      } catch {
+        // iOS-only; ignore on other platforms
+      }
+      return { status: 'superseded' }
+    }
 
     if (raced.kind === 'notify' && raced.url) {
       logWalletStep('wallet-home', 'issuer-portal-auth-session-bypassed', {
@@ -458,6 +492,15 @@ export async function openCredentialRequestPortal(
     const result = raced.kind === 'auth'
       ? raced.result
       : await authPromise
+
+    if (isCaptureSuperseded()) {
+      logWalletStep('wallet-home', 'issuer-portal-dismissed', {
+        credentialType,
+        resultType: 'superseded',
+        reason: 'newer-portal-request',
+      })
+      return { status: 'superseded' }
+    }
 
     logWalletStep('wallet-home', 'issuer-portal-auth-session-closed', {
       credentialType,
@@ -505,6 +548,6 @@ export async function openCredentialRequestPortal(
   } finally {
     linkingSubscription.remove()
     appStateSubscription.remove()
-    endPortalReturnCapture()
+    endPortalReturnCapture(captureGeneration)
   }
 }

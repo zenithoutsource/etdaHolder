@@ -69,7 +69,11 @@ describe('ScanScreen deeplink handling', () => {
     cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
     useDeeplinkStore.setState({
       pendingUri: null,
+      pendingPresentationFlowOrigin: null,
+      pendingOfferFlowOrigin: null,
       activeUri: null,
+      activePresentationFlowOrigin: null,
+      activeOfferFlowOrigin: null,
       dismissedUri: null,
       offerGeneration: 0,
       vpGeneration: 0,
@@ -77,7 +81,7 @@ describe('ScanScreen deeplink handling', () => {
     })
   })
 
-  it('stores pending credential offer URI without navigating from Scan', async () => {
+  it('stores scan origin and navigates to credential-offer when an offer QR is scanned', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Ftranscript-offer'
 
     render(<ScanScreen />)
@@ -87,7 +91,8 @@ describe('ScanScreen deeplink handling', () => {
     })
 
     expect(useDeeplinkStore.getState().pendingUri).toBe(offerUri)
-    expect(mockRouterPush).not.toHaveBeenCalled()
+    expect(useDeeplinkStore.getState().pendingOfferFlowOrigin).toBe('scan')
+    expect(mockRouterPush).toHaveBeenCalledWith('/(tabs)/credential-offer')
     expect(screen.queryByText('Scan Success')).toBeNull()
   })
 

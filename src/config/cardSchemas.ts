@@ -438,6 +438,12 @@ const SCHEMAS: CardSchemaConfig[] = [
         aliases: ["expiry_date", "expirationDate", "validUntil", "valid_until"],
       },
     ],
+    issuanceConfirmation: {
+      documentLabel: "ใบรับรองแพทย์",
+      issuerLabel: "โรงพยาบาล",
+      imageKey: "profile",
+      accent: "navy",
+    },
   },
 ];
 

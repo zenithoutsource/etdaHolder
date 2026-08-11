@@ -211,6 +211,53 @@ describe('Oid4VpDisclosureFlow', () => {
     expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
   })
 
+  test('keeps the success panel when presentable credentials change after submit', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    const secondCredential = {
+      id: 'cred-2',
+      type: 'DLTDrivingLicence',
+      rawVc: 'c~d~',
+      claims: {},
+    } as unknown as VerifiableCredentialRecord
+
+    const { rerender } = render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        historyChannel="oid4vp"
+        logScope="presentation-request"
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('scan-face'))
+    await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
+    expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+    expect(mockResolve).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential, secondCredential]}
+        historyChannel="oid4vp"
+        logScope="presentation-request"
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+    await flush()
+
+    expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+    expect(screen.queryByText('กำลังเปิดการสำแดง…')).toBeNull()
+    expect(mockResolve).toHaveBeenCalledTimes(1)
+  })
+
   test('reports a replay-ledger failure after the presentation has been submitted', async () => {
     mockResolve.mockResolvedValue(buildRequest())
     mockMarkPresentationRequestConsumed.mockImplementation(() => {

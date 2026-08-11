@@ -44,6 +44,7 @@ import {
   isSupportedWalletDeeplink,
   readPendingCredentialOfferRoute,
   readPendingPresentationRoute,
+  tryQueueDeeplinkUri,
   useDeeplinkStore,
 } from '@/src/store/deeplinkStore';
 import { storePendingFromIssuanceCallbackUrl } from '@/src/services/credentials/resolveIssuanceCallbackResult';
@@ -109,16 +110,14 @@ export default function RootLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isPinVerified = useAuthStore((s) => s.isPinVerified);
   const isAuthenticatedRef = useRef(isAuthenticated);
-  const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri);
-  const setPendingPresentationRequest = useDeeplinkStore((s) => s.setPendingPresentationRequest);
-  const setIncomingDeeplinkUri = useDeeplinkStore((s) => s.setIncomingDeeplinkUri);
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri);
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri);
+  const deeplinkRouteEpoch = useDeeplinkStore((s) => s.routeEpoch);
   const router = useRouter();
   const incomingUrl = Linking.useURL();
   const currentSegment = segments[0];
   const isTabRoute = currentSegment === '(tabs)';
-  const lastRoutedDeeplinkRef = useRef<string | null>(null);
+  const lastRoutedDeeplinkRef = useRef<{ uri: string; epoch: number } | null>(null);
   const handledLaunchUrlsRef = useRef(new Set<string>());
   const handledRouteUrisRef = useRef(new Set<string>());
   const initialLaunchUrlFetchedRef = useRef(false);
@@ -127,6 +126,13 @@ export default function RootLayout() {
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    void import('@/src/services/crypto/knoxVaultStrongBoxStartupProbe').then(({ maybeRunKnoxVaultStrongBoxStartupProbe }) => {
+      maybeRunKnoxVaultStrongBoxStartupProbe();
+    });
+  }, []);
 
   const prepareWallet = useCallback(async ({
     storagePin,
@@ -322,7 +328,7 @@ export default function RootLayout() {
       logWalletStep('startup', 'wallet-history-backfill-complete');
       // Defer wallet-seed / k_attest Keychain create off cold start (see
       // docs/superpowers/specs/2026-08-07-defer-first-install-keychain-biometric-design.md).
-      if (hasWalletKey() && ensureWalletKeyRegisteredAtBackfill()) {
+      if (ensureWalletKeyRegisteredAtBackfill()) {
         logWalletStep('startup', 'wallet-key-registered-at-backfilled');
       }
       logWalletStep('startup', 'wallet-key-ready-deferred');
@@ -533,20 +539,17 @@ export default function RootLayout() {
       return;
     }
 
-    const dismissed = useDeeplinkStore.getState().dismissedUri;
-    if (url === dismissed) {
-      notifyPresentationIntakeRejection(url);
+    if (store) {
+      if (!tryQueueDeeplinkUri(url, { origin: 'same-device' })) {
+        logWalletStep('deeplink', 'presentation-dismissed-ignored');
+        return;
+      }
+    } else if (url === useDeeplinkStore.getState().dismissedUri) {
+      logWalletStep('deeplink', 'presentation-dismissed-ignored');
       return;
     }
 
-    if (store) {
-      if (isPresentationRequestDeeplink(url)) {
-        setPendingPresentationRequest({ uri: url, origin: 'same-device' });
-      } else {
-        setPendingDeeplinkUri(url);
-      }
-    }
-
+    const dismissed = useDeeplinkStore.getState().dismissedUri;
     const pinExists = Platform.OS === 'web' || hasWalletPin();
     const pinVerified = useAuthStore.getState().isPinVerified;
     if (pinExists && Platform.OS !== 'web' && !pinVerified) return;
@@ -567,7 +570,7 @@ export default function RootLayout() {
       hasWalletPin: pinExists,
     })
     if (presentationRoute) { router.push(presentationRoute); return; }
-  }, [router, setPendingDeeplinkUri, setPendingPresentationRequest]);
+  }, [router]);
 
   useEffect(() => {
     if (startupState.status !== 'ready') return;
@@ -582,28 +585,23 @@ export default function RootLayout() {
         return null;
       }
       if (parsed.kind !== 'unsupported') {
+        // Consumed/dismissed VP URIs are not routed; tryQueue also refuses dismissed.
         if (
-          parsed.uri === useDeeplinkStore.getState().dismissedUri
-          || (
-            parsed.kind === 'presentation_request'
-            && isPresentationRequestConsumed(parsed.uri)
-          )
+          parsed.kind === 'presentation_request'
+          && isPresentationRequestConsumed(parsed.uri)
         ) {
           return null;
         }
         return parsed.uri;
       }
       if (!isSupportedWalletDeeplink(url)) return null;
-      if (url === useDeeplinkStore.getState().dismissedUri) return null;
       if (isPresentationRequestDeeplink(url) && isPresentationRequestConsumed(url)) return null;
       return url;
     };
 
     const queuePendingRouteUri = (routeUri: string) => {
-      if (isPresentationRequestDeeplink(routeUri)) {
-        setPendingPresentationRequest({ uri: routeUri, origin: 'same-device' });
-      } else {
-        setPendingDeeplinkUri(routeUri);
+      if (!tryQueueDeeplinkUri(routeUri, { origin: 'same-device' })) {
+        logWalletStep('deeplink', 'presentation-dismissed-ignored');
       }
     };
 
@@ -617,7 +615,7 @@ export default function RootLayout() {
         return;
       }
       if (handledRouteUrisRef.current.has(routeUri)) return;
-      if (routeUri === lastRoutedDeeplinkRef.current) return;
+      if (routeUri === lastRoutedDeeplinkRef.current?.uri) return;
 
       const startupRoute = readStartupRoute({
         isAuthenticated,
@@ -627,7 +625,10 @@ export default function RootLayout() {
         hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
       });
       handledRouteUrisRef.current.add(routeUri);
-      lastRoutedDeeplinkRef.current = routeUri;
+      lastRoutedDeeplinkRef.current = {
+        uri: routeUri,
+        epoch: useDeeplinkStore.getState().routeEpoch,
+      };
 
       if (
         startupRoute !== '/auth'
@@ -667,13 +668,10 @@ export default function RootLayout() {
         notifyPresentationIntakeRejection(url);
         return;
       }
-      // Warm-app events must hit the store so vpGeneration/offerGeneration bump
-      // and PresentationRequestScreen / CredentialOfferClaimScreen remount.
-      // setIncoming also clears a matching dismissedUri for same-URI reopen.
-      if (isPresentationRequestDeeplink(routeUri)) {
-        setPendingPresentationRequest({ uri: routeUri, origin: 'same-device' });
-      } else {
-        setIncomingDeeplinkUri(routeUri);
+      // tryQueue refuses dismissed URIs (silent) so Android Back redelivery cannot reopen.
+      if (!tryQueueDeeplinkUri(routeUri, { origin: 'same-device' })) {
+        logWalletStep('deeplink', 'presentation-dismissed-ignored');
+        return;
       }
       routeDeeplink(routeUri);
     });
@@ -690,19 +688,37 @@ export default function RootLayout() {
     currentSegment,
     router,
     routeDeeplink,
-    setPendingDeeplinkUri,
-    setIncomingDeeplinkUri,
-    setPendingPresentationRequest,
   ]);
 
   useEffect(() => {
     if (startupState.status !== 'ready' || !pendingDeeplinkUri || !isPinVerified) {
       return;
     }
-    if (pendingDeeplinkUri === lastRoutedDeeplinkRef.current) return;
-    lastRoutedDeeplinkRef.current = pendingDeeplinkUri;
+    if (pendingDeeplinkUri === dismissedDeeplinkUri) return;
+
+    const lastRouted = lastRoutedDeeplinkRef.current;
+    if (
+      lastRouted
+      && lastRouted.uri === pendingDeeplinkUri
+      && lastRouted.epoch === deeplinkRouteEpoch
+    ) {
+      return;
+    }
+
+    lastRoutedDeeplinkRef.current = {
+      uri: pendingDeeplinkUri,
+      epoch: deeplinkRouteEpoch,
+    };
     routeDeeplink(pendingDeeplinkUri);
-  }, [startupState.status, pendingDeeplinkUri, dismissedDeeplinkUri, isAuthenticated, isPinVerified, routeDeeplink]);
+  }, [
+    startupState.status,
+    pendingDeeplinkUri,
+    dismissedDeeplinkUri,
+    deeplinkRouteEpoch,
+    isAuthenticated,
+    isPinVerified,
+    routeDeeplink,
+  ]);
 
   useEffect(() => {
     if (startupState.status !== 'ready' || !isPinVerified) return;

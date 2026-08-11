@@ -60,7 +60,10 @@ import {
 } from "../../src/services/credentials/credentialRenewalService";
 import { shouldShowRenewedActiveBadge } from "../../src/services/credentials/credentialRenewalPresentation";
 import { findCleanupPendingForCredentialType } from "../../src/services/credentials/renewalCleanupNotification";
-import { showPidGateDialog } from "../../src/services/credentials/pidGateDialog";
+import {
+  shouldShowHomePidGateDialog,
+  showPidGateDialog,
+} from "../../src/services/credentials/pidGateDialog";
 import {
   hasPendingIssuerSuspensionAck,
   readIssuerSuspensionStatuses,
@@ -443,11 +446,23 @@ export default function WalletHomeScreen() {
                           );
                           return;
                         }
-                        showPidGateDialog(
-                          showDialog,
-                          readPidGateStatus(credentials, renewalStatuses),
-                          () => handleRequestCredentialViaPortal("ThaiNationalID"),
+                        const gateStatus = readPidGateStatus(
+                          credentials,
+                          renewalStatuses,
                         );
+                        if (
+                          shouldShowHomePidGateDialog(
+                            item.credentialType,
+                            gateStatus,
+                          )
+                        ) {
+                          showPidGateDialog(
+                            showDialog,
+                            gateStatus,
+                            () =>
+                              handleRequestCredentialViaPortal("ThaiNationalID"),
+                          );
+                        }
                         return;
                       }
                       if (isNewCredential) {

@@ -11,10 +11,12 @@ import { PresentationInfoPanel } from './PresentationInfoPanel'
 import { PresentationResultPanel } from './PresentationResultPanel'
 import { PresentationStepScaffold } from './PresentationStepScaffold'
 import { TRUSTED_VERIFIERS } from '../config/trustedVerifiers'
-import { getCardSchema } from '../config/cardSchemas'
+import { readHistoryDocumentLabel } from '../config/historyDisplayNames'
+import { readPresentationVerifierDisplayName } from '../config/presentationVerifierMocks'
 import { filterPresentableCredentials } from '../services/credentials/credentialLifecycle'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
 import { recordSuccessfulPresentation } from '../services/history/presentationHistory'
+import { mapPresentationFlowOriginToDeliveryPath } from '../services/history/historyDeliveryPath'
 import { appendWalletHistoryEvent } from '../services/history/walletEventLog'
 import { recordWalletPresentationSuccess } from '../services/history/recordWalletPresentationSuccess'
 import { recordOid4vpPresentationFailure, recordWalletInitiatedPresentationFailure } from '../services/history/walletHistoryRecording'
@@ -61,9 +63,19 @@ type Props = {
   presentationOrigin?: 'scanned-verifier-qr' | 'wallet-generated-qr'
   presentationFlowOrigin?: PresentationFlowOrigin
   onRequestCredential?: (credentialType: IssuerPortalCredentialType) => void
+  /** Fired when the request itself is dead (expired/invalid) so the host can dismiss the deeplink. */
+  onTerminalFailure?: (details: PresentationFailureUi) => void
   onDone: () => void
   onCancel: () => void
 }
+
+const TERMINAL_REQUEST_FAILURE_KINDS = new Set<PresentationFailureUi['kind']>([
+  'request-expired',
+  'request-unreachable',
+  'request-invalid',
+  'request-unsupported',
+  'replay-blocked',
+])
 
 /**
  * Shared OID4VP disclosure UX. Reuses the same consent/face/info/result panels for
@@ -77,6 +89,7 @@ export function Oid4VpDisclosureFlow({
   presentationOrigin = 'wallet-generated-qr',
   presentationFlowOrigin = 'my-qr',
   onRequestCredential,
+  onTerminalFailure,
   onDone,
   onCancel,
 }: Props) {
@@ -84,6 +97,9 @@ export function Oid4VpDisclosureFlow({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedClaimKeys, setSelectedClaimKeys] = useState<Set<string>>(() => new Set())
   const generationRef = useRef(0)
+  // Once resolve succeeds (or submit finishes), ignore presentable-credential churn so a
+  // post-submit credentials refresh cannot reset the UI back to the loading spinner.
+  const flowLockedRef = useRef(false)
   const credentialsRef = useRef(credentials)
   credentialsRef.current = credentials
   const presentableCredentialKey = JSON.stringify(
@@ -91,6 +107,12 @@ export function Oid4VpDisclosureFlow({
   )
 
   useEffect(() => {
+    flowLockedRef.current = false
+  }, [authorizationRequestUri])
+
+  useEffect(() => {
+    if (flowLockedRef.current) return
+
     const gen = ++generationRef.current
     setPhase({ tag: 'resolving' })
 
@@ -114,23 +136,33 @@ export function Oid4VpDisclosureFlow({
           `${logScope}Timeout: resolving presentation request timed out`,
         )
         logWalletStep(logScope, 'presentation-resolved', describePresentationForLog(request))
-        if (generationRef.current === gen) setPhase({ tag: 'facePrepare', request })
+        if (generationRef.current !== gen) return
+        flowLockedRef.current = true
+        setPhase({ tag: 'facePrepare', request })
       } catch (err) {
         if (generationRef.current !== gen) return
         logWalletError(logScope, 'presentation-resolve-failed', err)
-        setPhase({ tag: 'failure', details: resolvePresentationFailureUi(err) })
+        const details = resolvePresentationFailureUi(err)
+        setPhase({ tag: 'failure', details })
+        if (TERMINAL_REQUEST_FAILURE_KINDS.has(details.kind)) {
+          onTerminalFailure?.(details)
+        }
       }
     })()
 
     return () => {
       generationRef.current++
     }
-  }, [authorizationRequestUri, logScope, presentationFlowOrigin, presentableCredentialKey])
+  }, [authorizationRequestUri, logScope, onTerminalFailure, presentationFlowOrigin, presentableCredentialKey])
 
   const confirmFacePrepare = useCallback((request: ResolvedPresentationRequest) => {
     setSelectedClaimKeys(readInitialSelectedClaimKeys(request.disclosures))
     setPhase({ tag: 'consent', request })
   }, [])
+
+  const deliveryPath = mapPresentationFlowOriginToDeliveryPath(
+    historyChannel === 'oid4vp' ? presentationFlowOrigin : undefined,
+  )
 
   const approvePresentation = useCallback(async (
     request: ResolvedPresentationRequest,
@@ -169,17 +201,26 @@ export function Oid4VpDisclosureFlow({
       })
 
       if (historyChannel === 'oid4vp') {
+        const verifierDisplayName = readPresentationVerifierDisplayName(
+          request.matchedCredential.type,
+          request.verifier.name,
+        )
         recordSuccessfulPresentation({
           credentialId: request.matchedCredential.id,
           credentialType: request.matchedCredential.type,
-          verifierName: request.verifier.name,
-          documentType: getCardSchema(request.matchedCredential.type).title,
+          verifierName: verifierDisplayName,
+          documentType: readHistoryDocumentLabel({
+            credentialType: request.matchedCredential.type,
+          }),
           disclosedClaims: disclosedLabels,
+          ...(deliveryPath ? { deliveryPath } : {}),
         })
       } else {
         recordWalletPresentationSuccess({
           credentialId: request.matchedCredential.id,
-          documentType: getCardSchema(request.matchedCredential.type).title,
+          documentType: readHistoryDocumentLabel({
+            credentialType: request.matchedCredential.type,
+          }),
           partyName: request.verifier.name,
           disclosedClaims: disclosedLabels,
           channel: 'wallet',
@@ -199,13 +240,20 @@ export function Oid4VpDisclosureFlow({
         void Linking.openURL(response.redirectUri)
       }
 
-      if (generationRef.current === gen) {
-        setPhase({ tag: 'success', verifierName: request.verifier.name })
-      }
+      // Always show success after a completed submit — credential-list churn may have
+      // bumped generationRef via the resolve-effect cleanup even while the flow is locked.
+      flowLockedRef.current = true
+      setPhase({
+        tag: 'success',
+        verifierName: readPresentationVerifierDisplayName(
+          request.matchedCredential.type,
+          request.verifier.name,
+        ),
+      })
     } catch (err) {
       logWalletError(logScope, 'presentation-approve-failed', err)
       if (historyChannel === 'oid4vp') {
-        recordOid4vpPresentationFailure(request, err, disclosedLabels)
+        recordOid4vpPresentationFailure(request, err, disclosedLabels, deliveryPath)
       } else {
         recordWalletInitiatedPresentationFailure({
           record: request.matchedCredential,
@@ -219,7 +267,7 @@ export function Oid4VpDisclosureFlow({
     } finally {
       setIsSubmitting(false)
     }
-  }, [historyChannel, isSubmitting, logScope])
+  }, [deliveryPath, historyChannel, isSubmitting, logScope])
 
   const declinePresentation = useCallback((
     request: ResolvedPresentationRequest,
@@ -237,13 +285,28 @@ export function Oid4VpDisclosureFlow({
     appendWalletHistoryEvent({
       kind: 'presentation-declined',
       credentialId: request.matchedCredential.id,
-      documentType: getCardSchema(request.matchedCredential.type).title,
-      partyName: request.verifier.name,
+      documentType: readHistoryDocumentLabel({
+        credentialType: request.matchedCredential.type,
+      }),
+      partyName: historyChannel === 'oid4vp'
+        ? readPresentationVerifierDisplayName(
+            request.matchedCredential.type,
+            request.verifier.name,
+          )
+        : request.verifier.name,
       disclosedClaims,
       channel: historyChannel,
+      ...(historyChannel === 'oid4vp'
+        ? {
+            credentialType: request.matchedCredential.type,
+            ...(deliveryPath ? { deliveryPath } : {}),
+          }
+        : {
+            credentialType: request.matchedCredential.type,
+          }),
     })
     onCancel()
-  }, [historyChannel, logScope, onCancel])
+  }, [deliveryPath, historyChannel, logScope, onCancel])
 
   if (phase.tag === 'facePrepare') {
     return (

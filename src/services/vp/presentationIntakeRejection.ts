@@ -47,18 +47,20 @@ export function presentationIntakeRejectionMessage(
     : PRESENTATION_REQUEST_ALREADY_HANDLED_MESSAGE
 }
 
+/** Modal only for consumed/replay. Dismissed redelivery stays silent (log at call site). */
 export function notifyPresentationIntakeRejection(url: string): boolean {
   const rejection = readPresentationIntakeRejection(url)
-  if (!rejection) return false
+  if (rejection !== 'consumed') return false
   useDeeplinkStore.getState().setPresentationIntakeError(
     presentationIntakeRejectionMessage(rejection),
   )
   return true
 }
 
+/** Modal only for consumed/replay. Dismissed redelivery stays silent (log at call site). */
 export function notifyPresentationIntakeRejectionForUri(requestUri: string): boolean {
   const rejection = readPresentationIntakeRejectionForUri(requestUri)
-  if (!rejection) return false
+  if (rejection !== 'consumed') return false
   useDeeplinkStore.getState().setPresentationIntakeError(
     presentationIntakeRejectionMessage(rejection),
   )

@@ -35,6 +35,12 @@ const UNSUPPORTED_PREFIXES = new Set<UnsupportedClientIdScheme>([
 ])
 
 export function parseClientId(clientId: string): ParsedClientId {
+  // OID4VP 1.0 DID clients use `decentralized_identifier:did:…`. Bare `did:`
+  // is a pre-1.0 draft form and is not accepted as a client identifier scheme.
+  if (clientId.startsWith('did:')) {
+    return { scheme: 'unknown', originalClientId: clientId, clientId }
+  }
+
   const colonIndex = clientId.indexOf(':')
   if (colonIndex === -1) {
     return { scheme: 'pre_registered', originalClientId: clientId, clientId }

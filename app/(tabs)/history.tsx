@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,6 +28,11 @@ export default function HistoryLogScreen() {
     setRefreshTick((value) => value + 1);
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      bumpList();
+    }, [bumpList]),
+  );
   const handleSuspendAccess = useCallback(
     (eventId: string) => {
       const event = readWalletHistoryEvent(eventId);

@@ -36,6 +36,14 @@ const PID_GATE_DIALOG_ACTIONS: Record<
   'renewal-required': () => [cancelAction()],
 }
 
+export function shouldShowHomePidGateDialog(
+  credentialType: string | undefined,
+  gateStatus: PidGateStatus,
+): boolean {
+  if (!credentialType || credentialType === 'ThaiNationalID') return false
+  return gateStatus !== 'ready'
+}
+
 export function buildPidGateDialogOptions(
   gateStatus: PidGateStatus,
   onRequestThaId: () => void,
@@ -55,5 +63,6 @@ export function showPidGateDialog(
   gateStatus: PidGateStatus,
   onRequestThaId: () => void,
 ): void {
+  if (gateStatus === 'ready') return
   showDialog(buildPidGateDialogOptions(gateStatus, onRequestThaId))
 }

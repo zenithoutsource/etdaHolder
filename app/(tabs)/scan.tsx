@@ -11,7 +11,7 @@ import { useScreenCaptureGuard } from '../../src/hooks/useScreenCaptureGuard'
 import { submitRenewalRequest } from '../../src/services/credentials/credentialRenewalService'
 import { logWalletError, logWalletStep } from '../../src/services/debug/walletLogger'
 import { describeUriForLog } from '../../src/services/scan/scanLogDescriptors'
-import { isCredentialOfferDeeplink, useDeeplinkStore } from '../../src/store/deeplinkStore'
+import { isCredentialOfferDeeplink, tryQueueDeeplinkUri, useDeeplinkStore } from '../../src/store/deeplinkStore'
 import { isOid4VpAuthorizationRequest } from '../../src/services/vp/presentationService'
 import {
   notifyPresentationIntakeRejectionForUri,
@@ -32,8 +32,7 @@ export default function ScanScreen() {
   const router = useRouter()
   const { renew } = useLocalSearchParams<{ renew?: string | string[] }>()
   const renewCredentialId = Array.isArray(renew) ? renew[0] : renew
-  const setPendingPresentationRequest = useDeeplinkStore((s) => s.setPendingPresentationRequest)
-  const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
+  const clearDismissedDeeplinkUri = useDeeplinkStore((s) => s.clearDismissedDeeplinkUri)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
 
@@ -46,10 +45,14 @@ export default function ScanScreen() {
 
   const handoffPresentationRequest = useCallback((uri: string) => {
     logWalletStep('scan', 'presentation-handoff', describeUriForLog(uri))
-    setPendingPresentationRequest({ uri, origin: 'scan' })
+    // Explicit Scan reopen of a previously dismissed URI (user action, not Linking redelivery).
+    if (useDeeplinkStore.getState().dismissedUri === uri) {
+      clearDismissedDeeplinkUri()
+    }
+    tryQueueDeeplinkUri(uri, { origin: 'scan' })
     processingRef.current = false
     router.push('/(tabs)/presentation-request')
-  }, [router, setPendingPresentationRequest])
+  }, [clearDismissedDeeplinkUri, router])
 
   useFocusEffect(
     useCallback(() => {
@@ -105,7 +108,8 @@ export default function ScanScreen() {
     processingRef.current = true
 
     if (isOid4VpAuthorizationRequest(uri)) {
-      if (readPresentationIntakeRejectionForUri(uri)) {
+      const rejection = readPresentationIntakeRejectionForUri(uri)
+      if (rejection === 'consumed') {
         logWalletStep('scan', 'presentation-replay-ignored', describeUriForLog(uri))
         notifyPresentationIntakeRejectionForUri(uri)
         processingRef.current = false
@@ -120,8 +124,12 @@ export default function ScanScreen() {
 
     if (isCredentialOfferDeeplink(uri)) {
       logWalletStep('scan', 'credential-offer-handoff', describeUriForLog(uri))
-      setPendingDeeplinkUri(uri)
+      if (useDeeplinkStore.getState().dismissedUri === uri) {
+        clearDismissedDeeplinkUri()
+      }
+      tryQueueDeeplinkUri(uri, { origin: 'scan' })
       processingRef.current = false
+      router.push('/(tabs)/credential-offer')
       return
     }
 

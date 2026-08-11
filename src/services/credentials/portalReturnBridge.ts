@@ -4,9 +4,11 @@ import { describeIssuanceCallbackForLog } from './describeIssuanceCallbackForLog
 import { parseIssuanceCallbackUrl } from './parseIssuanceCallbackUrl'
 
 type PortalReturnWaiter = {
-  resolve: (url: string) => void
+  generation: number
+  resolve: (url: string | undefined) => void
 }
 
+let captureGeneration = 0
 let activeWaiter: PortalReturnWaiter | null = null
 let lastNotifiedUrl: string | undefined
 let activeCapture:
@@ -20,20 +22,48 @@ let activeCapture:
  * Bridge for Android portal flow: Custom Tabs / Expo Router may deliver
  * walletapp://callback while openAuthSessionAsync never resolves.
  * /callback and Linking notify here so the portal opener can finish.
+ *
+ * Returns a capture generation. A newer beginPortalReturnCapture() supersedes
+ * older waits so a retry cannot leave a stale timeout that later shows
+ * "ยังไม่ได้รับเอกสาร" after the second attempt already succeeded.
  */
 export function beginPortalReturnCapture(input: {
   ignoredUrls?: readonly string[]
   ignoredUris?: readonly string[]
-} = {}): void {
-  lastNotifiedUrl = undefined
+} = {}): number {
+  const previousWaiter = activeWaiter
   activeWaiter = null
+  lastNotifiedUrl = undefined
+  captureGeneration += 1
   activeCapture = {
     ignoredUrls: new Set(input.ignoredUrls ?? []),
     ignoredUris: new Set(input.ignoredUris ?? []),
   }
+
+  if (previousWaiter) {
+    logWalletStep('wallet-home', 'issuer-portal-return-wait-superseded', {
+      previousGeneration: previousWaiter.generation,
+      nextGeneration: captureGeneration,
+    })
+    previousWaiter.resolve(undefined)
+  }
+
+  return captureGeneration
 }
 
-export function endPortalReturnCapture(): void {
+export function readPortalReturnCaptureGeneration(): number {
+  return captureGeneration
+}
+
+/**
+ * Ends capture for the given generation only. Omitting generation ends whatever
+ * is current (tests / teardown). A stale finally from an older portal open must
+ * not clear a newer capture.
+ */
+export function endPortalReturnCapture(generation?: number): void {
+  if (generation !== undefined && generation !== captureGeneration) {
+    return
+  }
   activeWaiter = null
   activeCapture = undefined
 }
@@ -71,7 +101,7 @@ export function notifyPortalReturnUrl(url: string, source: string): void {
     source,
     ...describeIssuanceCallbackForLog(url),
   })
-  if (activeWaiter) {
+  if (activeWaiter && activeWaiter.generation === captureGeneration) {
     const waiter = activeWaiter
     activeWaiter = null
     waiter.resolve(url)
@@ -85,12 +115,20 @@ export function readLastNotifiedPortalReturnUrl(): string | undefined {
 export function waitForPortalReturnNotification(
   timeoutMs: number,
   options: {
+    /** Generation from beginPortalReturnCapture(); required for concurrent-safe waits. */
+    captureGeneration?: number
     onHeartbeat?: (elapsedMs: number) => void
     heartbeatMs?: number
     poll?: () => string | undefined | Promise<string | undefined>
     pollMs?: number
   } = {},
 ): Promise<string | undefined> {
+  const waitGeneration = options.captureGeneration ?? captureGeneration
+
+  if (waitGeneration !== captureGeneration) {
+    return Promise.resolve(undefined)
+  }
+
   if (lastNotifiedUrl) {
     const url = lastNotifiedUrl
     return Promise.resolve(url)
@@ -113,6 +151,11 @@ export function waitForPortalReturnNotification(
 
     const pollTimer = options.poll
       ? setInterval(() => {
+        if (waitGeneration !== captureGeneration) {
+          cleanup()
+          resolve(undefined)
+          return
+        }
         void Promise.resolve(options.poll?.()).then((url) => {
           if (url) {
             notifyPortalReturnUrl(url, 'poll')
@@ -125,10 +168,13 @@ export function waitForPortalReturnNotification(
       clearTimeout(timer)
       clearInterval(heartbeat)
       if (pollTimer) clearInterval(pollTimer)
-      activeWaiter = null
+      if (activeWaiter?.generation === waitGeneration) {
+        activeWaiter = null
+      }
     }
 
     activeWaiter = {
+      generation: waitGeneration,
       resolve: (url) => {
         cleanup()
         resolve(url)

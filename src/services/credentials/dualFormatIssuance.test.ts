@@ -15,6 +15,10 @@ import { getMetaStorage } from '../storage/storage'
 import { WALLET_CRYPTO_V2_META_KEY } from '@/src/config/walletCryptoPolicy'
 import { discardPendingCredentialKey } from '../crypto/credentialSigningKey'
 
+jest.mock('../notifications/documentExpiryNotificationService', () => ({
+  cancelDocumentExpiryNotifications: jest.fn(async () => undefined),
+}))
+
 const sdJwtRecord: VerifiableCredentialRecord = {
   id: 'vc-transcript',
   type: 'ChulalongkornUniversityTranscript',
@@ -723,6 +727,196 @@ test('aborted dual-format preview discards its shared pending key', async () => 
 
     expect(discardPendingKey).toHaveBeenCalledWith('pending-abort-key')
     expect(acquireRecord).toHaveBeenCalledTimes(1)
+  } finally {
+    metaStorage.remove(WALLET_CRYPTO_V2_META_KEY)
+  }
+})
+
+test('claimDualFormatCredential binds after SD-JWT save and rolls back on bind failure', async () => {
+  const metaStorage = getMetaStorage()
+  metaStorage.set(WALLET_CRYPTO_V2_META_KEY, 'true')
+
+  const storage = new Map<string, string>()
+  const credentialStorage = {
+    getString: (key: string) => storage.get(key),
+    set: (key: string, value: string) => {
+      storage.set(key, value)
+    },
+    remove: (key: string) => storage.delete(key),
+  }
+  const bindPendingKey = jest.fn(async () => {
+    throw new Error('Ed25519SeedKeychainWriteFailed')
+  })
+  const discardPendingKey = jest.fn(async () => undefined)
+
+  try {
+    await expect(
+      claimDualFormatCredential(makeDualOffer(), {
+        pendingCredentialKeyId: 'pending-bind-fail',
+        dependencies: {
+          acquireAccessToken: async () => ({
+            accessToken: 'shared-token',
+            cNonce: 'nonce-1',
+          }),
+          acquireCredentialRecord: async (offer) => {
+            const format = offer.credentialConfigurations[0]?.format
+            if (format === 'mso_mdoc') {
+              return {
+                id: 'mdoc-hash',
+                type: 'ChulalongkornUniversityTranscript',
+                rawVc: 'mdoc:AQIDBA',
+                claims: { doctype: 'th.go.etda.transcript' },
+                issuedAt: '2026-01-01T00:00:00.000Z',
+              }
+            }
+            return sdJwtRecord
+          },
+          createProofSigningSession: async (credentialKeyId) => ({
+            credentialKeyId,
+            signProof: async () => 'proof',
+            close: jest.fn(),
+          }),
+          bindPendingCredentialKey: bindPendingKey,
+          discardPendingCredentialKey: discardPendingKey,
+          storeMdoc: async () => undefined,
+          getCredentialStorage: () => credentialStorage,
+        },
+      }),
+    ).rejects.toThrow('Ed25519SeedKeychainWriteFailed')
+
+    expect(bindPendingKey).toHaveBeenCalledWith(
+      'pending-bind-fail',
+      sdJwtRecord.id,
+      sdJwtRecord.type,
+    )
+    expect(storage.has(`credential:${sdJwtRecord.id}`)).toBe(false)
+    expect(discardPendingKey).toHaveBeenCalledWith('pending-bind-fail')
+  } finally {
+    metaStorage.remove(WALLET_CRYPTO_V2_META_KEY)
+  }
+})
+
+test('claimDualFormatCredential rolls back native mDOC when mdoc-only bind fails', async () => {
+  const metaStorage = getMetaStorage()
+  metaStorage.set(WALLET_CRYPTO_V2_META_KEY, 'true')
+
+  const storage = new Map<string, string>()
+  const credentialStorage = {
+    getString: (key: string) => storage.get(key),
+    set: (key: string, value: string) => {
+      storage.set(key, value)
+    },
+    remove: (key: string) => storage.delete(key),
+  }
+  const bindPendingKey = jest.fn(async () => {
+    throw new Error('Ed25519SeedKeychainWriteFailed')
+  })
+  const discardPendingKey = jest.fn(async () => undefined)
+  const deleteMdoc = jest.fn(async () => undefined)
+  const storeMdoc = jest.fn(async () => undefined)
+
+  try {
+    await expect(
+      claimDualFormatCredential(makeDualOffer(), {
+        pendingCredentialKeyId: 'pending-mdoc-bind-fail',
+        dependencies: {
+          acquireAccessToken: async () => ({
+            accessToken: 'shared-token',
+            cNonce: 'nonce-1',
+          }),
+          acquireCredentialRecord: async (offer) => {
+            const format = offer.credentialConfigurations[0]?.format
+            if (format === 'dc+sd-jwt') {
+              throw new Error('sd-jwt-issuer-unavailable')
+            }
+            return {
+              id: 'mdoc-hash',
+              type: 'ChulalongkornUniversityTranscript',
+              rawVc: 'mdoc:AQIDBA',
+              claims: { doctype: 'th.go.etda.transcript' },
+              issuedAt: '2026-01-01T00:00:00.000Z',
+            }
+          },
+          createProofSigningSession: async (credentialKeyId) => ({
+            credentialKeyId,
+            signProof: async () => 'proof',
+            close: jest.fn(),
+          }),
+          bindPendingCredentialKey: bindPendingKey,
+          discardPendingCredentialKey: discardPendingKey,
+          storeMdoc,
+          deleteMdoc,
+          getCredentialStorage: () => credentialStorage,
+        },
+      }),
+    ).rejects.toThrow('Ed25519SeedKeychainWriteFailed')
+
+    expect(storeMdoc).toHaveBeenCalled()
+    expect(bindPendingKey).toHaveBeenCalled()
+    expect(deleteMdoc).toHaveBeenCalled()
+    expect(discardPendingKey).toHaveBeenCalledWith('pending-mdoc-bind-fail')
+  } finally {
+    metaStorage.remove(WALLET_CRYPTO_V2_META_KEY)
+  }
+})
+
+test('claimDualFormatCredential keeps SD-JWT key when mdoc fails after bind', async () => {
+  const metaStorage = getMetaStorage()
+  metaStorage.set(WALLET_CRYPTO_V2_META_KEY, 'true')
+
+  const storage = new Map<string, string>()
+  const credentialStorage = {
+    getString: (key: string) => storage.get(key),
+    set: (key: string, value: string) => {
+      storage.set(key, value)
+    },
+    remove: (key: string) => storage.delete(key),
+  }
+  const bindPendingKey = jest.fn(async (
+    _pendingId: string,
+    credentialId: string,
+    credentialType: string,
+  ) => ({
+    credentialId,
+    holderDid: 'did:key:z6MkdualFormatPartial',
+    keychainService: `wallet.ed25519_seed.cred.${credentialId}`,
+    credentialType,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }))
+  const discardPendingKey = jest.fn(async () => undefined)
+
+  try {
+    const result = await claimDualFormatCredential(makeDualOffer(), {
+      pendingCredentialKeyId: 'pending-mdoc-fail',
+      dependencies: {
+        acquireAccessToken: async () => ({
+          accessToken: 'shared-token',
+          cNonce: 'nonce-1',
+        }),
+        acquireCredentialRecord: async (offer) => {
+          const format = offer.credentialConfigurations[0]?.format
+          if (format === 'mso_mdoc') {
+            throw new Error('mdoc-issuer-unavailable')
+          }
+          return sdJwtRecord
+        },
+        createProofSigningSession: async (credentialKeyId) => ({
+          credentialKeyId,
+          signProof: async () => 'proof',
+          close: jest.fn(),
+        }),
+        bindPendingCredentialKey: bindPendingKey,
+        discardPendingCredentialKey: discardPendingKey,
+        storeMdoc: async () => undefined,
+        getCredentialStorage: () => credentialStorage,
+      },
+    })
+
+    expect(result.partial).toBe(true)
+    expect(result.missingFormat).toBe('mso_mdoc')
+    expect(bindPendingKey).toHaveBeenCalledTimes(1)
+    expect(storage.has(`credential:${sdJwtRecord.id}`)).toBe(true)
+    expect(discardPendingKey).not.toHaveBeenCalled()
   } finally {
     metaStorage.remove(WALLET_CRYPTO_V2_META_KEY)
   }

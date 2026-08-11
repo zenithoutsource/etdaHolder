@@ -4,6 +4,7 @@ const mockRetrievePreAuthorizedTokenViaOid4vc = jest.fn()
 const mockRetrieveCredentialViaOid4vc = jest.fn()
 
 jest.mock('./oid4vc/retrieveViaOid4vc', () => ({
+  ...jest.requireActual('./oid4vc/retrieveViaOid4vc'),
   retrievePreAuthorizedTokenViaOid4vc: (...args: unknown[]) => mockRetrievePreAuthorizedTokenViaOid4vc(...args),
   retrieveAuthorizationCodeTokenViaOid4vc: jest.fn(),
   retrieveCredentialViaOid4vc: (...args: unknown[]) => mockRetrieveCredentialViaOid4vc(...args),
@@ -243,7 +244,7 @@ describe('OID4VCI 1.0 credential request (oid4vc path)', () => {
     expect(record.claims.doctype).toBe('org.iso.18013.5.1.mDL')
   })
 
-  test('sends OID4VCI doctype profile for direct org.iso.18013.5.1.mDL configuration keys', async () => {
+  test('sends credential_configuration_id for direct org.iso.18013.5.1.mDL configuration keys', async () => {
     mockRetrieveCredentialViaOid4vc.mockResolvedValue({
       credentialResponse: {
         format: 'mso_mdoc',
@@ -260,15 +261,16 @@ describe('OID4VCI 1.0 credential request (oid4vc path)', () => {
 
     expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalledWith(
       expect.objectContaining({
+        credentialConfigurationId: 'org.iso.18013.5.1.mDL',
         proofJwt: 'proof.jwt',
         additionalRequestPayload: expect.objectContaining({
-          format: 'mso_mdoc',
+          credential_configuration_id: 'org.iso.18013.5.1.mDL',
           doctype: 'org.iso.18013.5.1.mDL',
         }),
       }),
     )
     const requestPayload = mockRetrieveCredentialViaOid4vc.mock.calls[0]?.[0]?.additionalRequestPayload as Record<string, unknown>
-    expect(requestPayload).not.toHaveProperty('credential_configuration_id')
+    expect(requestPayload).not.toHaveProperty('format')
     expect(requestPayload).not.toHaveProperty('proof')
     expect(requestPayload).not.toHaveProperty('proofs')
     expect(record.rawVc).toBe('mdoc:AQIDBA')

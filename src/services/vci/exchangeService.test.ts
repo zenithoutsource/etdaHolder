@@ -1391,8 +1391,8 @@ test('acquireCredentialRecord uses one proof signing session for retry without a
   })
 
   expect(sessionSignProof).toHaveBeenCalledTimes(2)
-  expect(sessionSignProof).toHaveBeenNthCalledWith(1, 'nonce', resolved.issuer, { keyBinding: 'did-kid' })
-  expect(sessionSignProof).toHaveBeenNthCalledWith(2, 'fresh-nonce', resolved.issuer, { keyBinding: 'did-kid' })
+  expect(sessionSignProof).toHaveBeenNthCalledWith(1, 'nonce', resolved.issuer, { keyBinding: 'jwk' })
+  expect(sessionSignProof).toHaveBeenNthCalledWith(2, 'fresh-nonce', resolved.issuer, { keyBinding: 'jwk' })
   expect(dependencySignProof).not.toHaveBeenCalled()
   expect(close).not.toHaveBeenCalled()
 })

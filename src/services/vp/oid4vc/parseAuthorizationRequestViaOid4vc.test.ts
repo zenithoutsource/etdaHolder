@@ -1,6 +1,8 @@
+import { p256 } from '@noble/curves/nist.js'
 import { getPublicKey, hashes, sign } from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha2.js'
 
+import { p256PublicKeyToDidKey, p256PublicKeyToJwk, signEs256Prehash } from '@/src/services/crypto/p256Identity'
 import { parseAuthorizationRequestBody } from '../authorizationRequestJar'
 import { parseAuthorizationRequestViaOid4vc } from './parseAuthorizationRequestViaOid4vc'
 
@@ -12,7 +14,7 @@ function encodePart(value: unknown): string {
 
 function base64UrlEncodeBytes(bytes: Uint8Array): string {
   let binary = ''
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!)
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
@@ -138,6 +140,135 @@ describe('parseAuthorizationRequestViaOid4vc', () => {
 
     expect(result.authorizationRequest.client_id).toBe(requestPayload.client_id)
     expect(result.oid4vcContext.authorizationRequestPayload.response_uri).toBe(requestPayload.response_uri)
+  })
+
+  it('verifies signed redirect_uri ES256 JARs via JWKS then unwraps for adapter', async () => {
+    const { secretKey, publicKey } = p256.keygen()
+    const es256Jwk = { ...p256PublicKeyToJwk(publicKey), kid: 'verifier-es256-1', alg: 'ES256' }
+    const payload = {
+      ...requestPayload,
+      nonce: 'es256-nonce',
+      state: 'es256-state',
+    }
+    const header = encodePart({
+      alg: 'ES256',
+      typ: 'oauth-authz-req+jwt',
+      kid: 'verifier-es256-1',
+    })
+    const body = encodePart(payload)
+    const unsigned = `${header}.${body}`
+    const signature = signEs256Prehash(new TextEncoder().encode(unsigned), secretKey)
+    const jwt = `${unsigned}.${base64UrlEncodeBytes(signature)}`
+    const fetchImpl = jest.fn(async () => Response.json({ keys: [es256Jwk] }))
+
+    const adapterResult = await parseAuthorizationRequestViaOid4vc(
+      { rawBody: jwt },
+      { trustedVerifiers, fetchImpl: fetchImpl as unknown as typeof fetch },
+    )
+    const legacyResult = await parseAuthorizationRequestBody(jwt, {
+      trustedVerifiers,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    expect(fetchImpl).toHaveBeenCalled()
+    expect(adapterResult.authorizationRequest.nonce).toBe('es256-nonce')
+    expect(adapterResult.authorizationRequest.client_id).toBe(legacyResult?.client_id)
+    expect(adapterResult.authorizationRequest.dcql_query).toEqual(legacyResult?.dcql_query)
+  })
+
+  it('rejects bare did:key client_id (OID4VP 1.0 requires decentralized_identifier prefix)', async () => {
+    const { secretKey, publicKey } = p256.keygen()
+    const holderDid = p256PublicKeyToDidKey(publicKey)
+    const payload = {
+      response_type: 'vp_token',
+      client_id: holderDid,
+      response_mode: 'direct_post',
+      state: 'did-key-state',
+      nonce: 'did-key-nonce',
+      response_uri: 'https://verifier.example.com:455/openid4vc/verify/session-1',
+      dcql_query: requestPayload.dcql_query,
+      client_metadata: {
+        vp_formats_supported: {
+          'dc+sd-jwt': {
+            'sd-jwt_alg_values': ['EdDSA', 'ES256'],
+            'kb-jwt_alg_values': ['EdDSA', 'ES256'],
+          },
+        },
+      },
+    }
+    const header = encodePart({
+      alg: 'ES256',
+      typ: 'oauth-authz-req+jwt',
+      kid: `${holderDid}#${holderDid.slice('did:key:'.length)}`,
+    })
+    const body = encodePart(payload)
+    const unsigned = `${header}.${body}`
+    const signature = signEs256Prehash(new TextEncoder().encode(unsigned), secretKey)
+    const jwt = `${unsigned}.${base64UrlEncodeBytes(signature)}`
+    const didTrustedVerifiers = [
+      {
+        clientId: `decentralized_identifier:${holderDid}`,
+        name: 'Did Key Verifier',
+        allowedOrigins: ['https://verifier.example.com:455'],
+      },
+    ]
+
+    await expect(
+      parseAuthorizationRequestViaOid4vc(
+        { rawBody: jwt },
+        { trustedVerifiers: didTrustedVerifiers },
+      ),
+    ).rejects.toThrow(
+      'OID4VP 1.0 requires client_id "decentralized_identifier:did:…"; bare did: is not supported',
+    )
+  })
+
+  it('accepts signed decentralized_identifier:did:key JAR with vp_formats_supported', async () => {
+    const { secretKey, publicKey } = p256.keygen()
+    const holderDid = p256PublicKeyToDidKey(publicKey)
+    const clientId = `decentralized_identifier:${holderDid}`
+    const payload = {
+      response_type: 'vp_token',
+      client_id: clientId,
+      response_mode: 'direct_post',
+      state: 'did-key-state',
+      nonce: 'did-key-nonce',
+      response_uri: 'https://verifier.example.com:455/openid4vc/verify/session-1',
+      dcql_query: requestPayload.dcql_query,
+      client_metadata: {
+        vp_formats_supported: {
+          'dc+sd-jwt': {
+            'sd-jwt_alg_values': ['EdDSA', 'ES256'],
+            'kb-jwt_alg_values': ['EdDSA', 'ES256'],
+          },
+        },
+      },
+    }
+    const header = encodePart({
+      alg: 'ES256',
+      typ: 'oauth-authz-req+jwt',
+      kid: `${holderDid}#${holderDid.slice('did:key:'.length)}`,
+    })
+    const body = encodePart(payload)
+    const unsigned = `${header}.${body}`
+    const signature = signEs256Prehash(new TextEncoder().encode(unsigned), secretKey)
+    const jwt = `${unsigned}.${base64UrlEncodeBytes(signature)}`
+    const didTrustedVerifiers = [
+      {
+        clientId,
+        name: 'Did Key Verifier',
+        allowedOrigins: ['https://verifier.example.com:455'],
+      },
+    ]
+
+    const adapterResult = await parseAuthorizationRequestViaOid4vc(
+      { rawBody: jwt },
+      { trustedVerifiers: didTrustedVerifiers },
+    )
+
+    expect(adapterResult.authorizationRequest.client_id).toBe(clientId)
+    expect(adapterResult.authorizationRequest.nonce).toBe('did-key-nonce')
+    expect(adapterResult.authorizationRequest.dcql_query).toEqual(requestPayload.dcql_query)
   })
 
   it('verifies signed decentralized_identifier JARs via adapter verifyJwt', async () => {

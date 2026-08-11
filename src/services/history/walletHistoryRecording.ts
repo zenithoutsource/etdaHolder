@@ -1,26 +1,42 @@
 import { getCardSchema } from '../../config/cardSchemas'
+import {
+  readHistoryDocumentLabel,
+  readHistoryIssuerPartyName,
+} from '../../config/historyDisplayNames'
+import { readPresentationVerifierDisplayName } from '../../config/presentationVerifierMocks'
+import { WALLET_HISTORY_COPY } from '../../config/walletHistoryCopy'
 import type { ResolvedCredentialOffer, VerifiableCredentialRecord } from '../vci/exchangeService'
 import type { ResolvedPresentationRequest } from '../vp/presentationService'
 import {
   appendWalletHistoryEvent,
   classifyCredentialVerifyFailure,
   classifyPresentationFailure,
+  type WalletHistoryDeliveryPath,
   type WalletHistoryFailureReason,
 } from './walletEventLog'
+import { readActiveOfferDeliveryPath } from './historyDeliveryPath'
 import { readCredentialIssuerName } from '../credentials/credentialIssuer'
 
 export function recordOid4vpPresentationFailure(
   request: ResolvedPresentationRequest,
   error: unknown,
   disclosedClaims: string[],
+  deliveryPath?: WalletHistoryDeliveryPath,
 ): void {
+  const credentialType = request.matchedCredential.type
+  const verifierDisplayName = readPresentationVerifierDisplayName(
+    credentialType,
+    request.verifier.name,
+  )
   appendWalletHistoryEvent({
     kind: 'presentation-failed',
     credentialId: request.matchedCredential.id,
-    documentType: getCardSchema(request.matchedCredential.type).title,
-    partyName: request.verifier.name,
+    documentType: readHistoryDocumentLabel({ credentialType }),
+    partyName: verifierDisplayName,
     disclosedClaims,
     channel: 'oid4vp',
+    credentialType,
+    ...(deliveryPath ? { deliveryPath } : {}),
     reasonCode: classifyPresentationFailure(error),
   })
 }
@@ -39,14 +55,14 @@ export function recordWalletInitiatedPresentationFailure(input: {
   verifierReason?: string
   disclosedClaims: string[]
 }): void {
-  const schema = getCardSchema(input.record.type)
   appendWalletHistoryEvent({
     kind: 'presentation-failed',
     credentialId: input.record.id,
-    documentType: schema.title,
-    partyName: 'Verifier',
+    documentType: readHistoryDocumentLabel({ credentialType: input.record.type }),
+    partyName: WALLET_HISTORY_COPY.partyFallbackVerifier,
     disclosedClaims: input.disclosedClaims,
     channel: 'wallet',
+    credentialType: input.record.type,
     reasonCode: mapVerifierReasonToHistory(input.verifierReason),
   })
 }
@@ -60,17 +76,29 @@ export function recordCredentialVerifyFailed(input: {
   error: unknown
   credentialId?: string
   channel?: 'oid4vci' | 'renewal'
+  deliveryPath?: WalletHistoryDeliveryPath
 }): void {
   const offeredType = input.resolvedOffer.credentialConfigurations[0]?.id ?? 'Unknown'
   const schema = getCardSchema(offeredType)
+  const credentialType = schema.type !== '__fallback__' ? schema.type : offeredType
+  const offerDisplayName = input.resolvedOffer.credentialConfigurations[0]?.display?.name
+  const deliveryPath = input.deliveryPath ?? readActiveOfferDeliveryPath()
   appendWalletHistoryEvent({
     kind: 'credential-verify-failed',
     credentialId:
       input.credentialId ??
       `unverified:${input.resolvedOffer.issuer}:${offeredType}`,
-    documentType: schema.title,
-    partyName: schema.issuerName,
+    documentType: readHistoryDocumentLabel({
+      credentialType,
+      offerDisplayName,
+    }),
+    partyName: readHistoryIssuerPartyName({
+      credentialType,
+      protocolIssuerName: input.resolvedOffer.issuerDisplay?.name ?? schema.issuerName,
+    }),
     channel: input.channel ?? 'oid4vci',
+    credentialType,
+    ...(deliveryPath ? { deliveryPath } : {}),
     reasonCode: classifyCredentialVerifyFailure(input.error),
   })
 }
@@ -78,13 +106,16 @@ export function recordCredentialVerifyFailed(input: {
 export function recordCredentialRenewalCompleted(
   record: VerifiableCredentialRecord,
 ): void {
-  const schema = getCardSchema(record.type)
   appendWalletHistoryEvent({
     kind: 'credential-renewal-completed',
     credentialId: record.id,
-    documentType: schema.title,
-    partyName: readCredentialIssuerName(record),
+    documentType: readHistoryDocumentLabel({ credentialType: record.type }),
+    partyName: readHistoryIssuerPartyName({
+      credentialType: record.type,
+      protocolIssuerName: readCredentialIssuerName(record),
+    }),
     channel: 'renewal',
+    credentialType: record.type,
   })
 }
 
@@ -93,13 +124,13 @@ export function recordBackendSyncHistory(
   outcome: 'success' | 'failure',
   error?: unknown,
 ): void {
-  const schema = getCardSchema(record.type)
   appendWalletHistoryEvent({
     kind: outcome === 'success' ? 'backend-sync-success' : 'backend-sync-failed',
     credentialId: record.id,
-    documentType: schema.title,
-    partyName: 'Wallet Backend',
+    documentType: readHistoryDocumentLabel({ credentialType: record.type }),
+    partyName: WALLET_HISTORY_COPY.partyPlaceholderBackend,
     channel: 'backend',
+    credentialType: record.type,
     reasonCode: outcome === 'failure' ? classifyPresentationFailure(error) : undefined,
   })
 }
@@ -108,14 +139,14 @@ export function recordNfcPresentationSuccess(
   record: VerifiableCredentialRecord,
   disclosedLabels: string[],
 ): void {
-  const schema = getCardSchema(record.type)
   appendWalletHistoryEvent({
     kind: 'nfc-presentation-success',
     credentialId: record.id,
-    documentType: schema.title,
-    partyName: 'NFC Reader',
+    documentType: readHistoryDocumentLabel({ credentialType: record.type }),
+    partyName: WALLET_HISTORY_COPY.partyPlaceholderNfc,
     disclosedClaims: disclosedLabels,
     channel: 'nfc',
+    credentialType: record.type,
   })
 }
 
@@ -124,14 +155,14 @@ export function recordNfcPresentationFailure(
   disclosedLabels: string[],
   error?: unknown,
 ): void {
-  const schema = getCardSchema(record.type)
   appendWalletHistoryEvent({
     kind: 'nfc-presentation-failed',
     credentialId: record.id,
-    documentType: schema.title,
-    partyName: 'NFC Reader',
+    documentType: readHistoryDocumentLabel({ credentialType: record.type }),
+    partyName: WALLET_HISTORY_COPY.partyPlaceholderNfc,
     disclosedClaims: disclosedLabels,
     channel: 'nfc',
+    credentialType: record.type,
     reasonCode: error ? 'nfc-error' : 'unknown',
   })
 }
@@ -140,13 +171,13 @@ export function recordNfcPresentationDeclined(
   record: VerifiableCredentialRecord,
   disclosedLabels: string[],
 ): void {
-  const schema = getCardSchema(record.type)
   appendWalletHistoryEvent({
     kind: 'presentation-declined',
     credentialId: record.id,
-    documentType: schema.title,
-    partyName: 'NFC Reader',
+    documentType: readHistoryDocumentLabel({ credentialType: record.type }),
+    partyName: WALLET_HISTORY_COPY.partyPlaceholderNfc,
     disclosedClaims: disclosedLabels,
     channel: 'nfc',
+    credentialType: record.type,
   })
 }

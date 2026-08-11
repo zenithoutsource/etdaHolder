@@ -6,6 +6,28 @@ import {
 } from './dpopIssuanceSession'
 
 describe('dpopIssuanceSession', () => {
+  const originalDpopEnv = process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED
+
+  afterEach(() => {
+    if (originalDpopEnv === undefined) {
+      delete process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED
+    } else {
+      process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED = originalDpopEnv
+    }
+  })
+
+  test('is disabled by default for legacy issuer compatibility', () => {
+    delete process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED
+    const { isDpopIssuanceEnabled } = require('./dpopIssuanceSession') as typeof import('./dpopIssuanceSession')
+    expect(isDpopIssuanceEnabled()).toBe(false)
+  })
+
+  test('can be enabled explicitly via env', () => {
+    process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED = 'true'
+    const { isDpopIssuanceEnabled } = require('./dpopIssuanceSession') as typeof import('./dpopIssuanceSession')
+    expect(isDpopIssuanceEnabled()).toBe(true)
+  })
+
   test('creates a P-256 ES256 signer without Keychain', () => {
     const session = createDpopIssuanceSession()
 

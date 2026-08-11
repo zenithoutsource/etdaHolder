@@ -1,4 +1,7 @@
-import { getCardSchema } from '../../config/cardSchemas'
+import {
+  readHistoryDocumentLabel,
+  readHistoryIssuerPartyName,
+} from '../../config/historyDisplayNames'
 import { destroyCredentialKey } from '../crypto/credentialSigningKey'
 import { appendWalletHistoryEvent } from '../history/walletEventLog'
 import { getCredentialStorage } from '../storage/storage'
@@ -6,6 +9,7 @@ import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
 import { blocksCredentialPresentation, readCredentialRenewalStatuses } from './credentialKeyRenewal'
 import { readIssuerSuspensionStatuses } from './issuerSuspension'
+import { readCredentialIssuerName } from './credentialIssuer'
 import { readStoredCredentialById } from './storedCredentials'
 
 const LIFECYCLE_KEY_PREFIX = 'credential:lifecycle:'
@@ -53,13 +57,16 @@ export function recordCredentialLifecycleAction(
 
   const record = readStoredCredentialById(credentialId)
   if (record) {
-    const schema = getCardSchema(record.type)
     appendWalletHistoryEvent({
       kind: historyKindForLifecycleAction(action),
       credentialId,
-      documentType: schema.title,
-      partyName: schema.issuerName,
+      documentType: readHistoryDocumentLabel({ credentialType: record.type }),
+      partyName: readHistoryIssuerPartyName({
+        credentialType: record.type,
+        protocolIssuerName: readCredentialIssuerName(record),
+      }),
       channel: 'wallet',
+      credentialType: record.type,
       initiatedBy,
       occurredAt: status.occurredAt,
     })

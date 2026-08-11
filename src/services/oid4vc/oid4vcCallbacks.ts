@@ -7,7 +7,8 @@ import { sha256, sha384, sha512 } from '@noble/hashes/sha2.js'
 import { randomBytes } from 'react-native-quick-crypto'
 
 import { verifyEdDsaCompactJwt } from '@/src/services/crypto/eddsaJwtVerify'
-import { isRecord } from '@/src/utils/jwtUtils'
+import { verifyEs256CompactJwt } from '@/src/services/crypto/es256JwtVerify'
+import { isRecord, readString } from '@/src/utils/jwtUtils'
 
 export type Oid4vcCallbackMode = 'vp' | 'vci'
 
@@ -38,7 +39,13 @@ export function createOid4vcCallbacks(options?: CreateOid4vcCallbacksOptions): C
         return { verified: false as const }
       }
 
-      const verified = verifyEdDsaCompactJwt(jwt.compact, publicJwk)
+      const alg =
+        readString(jwtSigner.alg) ??
+        readString(isRecord(jwt.header) ? jwt.header.alg : undefined)
+      const verified =
+        alg === 'ES256'
+          ? verifyEs256CompactJwt(jwt.compact, publicJwk)
+          : verifyEdDsaCompactJwt(jwt.compact, publicJwk)
       return verified
         ? { verified: true as const, signerJwk: publicJwk }
         : { verified: false as const }

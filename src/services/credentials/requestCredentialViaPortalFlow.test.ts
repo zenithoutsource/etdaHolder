@@ -214,4 +214,25 @@ describe('requestCredentialViaPortalFlow', () => {
       }),
     )
   })
+
+  test('does not show empty-offer dialog when a portal wait is superseded by a retry', async () => {
+    openCredentialRequestPortalMock.mockResolvedValueOnce({ status: 'superseded' })
+    consumeLastPortalReturnMock.mockReturnValueOnce({
+      at: Date.now(),
+      credentialType: 'ThaiNationalID',
+      resultType: 'timeout-or-cancel',
+      source: 'none',
+      summary: emptyCallbackSummary,
+      outcome: 'empty-callback',
+    })
+
+    await requestCredentialViaPortalFlow({
+      credentialType: 'ThaiNationalID',
+      router,
+      showDialog,
+    })
+
+    expect(showDialog).not.toHaveBeenCalled()
+    expect(consumeLastPortalReturnMock).not.toHaveBeenCalled()
+  })
 })

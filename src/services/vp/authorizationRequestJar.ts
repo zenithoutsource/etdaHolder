@@ -6,14 +6,18 @@ import {
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
 import { verifyEdDsaCompactJwt } from '../crypto/eddsaJwtVerify'
+import { verifyEs256CompactJwt } from '../crypto/es256JwtVerify'
+import { didKeyToP256PublicJwk } from '../crypto/p256Identity'
 import {
   clientIdAllowsUnsignedRequestObject,
   clientIdRequiresSignedRequestObject,
   parseClientId,
   type SupportedClientIdScheme,
 } from './clientIdScheme'
+import { didKeyToEd25519PublicJwk } from './didKeyPublicJwk'
 import { resolveDidWebVerificationJwk } from './didWebResolver'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
+import { resolveJwkFromVerifierJwks } from './verifierJwks'
 
 export type ParseAuthorizationRequestBodyOptions = {
   trustedVerifiers: TrustedVerifier[]
@@ -67,6 +71,12 @@ async function parseVerifiedAuthorizationRequestJwt(
     throw new Error('PresentationRequestInvalid: client_id is required')
   }
 
+  if (clientId.startsWith('did:')) {
+    throw new Error(
+      'PresentationRequestInvalid: OID4VP 1.0 requires client_id "decentralized_identifier:did:…"; bare did: is not supported',
+    )
+  }
+
   const parsedClientId = parseClientId(clientId)
   if (parsedClientId.scheme === 'unknown' || parsedClientId.scheme === 'openid_federation') {
     throw new Error(`PresentationRequestUnsupported: client_id scheme ${parsedClientId.scheme} is not supported`)
@@ -111,9 +121,9 @@ async function parseVerifiedAuthorizationRequestJwt(
       header,
       trustedVerifiers: options.trustedVerifiers,
       fetchImpl: options.fetchImpl ?? fetch,
-    }).catch(() => undefined)
+    })
 
-    if (verificationJwk && !verifyAuthorizationRequestSignature(jwt, verificationJwk, alg)) {
+    if (!verifyAuthorizationRequestSignature(jwt, verificationJwk, alg)) {
       throw new Error('PresentationRequestInvalid: request object signature verification failed')
     }
   } else if (!clientIdAllowsUnsignedRequestObject(scheme)) {
@@ -151,8 +161,15 @@ export async function resolveRequestObjectVerificationJwk(input: {
   const trustedVerifier = input.responseUri
     ? findTrustedVerifier(input.clientId, input.responseUri, input.trustedVerifiers)
     : undefined
+  const headerKid = readString(input.header.kid)
 
-  if (trustedVerifier?.verificationJwk) return trustedVerifier.verificationJwk
+  if (trustedVerifier?.verificationJwk) {
+    const pinned = trustedVerifier.verificationJwk
+    const pinnedKid = readString(pinned.kid)
+    if (!headerKid || !pinnedKid || pinnedKid === headerKid) {
+      return pinned
+    }
+  }
 
   if (
     parsedClientId.scheme === 'decentralized_identifier' &&
@@ -167,22 +184,70 @@ export async function resolveRequestObjectVerificationJwk(input: {
 
     return resolveDidWebVerificationJwk(
       parsedClientId.originalClientId,
-      readString(input.header.kid),
+      headerKid,
       input.fetchImpl,
     )
+  }
+
+  if (
+    parsedClientId.scheme === 'decentralized_identifier' &&
+    parsedClientId.originalClientId.startsWith('did:key:')
+  ) {
+    if (!trustedVerifier) {
+      throw new Error('PresentationRequestInvalid: verifier is not trusted')
+    }
+    return resolveDidKeyVerificationJwk(parsedClientId.originalClientId, headerKid)
   }
 
   const headerJwk = input.header.jwk
   if (isRecord(headerJwk)) return headerJwk
 
+  if (parsedClientId.scheme === 'redirect_uri') {
+    if (!input.responseUri) {
+      throw new Error('PresentationRequestInvalid: response_uri is required')
+    }
+    if (!trustedVerifier) {
+      throw new Error('PresentationRequestInvalid: verifier is not trusted')
+    }
+
+    return resolveJwkFromVerifierJwks({
+      responseUri: input.responseUri,
+      kid: headerKid,
+      fetchImpl: input.fetchImpl,
+    })
+  }
+
   throw new Error('PresentationRequestInvalid: verifier signing key is not available')
 }
 
-function verifyAuthorizationRequestSignature(
+function resolveDidKeyVerificationJwk(did: string, kid: string | undefined): Record<string, unknown> {
+  const didWithoutFragment = did.split('#')[0]!
+  if (kid) {
+    const kidDid = kid.startsWith('did:') ? kid.split('#')[0]! : undefined
+    if (kidDid && kidDid !== didWithoutFragment) {
+      throw new Error('PresentationRequestInvalid: request object kid does not match client_id')
+    }
+  }
+
+  try {
+    return didKeyToP256PublicJwk(didWithoutFragment)
+  } catch {
+    // fall through to Ed25519
+  }
+
+  try {
+    return didKeyToEd25519PublicJwk(didWithoutFragment)
+  } catch {
+    throw new Error('PresentationRequestInvalid: unsupported did:key verifier signing key')
+  }
+}
+
+export function verifyAuthorizationRequestSignature(
   jwt: string,
   publicJwk: Record<string, unknown>,
   alg: string,
 ): boolean {
-  if (alg !== 'EdDSA') return false
-  return verifyEdDsaCompactJwt(jwt, publicJwk)
+  if (alg === 'EdDSA') return verifyEdDsaCompactJwt(jwt, publicJwk)
+  if (alg === 'ES256') return verifyEs256CompactJwt(jwt, publicJwk)
+  return false
 }

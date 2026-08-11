@@ -12,8 +12,8 @@ const deferredDpopSessions = new Map<string, DpopIssuanceSession>()
 
 export function isDpopIssuanceEnabled(): boolean {
   const raw = process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED
-  if (raw === 'false' || raw === '0') return false
-  return true
+  if (raw === 'true' || raw === '1') return true
+  return false
 }
 
 function base64UrlEncode(input: Buffer | string): string {

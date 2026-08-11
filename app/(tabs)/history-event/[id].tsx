@@ -45,7 +45,7 @@ export default function HistoryEventDetailScreen() {
             row={row}
             onHide={() => {
               hideWalletHistoryEvent(event.id);
-              router.back();
+              router.replace('/(tabs)/history');
             }}
           />
         </ScrollView>

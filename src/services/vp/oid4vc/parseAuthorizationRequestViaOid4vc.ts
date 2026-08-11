@@ -4,7 +4,6 @@ import {
 } from '@openid4vc/openid4vp'
 import type { CallbackContext, JwtSignerJwk } from '@openid4vc/oauth2'
 
-import { verifyEdDsaCompactJwt } from '@/src/services/crypto/eddsaJwtVerify'
 import {
   decodeJsonBase64Url,
   isRecord,
@@ -12,7 +11,12 @@ import {
   readString,
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
-import { resolveRequestObjectVerificationJwk } from '../authorizationRequestJar'
+import { logWalletError } from '@/src/services/debug/walletLogger'
+import {
+  resolveRequestObjectVerificationJwk,
+  verifyAuthorizationRequestSignature,
+} from '../authorizationRequestJar'
+import { parseClientId } from '../clientIdScheme'
 import { findTrustedVerifier, type TrustedVerifier } from '../trustedVerifierMatcher'
 import { createOid4vcCallbacks } from './oid4vcCallbacks'
 import type { AuthorizationRequestMaterial, Oid4vcAdapterContext } from './types'
@@ -30,7 +34,8 @@ function createAdapterVerifyJwtImpl(input: {
       }
 
       const alg = readString(jwtSigner.alg) ?? readString(header.alg)
-      if (!alg || alg === 'none' || alg !== 'EdDSA') {
+      if (!alg || alg === 'none' || (alg !== 'EdDSA' && alg !== 'ES256')) {
+        logWalletError('oid4vp', 'jar_verify_rejected_alg', new Error(`unsupported alg: ${alg ?? 'missing'}`))
         return { verified: false as const }
       }
 
@@ -52,21 +57,77 @@ function createAdapterVerifyJwtImpl(input: {
           fetchImpl: input.fetchImpl ?? fetch,
         })) as JwtSignerJwk['publicJwk']
       } else {
+        logWalletError(
+          'oid4vp',
+          'jar_verify_rejected_signer_method',
+          new Error(`unsupported signer method: ${jwtSigner.method}`),
+        )
         return { verified: false as const }
       }
 
-      if (!verificationJwk || !verifyEdDsaCompactJwt(jwt.compact, verificationJwk)) {
+      if (!verificationJwk || !verifyAuthorizationRequestSignature(jwt.compact, verificationJwk, alg)) {
+        logWalletError('oid4vp', 'jar_verify_signature_failed', new Error('signature mismatch or key resolve failed'), {
+          alg,
+          signerMethod: jwtSigner.method,
+          clientId: readString(payload.client_id),
+        })
         return { verified: false as const }
       }
 
       return { verified: true as const, signerJwk: verificationJwk }
-    } catch {
+    } catch (error) {
+      logWalletError('oid4vp', 'jar_verify_exception', error)
       return { verified: false as const }
     }
   }
 }
 
-function buildAuthorizationRequestInput(material: AuthorizationRequestMaterial): string | Record<string, unknown> {
+/**
+ * OID4VP 1.0 forbids signed request objects for `redirect_uri` client ids, and
+ * `@openid4vc/openid4vp` rejects JAR verification for that prefix. Trusted
+ * Verifiers may still ship ES256/EdDSA JARs with `kid` only — verify via JWKS
+ * (or header/pinned JWK), then pass the payload so the adapter never sees JAR.
+ *
+ * DID clients must use OID4VP 1.0 `decentralized_identifier:did:…` (signed JAR).
+ * Bare `did:` is rejected — it is a pre-1.0 draft form and conflicts with
+ * `vp_formats_supported` in @openid4vc version inference.
+ */
+async function verifyAndUnwrapRedirectUriJar(input: {
+  rawBody: string
+  header: Record<string, unknown>
+  payload: Record<string, unknown>
+  clientId: string
+  trustedVerifiers: TrustedVerifier[]
+  fetchImpl: typeof fetch
+  alg: string
+}): Promise<Record<string, unknown>> {
+  const verificationJwk = await resolveRequestObjectVerificationJwk({
+    clientId: input.clientId,
+    responseUri: readString(input.payload.response_uri),
+    header: input.header,
+    trustedVerifiers: input.trustedVerifiers,
+    fetchImpl: input.fetchImpl,
+  })
+  if (!verifyAuthorizationRequestSignature(input.rawBody, verificationJwk, input.alg)) {
+    throw new Error('PresentationRequestInvalid: request object signature verification failed')
+  }
+  return input.payload
+}
+
+function rejectBareDidClientId(clientId: string | undefined): void {
+  if (!clientId?.startsWith('did:')) return
+  throw new Error(
+    'PresentationRequestInvalid: OID4VP 1.0 requires client_id "decentralized_identifier:did:…"; bare did: is not supported',
+  )
+}
+
+async function buildAuthorizationRequestInput(
+  material: AuthorizationRequestMaterial,
+  options: {
+    trustedVerifiers: TrustedVerifier[]
+    fetchImpl: typeof fetch
+  },
+): Promise<string | Record<string, unknown>> {
   const rawBody = material.rawBody?.trim()
   if (rawBody) {
     if (looksLikeCompactJwt(rawBody)) {
@@ -80,10 +141,30 @@ function buildAuthorizationRequestInput(material: AuthorizationRequestMaterial):
         const payload = decodeJsonBase64Url<Record<string, unknown>>(payloadSegment)
         const alg = readString(header?.alg)
         if (!signatureSegment || !alg || alg === 'none') {
-          if (isRecord(payload)) return payload
-        } else if (isRecord(payload)) {
-          const jarParams: Record<string, unknown> = { request: rawBody }
+          if (isRecord(payload)) {
+            rejectBareDidClientId(readString(payload.client_id))
+            return payload
+          }
+        } else if (isRecord(header) && isRecord(payload)) {
           const clientId = readString(payload.client_id)
+          rejectBareDidClientId(clientId)
+          const scheme = clientId ? parseClientId(clientId).scheme : undefined
+
+          // Signed redirect_uri JARs are illegal in OID4VP 1.0 / @openid4vc —
+          // verify locally then unwrap.
+          if (clientId && scheme === 'redirect_uri') {
+            return verifyAndUnwrapRedirectUriJar({
+              rawBody,
+              header,
+              payload,
+              clientId,
+              trustedVerifiers: options.trustedVerifiers,
+              fetchImpl: options.fetchImpl,
+              alg,
+            })
+          }
+
+          const jarParams: Record<string, unknown> = { request: rawBody }
           if (clientId) jarParams.client_id = clientId
           return jarParams
         }
@@ -93,7 +174,10 @@ function buildAuthorizationRequestInput(material: AuthorizationRequestMaterial):
     return rawBody
   }
 
-  if (material.byValueParams) return material.byValueParams
+  if (material.byValueParams) {
+    rejectBareDidClientId(readString(material.byValueParams.client_id))
+    return material.byValueParams
+  }
 
   throw new Error('PresentationRequestInvalid: authorization request material is empty')
 }
@@ -162,21 +246,27 @@ export async function parseAuthorizationRequestViaOid4vc(
     throw new Error('PresentationRequestInvalid: client_id and response_uri are required')
   }
 
+  rejectBareDidClientId(clientId)
+
   const trustedVerifier = findTrustedVerifier(clientId, responseUri, options.trustedVerifiers)
   if (!trustedVerifier) {
     throw new Error('PresentationRequestInvalid: verifier is not trusted')
   }
 
+  const fetchImpl = options.fetchImpl ?? fetch
   const callbacks = createOid4vcCallbacks({
-    fetchImpl: options.fetchImpl,
+    fetchImpl,
     verifyJwtImpl: createAdapterVerifyJwtImpl({
       trustedVerifiers: options.trustedVerifiers,
-      fetchImpl: options.fetchImpl,
+      fetchImpl,
     }),
   })
 
   try {
-    const authorizationRequestInput = buildAuthorizationRequestInput(material)
+    const authorizationRequestInput = await buildAuthorizationRequestInput(material, {
+      trustedVerifiers: options.trustedVerifiers,
+      fetchImpl,
+    })
     const parsed = parseOpenid4vpAuthorizationRequest({ authorizationRequest: authorizationRequestInput })
 
     const resolved = await resolveOpenid4vpAuthorizationRequest({

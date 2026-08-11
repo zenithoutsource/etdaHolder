@@ -32,7 +32,7 @@ describe('holderRevokeService', () => {
 
     const result = await submitHolderRevokeRequest('transcript-1', {
       fetchImpl: fetchMock,
-      getHolderDid: () => 'did:key:z6Mkholder',
+      getHolderDid: (_credentialId: string) => 'did:key:z6Mkholder',
       signHolderStatusChangePop,
     })
 
@@ -91,7 +91,7 @@ describe('holderRevokeService', () => {
     await expect(
       submitHolderRevokeRequest('transcript-1', {
         fetchImpl: fetchMock,
-        getHolderDid: () => 'did:key:z6Mkholder',
+        getHolderDid: (_credentialId: string) => 'did:key:z6Mkholder',
         signHolderStatusChangePop: jest.fn().mockResolvedValue('pop.jwt.token'),
       }),
     ).rejects.toBeInstanceOf(HolderRevokeRejectedError)
@@ -103,7 +103,7 @@ describe('holderRevokeService', () => {
     await expect(
       submitHolderRevokeRequest('transcript-1', {
         fetchImpl: fetchMock,
-        getHolderDid: () => 'did:key:z6Mkholder',
+        getHolderDid: (_credentialId: string) => 'did:key:z6Mkholder',
         signHolderStatusChangePop: jest.fn(),
       }),
     ).rejects.toBeInstanceOf(HolderRevokeNetworkError)
@@ -122,11 +122,48 @@ describe('holderRevokeService', () => {
     await expect(
       submitHolderRevokeRequest('transcript-1', {
         fetchImpl: fetchMock,
-        getHolderDid: () => 'did:key:z6Mkholder',
+        getHolderDid: (_credentialId: string) => 'did:key:z6Mkholder',
         signHolderStatusChangePop: jest
           .fn()
           .mockRejectedValue(new Error('WalletKeySigningCancelled')),
       }),
     ).rejects.toBeInstanceOf(HolderRevokeSigningCancelledError)
+  })
+
+  test('submitHolderRevokeRequest resolves holder DID from credential id via dependency', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          nonce: 'nonce-abc',
+          audience: 'urn:wallet:dev:issuer:holder-revoke',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          status: 'revoked',
+          credentialId: 'urn:uuid:cred-1',
+          confirmedAt: '2026-07-08T12:00:00.000Z',
+        }),
+      })
+
+    await submitHolderRevokeRequest('urn:uuid:cred-1', {
+      fetchImpl: fetchMock,
+      getHolderDid: (credentialId) => `did:key:z6Mk${credentialId}`,
+      signHolderStatusChangePop: jest.fn().mockResolvedValue('pop.jwt.token'),
+    })
+
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          credentialId: 'urn:uuid:cred-1',
+          holderDid: 'did:key:z6Mkurn:uuid:cred-1',
+        }),
+      }),
+    )
   })
 })

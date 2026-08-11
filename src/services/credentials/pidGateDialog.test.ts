@@ -1,4 +1,8 @@
-import { buildPidGateDialogOptions } from './pidGateDialog'
+import {
+  buildPidGateDialogOptions,
+  shouldShowHomePidGateDialog,
+  showPidGateDialog,
+} from './pidGateDialog'
 import { WALLET_HOME_COPY } from './walletHomeCopy'
 
 describe('pidGateDialog', () => {
@@ -24,5 +28,25 @@ describe('pidGateDialog', () => {
       label: WALLET_HOME_COPY.requestThaId,
       onPress: onRequestThaId,
     })
+  })
+
+  test('showPidGateDialog no-ops when gate is already ready', () => {
+    const showDialog = jest.fn()
+
+    expect(() => {
+      showPidGateDialog(showDialog, 'ready', jest.fn())
+    }).not.toThrow()
+    expect(showDialog).not.toHaveBeenCalled()
+  })
+
+  test('home PID gate dialog only for typed non-PID rows that are blocked', () => {
+    expect(shouldShowHomePidGateDialog(undefined, 'ready')).toBe(false)
+    expect(shouldShowHomePidGateDialog(undefined, 'missing')).toBe(false)
+    expect(shouldShowHomePidGateDialog('ThaiNationalID', 'missing')).toBe(false)
+    expect(shouldShowHomePidGateDialog('DLTDrivingLicence', 'ready')).toBe(false)
+    expect(shouldShowHomePidGateDialog('DLTDrivingLicence', 'missing')).toBe(true)
+    expect(
+      shouldShowHomePidGateDialog('ChulalongkornUniversityTranscript', 'renewal-required'),
+    ).toBe(true)
   })
 })

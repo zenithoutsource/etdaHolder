@@ -102,7 +102,7 @@ export function HistoryItem({ item, onPress, onSuspendAccess }: HistoryItemProps
                   source={issuerLogoImages[issuerLogoKey]}
                   className="h-10 w-10"
                   resizeMode="contain"
-                  accessibilityLabel={`${item.partyName} logo`}
+                  accessibilityLabel={`${item.partyName} โลโก้`}
                 />
               ) : (
                 <View testID="history-item-issuer-icon">

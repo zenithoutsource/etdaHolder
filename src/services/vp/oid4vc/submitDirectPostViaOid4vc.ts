@@ -37,9 +37,15 @@ export async function submitDirectPostViaOid4vc(input: {
 
     const parsedBody = await readJsonResponse(result.response)
     if (!result.response.ok) {
-      const suffix = isRecord(parsedBody) && typeof parsedBody.error === 'string'
-        ? `: ${parsedBody.error}`
-        : ''
+      const error = isRecord(parsedBody) && typeof parsedBody.error === 'string' ? parsedBody.error : undefined
+      const description =
+        isRecord(parsedBody) && typeof parsedBody.error_description === 'string'
+          ? parsedBody.error_description
+          : isRecord(parsedBody) && typeof parsedBody.message === 'string'
+            ? parsedBody.message
+            : undefined
+      const suffix =
+        error && description ? `: ${error} - ${description}` : error ? `: ${error}` : description ? `: ${description}` : ''
       throw new Error(`PresentationSubmissionFailed: HTTP ${result.response.status}${suffix}`)
     }
 

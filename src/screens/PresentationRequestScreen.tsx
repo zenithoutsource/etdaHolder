@@ -18,18 +18,22 @@ import { resolvePresentationRequestUri } from '../services/credentials/resolvePr
 import { isPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
 import { notifyPresentationIntakeRejectionForUri } from '../services/vp/presentationIntakeRejection'
 import { describeUriForLog } from '../services/scan/scanLogDescriptors'
-import { isPresentationRequestDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
+import { isPresentationRequestDeeplink, isWithinDismissRedeliveryGrace, useDeeplinkStore } from '../store/deeplinkStore'
 import type { PresentationFlowOrigin } from '../services/vp/oid4vc/types'
 
 const MISSING_REQUEST_GRACE_MS = 1_500
 
 function readHydratedPresentationRequestUri(): string | null {
   const state = useDeeplinkStore.getState()
-  const candidate = state.activeUri ?? state.pendingUri
-  if (!candidate || !isPresentationRequestDeeplink(candidate)) return null
-  if (candidate === state.dismissedUri) return null
-  if (isPresentationRequestConsumed(candidate)) return null
-  return candidate
+  // Prefer pending over active: a newer deeplink is queued as pending while a
+  // failed/in-flight active request may still linger until beginRequest consumes it.
+  for (const candidate of [state.pendingUri, state.activeUri]) {
+    if (!candidate || !isPresentationRequestDeeplink(candidate)) continue
+    if (candidate === state.dismissedUri) continue
+    if (isPresentationRequestConsumed(candidate)) continue
+    return candidate
+  }
+  return null
 }
 
 function readHydratedPresentationFlowOrigin(): PresentationFlowOrigin {
@@ -44,6 +48,8 @@ function readPresentationUiOrigin(
 ): 'scanned-verifier-qr' | 'wallet-generated-qr' {
   return flowOrigin === 'my-qr' ? 'wallet-generated-qr' : 'scanned-verifier-qr'
 }
+
+type ExitReason = 'user' | 'consumed' | 'dismissed-stale' | 'missing'
 
 type Props = {
   initialRequestUri?: string | null
@@ -65,6 +71,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   const lastStartedRequestRef = useRef<string | null>(readHydratedPresentationRequestUri())
   const initialUrlCheckedRef = useRef(false)
   const directUrlHandledRef = useRef<string | null>(null)
+  const exitingRef = useRef(false)
   const [requestUri, setRequestUri] = useState<string | null>(readHydratedPresentationRequestUri)
   const [presentationFlowOrigin, setPresentationFlowOrigin] = useState<PresentationFlowOrigin>(
     readHydratedPresentationFlowOrigin,
@@ -74,9 +81,21 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
 
   const beginRequest = useCallback((uri: string, flowOrigin?: PresentationFlowOrigin) => {
     if (!isPresentationRequestDeeplink(uri)) return false
-    if (uri === dismissedDeeplinkUri) return false
+    const store = useDeeplinkStore.getState()
+    if (uri === store.dismissedUri) {
+      if (isWithinDismissRedeliveryGrace(store.dismissedAtMs)) return false
+      store.clearDismissedDeeplinkUri()
+    }
     if (isPresentationRequestConsumed(uri)) return false
-    if (uri === lastStartedRequestRef.current) return false
+
+    const alreadyStarted = uri === lastStartedRequestRef.current
+    if (alreadyStarted) {
+      // Hydration may have primed lastStarted/requestUri without consuming pending.
+      if (uri === useDeeplinkStore.getState().pendingUri) {
+        useDeeplinkStore.getState().consumePendingDeeplinkUri()
+      }
+      return false
+    }
 
     const resolvedFlowOrigin = flowOrigin
       ?? (uri === pendingDeeplinkUri || uri === activeDeeplinkUri
@@ -94,7 +113,39 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     }
     logWalletStep('presentation-request', 'request-detected', describeUriForLog(uri))
     return true
-  }, [activeDeeplinkUri, activePresentationFlowOrigin, dismissedDeeplinkUri, pendingDeeplinkUri, pendingPresentationFlowOrigin])
+  }, [activeDeeplinkUri, activePresentationFlowOrigin, pendingDeeplinkUri, pendingPresentationFlowOrigin])
+
+  /**
+   * Sole exit from the VP screen. Dismisses the current URI (when applicable),
+   * lands on Wallet home, and never opens the intake modal for dismissed redelivery.
+   */
+  const exitPresentationFlow = useCallback((reason: ExitReason, uriForLog?: string | null) => {
+    if (exitingRef.current) return
+    exitingRef.current = true
+    setIsFinishing(true)
+
+    const state = useDeeplinkStore.getState()
+    const uriToDismiss = activeRequestUriRef.current
+      ?? (state.activeUri && isPresentationRequestDeeplink(state.activeUri) ? state.activeUri : null)
+      ?? (state.pendingUri && isPresentationRequestDeeplink(state.pendingUri) ? state.pendingUri : null)
+      ?? (uriForLog && isPresentationRequestDeeplink(uriForLog) ? uriForLog : null)
+
+    if (uriToDismiss && reason !== 'missing') {
+      setDismissedDeeplinkUri(uriToDismiss)
+    }
+
+    if (reason === 'consumed' && uriForLog) {
+      notifyPresentationIntakeRejectionForUri(uriForLog)
+    }
+
+    activeRequestUriRef.current = null
+    lastStartedRequestRef.current = null
+    logWalletStep('presentation-request', 'exit-flow', {
+      reason,
+      ...(uriForLog ? describeUriForLog(uriForLog) : {}),
+    })
+    returnToWallet()
+  }, [returnToWallet, setDismissedDeeplinkUri])
 
   useEffect(() => {
     if (isFinishing) return
@@ -135,7 +186,18 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
         const initialRequest = resolvePresentationRequestUri(initialUrl)
         if (initialRequest) {
           directUrlHandledRef.current = initialRequest
-          beginRequest(initialRequest, 'same-device')
+          if (beginRequest(initialRequest, 'same-device')) return
+          if (isPresentationRequestConsumed(initialRequest)) {
+            logWalletStep('presentation-request', 'stale-initial-request-rejected', describeUriForLog(initialRequest))
+            exitPresentationFlow('consumed', initialRequest)
+            return
+          }
+          if (initialRequest === useDeeplinkStore.getState().dismissedUri) {
+            logWalletStep('presentation-request', 'dismissed-initial-request-ignored', describeUriForLog(initialRequest))
+            exitPresentationFlow('dismissed-stale', initialRequest)
+            return
+          }
+          graceTimer = setTimeout(showMissingRequestError, MISSING_REQUEST_GRACE_MS)
           return
         }
         graceTimer = setTimeout(showMissingRequestError, MISSING_REQUEST_GRACE_MS)
@@ -153,6 +215,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   }, [
     activeDeeplinkUri,
     beginRequest,
+    exitPresentationFlow,
     incomingUrl,
     initialRequestUri,
     isFinishing,
@@ -173,57 +236,78 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   useEffect(() => {
     if (isFinishing || requestUri) return
 
+    const store = useDeeplinkStore.getState()
+    const dismissedActive = store.dismissedUri != null
+      && isWithinDismissRedeliveryGrace(store.dismissedAtMs)
+
     const blockedUri = [pendingDeeplinkUri, activeDeeplinkUri, resolvePresentationRequestUri(incomingUrl)]
       .find((uri) => (
         uri
         && isPresentationRequestDeeplink(uri)
-        && (uri === dismissedDeeplinkUri || isPresentationRequestConsumed(uri))
+        && (
+          isPresentationRequestConsumed(uri)
+          || (dismissedActive && uri === store.dismissedUri)
+        )
       ))
 
     if (blockedUri) {
-      if (useDeeplinkStore.getState().pendingUri === blockedUri) {
-        useDeeplinkStore.getState().setDismissedDeeplinkUri(blockedUri)
+      if (isPresentationRequestConsumed(blockedUri)) {
+        logWalletStep('presentation-request', 'stale-request-rejected', describeUriForLog(blockedUri))
+        exitPresentationFlow('consumed', blockedUri)
+      } else {
+        logWalletStep('presentation-request', 'dismissed-request-ignored', describeUriForLog(blockedUri))
+        exitPresentationFlow('dismissed-stale', blockedUri)
       }
-      logWalletStep('presentation-request', 'stale-request-rejected', describeUriForLog(blockedUri))
-      notifyPresentationIntakeRejectionForUri(blockedUri)
-      setIsFinishing(true)
-      returnToWallet()
       return
     }
 
-    if (pendingDeeplinkUri || activeDeeplinkUri) return
+    // Recover from a remount that left requestUri null while a usable VP URI is
+    // still in the store (e.g. after submit failure + newer deeplink + back).
+    const recoverableUri = [pendingDeeplinkUri, activeDeeplinkUri]
+      .find((uri) => (
+        !!uri
+        && isPresentationRequestDeeplink(uri)
+        && !(dismissedActive && uri === store.dismissedUri)
+        && !isPresentationRequestConsumed(uri)
+      ))
+    if (recoverableUri) {
+      if (beginRequest(recoverableUri)) return
+      if (recoverableUri === lastStartedRequestRef.current) {
+        setRequestUri(recoverableUri)
+      }
+      return
+    }
+
     if (!initialUrlCheckedRef.current) return
 
     const directRequest = resolvePresentationRequestUri(incomingUrl)
     const staleUri = directRequest ?? lastStartedRequestRef.current
     if (
       staleUri
-      && (staleUri === dismissedDeeplinkUri || isPresentationRequestConsumed(staleUri))
+      && (
+        isPresentationRequestConsumed(staleUri)
+        || (dismissedActive && staleUri === store.dismissedUri)
+      )
     ) {
-      notifyPresentationIntakeRejectionForUri(staleUri)
-      setIsFinishing(true)
-      returnToWallet()
+      exitPresentationFlow(
+        isPresentationRequestConsumed(staleUri) ? 'consumed' : 'dismissed-stale',
+        staleUri,
+      )
     }
   }, [
     activeDeeplinkUri,
+    beginRequest,
     dismissedDeeplinkUri,
+    exitPresentationFlow,
     incomingUrl,
     isFinishing,
     pendingDeeplinkUri,
     requestUri,
-    returnToWallet,
   ])
 
   const finish = useCallback(() => {
-    setIsFinishing(true)
-    const uriToDismiss = activeRequestUriRef.current
-    if (uriToDismiss) {
-      setDismissedDeeplinkUri(uriToDismiss)
-    }
-    activeRequestUriRef.current = null
-    lastStartedRequestRef.current = null
-    returnToWallet()
-  }, [returnToWallet, setDismissedDeeplinkUri])
+    exitPresentationFlow('user')
+  }, [exitPresentationFlow])
 
   const finishAfterPresentation = useCallback(() => {
     void (async () => {
@@ -260,10 +344,33 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
   }
 
   if (isFinishing) {
-    return null
+    return <SafeAreaView className="flex-1 bg-surface-soft" />
   }
 
   if (!requestUri) {
+    const incomingRequest = resolvePresentationRequestUri(incomingUrl)
+    const staleIncoming = Boolean(
+      incomingRequest
+      && (
+        incomingRequest === dismissedDeeplinkUri
+        || isPresentationRequestConsumed(incomingRequest)
+      ),
+    )
+    const hasUsableStoreUri = Boolean(
+      (pendingDeeplinkUri
+        && isPresentationRequestDeeplink(pendingDeeplinkUri)
+        && pendingDeeplinkUri !== dismissedDeeplinkUri
+        && !isPresentationRequestConsumed(pendingDeeplinkUri))
+      || (activeDeeplinkUri
+        && isPresentationRequestDeeplink(activeDeeplinkUri)
+        && activeDeeplinkUri !== dismissedDeeplinkUri
+        && !isPresentationRequestConsumed(activeDeeplinkUri)),
+    )
+    // Never flash the loading copy for a dismissed/expired deeplink after Back.
+    if (staleIncoming || !hasUsableStoreUri) {
+      return <SafeAreaView className="flex-1 bg-surface-soft" />
+    }
+
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
         <ActivityIndicator />

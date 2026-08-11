@@ -160,7 +160,7 @@ const PRIMARY_ID_KEYS = [
   "idNumber",
 ];
 const EMPTY_VALUE = "-";
-const MOCK_ID_CARD_ENGLISH_NAME = "Miss Pitchaya Rungruangkit";
+const MOCK_ID_CARD_ENGLISH_NAME = "Ms. Thodsopp Eekkasandigital";
 const MOCK_TRANSCRIPT_ENGLISH_NAME = "Ms. Thodsopp Eekkasandigital";
 const MOCK_ID_CARD_ADDRESS =
   "123/45 ถนนราชดำเนิน แขวงพระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200";

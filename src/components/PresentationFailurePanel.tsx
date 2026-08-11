@@ -22,6 +22,8 @@ const FAILURE_ICON: Record<PresentationFailureKind, keyof typeof MaterialCommuni
   'issuer-untrusted': 'shield-alert-outline',
   'request-unsupported': 'file-cancel-outline',
   'request-invalid': 'file-remove-outline',
+  'request-expired': 'link-off',
+  'request-unreachable': 'cloud-off-outline',
   'holder-binding': 'link-variant-off',
   timeout: 'timer-sand',
   'biometric-cancelled': 'fingerprint-off',

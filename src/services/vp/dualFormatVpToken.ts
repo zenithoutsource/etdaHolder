@@ -69,6 +69,7 @@ async function buildDcqlCredentialToken(input: {
       sdJwt: selectSdJwtDisclosures(
         input.request.matchedCredential.rawVc,
         readDcqlPresentationClaimKeys(input),
+        { documentType: input.request.matchedCredential.type },
       ),
       credentialId: input.request.matchedCredential.id,
     })

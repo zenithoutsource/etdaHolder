@@ -36,6 +36,24 @@ describe('retrieveCredentialViaOid4vc', () => {
     mockRequestNonce.mockReset()
   })
 
+  test('passes OID4VCI 1.0 proofs.jwt instead of legacy proof object', async () => {
+    mockRetrieveCredentials.mockResolvedValue({ credential: 'vc.jwt' })
+
+    await retrieveCredentialViaOid4vc({
+      oid4vcContext,
+      accessToken: 'access-token',
+      proofJwt: 'proof.jwt',
+      credentialConfigurationId: 'test-config',
+    })
+
+    expect(mockRetrieveCredentials).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proofs: { jwt: ['proof.jwt'] },
+      }),
+    )
+    expect(mockRetrieveCredentials.mock.calls[0]?.[0]).not.toHaveProperty('proof')
+  })
+
   test('maps invalid_proof credential errors to InvalidProofError with c_nonce', async () => {
     mockRetrieveCredentials.mockRejectedValue(
       new Openid4vciRetrieveCredentialsError('invalid proof', {

@@ -77,6 +77,8 @@ export function storePendingFromIssuanceCallbackUrl(
     return parsed
   }
   if (parsed.kind === 'credential_offer' || parsed.kind === 'presentation_request') {
+    // Keep dismissed blocked here: getInitialURL / cold replay must not resurrect a
+    // user-closed request. Warm reopen uses setIncomingDeeplinkUri / layout listener.
     if (
       parsed.uri === useDeeplinkStore.getState().dismissedUri
       || (
@@ -92,7 +94,10 @@ export function storePendingFromIssuanceCallbackUrl(
         origin: 'same-device',
       })
     } else {
-      useDeeplinkStore.getState().setPendingDeeplinkUri(parsed.uri)
+      useDeeplinkStore.getState().setPendingCredentialOffer({
+        uri: parsed.uri,
+        origin: 'same-device',
+      })
     }
   }
   return parsed

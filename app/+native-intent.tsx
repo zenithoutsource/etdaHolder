@@ -2,9 +2,10 @@ import { redirectWalletSystemPath } from '@/src/services/credentials/redirectIss
 
 export function redirectSystemPath({
   path,
+  initial,
 }: {
   path: string
   initial: boolean
-}): string {
-  return redirectWalletSystemPath(path)
+}): string | null {
+  return redirectWalletSystemPath(path, { initial })
 }

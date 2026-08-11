@@ -6,6 +6,7 @@ import {
   storeMdocCredential,
 } from '../proximity/mdocStorage'
 import { markCredentialAsNew as defaultMarkCredentialAsNew } from './credentialBadges'
+import { removeStoredCredential } from './storedCredentials'
 import {
   acquireCredentialRecord,
   appendCredentialReceivedHistory,
@@ -45,10 +46,54 @@ import {
   discardPendingCredentialKey,
   destroyCredentialKey,
 } from '../crypto/credentialSigningKey'
+import {
+  bindPendingHardwareKeyToCredential,
+  createPendingHardwareCredentialKey,
+  discardPendingHardwareCredentialKey,
+  destroyHardwareCredentialKey,
+} from '../crypto/hardwareCredentialSigningKey'
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
+import { usesPerCredentialSigning } from '../crypto/perCredentialSigning'
+import type { CredentialKeyRecord } from '../crypto/credentialKeyRegistry'
+import type { EncryptedCredentialKeyRecord } from '../crypto/encryptedCredentialKeyRegistry'
 import { withIssuanceKeySession } from '../crypto/issuanceKeySession'
 import { isWalletCryptoV2Enabled } from '../crypto/walletCryptoActivation'
 
 const HOLDER_BINDING_REF = 'etda_wallet_signing_key'
+
+async function createPendingCredentialKeyForIssuance(): Promise<string> {
+  if (isHardwareP256SigningEnabled()) {
+    return createPendingHardwareCredentialKey()
+  }
+  return createPendingCredentialKey()
+}
+
+async function bindPendingCredentialKeyForIssuance(
+  pendingCredentialKeyId: string,
+  credentialId: string,
+  credentialType: string,
+): Promise<CredentialKeyRecord | EncryptedCredentialKeyRecord> {
+  if (isHardwareP256SigningEnabled()) {
+    return bindPendingHardwareKeyToCredential(pendingCredentialKeyId, credentialId, credentialType)
+  }
+  return bindPendingKeyToCredential(pendingCredentialKeyId, credentialId, credentialType)
+}
+
+async function discardPendingCredentialKeyForIssuance(pendingCredentialKeyId: string): Promise<void> {
+  if (isHardwareP256SigningEnabled()) {
+    await discardPendingHardwareCredentialKey(pendingCredentialKeyId)
+    return
+  }
+  await discardPendingCredentialKey(pendingCredentialKeyId)
+}
+
+async function destroyCredentialKeyForIssuance(credentialId: string): Promise<void> {
+  if (isHardwareP256SigningEnabled()) {
+    await destroyHardwareCredentialKey(credentialId)
+    return
+  }
+  await destroyCredentialKey(credentialId)
+}
 
 export type DualFormatClaimResult = {
   primaryRecord: VerifiableCredentialRecord
@@ -82,6 +127,7 @@ export type DualFormatClaimOptions = ClaimCredentialOptions & {
 export type DualFormatClaimDependencies = ClaimCredentialDependencies & {
   acquireCredentialRecord?: typeof acquireCredentialRecord
   storeMdoc?: typeof storeMdocCredential
+  deleteMdoc?: typeof deleteStoredMdoc
   createPendingCredentialKey?: typeof createPendingCredentialKey
   bindPendingCredentialKey?: typeof bindPendingKeyToCredential
   discardPendingCredentialKey?: typeof discardPendingCredentialKey
@@ -134,6 +180,18 @@ export async function acquireDrivingLicenceMdocOnlyForPreview(
   resolvedOffer: ResolvedCredentialOffer,
   options: DualFormatClaimOptions = {},
 ): Promise<DualFormatPreviewResult> {
+  if (shouldOpenIssuanceKeySession(options)) {
+    return withIssuanceKeySession(async (session) => {
+      await session.activateV2IfNeeded()
+      const result = await acquireDrivingLicenceMdocOnlyForPreview(resolvedOffer, {
+        ...options,
+        pendingCredentialKeyId: session.pendingCredentialKeyId,
+        proofSession: session.proofSession,
+      })
+      return bindPreviewResultBeforeSessionClose(result, session)
+    })
+  }
+
   const group = findDualFormatGroup(resolvedOffer.credentialConfigurations)
   if (!group?.sdJwt || !group?.mdoc) {
     throw new Error('DualFormatOfferMissing: offer does not include both dc+sd-jwt and mso_mdoc configurations')
@@ -148,7 +206,7 @@ export async function acquireDrivingLicenceMdocOnlyForPreview(
   }
   const acquireRecord = dependencies.acquireCredentialRecord ?? acquireCredentialRecord
   const mdocOffer = sliceOfferForConfiguration(resolvedOffer, group.mdoc.configurationId)
-  const discardPendingKey = dependencies.discardPendingCredentialKey ?? discardPendingCredentialKey
+  const discardPendingKey = dependencies.discardPendingCredentialKey ?? discardPendingCredentialKeyForIssuance
 
   logWalletStep('oid4vci', 'driving-licence-mdoc-only-preview-start', {
     issuer: resolvedOffer.issuer,
@@ -171,11 +229,11 @@ export async function acquireDrivingLicenceMdocOnlyForPreview(
   let credentialKeyId = options.pendingCredentialKeyId ?? options.proofSession?.credentialKeyId
   if (
     !credentialKeyId
-    && isWalletCryptoV2Enabled()
+    && usesPerCredentialSigning()
     && !options.proofSession
     && (dependencies.createProofSigningSession || acquireRecord === acquireCredentialRecord)
   ) {
-    const createPendingKey = dependencies.createPendingCredentialKey ?? createPendingCredentialKey
+    const createPendingKey = dependencies.createPendingCredentialKey ?? createPendingCredentialKeyForIssuance
     credentialKeyId = await createPendingKey()
   }
 
@@ -236,6 +294,18 @@ export async function acquireDualFormatForPreview(
   resolvedOffer: ResolvedCredentialOffer,
   options: DualFormatClaimOptions = {},
 ): Promise<DualFormatPreviewResult> {
+  if (shouldOpenIssuanceKeySession(options)) {
+    return withIssuanceKeySession(async (session) => {
+      await session.activateV2IfNeeded()
+      const result = await acquireDualFormatForPreview(resolvedOffer, {
+        ...options,
+        pendingCredentialKeyId: session.pendingCredentialKeyId,
+        proofSession: session.proofSession,
+      })
+      return bindPreviewResultBeforeSessionClose(result, session)
+    })
+  }
+
   const group = findDualFormatGroup(resolvedOffer.credentialConfigurations)
   if (!group?.sdJwt || !group.mdoc) {
     throw new Error('DualFormatOfferMissing: offer does not include both dc+sd-jwt and mso_mdoc configurations')
@@ -278,7 +348,7 @@ export async function acquireDualFormatForPreview(
     options,
     dependencies,
   )
-  const discardPendingKey = dependencies.discardPendingCredentialKey ?? discardPendingCredentialKey
+  const discardPendingKey = dependencies.discardPendingCredentialKey ?? discardPendingCredentialKeyForIssuance
   let ownedProofSession: NonNullable<ClaimCredentialOptions['proofSession']> | undefined
   try {
     throwIfDualFormatAcquisitionAborted(options.signal)
@@ -444,9 +514,9 @@ export async function finalizeDualFormatCredential(
   const saveRecord = options.saveCredentialRecord
     ?? ((savedRecord: VerifiableCredentialRecord) =>
       saveCredentialRecord(savedRecord, { getCredentialStorage, appendHistory: false }))
-  const bindPendingCredentialKey = options.bindPendingCredentialKey ?? bindPendingKeyToCredential
-  const discardPendingKey = options.discardPendingCredentialKey ?? discardPendingCredentialKey
-  const destroyCredentialKeyForRecord = options.destroyCredentialKey ?? destroyCredentialKey
+  const bindPendingCredentialKey = options.bindPendingCredentialKey ?? bindPendingCredentialKeyForIssuance
+  const discardPendingKey = options.discardPendingCredentialKey ?? discardPendingCredentialKeyForIssuance
+  const destroyCredentialKeyForRecord = options.destroyCredentialKey ?? destroyCredentialKeyForIssuance
   const saveLogical = options.saveLogicalCredential ?? saveLogicalCredential
   const markCredentialAsNew = options.markCredentialAsNew ?? defaultMarkCredentialAsNew
   let mdocWriteAttempted = false
@@ -555,9 +625,9 @@ async function finalizeMdocOnlyCredential(
   const saveRecord = options.saveCredentialRecord
     ?? ((savedRecord: VerifiableCredentialRecord) =>
       saveCredentialRecord(savedRecord, { getCredentialStorage, appendHistory: false }))
-  const bindPendingCredentialKey = options.bindPendingCredentialKey ?? bindPendingKeyToCredential
-  const discardPendingKey = options.discardPendingCredentialKey ?? discardPendingCredentialKey
-  const destroyCredentialKeyForRecord = options.destroyCredentialKey ?? destroyCredentialKey
+  const bindPendingCredentialKey = options.bindPendingCredentialKey ?? bindPendingCredentialKeyForIssuance
+  const discardPendingKey = options.discardPendingCredentialKey ?? discardPendingCredentialKeyForIssuance
+  const destroyCredentialKeyForRecord = options.destroyCredentialKey ?? destroyCredentialKeyForIssuance
   const saveLogical = options.saveLogicalCredential ?? saveLogicalCredential
   const markCredentialAsNew = options.markCredentialAsNew ?? defaultMarkCredentialAsNew
   let mdocWriteAttempted = false
@@ -816,6 +886,7 @@ export async function claimDualFormatCredential(
   }
   const acquireRecord = dependencies.acquireCredentialRecord ?? acquireCredentialRecord
   const storeMdoc = dependencies.storeMdoc ?? storeMdocCredential
+  const deleteMdoc = dependencies.deleteMdoc ?? deleteStoredMdoc
 
   const sdJwtOffer = sliceOfferForConfiguration(resolvedOffer, group.sdJwt.configurationId)
   const mdocOffer = sliceOfferForConfiguration(resolvedOffer, group.mdoc.configurationId)
@@ -849,7 +920,7 @@ export async function claimDualFormatCredential(
     options,
     dependencies,
   )
-  const discardPendingKey = dependencies.discardPendingCredentialKey ?? discardPendingCredentialKey
+  const discardPendingKey = dependencies.discardPendingCredentialKey ?? discardPendingCredentialKeyForIssuance
   let ownedProofSession: NonNullable<ClaimCredentialOptions['proofSession']> | undefined
   try {
     throwIfDualFormatAcquisitionAborted(options.signal)
@@ -870,164 +941,209 @@ export async function claimDualFormatCredential(
   const acquireDependencies = proofSession
     ? { ...dependencies, signProof: proofSession.signProof }
     : dependencies
-  const bindPendingKey = dependencies.bindPendingCredentialKey ?? bindPendingKeyToCredential
+  const bindPendingKey = dependencies.bindPendingCredentialKey ?? bindPendingCredentialKeyForIssuance
   let credentialKeyBound = false
+  let savedSdJwtCredentialId: string | undefined
+  let mdocBindFailed = false
 
   try {
-  throwIfDualFormatAcquisitionAborted(options.signal)
-  let sdJwtRecord: VerifiableCredentialRecord | undefined
-  let mdocBytes: Uint8Array | undefined
-  let mdocDocType: string | undefined
-  let mdocStored = false
-  let missingFormat: DualFormatClaimResult['missingFormat']
-  let sdJwtError: unknown
-  let mdocError: unknown
-
-  try {
-    sdJwtRecord = await acquireRecord(sdJwtOffer, {
-      ...options,
-      ...(proofSession ? { proofSession } : {}),
-      ...(credentialKeyId ? { pendingCredentialKeyId: credentialKeyId } : {}),
-      ...(credentialKeyId ? { deferCredentialKeyBinding: true } : {}),
-      onCNonceUpdated,
-      dependencies: acquireDependencies,
-      reuseToken: { ...sharedToken, cNonce: currentNonce },
-    })
     throwIfDualFormatAcquisitionAborted(options.signal)
-    saveCredentialRecord(sdJwtRecord, { getCredentialStorage: dependencies.getCredentialStorage })
-  } catch (error) {
-    if (options.signal?.aborted) throw error
-    sdJwtError = error
-    logWalletError('oid4vci', 'dual-format-sd-jwt-failed', error)
-    missingFormat = 'dc+sd-jwt'
-  }
+    let sdJwtRecord: VerifiableCredentialRecord | undefined
+    let mdocBytes: Uint8Array | undefined
+    let mdocDocType: string | undefined
+    let mdocStored = false
+    let missingFormat: DualFormatClaimResult['missingFormat']
+    let sdJwtError: unknown
+    let mdocError: unknown
 
-  throwIfDualFormatAcquisitionAborted(options.signal)
-  try {
-    const pendingMdoc = await acquirePendingMdoc(
-      mdocOffer,
-      group.mdoc.configurationId,
-      {
+    try {
+      sdJwtRecord = await acquireRecord(sdJwtOffer, {
         ...options,
         ...(proofSession ? { proofSession } : {}),
         ...(credentialKeyId ? { pendingCredentialKeyId: credentialKeyId } : {}),
         ...(credentialKeyId ? { deferCredentialKeyBinding: true } : {}),
         onCNonceUpdated,
-      },
-      acquireDependencies,
-      acquireRecord,
-      { ...sharedToken, cNonce: currentNonce },
-      {
-        issuer: resolvedOffer.issuer,
-        logicalCredentialId: group.logicalCredentialIdHint,
-        sdJwtConfigurationId: group.sdJwt.configurationId,
-      },
-    )
+        dependencies: acquireDependencies,
+        reuseToken: { ...sharedToken, cNonce: currentNonce },
+      })
+      throwIfDualFormatAcquisitionAborted(options.signal)
+      saveCredentialRecord(sdJwtRecord, { getCredentialStorage: dependencies.getCredentialStorage })
+      savedSdJwtCredentialId = sdJwtRecord.id
+      // Bind immediately after SD-JWT persist so a later mdoc failure cannot leave a
+      // stored VC without a lasting biometric-bound credential key.
+      if (credentialKeyId && !credentialKeyBound) {
+        try {
+          await bindSharedCredentialKey(credentialKeyId, sdJwtRecord, proofSession, bindPendingKey)
+          credentialKeyBound = true
+        } catch (bindError) {
+          removeStoredCredential(sdJwtRecord.id, dependencies.getCredentialStorage)
+          savedSdJwtCredentialId = undefined
+          throw bindError
+        }
+      }
+    } catch (error) {
+      if (options.signal?.aborted) throw error
+      // Bind/post-save failure: MMKV already rolled back when needed — fail closed.
+      if (credentialKeyId && sdJwtRecord && !credentialKeyBound) {
+        throw error
+      }
+      sdJwtError = error
+      logWalletError('oid4vci', 'dual-format-sd-jwt-failed', error)
+      missingFormat = 'dc+sd-jwt'
+      sdJwtRecord = undefined
+      savedSdJwtCredentialId = undefined
+    }
+
     throwIfDualFormatAcquisitionAborted(options.signal)
-    mdocDocType = pendingMdoc.docType
-    const acquiredMdocBytes = base64UrlToBytes(pendingMdoc.rawBase64)
-
-    const credentialId = sdJwtRecord?.id ?? deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId)
-    await storeMdoc({ credentialId, docType: mdocDocType }, acquiredMdocBytes)
-    mdocBytes = acquiredMdocBytes
-    mdocStored = true
-    if (credentialKeyId && !credentialKeyBound) {
-      await bindSharedCredentialKey(
-        credentialKeyId,
-        sdJwtRecord ?? {
-          id: credentialId,
-          type: readDocumentTypeFromOffer(resolvedOffer),
-          rawVc: '',
-          claims: {},
-          issuedAt: new Date().toISOString(),
+    try {
+      const pendingMdoc = await acquirePendingMdoc(
+        mdocOffer,
+        group.mdoc.configurationId,
+        {
+          ...options,
+          ...(proofSession ? { proofSession } : {}),
+          ...(credentialKeyId ? { pendingCredentialKeyId: credentialKeyId } : {}),
+          ...(credentialKeyId ? { deferCredentialKeyBinding: true } : {}),
+          onCNonceUpdated,
         },
-        proofSession,
-        bindPendingKey,
+        acquireDependencies,
+        acquireRecord,
+        { ...sharedToken, cNonce: currentNonce },
+        {
+          issuer: resolvedOffer.issuer,
+          logicalCredentialId: group.logicalCredentialIdHint,
+          sdJwtConfigurationId: group.sdJwt.configurationId,
+        },
       )
-      credentialKeyBound = true
-    }
-  } catch (error) {
-    if (options.signal?.aborted) throw error
-    mdocError = error
-    logWalletError('oid4vci', 'dual-format-mdoc-failed', error)
-    mdocBytes = undefined
-    mdocStored = false
-    if (!missingFormat) {
-      missingFormat = 'mso_mdoc'
-    }
-  }
+      throwIfDualFormatAcquisitionAborted(options.signal)
+      mdocDocType = pendingMdoc.docType
+      const acquiredMdocBytes = base64UrlToBytes(pendingMdoc.rawBase64)
 
-  throwIfDualFormatAcquisitionAborted(options.signal)
-  if (!sdJwtRecord && !mdocBytes) {
-    throwDualFormatTotalFailure(sdJwtError, mdocError)
-  }
-
-  const primaryRecord = sdJwtRecord ?? createMdocPlaceholderRecord({
-    credentialId: deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId),
-    documentType: readDocumentTypeFromOffer(resolvedOffer),
-    docType: mdocDocType ?? 'unknown',
-  })
-
-  const sdJwtFormat: CredentialFormatRecord | undefined = sdJwtRecord
-    ? {
-        format: 'dc+sd-jwt',
-        credentialConfigurationId: group.sdJwt.configurationId,
-        rawCredentialRef: sdJwtRecord.id,
-        issuedAt: sdJwtRecord.issuedAt,
-        ...(sdJwtRecord.expiresAt ? { expiresAt: sdJwtRecord.expiresAt } : {}),
-        holderBindingRef: HOLDER_BINDING_REF,
+      const credentialId = sdJwtRecord?.id ?? deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId)
+      await storeMdoc({ credentialId, docType: mdocDocType }, acquiredMdocBytes)
+      mdocBytes = acquiredMdocBytes
+      mdocStored = true
+      // Bind after native store (mdoc-only / SD-JWT soft-fail). Roll back mDOC on bind
+      // failure so cancel cannot leave a proximity credential without a lasting key.
+      if (credentialKeyId && !credentialKeyBound) {
+        try {
+          await bindSharedCredentialKey(
+            credentialKeyId,
+            sdJwtRecord ?? {
+              id: credentialId,
+              type: readDocumentTypeFromOffer(resolvedOffer),
+              rawVc: '',
+              claims: {},
+              issuedAt: new Date().toISOString(),
+            },
+            proofSession,
+            bindPendingKey,
+          )
+          credentialKeyBound = true
+        } catch (bindError) {
+          try {
+            await deleteMdoc(credentialId)
+          } catch (deleteError) {
+            logWalletError('oid4vci', 'dual-format-mdoc-rollback-failed', deleteError, {
+              credentialId,
+            })
+          }
+          mdocBytes = undefined
+          mdocStored = false
+          mdocBindFailed = true
+          throw bindError
+        }
       }
-    : undefined
-
-  const mdocFormat: CredentialFormatRecord | undefined = mdocStored && mdocBytes
-    ? {
-        format: 'mso_mdoc',
-        credentialConfigurationId: group.mdoc.configurationId,
-        rawCredentialRef: primaryRecord.id,
-        holderBindingRef: HOLDER_BINDING_REF,
+    } catch (error) {
+      if (options.signal?.aborted) throw error
+      // Bind failure after mdoc store: native store already rolled back — fail closed.
+      if (mdocBindFailed) {
+        throw error
       }
-    : undefined
+      mdocError = error
+      logWalletError('oid4vci', 'dual-format-mdoc-failed', error)
+      mdocBytes = undefined
+      mdocStored = false
+      if (!missingFormat) {
+        missingFormat = 'mso_mdoc'
+      }
+    }
 
-  const logicalCredentialId = deriveLogicalCredentialId({
-    issuerProvidedId:
-      group.logicalCredentialIdHint ??
-      readIssuerLogicalCredentialId(resolvedOffer.credentialConfigurations[0]!),
-    issuer: resolvedOffer.issuer,
-    documentType: primaryRecord.type,
-    subjectId: sdJwtRecord ? readSubjectIdFromClaims(sdJwtRecord.claims) : undefined,
-    documentId: sdJwtRecord ? readDocumentIdFromClaims(sdJwtRecord.claims) : undefined,
-    sdJwtRecordId: primaryRecord.id,
-  })
+    throwIfDualFormatAcquisitionAborted(options.signal)
+    if (!sdJwtRecord && !mdocBytes) {
+      throwDualFormatTotalFailure(sdJwtError, mdocError)
+    }
 
-  const logicalCredential = buildLogicalCredential({
-    logicalCredentialId,
-    issuer: resolvedOffer.issuer,
-    documentType: primaryRecord.type,
-    subjectId: sdJwtRecord ? readSubjectIdFromClaims(sdJwtRecord.claims) : undefined,
-    documentId: sdJwtRecord ? readDocumentIdFromClaims(sdJwtRecord.claims) : undefined,
-    formats: {
-      ...(sdJwtFormat ? { 'dc+sd-jwt': sdJwtFormat } : {}),
-      ...(mdocFormat ? { 'mso_mdoc': mdocFormat } : {}),
-    },
-  })
+    const primaryRecord = sdJwtRecord ?? createMdocPlaceholderRecord({
+      credentialId: deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId),
+      documentType: readDocumentTypeFromOffer(resolvedOffer),
+      docType: mdocDocType ?? 'unknown',
+    })
 
-  saveLogicalCredential(logicalCredential, dependencies.getCredentialStorage())
+    const sdJwtFormat: CredentialFormatRecord | undefined = sdJwtRecord
+      ? {
+          format: 'dc+sd-jwt',
+          credentialConfigurationId: group.sdJwt.configurationId,
+          rawCredentialRef: sdJwtRecord.id,
+          issuedAt: sdJwtRecord.issuedAt,
+          ...(sdJwtRecord.expiresAt ? { expiresAt: sdJwtRecord.expiresAt } : {}),
+          holderBindingRef: HOLDER_BINDING_REF,
+        }
+      : undefined
 
-  logWalletStep('oid4vci', 'dual-format-claim-complete', {
-    logicalCredentialId,
-    partial: Boolean(missingFormat),
-    consistencyStatus: logicalCredential.consistencyStatus,
-  })
+    const mdocFormat: CredentialFormatRecord | undefined = mdocStored && mdocBytes
+      ? {
+          format: 'mso_mdoc',
+          credentialConfigurationId: group.mdoc.configurationId,
+          rawCredentialRef: primaryRecord.id,
+          holderBindingRef: HOLDER_BINDING_REF,
+        }
+      : undefined
 
-  return {
-    primaryRecord,
-    logicalCredential,
-    partial: Boolean(missingFormat),
-    ...(missingFormat ? { missingFormat } : {}),
-  }
+    const logicalCredentialId = deriveLogicalCredentialId({
+      issuerProvidedId:
+        group.logicalCredentialIdHint ??
+        readIssuerLogicalCredentialId(resolvedOffer.credentialConfigurations[0]!),
+      issuer: resolvedOffer.issuer,
+      documentType: primaryRecord.type,
+      subjectId: sdJwtRecord ? readSubjectIdFromClaims(sdJwtRecord.claims) : undefined,
+      documentId: sdJwtRecord ? readDocumentIdFromClaims(sdJwtRecord.claims) : undefined,
+      sdJwtRecordId: primaryRecord.id,
+    })
+
+    const logicalCredential = buildLogicalCredential({
+      logicalCredentialId,
+      issuer: resolvedOffer.issuer,
+      documentType: primaryRecord.type,
+      subjectId: sdJwtRecord ? readSubjectIdFromClaims(sdJwtRecord.claims) : undefined,
+      documentId: sdJwtRecord ? readDocumentIdFromClaims(sdJwtRecord.claims) : undefined,
+      formats: {
+        ...(sdJwtFormat ? { 'dc+sd-jwt': sdJwtFormat } : {}),
+        ...(mdocFormat ? { 'mso_mdoc': mdocFormat } : {}),
+      },
+    })
+
+    saveLogicalCredential(logicalCredential, dependencies.getCredentialStorage())
+
+    logWalletStep('oid4vci', 'dual-format-claim-complete', {
+      logicalCredentialId,
+      partial: Boolean(missingFormat),
+      consistencyStatus: logicalCredential.consistencyStatus,
+    })
+
+    return {
+      primaryRecord,
+      logicalCredential,
+      partial: Boolean(missingFormat),
+      ...(missingFormat ? { missingFormat } : {}),
+    }
   } finally {
     ownedProofSession?.close()
     if (credentialKeyId && !credentialKeyBound) {
+      if (savedSdJwtCredentialId) {
+        removeStoredCredential(savedSdJwtCredentialId, dependencies.getCredentialStorage)
+        savedSdJwtCredentialId = undefined
+      }
       await discardPendingKey(credentialKeyId)
     }
   }
@@ -1040,6 +1156,42 @@ function shouldOpenIssuanceKeySession(options: ClaimCredentialOptions): boolean 
     return false
   }
   return true
+}
+
+/**
+ * Preview acquire closes the issuance session before finalize. Bind the memory
+ * pending seed now so finalize does not try to Keychain-read a memory-only pending key.
+ */
+async function bindPreviewResultBeforeSessionClose(
+  result: DualFormatPreviewResult,
+  session: {
+    pendingCredentialKeyId: string
+    proofSession: NonNullable<ClaimCredentialOptions['proofSession']>
+  },
+): Promise<DualFormatPreviewResult> {
+  if (result.missingFormat || !result.primaryRecord) {
+    await discardPendingCredentialKeyForIssuance(session.pendingCredentialKeyId)
+    if (!result.pendingMdoc?.pendingCredentialKeyId) return result
+    const { pendingCredentialKeyId: _removed, ...pendingMdoc } = result.pendingMdoc
+    return { ...result, pendingMdoc }
+  }
+
+  if (session.proofSession.bindCredentialKey) {
+    await session.proofSession.bindCredentialKey(
+      result.primaryRecord.id,
+      result.primaryRecord.type,
+    )
+  } else if (result.pendingMdoc?.pendingCredentialKeyId) {
+    await bindPendingCredentialKeyForIssuance(
+      result.pendingMdoc.pendingCredentialKeyId,
+      result.primaryRecord.id,
+      result.primaryRecord.type,
+    )
+  }
+
+  if (!result.pendingMdoc?.pendingCredentialKeyId) return result
+  const { pendingCredentialKeyId: _removed, ...pendingMdoc } = result.pendingMdoc
+  return { ...result, pendingMdoc }
 }
 
 export async function claimCredentialWithDualFormatSupport(
@@ -1094,7 +1246,7 @@ async function createSharedCredentialKeyId(
   options: DualFormatClaimOptions,
   dependencies: DualFormatClaimDependencies,
 ): Promise<string | undefined> {
-  if (!isWalletCryptoV2Enabled()) return options.pendingCredentialKeyId
+  if (!usesPerCredentialSigning()) return options.pendingCredentialKeyId
   if (options.pendingCredentialKeyId) return options.pendingCredentialKeyId
   if (options.proofSession?.credentialKeyId) return options.proofSession.credentialKeyId
   if (options.proofSession) return undefined
@@ -1106,7 +1258,7 @@ async function createSharedCredentialKeyId(
   if (acquireRecord !== acquireCredentialRecord && !explicitlyRequested) return undefined
   if (!dependencies.createProofSigningSession) return undefined
 
-  const createPendingKey = dependencies.createPendingCredentialKey ?? createPendingCredentialKey
+  const createPendingKey = dependencies.createPendingCredentialKey ?? createPendingCredentialKeyForIssuance
   return createPendingKey()
 }
 
@@ -1114,7 +1266,11 @@ async function bindSharedCredentialKey(
   pendingCredentialKeyId: string,
   record: VerifiableCredentialRecord,
   proofSession: ClaimCredentialOptions['proofSession'],
-  bindPendingKey: typeof bindPendingKeyToCredential,
+  bindPendingKey: (
+    pendingId: string,
+    credentialId: string,
+    credentialType: string,
+  ) => Promise<CredentialKeyRecord | EncryptedCredentialKeyRecord>,
 ): Promise<void> {
   if (
     proofSession?.credentialKeyId === pendingCredentialKeyId

@@ -27,6 +27,7 @@ import {
 } from './dcqlCredentialMatch'
 import { parseDcqlCredentialSets, resolveDcqlCredentialSelection } from './dcqlCredentialSetResolver'
 import { formatDcqlVpTokenEnvelope } from './oid4vc/formatDcqlVpTokenEnvelope'
+import { describePresentationAttempt } from './presentationDiagnostics'
 import { assertDualFormatPresentationReady, isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
 import { isSdJwtDcqlFormat } from './dualFormatQuery'
 import {
@@ -479,32 +480,47 @@ export async function submitPresentationResponse(
       throw new Error('PresentationSubmissionFailed: oid4vc adapter context is missing')
     }
 
-    const adapterResult = await submitDirectPostViaOid4vc({
-      oid4vcContext: request.oid4vcContext,
-      responseUri: request.responseUri,
-      vpToken: formattedVpToken,
-      ...(request.state ? { state: request.state } : {}),
-      fetchImpl: options.fetchImpl,
-    })
+    try {
+      const adapterResult = await submitDirectPostViaOid4vc({
+        oid4vcContext: request.oid4vcContext,
+        responseUri: request.responseUri,
+        vpToken: formattedVpToken,
+        ...(request.state ? { state: request.state } : {}),
+        fetchImpl: options.fetchImpl,
+      })
 
-    logWalletStep('oid4vp', 'submit-response-received', {
-      responseUri: request.responseUri,
-      verifierName: request.verifier.name,
-      status: adapterResult.status,
-      ok: adapterResult.ok,
-      responseKeys: isRecord(adapterResult.parsedBody) ? Object.keys(adapterResult.parsedBody) : [],
-      protocolPath: request.protocolPath,
-    })
+      logWalletStep('oid4vp', 'submit-response-received', {
+        responseUri: request.responseUri,
+        verifierName: request.verifier.name,
+        status: adapterResult.status,
+        ok: adapterResult.ok,
+        responseKeys: isRecord(adapterResult.parsedBody) ? Object.keys(adapterResult.parsedBody) : [],
+        protocolPath: request.protocolPath,
+      })
 
-    const parsedBody = adapterResult.parsedBody
-    const redirectUri = readVerifierReturnUrl(parsedBody, request)
+      const parsedBody = adapterResult.parsedBody
+      const redirectUri = readVerifierReturnUrl(parsedBody, request)
 
-    return {
-      status: readString(isRecord(parsedBody) ? parsedBody.status : undefined) ?? 'verified',
-      ...(readString(isRecord(parsedBody) ? parsedBody.message : undefined)
-        ? { message: readString(isRecord(parsedBody) ? parsedBody.message : undefined) }
-        : {}),
-      ...(redirectUri ? { redirectUri } : {}),
+      return {
+        status: readString(isRecord(parsedBody) ? parsedBody.status : undefined) ?? 'verified',
+        ...(readString(isRecord(parsedBody) ? parsedBody.message : undefined)
+          ? { message: readString(isRecord(parsedBody) ? parsedBody.message : undefined) }
+          : {}),
+        ...(redirectUri ? { redirectUri } : {}),
+      }
+    } catch (error) {
+      const diagnostic = describePresentationAttempt({
+        request,
+        vpToken: options.vpToken,
+      })
+      logWalletError('oid4vp', 'submit-response-failed', error, {
+        responseUri: request.responseUri,
+        verifierName: request.verifier.name,
+        protocolPath: request.protocolPath,
+        diagnostic,
+      })
+      const raw = error instanceof Error ? error.message : String(error)
+      throw new Error(raw)
     }
   }
 
@@ -533,11 +549,16 @@ export async function submitPresentationResponse(
     responseKeys: isRecord(parsedBody) ? Object.keys(parsedBody) : [],
   })
   if (!response.ok) {
+    const diagnostic = describePresentationAttempt({
+      request,
+      vpToken: options.vpToken,
+    })
     logWalletError('oid4vp', 'submit-response-failed', new Error(`PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`), {
       responseUri: request.responseUri,
       verifierName: request.verifier.name,
       status: response.status,
       parsedBody,
+      diagnostic,
     })
     const isIssuerPost = isIssuerOid4VpResponseUri(request.responseUri) || isIssuerOid4VpClientId(request.clientId)
     throw new Error(

@@ -54,6 +54,7 @@ export const standardDcqlPresentationBuilder: PresentationTokenBuilder = {
         vpToken: selectSdJwtDisclosures(
           context.request.matchedCredential.rawVc,
           readEffectiveClaimKeys(context),
+          { documentType: context.request.matchedCredential.type },
         ),
       }
     }
@@ -65,6 +66,7 @@ export const standardDcqlPresentationBuilder: PresentationTokenBuilder = {
         sdJwt: selectSdJwtDisclosures(
           context.request.matchedCredential.rawVc,
           readEffectiveClaimKeys(context),
+          { documentType: context.request.matchedCredential.type },
         ),
         credentialId: context.request.matchedCredential.id,
       })

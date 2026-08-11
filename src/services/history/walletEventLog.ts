@@ -41,6 +41,8 @@ export type WalletHistoryFailureReason =
   | 'holder-binding-mismatch'
   | 'unknown'
 
+export type WalletHistoryDeliveryPath = 'qr' | 'deep-link'
+
 export type WalletHistoryEvent = {
   id: string
   kind: WalletHistoryEventKind
@@ -51,6 +53,9 @@ export type WalletHistoryEvent = {
   partyName: string
   disclosedClaims: string[]
   channel: 'oid4vp' | 'oid4vci' | 'wallet' | 'nfc' | 'backend' | 'renewal'
+  deliveryPath?: WalletHistoryDeliveryPath
+  /** VC type key (e.g. ThaiNationalID) for presentation access-label projection */
+  credentialType?: string
   initiatedBy?: 'holder' | 'system'
   reasonCode?: WalletHistoryFailureReason
   relatedEventId?: string
@@ -64,6 +69,8 @@ export type AppendWalletHistoryEventInput = {
   partyName: string
   disclosedClaims?: string[]
   channel: WalletHistoryEvent['channel']
+  deliveryPath?: WalletHistoryDeliveryPath
+  credentialType?: string
   initiatedBy?: 'holder' | 'system'
   reasonCode?: WalletHistoryFailureReason
   relatedEventId?: string
@@ -122,6 +129,8 @@ export function appendWalletHistoryEvent(
       partyName: input.partyName,
       disclosedClaims: input.disclosedClaims ?? [],
       channel: input.channel,
+      ...(input.deliveryPath ? { deliveryPath: input.deliveryPath } : {}),
+      ...(input.credentialType ? { credentialType: input.credentialType } : {}),
       ...(input.initiatedBy ? { initiatedBy: input.initiatedBy } : {}),
       ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
       ...(input.relatedEventId ? { relatedEventId: input.relatedEventId } : {}),

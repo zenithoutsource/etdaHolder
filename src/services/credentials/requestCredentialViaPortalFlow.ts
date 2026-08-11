@@ -69,6 +69,11 @@ export async function requestCredentialViaPortalFlow(input: {
     })
     return
   }
+  // A newer "ขอเอกสาร" replaced this wait — silent exit so a stale empty dialog
+  // cannot appear after the retry already succeeded.
+  if (result.status === 'superseded') {
+    return
+  }
   const { offerGeneration, pendingUri } = useDeeplinkStore.getState()
   const pendingOffer = offerGeneration > offerGenerationAtStart ? pendingUri : null
   if (pendingOffer && isCredentialOfferDeeplink(pendingOffer)) {

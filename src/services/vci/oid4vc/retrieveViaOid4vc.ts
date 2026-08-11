@@ -5,6 +5,7 @@ import type { RequestDpopOptions } from '@openid4vc/oauth2'
 
 import { isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 
+import { logWalletStep } from '@/src/services/debug/walletLogger'
 import { InvalidProofError } from '../invalidProofError'
 import { createDpopSignJwtCallback, type DpopIssuanceSession } from '@/src/services/oid4vc/dpopIssuanceSession'
 import { createOid4vcVciClient } from './createOid4vcVciClient'
@@ -15,9 +16,183 @@ export type Oid4vcRetrieveDpopInput = {
   dpopSession?: DpopIssuanceSession
 }
 
+function readFetchUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.toString()
+  return input.url
+}
+
+function readAuthorizationHeader(init?: RequestInit): string | undefined {
+  if (!init?.headers) return undefined
+  if (init.headers instanceof Headers) {
+    return init.headers.get('Authorization') ?? undefined
+  }
+  if (Array.isArray(init.headers)) {
+    const match = init.headers.find(([key]) => key.toLowerCase() === 'authorization')
+    return match?.[1]
+  }
+  const record = init.headers as Record<string, string>
+  return record.Authorization ?? record.authorization
+}
+
+export type CredentialRequestWireShape = {
+  bodyKeys: string[]
+  hasProof: boolean
+  hasProofs: boolean
+  proofsJwtCount: number
+  credentialConfigurationId?: string
+  credentialIdentifier?: string
+  hasWalletAttestationFields: boolean
+}
+
+function readCredentialRequestBodyShape(body: unknown): CredentialRequestWireShape {
+  if (typeof body !== 'string') {
+    return {
+      bodyKeys: [],
+      hasProof: false,
+      hasProofs: false,
+      proofsJwtCount: 0,
+      hasWalletAttestationFields: false,
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>
+    const proofs = isRecord(parsed.proofs) ? parsed.proofs.jwt : undefined
+    const credentialConfigurationId = readString(parsed.credential_configuration_id)
+    const credentialIdentifier = readString(parsed.credential_identifier)
+    return {
+      bodyKeys: Object.keys(parsed),
+      hasProof: Object.prototype.hasOwnProperty.call(parsed, 'proof'),
+      hasProofs: Object.prototype.hasOwnProperty.call(parsed, 'proofs'),
+      proofsJwtCount: Array.isArray(proofs) ? proofs.length : 0,
+      ...(credentialConfigurationId ? { credentialConfigurationId } : {}),
+      ...(credentialIdentifier ? { credentialIdentifier } : {}),
+      hasWalletAttestationFields:
+        Object.prototype.hasOwnProperty.call(parsed, 'wua')
+        || Object.prototype.hasOwnProperty.call(parsed, 'wia'),
+    }
+  } catch {
+    return {
+      bodyKeys: [],
+      hasProof: false,
+      hasProofs: false,
+      proofsJwtCount: 0,
+      hasWalletAttestationFields: false,
+    }
+  }
+}
+
+function readCredentialRequestAuthShape(
+  init?: RequestInit,
+): Pick<CredentialRequestWireFailure, 'authScheme' | 'bearerTokenLength'> {
+  const authorization = readAuthorizationHeader(init)
+  return {
+    authScheme: authorization?.startsWith('DPoP ')
+      ? 'DPoP'
+      : authorization?.startsWith('Bearer ')
+        ? 'Bearer'
+        : 'missing',
+    bearerTokenLength: authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length).length
+      : authorization?.startsWith('DPoP ')
+        ? authorization.slice('DPoP '.length).length
+        : 0,
+  }
+}
+
+export type CredentialRequestWireFailure = {
+  httpStatus?: number
+  oauthError?: string
+  oauthDescription?: string
+  wwwAuthenticatePresent: boolean
+  wwwAuthenticateScheme?: string
+  wwwAuthenticateMentionsDpop: boolean
+  authScheme: 'Bearer' | 'DPoP' | 'missing'
+  bearerTokenLength: number
+} & CredentialRequestWireShape
+
+let lastCredentialRequestWireFailure: CredentialRequestWireFailure | undefined
+
+export function readLastCredentialRequestWireFailure(): CredentialRequestWireFailure | undefined {
+  return lastCredentialRequestWireFailure
+}
+
+export function clearLastCredentialRequestWireFailure(): void {
+  lastCredentialRequestWireFailure = undefined
+}
+
+function createDebugCredentialFetch(fetchImpl?: typeof fetch): typeof fetch | undefined {
+  const baseFetch = fetchImpl ?? fetch
+  return async (input, init) => {
+    const url = readFetchUrl(input)
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const isCredentialPost = method === 'POST' && url.includes('/credential')
+    const bodyShape = isCredentialPost ? readCredentialRequestBodyShape(init?.body) : undefined
+
+    if (isCredentialPost) {
+      const wireShape = {
+        urlEndsWithCredential: url.endsWith('/credential') || url.includes('/credential'),
+        ...readCredentialRequestAuthShape(init),
+        ...bodyShape,
+      }
+      logWalletStep('oid4vci', 'debug-credential-request-wire', wireShape)
+      // #region agent log
+      fetch('http://127.0.0.1:7299/ingest/bf197faa-a717-4eb9-bdf8-a2aa24a25fe4', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'ade581' },
+        body: JSON.stringify({
+          sessionId: 'ade581',
+          runId: 'invalid-token-v2',
+          hypothesisId: 'H',
+          location: 'retrieveViaOid4vc.ts:debugFetch',
+          message: 'credential-request-wire',
+          data: wireShape,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+    }
+
+    const response = await baseFetch(input, init)
+    if (isCredentialPost && !response.ok) {
+      const oauth = readOauthErrorFields(await response.clone().json().catch(() => undefined))
+      const wwwAuthenticate = response.headers.get('WWW-Authenticate') ?? undefined
+      const wireError: CredentialRequestWireFailure = {
+        httpStatus: response.status,
+        oauthError: oauth.error,
+        oauthDescription: oauth.error_description,
+        wwwAuthenticatePresent: Boolean(wwwAuthenticate),
+        wwwAuthenticateScheme: wwwAuthenticate?.split(/\s+/)[0],
+        wwwAuthenticateMentionsDpop: wwwAuthenticate?.toLowerCase().includes('dpop') ?? false,
+        ...readCredentialRequestAuthShape(init),
+        ...bodyShape!,
+      }
+      lastCredentialRequestWireFailure = wireError
+      logWalletStep('oid4vci', 'credential-request-wire-error', wireError)
+      // #region agent log
+      fetch('http://127.0.0.1:7299/ingest/bf197faa-a717-4eb9-bdf8-a2aa24a25fe4', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'ade581' },
+        body: JSON.stringify({
+          sessionId: 'ade581',
+          runId: 'invalid-token-v2',
+          hypothesisId: 'H',
+          location: 'retrieveViaOid4vc.ts:debugFetch',
+          message: 'credential-request-wire-error',
+          data: wireError,
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+    }
+    return response
+  }
+}
+
 function resolveOid4vcVciClientOptions(input?: Oid4vcRetrieveDpopInput) {
   if (!input?.dpopSession) {
-    return { fetchImpl: undefined as typeof fetch | undefined, signJwtImpl: undefined }
+    return { signJwtImpl: undefined }
   }
 
   return {
@@ -75,7 +250,7 @@ function readCredentialErrorResponseResult(error: unknown): {
   return {}
 }
 
-function readHttpStatusFromError(error: unknown): number | undefined {
+export function readHttpStatusFromError(error: unknown): number | undefined {
   const roots: unknown[] = [error]
   if (error instanceof Error && error.cause !== undefined) {
     roots.push(error.cause)
@@ -327,6 +502,7 @@ export async function retrieveCredentialViaOid4vc(input: {
   accessToken: string
   proofJwt: string
   credentialConfigurationId: string
+  credentialIdentifier?: string
   additionalRequestPayload?: Record<string, unknown>
   fetchImpl?: typeof fetch
   signal?: AbortSignal
@@ -335,16 +511,48 @@ export async function retrieveCredentialViaOid4vc(input: {
     throw new Error('CredentialAcquisitionAborted')
   }
 
+  const credentialFetch = createDebugCredentialFetch(input.fetchImpl)
   const clientOptions = resolveOid4vcVciClientOptions(input)
-  const client = createOid4vcVciClient({ fetchImpl: input.fetchImpl, ...clientOptions })
+  const client = createOid4vcVciClient({
+    ...clientOptions,
+    fetchImpl: credentialFetch ?? input.fetchImpl,
+  })
+  const additionalKeys = input.additionalRequestPayload ? Object.keys(input.additionalRequestPayload) : []
 
   try {
+    if (input.credentialIdentifier) {
+      const credentialEndpoint = input.oid4vcContext.issuerMetadataResult.credentialIssuer.credential_endpoint
+      const credentialRequest = {
+        credential_identifier: input.credentialIdentifier,
+        proofs: { jwt: [input.proofJwt] },
+      }
+      const response = await (credentialFetch ?? input.fetchImpl ?? fetch)(credentialEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${input.accessToken}`,
+        },
+        signal: input.signal,
+        body: JSON.stringify(credentialRequest),
+      })
+      if (!response.ok) {
+        const oauth = readOauthErrorFields(await response.clone().json().catch(() => undefined))
+        throw new Error(
+          oauth.error
+            ? `CredentialRequestFailed: ${oauth.error}${oauth.error_description ? ` - ${oauth.error_description}` : ''}`
+            : `CredentialRequestFailed: HTTP ${response.status}`,
+          { cause: { response: { status: response.status }, ...oauth } },
+        )
+      }
+      return (await response.json()) as Record<string, unknown>
+    }
+
     const response = await client.retrieveCredentials({
       issuerMetadata: input.oid4vcContext.issuerMetadataResult,
       accessToken: input.accessToken,
       credentialConfigurationId: input.credentialConfigurationId,
-      proof: { proof_type: 'jwt', jwt: input.proofJwt },
-      ...(input.additionalRequestPayload ? { additionalRequestPayload: input.additionalRequestPayload } : {}),
+      proofs: { jwt: [input.proofJwt] },
+      ...(additionalKeys.length > 0 ? { additionalRequestPayload: input.additionalRequestPayload } : {}),
       ...(input.dpop ? { dpop: input.dpop } : {}),
     })
 

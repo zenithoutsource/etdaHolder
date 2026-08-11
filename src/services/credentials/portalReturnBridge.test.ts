@@ -4,6 +4,8 @@ import {
   isPortalReturnUrlIgnoredDuringCapture,
   notifyPortalReturnUrl,
   readLastNotifiedPortalReturnUrl,
+  readPortalReturnCaptureGeneration,
+  waitForPortalReturnNotification,
 } from './portalReturnBridge'
 
 describe('portalReturnBridge stale callback guard', () => {
@@ -49,5 +51,40 @@ describe('portalReturnBridge stale callback guard', () => {
     notifyPortalReturnUrl(callbackUrl, 'test')
 
     expect(readLastNotifiedPortalReturnUrl()).toBeUndefined()
+  })
+
+  test('a newer beginPortalReturnCapture supersedes an in-flight wait', async () => {
+    const firstGeneration = beginPortalReturnCapture()
+    const firstWait = waitForPortalReturnNotification(5_000, {
+      captureGeneration: firstGeneration,
+    })
+
+    const secondGeneration = beginPortalReturnCapture()
+    expect(secondGeneration).toBeGreaterThan(firstGeneration)
+    expect(readPortalReturnCaptureGeneration()).toBe(secondGeneration)
+
+    await expect(firstWait).resolves.toBeUndefined()
+
+    const offerUrl = 'walletapp://callback?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fnew'
+    const secondWait = waitForPortalReturnNotification(5_000, {
+      captureGeneration: secondGeneration,
+    })
+    notifyPortalReturnUrl(offerUrl, 'test')
+    await expect(secondWait).resolves.toBe(offerUrl)
+  })
+
+  test('endPortalReturnCapture ignores a stale generation from an older portal open', () => {
+    const firstGeneration = beginPortalReturnCapture()
+    const secondGeneration = beginPortalReturnCapture()
+
+    endPortalReturnCapture(firstGeneration)
+
+    expect(readPortalReturnCaptureGeneration()).toBe(secondGeneration)
+    expect(
+      isPortalReturnUrlIgnoredDuringCapture(
+        'walletapp://callback?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fold',
+        'walletapp://callback',
+      ),
+    ).toBe(false)
   })
 })

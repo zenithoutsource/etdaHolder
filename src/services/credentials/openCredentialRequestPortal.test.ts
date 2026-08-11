@@ -120,6 +120,37 @@ describe('openCredentialRequestPortal', () => {
     }
   })
 
+  test('returns superseded when a newer portal request replaces an in-flight wait', async () => {
+    openBrowserAsync.mockImplementation(
+      () => new Promise((resolve) => {
+        setTimeout(() => resolve({ type: 'opened' }), 40)
+      }),
+    )
+
+    const firstPromise = openCredentialRequestPortal('ChulalongkornUniversityTranscript', {
+      androidFallbackMs: 2_000,
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    const wrapped = 'walletapp://callback?credential_offer_uri=http%3A%2F%2Fissuer.local%2Foffer'
+    setTimeout(() => {
+      notifyPortalReturnUrl(wrapped, 'test')
+    }, 60)
+
+    const secondPromise = openCredentialRequestPortal('ThaiNationalID', {
+      androidFallbackMs: 2_000,
+    })
+
+    const [firstResult, secondResult] = await Promise.all([firstPromise, secondPromise])
+
+    expect(firstResult).toEqual({ status: 'superseded' })
+    expect(secondResult).toEqual({
+      status: 'claimed',
+      deeplink: 'openid-credential-offer://?credential_offer_uri=http%3A%2F%2Fissuer.local%2Foffer',
+    })
+  })
+
   test('ignores a pending offer that existed before the portal opened', async () => {
     const previousOffer = 'openid-credential-offer://issuer.example/previous-offer'
     useDeeplinkStore.setState({

@@ -1,6 +1,8 @@
+import { p256 } from '@noble/curves/nist.js'
 import { getPublicKey, hashes, sign } from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha2.js'
 
+import { p256PublicKeyToDidKey, p256PublicKeyToJwk, signEs256Prehash } from '../crypto/p256Identity'
 import { parseAuthorizationRequestBody } from './authorizationRequestJar'
 
 if (!hashes.sha512) hashes.sha512 = sha512
@@ -11,7 +13,7 @@ function encodePart(value: unknown): string {
 
 function base64UrlEncodeBytes(bytes: Uint8Array): string {
   let binary = ''
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!)
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
@@ -35,6 +37,22 @@ async function signedRequestJwt(
   const unsigned = `${encodePart(header)}.${encodePart(payload)}`
   const signature = await sign(new TextEncoder().encode(unsigned), privateKey)
 
+  return `${unsigned}.${base64UrlEncodeBytes(signature)}`
+}
+
+function signedEs256RequestJwt(
+  payload: Record<string, unknown>,
+  secretKey: Uint8Array,
+  headerOverrides: Record<string, unknown> = {},
+): string {
+  const header = {
+    alg: 'ES256',
+    typ: 'oauth-authz-req+jwt',
+    kid: 'verifier-es256-1',
+    ...headerOverrides,
+  }
+  const unsigned = `${encodePart(header)}.${encodePart(payload)}`
+  const signature = signEs256Prehash(new TextEncoder().encode(unsigned), secretKey)
   return `${unsigned}.${base64UrlEncodeBytes(signature)}`
 }
 
@@ -64,6 +82,105 @@ describe('authorizationRequestJar', () => {
       }),
     ).resolves.toMatchObject({
       client_id: 'redirect_uri:https://verifier.example.com/cb',
+    })
+  })
+
+  test('verifies signed redirect_uri ES256 request objects via Verifier JWKS', async () => {
+    const { secretKey, publicKey } = p256.keygen()
+    const es256Jwk = { ...p256PublicKeyToJwk(publicKey), kid: 'verifier-es256-1', alg: 'ES256' }
+    const payload = {
+      client_id: 'redirect_uri:https://verifier.example.com:455/openid4vc/verify/request-1',
+      response_uri: 'https://verifier.example.com:455/openid4vc/verify/request-1',
+      response_mode: 'direct_post',
+      nonce: 'nonce-es256',
+      dcql_query: { credentials: [] },
+    }
+    const jwt = signedEs256RequestJwt(payload, secretKey, {
+      kid: 'verifier-es256-1',
+      jwk: undefined,
+    })
+    const fetchMock = jest.fn(async () => Response.json({ keys: [es256Jwk] }))
+
+    await expect(
+      parseAuthorizationRequestBody(jwt, {
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:https://verifier.example.com:455/openid4vc/verify',
+            name: 'Verifier',
+            allowedOrigins: ['https://verifier.example.com:455'],
+          },
+        ],
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).resolves.toMatchObject({
+      nonce: 'nonce-es256',
+      client_id: payload.client_id,
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://verifier.example.com:455/openid4vc/jwks',
+      expect.any(Object),
+    )
+  })
+
+  test('rejects signed bare did:key request objects (OID4VP 1.0 requires prefix)', async () => {
+    const { secretKey, publicKey } = p256.keygen()
+    const holderDid = p256PublicKeyToDidKey(publicKey)
+    const payload = {
+      client_id: holderDid,
+      response_uri: 'https://verifier.example.com:455/openid4vc/verify/request-1',
+      response_mode: 'direct_post',
+      nonce: 'nonce-did-key',
+      dcql_query: { credentials: [] },
+    }
+    const jwt = signedEs256RequestJwt(payload, secretKey, {
+      kid: `${holderDid}#${holderDid.slice('did:key:'.length)}`,
+      jwk: undefined,
+    })
+
+    await expect(
+      parseAuthorizationRequestBody(jwt, {
+        trustedVerifiers: [
+          {
+            clientId: `decentralized_identifier:${holderDid}`,
+            name: 'Did Key Verifier',
+            allowedOrigins: ['https://verifier.example.com:455'],
+          },
+        ],
+      }),
+    ).rejects.toThrow(
+      'OID4VP 1.0 requires client_id "decentralized_identifier:did:…"; bare did: is not supported',
+    )
+  })
+
+  test('verifies signed decentralized_identifier:did:key ES256 request objects from DID public key', async () => {
+    const { secretKey, publicKey } = p256.keygen()
+    const holderDid = p256PublicKeyToDidKey(publicKey)
+    const clientId = `decentralized_identifier:${holderDid}`
+    const payload = {
+      client_id: clientId,
+      response_uri: 'https://verifier.example.com:455/openid4vc/verify/request-1',
+      response_mode: 'direct_post',
+      nonce: 'nonce-did-key',
+      dcql_query: { credentials: [] },
+    }
+    const jwt = signedEs256RequestJwt(payload, secretKey, {
+      kid: `${holderDid}#${holderDid.slice('did:key:'.length)}`,
+      jwk: undefined,
+    })
+
+    await expect(
+      parseAuthorizationRequestBody(jwt, {
+        trustedVerifiers: [
+          {
+            clientId,
+            name: 'Did Key Verifier',
+            allowedOrigins: ['https://verifier.example.com:455'],
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      nonce: 'nonce-did-key',
+      client_id: clientId,
     })
   })
 

@@ -73,6 +73,25 @@ describe('resolvePresentationFailureUi', () => {
     )
   })
 
+  test('maps submission rejection to a clean Thai message without raw diagnostics', () => {
+    const ui = resolvePresentationFailureUi(
+      new Error(
+        'PresentationSubmissionFailed: HTTP 400: invalid_request. Presentation debug: kb_header_alg=ES256',
+      ),
+    )
+
+    expect(ui).toEqual(
+      expect.objectContaining({
+        kind: 'submission-rejected',
+        title: 'ผู้ตรวจสอบปฏิเสธการส่งข้อมูล',
+        body: 'คำขอส่งข้อมูลไม่ผ่านการตรวจสอบของผู้ตรวจสอบ',
+      }),
+    )
+    expect(ui.body).not.toContain('Presentation debug')
+    expect(ui.body).not.toContain('invalid_request')
+    expect(ui.body).not.toContain('ES256')
+  })
+
   test('maps format mismatch technical errors', () => {
     expect(
       resolvePresentationFailureUi(
@@ -82,6 +101,38 @@ describe('resolvePresentationFailureUi', () => {
       expect.objectContaining({
         kind: 'format-mismatch',
         title: 'รูปแบบเอกสารไม่ตรงกัน',
+      }),
+    )
+  })
+
+  test('maps PresentationRequestFetchFailed HTTP 404 to an expired-request screen without raw status text', () => {
+    const ui = resolvePresentationFailureUi(
+      new Error('PresentationRequestFetchFailed: HTTP 404'),
+    )
+
+    expect(ui).toEqual(
+      expect.objectContaining({
+        kind: 'request-expired',
+        title: 'คำขอตรวจสอบหมดอายุแล้ว',
+        body: 'ลิงก์หรือ QR จากผู้ตรวจสอบใช้ไม่ได้แล้ว หรือถูกยกเลิกไปแล้ว',
+        hint: 'ขอ QR หรือลิงก์ใหม่จากผู้ตรวจสอบ แล้วลองอีกครั้ง',
+        showRequestButton: false,
+      }),
+    )
+    expect(ui.body).not.toContain('404')
+    expect(ui.body).not.toContain('PresentationRequestFetchFailed')
+  })
+
+  test('maps PresentationRequestFetchFailed network errors to an unreachable screen', () => {
+    expect(
+      resolvePresentationFailureUi(
+        new Error('PresentationRequestFetchFailed: Network request failed'),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        kind: 'request-unreachable',
+        title: 'เชื่อมต่อผู้ตรวจสอบไม่สำเร็จ',
+        showRequestButton: false,
       }),
     )
   })

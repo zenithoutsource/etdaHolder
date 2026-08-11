@@ -1,4 +1,8 @@
 import { getHolderDid, signHolderStatusChangePop } from '../crypto/crypto'
+import { getCredentialHolderDid } from '../crypto/credentialSigningKey'
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
+import { readHardwareCredentialHolderDid } from '../crypto/hardwareCredentialSigningKey'
+import { isWalletCryptoV2Enabled } from '../crypto/walletCryptoActivation'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 
 const DEV_HOLDER_REVOKE_NONCE_ENDPOINT = '/wallet-api/dev/issuer/holder-revoke/nonce'
@@ -39,7 +43,7 @@ type HolderRevokeNonceResponse = {
 
 type HolderRevokeDependencies = {
   fetchImpl: typeof fetch
-  getHolderDid: () => string
+  getHolderDid: (credentialId: string) => string
   signHolderStatusChangePop: typeof signHolderStatusChangePop
 }
 
@@ -48,7 +52,7 @@ function resolveDependencies(
 ): HolderRevokeDependencies {
   return {
     fetchImpl: fetch,
-    getHolderDid,
+    getHolderDid: resolveHolderDid,
     signHolderStatusChangePop,
     ...dependencies,
   }
@@ -57,6 +61,16 @@ function resolveDependencies(
 function isSigningCancellation(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return message === 'WalletKeySigningCancelled'
+}
+
+function resolveHolderDid(credentialId: string): string {
+  if (isHardwareP256SigningEnabled()) {
+    return readHardwareCredentialHolderDid(credentialId)
+  }
+  if (isWalletCryptoV2Enabled()) {
+    return getCredentialHolderDid(credentialId)
+  }
+  return getHolderDid()
 }
 
 async function requestHolderRevokeNonce(
@@ -114,7 +128,7 @@ export async function submitHolderRevokeRequest(
 ): Promise<{ status: 'revoked'; confirmedAt: string }> {
   const { fetchImpl, getHolderDid: readHolderDid, signHolderStatusChangePop: signPop } =
     resolveDependencies(dependencies)
-  const holderDid = readHolderDid()
+  const holderDid = readHolderDid(credentialId)
 
   const { nonce, audience } = await requestHolderRevokeNonce(credentialId, holderDid, fetchImpl)
 

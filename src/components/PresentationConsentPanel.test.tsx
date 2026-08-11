@@ -43,6 +43,14 @@ describe('PresentationConsentPanel', () => {
     expect(readInitialSelectedClaimKeys(request.disclosures)).toEqual(new Set(['national_id', 'religion']))
   })
 
+  test('renders consent title from credential-type mock when verifier name is missing', () => {
+    render(
+      <PresentationConsentPanel request={request} onAccept={jest.fn()} onReject={jest.fn()} />,
+    )
+
+    expect(screen.getByText('ข้อมูลที่ร้านอาหารต้องการ')).toBeTruthy()
+  })
+
   test('renders all disclosure rows as locked consent items', () => {
     render(
       <PresentationConsentPanel request={request} onAccept={jest.fn()} onReject={jest.fn()} />,
