@@ -352,6 +352,23 @@
         color: var(--navy);
       }
 
+      section h2 .num.summary-num {
+        background: var(--accent);
+        font-size: 16px;
+      }
+
+      .one-pager {
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 10px;
+        padding: 20px 22px;
+        font-family: "Sarabun", sans-serif;
+        font-size: 14px;
+        line-height: 1.85;
+        margin: 16px 0;
+        white-space: pre-wrap;
+      }
+
       footer {
         text-align: center;
         padding: 24px;
@@ -365,6 +382,100 @@
         border-radius: 4px;
         font-size: 13px;
         color: var(--navy-dark);
+      }
+
+      .tip-hint {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 14px;
+        padding: 8px 14px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 999px;
+        font-size: 13px;
+        opacity: 0.95;
+      }
+
+      .tip-hint-dot {
+        width: 18px;
+        height: 4px;
+        border-bottom: 2px dotted #93c5fd;
+        flex-shrink: 0;
+      }
+
+      .tip {
+        position: relative;
+        display: inline;
+        cursor: help;
+        border-bottom: 1px dotted var(--accent);
+        text-decoration: none;
+        color: inherit;
+      }
+
+      .tip code {
+        border-bottom: inherit;
+      }
+
+      .tip::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 10px);
+        transform: translateX(-50%);
+        width: max-content;
+        max-width: min(300px, calc(100vw - 32px));
+        padding: 10px 12px;
+        background: var(--navy-dark);
+        color: #f8fafc;
+        font-family: "Sarabun", sans-serif;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.55;
+        border-radius: 10px;
+        box-shadow: 0 10px 28px rgba(0, 26, 82, 0.28);
+        white-space: normal;
+        z-index: 200;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 0.15s ease, visibility 0.15s ease;
+      }
+
+      .tip::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 4px);
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: var(--navy-dark);
+        z-index: 201;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.15s ease, visibility 0.15s ease;
+      }
+
+      .tip:hover::after,
+      .tip:hover::before,
+      .tip:focus-visible::after,
+      .tip:focus-visible::before,
+      .tip.is-open::after,
+      .tip.is-open::before {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .tip:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+        border-radius: 2px;
+      }
+
+      @media (hover: none) {
+        .tip {
+          cursor: pointer;
+        }
       }
     </style>
   </head>
@@ -381,6 +492,7 @@
     <div class="layout">
       <nav class="sidebar">
         <div class="sidebar-title">สารบัญ</div>
+        <a href="#summary">★ สรุปทั้งหมด</a>
         <a href="#overview">ภาพรวมแอป</a>
         <a href="#orval-sdk">Orval SDK</a>
         <a href="#flows">Flow หลัก</a>
@@ -391,11 +503,106 @@
       </nav>
 
       <main class="main">
+        <section id="summary">
+          <h2><span class="num summary-num">★</span> สรุปทั้งหมด</h2>
+          <p class="lead">อ่านหน้านี้หน้าเดียวก่อนลงรายละเอียด — อัปเดตตามโปรเจกต์ปัจจุบัน</p>
+
+          <div class="one-pager">แอป = Digital Wallet ฝั่ง Holder (รับ + แสดง VC บนมือถือ)
+
+รับเอกสาร     → Issuer      → OID4VP (@openid4vc/openid4vci)
+แสดง VP       → Verifier    → OID4VP (wallet + @openid4vc/openid4vp)
+My QR         → Broker      → fetch /broker/*
+Login / sync  → Backend     → Orval SDK จาก walletApi.json
+
+Sphereon = เลิกใช้แล้ว
+Crypto ใหม่ = P-256 / ES256 ใน Keystore (StrongBox → TEE, ไม่มี software key)</div>
+          <p style="font-size:14px;color:var(--text-muted);margin-top:-8px;">
+            คำย่อในบล็อกด้านบน —
+            <span class="tip" data-tip="ผู้ถือเอกสารดิจิทัล — คือผู้ใช้แอป Wallet ที่รับและแสดง VC">Holder</span>,
+            <span class="tip" data-tip="Verifiable Credential — เอกสารดิจิทัลที่ Issuer ออกและแอปเก็บในเครื่อง (เช่น ThaID)">VC</span>,
+            <span class="tip" data-tip="Verifiable Presentation — ชุดข้อมูลที่ส่งให้ Verifier หลังผู้ใช้ยินยอม">VP</span>,
+            <span class="tip" data-tip="หน่วยออกเอกสารดิจิทัล — เช่น ThaID portal, DLT, มหาวิทยาลัย">Issuer</span>,
+            <span class="tip" data-tip="หน่วยขอตรวจเอกสาร — สแกน QR แล้วรับข้อมูลที่ Holder ยินยอมส่ง">Verifier</span>,
+            <span class="tip" data-tip="ตัวกลาง My QR — รอ session แล้วส่ง OID4VP request จาก Verifier มาให้ Wallet">Broker</span>
+          </p>
+
+          <h3>แอปคุยกับใคร — ใช้อะไร</h3>
+          <table>
+            <thead>
+              <tr><th>ฝ่าย</th><th>ทำอะไร</th><th>Mobile ใช้</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Issuer</strong></td><td>ออก ThaID, ใบขับขี่, Transcript</td><td><code>@openid4vc/openid4vci</code></td></tr>
+              <tr><td><strong>Verifier</strong></td><td>ขอดูเอกสาร</td><td>wallet + <code>@openid4vc/openid4vp</code></td></tr>
+              <tr><td><strong>Wallet Backend</strong></td><td>login, บัญชี, sync VC</td><td><span class="tip" data-tip="Orval = เครื่องมือ generate TypeScript client จากไฟล์ OpenAPI อัตโนมัติ">Orval</span> → <code>walletApi.ts</code></td></tr>
+              <tr><td><strong>Wallet Broker</strong></td><td>My QR session</td><td><code>brokerSessionClient</code></td></tr>
+            </tbody>
+          </table>
+
+          <h3>Flow สั้นๆ</h3>
+          <table>
+            <thead>
+              <tr><th>Flow</th><th>ใครเริ่ม</th><th>สรุป</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Portal</strong></td><td>Holder</td><td>login Issuer → <code>walletapp://callback</code> → รับ VC</td></tr>
+              <tr><td><strong>Scan VP</strong></td><td>Verifier</td><td>สแกน <code>openid4vp://</code> → ยินยอม → sign → ส่ง</td></tr>
+              <tr><td><strong>My QR</strong></td><td>Holder</td><td>แสดง QR → Verifier scan ผ่าน Broker → flow เดียว Scan</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Orval</h3>
+          <p>
+            <span class="tip" data-tip="Orval = เครื่องมืออ่านไฟล์ OpenAPI แล้วสร้างโค้ด TypeScript ให้เรียก API ได้เลย">Orval</span>
+            อ่าน <code>walletApi.json</code>
+            (<span class="tip" data-tip="OpenAPI = ไฟล์สเปกมาตรฐานที่บอกว่า API มี path, method, body อะไรบ้าง">OpenAPI</span>)
+            → generate <code>src/sdk/walletApi.ts</code>
+            = ปุ่มเรียก <strong>Wallet Backend</strong> (<code>/wallet-api/*</code>) เท่านั้น
+          </p>
+          <ul>
+            <li>Issuer / Verifier / Broker — ไม่อยู่ใน <code>walletApi.json</code> หรือเป็น
+              <span class="tip" data-tip="protocol = กฎการสื่อสารมาตรฐาน (เช่น OID4VCI) ไม่ใช่แค่ REST เรียก endpoint ธรรมดา">protocol</span>
+              ไม่ใช่ REST ธรรมดา</li>
+            <li><span class="tip" data-tip="OID4VCI = OpenID for Verifiable Credential Issuance — มาตรฐานขอรับ VC จาก Issuer โดยตรงบนมือถือ">OID4VCI</span>
+              ต้องรันบนมือถือ — ห้ามเรียก <code>/exchange/*</code> ผ่าน backend</li>
+            <li>Broker อยู่
+              <span class="tip" data-tip="host = ที่อยู่เครื่องแม่ข่าย (โดเมน) เช่น wallet.zenithcomp.co.th — โดเมนเดียวกันได้ แต่ path คนละชุด (/wallet-api vs /broker)">host</span>
+              เดียวกับ Backend ได้ แต่ path คือ <code>/broker/*</code> — ยังไม่ได้ใส่ Orval</li>
+          </ul>
+
+          <h3>P-256 / StrongBox (สั้น)</h3>
+          <ul>
+            <li><strong>StrongBox</strong> =
+              <span class="tip" data-tip="ชิปความปลอดภัยแยกจาก CPU หลัก — เก็บ private key แข็งแกร่งที่สุดบน Android">ชิปความปลอดภัยแยก</span>
+              (แข็งแรงกว่า)</li>
+            <li><strong>TEE</strong> =
+              <span class="tip" data-tip="Trusted Execution Environment — โซนปลอดภัยในชิปหลัก (TrustZone) ใช้เมื่อไม่มี StrongBox">โซนปลอดภัยในชิปหลัก</span>
+              — fallback เมื่อไม่มี StrongBox</li>
+            <li>ไม่มี StrongBox ยังใช้แอปได้ถ้ามี TEE —
+              ไม่ fallback ไป
+              <span class="tip" data-tip="software key = กุญแจอยู่ในแอป/หน่วยความจำ — ไม่ใช่ hardware จึงไม่ใช้ใน production">software key</span></li>
+          </ul>
+
+          <div class="callout">
+            <strong>จำง่าย</strong>
+            Orval = server บริษัท · openid4vc = Issuer protocol · Broker = My QR ·
+            เก็บเอกสาร =
+            <span class="tip" data-tip="MMKV = ที่เก็บข้อมูลเร็วบนมือถือที่แอปเข้ารหัสไว้ — credential อยู่ในเครื่อง">MMKV</span>
+            บนเครื่อง · ลงนามใหม่ =
+            <span class="tip" data-tip="P-256 = เส้นโค้ง elliptic curve ที่ Android Keystore รองรับใน hardware ได้ดี">P-256</span>
+            ใน
+            <span class="tip" data-tip="Keystore = ตู้เซฟกุญแจใน Android/iOS — private key ไม่ออกมาให้ JavaScript อ่าน">Keystore</span>
+          </div>
+        </section>
+
         <section id="overview">
           <h2><span class="num">1</span> แอปนี้คืออะไร?</h2>
           <p class="lead">
-            Digital Wallet ฝั่ง <strong>Holder (ผู้ถือเอกสาร)</strong> — รับ Verifiable Credential จาก Issuer
-            เก็บในเครื่องเข้ารหัส แล้วแสดงให้ Verifier เมื่อผู้ใช้ยินยอม
+            Digital Wallet ฝั่ง
+            <span class="tip" data-tip="Holder = ผู้ถือเอกสารดิจิทัล — คือผู้ใช้แอปที่รับ VC และตัดสินใจแสดงให้ Verifier">Holder (ผู้ถือเอกสาร)</span>
+            — รับ
+            <span class="tip" data-tip="Verifiable Credential — เอกสารดิจิทัลที่ Issuer ออก มีลายเซ็นตรวจสอบได้ และเก็บในเครื่อง">Verifiable Credential</span>
+            จาก Issuer เก็บในเครื่องเข้ารหัส แล้วแสดงให้ Verifier เมื่อผู้ใช้ยินยอม
           </p>
 
           <h3>3 เรื่องหลักที่แอปทำ</h3>
@@ -410,25 +617,25 @@
             <tbody>
               <tr>
                 <td><strong>รับเอกสาร</strong></td>
-                <td><code>OID4VCI 1.0</code></td>
+                <td><span class="tip" data-tip="OID4VCI = มาตรฐาน OpenID สำหรับขอรับ Verifiable Credential จาก Issuer โดยตรงบนมือถือ"><code>OID4VCI 1.0</code></span></td>
                 <td>ขอ VC จาก Issuer (ThaID, ใบขับขี่, Transcript) แล้วเก็บในเครื่อง</td>
               </tr>
               <tr>
                 <td><strong>แสดงออนไลน์</strong></td>
-                <td><code>OID4VP 1.0</code></td>
+                <td><span class="tip" data-tip="OID4VP = มาตรฐาน OpenID สำหรับส่ง VP ให้ Verifier หลังผู้ใช้เลือกข้อมูลและยินยอม"><code>OID4VP 1.0</code></span></td>
                 <td>สแกน QR ของ Verifier หรือใช้ My QR → ส่งเฉพาะข้อมูลที่เลือก</td>
               </tr>
               <tr>
                 <td><strong>แสดงใกล้ตัว</strong></td>
-                <td><code>ISO 18013-5</code></td>
-                <td>แตะเครื่องอ่าน NFC (mdoc proximity) — <span class="tag tag-muted">กำลังพัฒนา</span></td>
+                <td><span class="tip" data-tip="ISO 18013-5 = มาตรฐานส่งเอกสาร mobile ID ผ่าน NFC แบบ proximity (mdoc)"><code>ISO 18013-5</code></span></td>
+                <td>แตะเครื่องอ่าน NFC (<span class="tip" data-tip="mdoc = mobile document — รูปแบบเอกสาร ISO สำหรับ NFC proximity">mdoc</span> proximity) — <span class="tag tag-muted">กำลังพัฒนา</span></td>
               </tr>
             </tbody>
           </table>
 
           <h3>เอกสารที่รองรับ</h3>
           <ul>
-            <li><strong>Thai National ID (ThaID / PID)</strong> — เอกสารหลัก ต้องมีก่อนขอเอกสารอื่น</li>
+            <li><strong>Thai National ID (ThaID / <span class="tip" data-tip="PID = Personal Identity Document — เอกสารยืนยันตัวตนหลักที่เอกสารอื่นอ้างอิง">PID</span>)</strong> — เอกสารหลัก ต้องมีก่อนขอเอกสารอื่น</li>
             <li><strong>DLT Driving Licence</strong> — ต้องมี ThaID ที่ใช้งานได้ก่อน</li>
             <li><strong>Chulalongkorn Transcript</strong> — ต้องมี ThaID ที่ใช้งานได้ก่อน</li>
           </ul>
@@ -441,14 +648,14 @@
             <tr><td><strong>History Log</strong></td><td>ประวัติการรับและแสดงเอกสาร</td></tr>
           </table>
 
-          <h3>สองทางสื่อสารของแอป </h3>
+          <h3>สองทางสื่อสารของแอป</h3>
           <div class="compare">
             <div class="compare-box strongbox">
               <h4>Issuer (หน่วยออกเอกสาร)</h4>
               <ul>
                 <li>OID4VCI — รับ VC ตรงบนมือถือ</li>
                 <li>ไม่ผ่าน Wallet Backend บริษัท</li>
-                <li>เก็บใน MMKV เข้ารหัส</li>
+                <li>เก็บใน <span class="tip" data-tip="MMKV = storage เร็วบนมือถือ — แอปเข้ารหัส credential ไว้ในเครื่อง ไม่ใช้ AsyncStorage">MMKV</span> เข้ารหัส</li>
               </ul>
             </div>
             <div class="compare-box tee">
@@ -471,7 +678,7 @@
           <div class="callout">
             <strong>สรุป</strong>
             Orval อ่านสเปก API (<code>walletApi.json</code>) แล้วสร้าง TypeScript ใน
-            <code>src/sdk/walletApi.ts</code> — แอป เรียกฟังก์ชันเช่น <code>loginUser()</code>
+            <code>src/sdk/walletApi.ts</code> — แอปเรียกฟังก์ชันเช่น <code>loginUser()</code>
             แทนการเขียน HTTP เองทีละ endpoint
           </div>
 
@@ -482,7 +689,7 @@
             </thead>
             <tbody>
               <tr><td>อ่านเอกสาร API เอง</td><td>เรียกฟังก์ชันที่ generate แล้ว</td></tr>
-              <tr><td>เขียน URL/body เอง — พิมพ์ผิดได้</td><td>TypeScript ช่วยตรวจ type</td></tr>
+              <tr><td>เขียน URL/body เอง — พิมพ์ผิดได้</td><td><span class="tip" data-tip="TypeScript = ภาษา JavaScript ที่มี type ช่วยจับ error ตอน compile">TypeScript</span> ช่วยตรวจ type</td></tr>
               <tr><td>API เปลี่ยน → แก้หลายจุด</td><td><code>yarn sdk:generate</code> แล้วแก้ตาม type error</td></tr>
             </tbody>
           </table>
@@ -492,7 +699,7 @@
         ↓  yarn sdk:generate (Orval — รันตอน develop)
 src/sdk/walletApi.ts  (ห้ามแก้มือ)
         ↓
-แอป เรียก login, register, importCredential ฯลฯ</div>
+แอปเรียก login, register, importCredential ฯลฯ</div>
 
           <h3>ฟังก์ชันที่ mobile ใช้ (ตัวอย่าง)</h3>
           <table>
@@ -509,7 +716,7 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
 
           <p>
             <span class="tag tag-info">หมายเหตุ</span>
-            OID4VCI (ขอ VC จาก Issuer) รันบน device ผ่าน <code>@sphereon/oid4vci-client</code> — ไม่ผ่าน Orval SDK
+            OID4VCI (ขอ VC จาก Issuer) รันบน device ผ่าน <code>@openid4vc/openid4vci</code> (<code>src/services/vci/oid4vc/</code>) — ไม่ผ่าน Orval SDK
           </p>
         </section>
 
@@ -524,7 +731,11 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
   → redirect: walletapp://callback?credential_offer_uri=https://...
   → แอป parse offer → token → proof (sign) → รับ VC
   → บันทึก MMKV เข้ารหัส → แสดงการ์ดบน Wallet</div>
-          <p>Issuer ต้อง redirect เป็น <code>walletapp://callback?credential_offer_uri=...</code> (HTTPS offer URL)</p>
+          <p style="font-size:14px;color:var(--text-muted);">
+            <span class="tip" data-tip="proof (sign) = PoP JWT — ลงนามด้วย key ของ Holder เพื่อพิสูจน์ว่าเป็นเจ้าของก่อน Issuer ส่ง VC">proof (sign)</span>
+          </p>
+          <p>Issuer ต้อง redirect เป็น <code>walletapp://callback?credential_offer_uri=...</code>
+            (<span class="tip" data-tip="credential offer = ลิงก์/ข้อมูลจาก Issuer ที่บอกแอปว่าจะขอ VC อะไร — แอปใช้เริ่ม OID4VCI">HTTPS offer URL</span>)</p>
 
           <h3>แสดงเอกสาร — Scan tab (OID4VP)</h3>
           <div class="flow">Scan → สแกน openid4vp://...
@@ -532,13 +743,21 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
   → Consent → Info (เลือก claim)
   → ยอมรับ → sign (biometric) → direct_post ไป Verifier
   → บันทึก History</div>
+          <p style="font-size:14px;color:var(--text-muted);">
+            <span class="tip" data-tip="claim = ฟิลด์ข้อมูลใน credential เช่น ชื่อ วันเกิด — ผู้ใช้เลือกว่าจะส่งอะไรให้ Verifier">claim</span> ·
+            <span class="tip" data-tip="direct_post = ส่ง VP กลับไปที่ Verifier โดยตรง (HTTP POST) หลังผู้ใช้ยินยอมและลงนาม">direct_post</span>
+          </p>
 
           <h3>แสดงเอกสาร — My QR (Wallet เริ่มก่อน)</h3>
           <div class="flow">My QR → POST /broker/session → แสดง qr_payload
   → Verifier สแกน → POST /verifier/scan
   → Verifier deposit OID4VP request ที่ Broker
   → Wallet poll GET .../request
-  → flow ยินยอม/sign เหมือน Scan tab → direct_post</div>
+          → flow ยินยอม/sign เหมือน Scan tab → direct_post</div>
+          <p style="font-size:14px;color:var(--text-muted);">
+            <span class="tip" data-tip="poll = แอปถาม Broker ซ้ำๆ ทุก 2 วินาที จน Verifier ฝาก OID4VP request มา">poll</span> ·
+            <span class="tip" data-tip="deposit = Verifier ส่งคำขอ presentation ไว้ที่ Broker ให้ Wallet มาดึงทีหลัง">deposit</span>
+          </p>
 
           <h3>Scan vs My QR</h3>
           <table>
@@ -573,7 +792,11 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
 
           <h3>เอกสารที่ใช้แสดง</h3>
           <p>
-            แอป เลือก credential อัตโนมัติ: ใบขับขี่ dual-format (ถ้าพร้อม) หรือ ThaID SD-JWT ที่ presentable
+            แอปเลือก credential อัตโนมัติ:
+            <span class="tip" data-tip="dual-format = credential ที่มีทั้ง SD-JWT (ออนไลน์) และ mdoc (NFC) ใน record เดียว">ใบขับขี่ dual-format</span>
+            (ถ้าพร้อม) หรือ ThaID
+            <span class="tip" data-tip="SD-JWT = Selective Disclosure JWT — รูปแบบ VC ที่เลือกเปิดเผยเฉพาะ claim ที่ต้องการ">SD-JWT</span>
+            ที่ presentable
           </p>
 
           <h3>รายละเอียด API (Verifier scan)</h3>
@@ -582,7 +805,9 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
   "scannedValue": "&lt;qr_payload จาก QR verbatim&gt;",
   "docType": "IDCard"
 }</div>
-          <p>Wallet poll <code>GET /broker/session/{id}/request</code> ทุก 2 วินาที จนได้ authorization request</p>
+          <p>Wallet
+            <span class="tip" data-tip="poll = ถาม API ซ้ำๆ เป็นระยะ — ที่นี่ทุก 2 วินาที จน Broker มี authorization request">poll</span>
+            <code>GET /broker/session/{id}/request</code> ทุก 2 วินาที จนได้ authorization request</p>
         </section>
 
         <section id="crypto">
@@ -598,11 +823,12 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
               <tr><th>หัวข้อ</th><th>แนวทาง production</th></tr>
             </thead>
             <tbody>
-              <tr><td>Curve</td><td>P-256 (<code>secp256r1</code>) ใน Keystore</td></tr>
-              <tr><td>JWT algorithm</td><td><code>ES256</code></td></tr>
+              <tr><td>Curve</td><td><span class="tip" data-tip="P-256 (secp256r1) = เส้นโค้งที่ Android Keystore รองรับใน hardware — ใช้กับ ES256"><code>P-256</code></span> (<code>secp256r1</code>) ใน Keystore</td></tr>
+              <tr><td>JWT algorithm</td><td><span class="tip" data-tip="ES256 = ลายเซ็น JWT ด้วย ECDSA บน P-256 — มาตรฐานที่ Issuer/Verifier ยอมรับ"><code>ES256</code></span></td></tr>
               <tr><td>Private key</td><td>อยู่ใน hardware — JavaScript ไม่เห็น</td></tr>
-              <tr><td>Holder DID</td><td><code>did:key</code> แบบ P-256</td></tr>
-              <tr><td>ใช้ sign</td><td>PoP (รับ VC), KB-JWT (แสดง VC), attestation, mdoc proximity</td></tr>
+              <tr><td>Holder DID</td><td><span class="tip" data-tip="did:key = ตัวตนดิจิทัลของ Holder ที่ derive จาก public key — ใส่ใน JWT ตอน sign"><code>did:key</code></span> แบบ P-256</td></tr>
+              <tr><td>ใช้ sign</td><td><span class="tip" data-tip="PoP = Proof of Possession — พิสูจน์ตอนรับ VC ว่า Holder ถือ key จริง">PoP</span> (รับ VC),
+                <span class="tip" data-tip="KB-JWT = Key Binding JWT — ผูกการแสดง VP กับ key ของ Holder ตอนส่งให้ Verifier">KB-JWT</span> (แสดง VC), attestation, mdoc proximity</td></tr>
             </tbody>
           </table>
 
@@ -616,9 +842,9 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
           <h3>กฎสำคัญ</h3>
           <ul>
             <li>StrongBox ก่อน → TEE เมื่อ StrongBox ไม่มี → ไม่มี software fallback</li>
-            <li>Biometric ครั้งเดียวต่อ user action (action-scoped signing session)</li>
-            <li>เปลี่ยน algorithm ต้อง <strong>reissue</strong> credential ใหม่จาก Issuer</li>
-            <li>iOS production รอ Secure Enclave slice</li>
+            <li>Biometric ครั้งเดียวต่อ user action (<span class="tip" data-tip="action-scoped signing session = ลงนามครั้งเดียวต่อการกดยืนยันหนึ่งครั้ง — ไม่ถาม biometric ซ้ำหน้า consent">action-scoped signing session</span>)</li>
+            <li>เปลี่ยน algorithm ต้อง <strong><span class="tip" data-tip="reissue = ขอออก credential ใหม่จาก Issuer — VC เก่าที่ sign ด้วย key/alg เดิมใช้ต่อไม่ได้">reissue</span></strong> credential ใหม่จาก Issuer</li>
+            <li>iOS production รอ <span class="tip" data-tip="Secure Enclave = ชิปความปลอดภัยบน iPhone/iPad — เทียบเท่า StrongBox/TEE ฝั่ง Apple">Secure Enclave</span> slice</li>
           </ul>
         </section>
 
@@ -633,13 +859,13 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
                 <li>ชิปความปลอดภัยแยกจาก CPU</li>
                 <li>ความปลอดภัยสูงสุด — ทน tampering</li>
                 <li>ช้ากว่า, จำกัดจำนวน key</li>
-                <li>ม частоใน flagship / Knox Vault (เช่น Galaxy A26 คาดว่ามี)</li>
+                <li>มักพบใน flagship / <span class="tip" data-tip="Knox Vault = โซลูชันความปลอดภัย Samsung ที่รวม StrongBox — Galaxy A26 คาดว่ามี">Knox Vault</span> (เช่น Galaxy A26 คาดว่ามี)</li>
               </ul>
             </div>
             <div class="compare-box tee">
               <h4>TEE</h4>
               <ul>
-                <li>โซนปลอดภัยในชิปหลัก (TrustZone)</li>
+                <li>โซนปลอดภัยในชิปหลัก (<span class="tip" data-tip="TrustZone = เทคโนโลยี ARM ที่แยกโซนปลอดภัยใน CPU — TEE บน Android ส่วนใหญ่ใช้แนวนี้">TrustZone</span>)</li>
                 <li>hardware-backed — ดีกว่า software key</li>
                 <li>เร็วกว่า, รองรับ key มากกว่า</li>
                 <li>Fallback เมื่อไม่มี StrongBox (เช่น Galaxy A15, A35)</li>
@@ -651,7 +877,7 @@ src/sdk/walletApi.ts  (ห้ามแก้มือ)
           <div class="flow">createKey:
   1. ลอง StrongBox (P-256)
   2. StrongBoxUnavailableException → สร้างใน TEE
-  3. TEE ไม่ได้ → fail closed
+  3. TEE ไม่ได้ → <span class="tip" data-tip="fail closed = ปิดกั้นไม่ให้ทำต่อ — ไม่ยอมใช้ software key แทน">fail closed</span>
 
 sign:
   ใช้ key เดิมเท่านั้น — ไม่สร้าง key ใหม่เมื่อ sign ล้ม</div>
@@ -670,7 +896,7 @@ sign:
               <span class="arrow">▼</span>
             </button>
             <div class="accordion-body">
-              OID4VCI = ขอ VC จาก Issuer บนมือถือ (Sphereon client).
+              OID4VCI = ขอ VC จาก Issuer บนมือถือ (<code>@openid4vc/openid4vci</code>).
               Orval SDK = เรียก Wallet Backend บริษัท (login, sync) — คนละระบบ
             </div>
           </div>
@@ -721,7 +947,7 @@ sign:
             </button>
             <div class="accordion-body">
               StrongBox = ชิปแยก (แข็งแกร่งกว่า). TEE = โซนในชิปหลัก.
-              แอป ลอง StrongBox ก่อน แล้ว fallback TEE ถ้าไม่มี
+              แอปลอง StrongBox ก่อน แล้ว fallback TEE ถ้าไม่มี
             </div>
           </div>
         </section>
@@ -761,6 +987,31 @@ sign:
             .forEach((i) => i.classList.remove("open"));
           if (!wasOpen) item.classList.add("open");
         });
+      });
+
+      document.querySelectorAll(".tip").forEach((tip) => {
+        tip.setAttribute("tabindex", "0");
+        tip.setAttribute("role", "button");
+        tip.addEventListener("click", (event) => {
+          if (!window.matchMedia("(hover: none)").matches) return;
+          event.stopPropagation();
+          const wasOpen = tip.classList.contains("is-open");
+          document.querySelectorAll(".tip.is-open").forEach((el) => el.classList.remove("is-open"));
+          if (!wasOpen) tip.classList.add("is-open");
+        });
+        tip.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            tip.click();
+          }
+          if (event.key === "Escape") tip.classList.remove("is-open");
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest(".tip")) {
+          document.querySelectorAll(".tip.is-open").forEach((el) => el.classList.remove("is-open"));
+        }
       });
     </script>
   </body>

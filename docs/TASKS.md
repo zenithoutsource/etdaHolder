@@ -1,5 +1,182 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-11 (Verifier missing_holder_binding_key → PoP jwk)
+
+- Verifier error: `reason: missing_holder_binding_key` with credential `cnf: { kid only }`.
+- Cause: SD-JWT PoP used `did-kid`; Issuer stored only `cnf.kid`. This Verifier requires
+  `cnf.jwk` in the issued credential.
+- Fix: `readProofKeyBinding` uses `jwk` for `dc+sd-jwt` / `vc+sd-jwt` (and when methods
+  include `jwk`). Hardware PoP `jwk` mode also keeps `kid` alongside `jwk`.
+- **Must re-issue** Transcript (and any SD-JWT) after reload — old credentials stay kid-only.
+
+### Session 2026-08-11 (KB header embed jwk for did:key-only cnf)
+
+- After KB `aud=client_id`, wallet diagnostics still healthy but Verifier returns
+  `Present VP is invalid`. Credential `cnf` is kid-only; KB header was kid-only.
+- **Fix:** hardware SD-JWT KB now embeds P-256 `jwk` in KB header alongside `kid`, so
+  Verifiers can verify ES256 without resolving `did:key`.
+- **Verify:** reload, re-present; debug should show `kb_header_jwk=EC/P-256/…` not `none`.
+  If still 400, next A/B: `EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE=raw`.
+
+### Session 2026-08-11 (JAR verify fail on prefixed did:key ES256)
+
+- **Symptom:** After Verifier fixed `client_id` to `decentralized_identifier:did:key:…`,
+  resolve failed with `Error during verification of jwt.`
+- **Likely cause:** Wallet ES256 verify required 64-byte JOSE + low-S; Java-style JARs often
+  use DER ECDSA and/or high-S. Both failed silently → generic openid4vc verify error.
+- **Fix:** `verifyEs256Prehash` accepts DER→JOSE and verifies with `lowS: false`. Adapter
+  logs jar verify failures under `[wallet:oid4vp]`.
+- **Verify on device:** reload Metro, re-scan. If still fails, check Metro for
+  `jar_verify_signature_failed` / `jar_verify_exception`.
+
+### Session 2026-08-11 (OID4VP 1.0 only — reject bare did: client_id)
+
+- **Decision:** No wallet shim for bare `did:key:` + `vp_formats_supported` version clash.
+  Wallet accepts OID4VP 1.0 `client_id: decentralized_identifier:did:…` (signed JAR) only.
+- **Reject:** bare `did:` client ids with
+  `OID4VP 1.0 requires client_id "decentralized_identifier:did:…"; bare did: is not supported`.
+- **Verifier action:** send `client_id: decentralized_identifier:did:key:<multibase>…` in the
+  authorization request / JAR payload (keep `vp_formats_supported` as-is).
+- **Trust pin:** `EXPO_PUBLIC_VERIFIER_DID_KEY_CLIENT_ID` may still be bare `did:key:…` in env;
+  wallet stores it as `decentralized_identifier:did:key:…`.
+
+### Session 2026-08-11 (hardware SD-JWT KB stripped disclosures → Verifier 400)
+
+- **Symptom:** After Verifier allowed ES256 KB + unsigned JAR, Scan Transcript VP still
+  `HTTP 400`. Wallet token was `issuerJwt~kbJwt` with `sdjwt_disclosure_count=0`.
+- **Cause:** `signHardwareSdJwtKbPresentationToken` used a broken
+  `normalizeSdJwtWithoutKb` that kept only `issuerJwt~` (first `~`), dropping all
+  selective-disclosure segments before appending the KB-JWT. EdDSA path in `crypto.ts`
+  preserved disclosures.
+- **Fix:** Shared `sdJwtNormalize.ts` — ensure trailing `~` only; do not truncate
+  disclosures. Regression test in `hardwareJwtSigner.test.ts`.
+- **Verify on device:** reload app, re-present Transcript; token should include
+  `~disclosure~…~kbJwt`.
+
+### Session 2026-08-11 (Verifier ES256 JAR + adapter unwrap)
+
+- **Symptom:** After Issuer/Verifier ES256 cutover, Scan Verifier QR failed at resolve with
+  `Unable to extract signer method from jwt... 'custom' signer method is not allowed`.
+- **Cause:** Verifier now signs `redirect_uri` request objects with `alg: ES256` + `kid`
+  only. `@openid4vc/openid4vp` forbids signed JARs for `redirect_uri` (empty allowed
+  signer methods). Wallet verify path was EdDSA-only and had no JWKS fetch for
+  `redirect_uri`.
+- **Fix:** `verifyEs256CompactJwt`; fetch `{response_uri origin}/openid4vc/jwks` (path via
+  `EXPO_PUBLIC_VERIFIER_JWKS_PATH`); verify trusted signed `redirect_uri` JARs; unwrap
+  verified payload before openid4vc resolve. EdDSA/ES256 both accepted for JAR verify.
+- **Verification:** focused `es256JwtVerify` / `verifierJwks` / `authorizationRequestJar` /
+  `parseAuthorizationRequestViaOid4vc` tests pass (17). Re-scan Verifier QR on device to
+  confirm resolve proceeds (holder KB/metadata allowlists are a separate gate).
+
+### Session 2026-08-11 (VP exit smoke + first-install biometric — device done)
+
+- **VP deeplink exit (A26):** expired link → failure UI → Back → Wallet; re-tap after
+  grace reopens failure UI; Wallet land uses `router.replace('/(tabs)')` (not
+  `/(tabs)/index`); Metro `presentationVerifierMocks` import path fixed.
+- **First-install biometric (A26):** fresh install = no fingerprint; first claim =
+  exactly one fingerprint at bind (defer-first-install Keychain path).
+- **VP adapter checklist:** row **7** pass; row **4** waived (adapter-only path);
+  rows **3** (synthetic untrusted deeplink) and **6** still open. Hardware Slice B
+  A26 rows 1+6 still gate staging hardware flag.
+
+### VP deeplink exit / intake contract (locked — read before changing nav)
+
+Five rules. Do not invent parallel exit paths.
+
+1. **Open:** only `_layout` / Scan / callback may queue a VP URI via `tryQueueDeeplinkUri`
+   (checks `dismissedUri` *before* store write). Scan may `clearDismissedDeeplinkUri()` first
+   for intentional same-QR reopen; Linking redelivery must not.
+2. **Show failure in-place:** expired/unreachable VP stays on `PresentationFailurePanel` —
+   no auto-dismiss, no intake modal, no auto Wallet jump.
+3. **Leave only via `exitPresentationFlow` / `finish`:** Back/Cancel → dismiss current URI →
+   `useReturnToWallet` once (`router.replace('/(tabs)')`). Never notify intake modal
+   for dismissed redelivery.
+4. **Intent redelivery after dismiss:** silent ignore for
+   `EXPO_PUBLIC_DEEPLINK_DISMISS_REDELIVERY_GRACE_MS` (default 1500ms). After grace,
+   the same URI may open again (intentional re-tap). Intake modal only for
+   **consumed/replay**. Scan may still `clearDismissedDeeplinkUri()` immediately.
+5. **Wallet land:** only `router.replace('/(tabs)')` (typed href; **not** `/(tabs)/index`,
+   which shows Unmatched Route). Never `CommonActions.reset` with incomplete tab routes.
+
+Golden tests in `PresentationRequestScreen.test.tsx` + `deeplinkStore.test.ts` are merge
+blockers for deeplink/nav changes.
+
+### Session 2026-08-10 (Slice C core — hardware P-256 signing router)
+
+- **Scope:** Core holder-signing router behind `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED`
+  (default `false`). When enabled on Android, per-credential P-256 keys use
+  `hardwareCredentialSigningKey` + `hardwareJwtSigner` (ES256 PoP/KB/VP/revoke) via
+  `crypto.ts` branches; `exchangeService`, `issuanceKeySession`, and `dualFormatIssuance`
+  create/bind/discard hardware pending keys instead of Ed25519 credential keys.
+- **Deferred:** `k_attest` / wallet activation transaction, cutover portal UI,
+  `cutoverMigrationPolicy` wiring, ADR + SECURITY.md cutover section, proximity mdoc native
+  signing, removing Ed25519 paths, defaulting the hardware flag on in any build flavor.
+- **Verification:** `hardwareCredentialSigningKey.test.ts`, `hardwareJwtSigner.test.ts`,
+  `crypto.hardwareP256.test.ts`, extended `exchangeService.perCredential.test.ts`
+  (hardware pending-key path); run `yarn test` + `yarn tsc --noEmit` before merge.
+- **Device gate:** Do not enable the flag in staging until Slice B A26 checklist rows 1+6 pass.
+
+### Session 2026-08-07 (verifier deeplink repeat → Wallet remount flash)
+
+- **Symptom:** Tapping a used/closed verifier deeplink while already on the Wallet tab
+  briefly behaved like switching back to Wallet.
+- **Root cause:** `+native-intent` always routed `openid4vp://` / VP callbacks into the
+  presentation flow (or `/callback` → `replace('/(tabs)')`), then rejection called
+  `returnToWallet` / tabs replace and remounted Wallet.
+- **Fix:** `redirectWalletSystemPath` returns `null` for consumed VP on warm app (stay
+  put; dialog only); cold start lands on `/(tabs)`. VP callbacks go straight to
+  `presentation-request`. Layout allows dismissed reopen via store-before-dismissed
+  checks; callback prefers `router.back()` over tabs replace when rejecting.
+- **Verification:** 50/50 focused tests; `yarn tsc --noEmit` clean.
+
+### Session 2026-08-07 (portal retry race — stale empty-offer dialog)
+
+- **Symptom:** Holder taps ขอเอกสาร (looks stuck) → taps again → credential arrives →
+  later dialog ยังไม่ได้รับเอกสาร / ไม่สามารถรับเอกสารได้.
+- **Root cause:** Android portal wait (`waitForPortalReturnNotification`, up to 3 min)
+  from the first open kept running after a second `beginPortalReturnCapture()`; when the
+  first wait timed out it returned `empty_offer` and showed the dialog after success.
+- **Fix:** Capture generations in `portalReturnBridge`; newer begin supersedes older waits;
+  `openCredentialRequestPortal` returns `{ status: 'superseded' }`; flow exits silently.
+- **Verification:** 23/23 focused tests (`portalReturnBridge`, `openCredentialRequestPortal`,
+  `requestCredentialViaPortalFlow`).
+
+### Session 2026-08-07 (Galaxy A26 — portal VCI + VP device E2E)
+
+Device: Samsung Galaxy A26, Hermes dev build. Issuer: `issuer.zenithcomp.co.th:455`.
+Required env: `EXPO_PUBLIC_OID4VC_DPOP_ENABLED=false` (issuer `/credential` 401 with DPoP on).
+
+| Flow | Result | Notes |
+|------|--------|-------|
+| Wallet home + credential storage | Pass | ThaID visible after issuance; survives relaunch |
+| Portal → ThaID (IDCard) | Pass | OID4VCI pre-authorized + PoP |
+| Portal → Transcript | Pass | Requires usable PID |
+| Portal → Driving licence (mDL) | Fail | Issuer `/credential` 400 — *file not found* / dictionary errors; curl reproduces |
+| Scan → Verifier VP | Pass | **`EXPO_PUBLIC_OID4VC_VP_ADAPTER=true`**; oid4vc adapter Scan path |
+| Same-device VP deeplink (`walletapp://callback`) | Pass | Galaxy A26 2026-08-07 |
+| Backend credential sync | Not tested | — |
+| My QR (wallet-initiated VP) | Not tested | — |
+| Issuer ops (DPoP + mDL backend) | Waiting | Peer-owned |
+
+**Next from this session:** optional backend sync + My QR smoke; finish VP adapter checklist rows not covered by Scan golden path (untrusted verifier, legacy regression flag-off, same-device callback, remount origin, bad `request_uri`); DLT blocked on issuer.
+
+**VP adapter checklist (2026-08-07):** Scan golden path validated with flag `true` on Galaxy A26. Mark rows 1 and 5 pass; row 4 (legacy `false`) and rows 2–3, 6–8 still open unless explicitly exercised.
+
+### Session 2026-08-07 (Windows CMake MAX_PATH / stale `.ninja_deps`)
+
+- Root cause: Cursor sandbox sets a long `GRADLE_USER_HOME` under
+  `Temp/cursor-sandbox-cache/.../gradle`. Even after `scripts/gradle-env.js`
+  remaps to `C:\gradle`, Ninja's binary `.ninja_deps` kept absolute sandbox
+  prefab include paths (266 chars > 260), so
+  `:expo-modules-core:buildCMakeDebug[arm64-v8a]` failed on `Stat(.../expr_iif.hpp)`.
+- Fix: `yarn android` wrapper now purges `android/.cxx` trees (and matching
+  `build/intermediates/cxx`) that still mention `cursor-sandbox-cache` before
+  `expo run:android`.
+- Verification: `scripts/gradle-env.test.js` + `scripts/android-build-script.test.js`
+  (4/4); `app:assembleDebug` arm64-v8a **BUILD SUCCESSFUL** (~5m27s) with
+  `GRADLE_USER_HOME=C:\gradle`. APK at `android/app/build/outputs/apk/debug/app-debug.apk`.
+- Note: OS `LongPathsEnabled=1` does not help here — Ninja still enforces 260.
+
 ### Session 2026-08-07 (VP adapter P1 blocker fixes + re-E2E gate)
 
 - Closed four implementation-review findings from conversation d796fc28 that blocked real
@@ -22,19 +199,25 @@
 
 | # | Check | Flag | Status |
 |---|-------|------|--------|
-| 1 | Scan `request_uri` JWT → consent → biometric → `direct_post` success | `true` | [ ] pending device |
-| 2 | Same-device callback → `PresentationRequestScreen` completes | `true` | [ ] pending device |
-| 3 | Untrusted verifier → friendly error (no hang) | `true` | [ ] pending device |
-| 4 | Legacy Scan + callback regression | `false` | [ ] pending device |
-| 5 | Logs show oid4vc `protocolPath` (not silent legacy fallback) | `true` | [ ] pending device |
+| 1 | Scan `request_uri` JWT → consent → biometric → `direct_post` success | `true` | [x] pass Galaxy A26 2026-08-07 (flag on) |
+| 2 | Same-device callback → `PresentationRequestScreen` completes | `true` | [x] pass Galaxy A26 2026-08-07 |
+| 3 | Untrusted verifier → friendly error (no hang) | `true` | [ ] pending — use synthetic deeplink (no live untrusted host); see 2026-08-11 note |
+| 4 | Legacy Scan + callback regression | `false` | [~] **waived** 2026-08-11 — product keeps oid4vc adapter path only (`true`) |
+| 5 | Logs show oid4vc `protocolPath` (not silent legacy fallback) | `true` | [x] pass Galaxy A26 2026-08-07 (flag on; confirm `[wallet:oid4vp]` / protocolPath oid4vc in logs if auditing) |
 | 6 | Scan-origin survives remount (`scan`, not `same-device`) | `true` | [ ] pending device |
-| 7 | Offline / bad `request_uri` → fetch-failed UX | `true` | [ ] pending device |
+| 7 | Offline / bad `request_uri` → fetch-failed UX | `true` | [x] pass Galaxy A26 2026-08-11 |
 | 8 | Signed `decentralized_identifier:did:web:` JAR (optional) | `true` | [ ] pending customer Verifier host |
+
+**Close-out (2026-08-11):** Row 7 passed on device. Row 4 waived — keep
+`EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` as the supported path (no legacy `false` rebuild).
+Row 3: no live untrusted Verifier QR; use synthetic `did:web:evil.untrusted.example`
+by-value deeplink (adb / QR generator). Row 6 still open.
 
 **Close-out (2026-08-07):** Code + docs committed (`9df4f4e`). Dev-build env and checklist:
 `docs/GETTING_STARTED.md` § VP adapter re-E2E; set `EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` in
 `.env.development.local`, rebuild dev client on Galaxy A26, then mark table rows pass/fail.
-Adapter default remains `false` until this table is green.
+Adapter default remains `false` in repo until rows 1–7 are green on device (row 8 optional).
+Rows 1 + 5 passed Galaxy A26 2026-08-07 with flag `true`; staging may enable flag when product accepts partial checklist.
 
 ### Session 2026-08-07 (Defer first-install Keychain biometric)
 
@@ -45,10 +228,16 @@ Adapter default remains `false` until this table is green.
   is device-bound and cache-first (reuse, never overwrite on retry).
 - Push registers under the first credential Holder DID after claim (or on startup
   when a credential DID already exists).
+- Follow-up hardening: dual-format binds the shared credential key immediately
+  after SD-JWT MMKV save (rollback VC on bind failure); mdoc-only bind failure
+  deletes the staged native mDOC; single-format `claimCredential` destroys the
+  bound key if persist/save fails after acquire.
 - Spec/plan:
   `docs/superpowers/specs/2026-08-07-defer-first-install-keychain-biometric-design.md`,
   `docs/superpowers/plans/2026-08-07-defer-first-install-keychain-biometric.md`.
-- Device check still required on Galaxy A26: fresh install → no fingerprint;
+- Claim-screen preview acquire also opens `withIssuanceKeySession` (fixes
+  `WalletKeyNotInitialized` on fresh install when pressing request/receive).
+- Device check **passed** Galaxy A26 2026-08-11: fresh install → no fingerprint;
   first claim → exactly one fingerprint at bind.
 
 ### Session 2026-08-05 (PIN session: background-idle grace)
@@ -836,7 +1025,7 @@ Implemented:
 
 Remaining:
 
-[x] Signed Request Object (JAR) signature verification — `authorizationRequestJar.ts` verifies `typ: oauth-authz-req+jwt`; `decentralized_identifier` requires EdDSA signature (pinned JWK or `did:web` document fetch); `redirect_uri` stays unsigned per OID4VP §5.9.3.
+[x] Signed Request Object (JAR) signature verification — `authorizationRequestJar.ts` verifies `typ: oauth-authz-req+jwt`; `decentralized_identifier` requires EdDSA/ES256 signature (pinned JWK or `did:web` document fetch); trusted `redirect_uri` signed JARs verify via Verifier JWKS (`EXPO_PUBLIC_VERIFIER_JWKS_PATH`, default `/openid4vc/jwks`) then unwrap before `@openid4vc/openid4vp` (library forbids signed `redirect_uri` JARs per OID4VP §5.9.3).
 [x] `client_id_scheme` enforcement — `clientIdScheme.ts` + scheme-aware `findTrustedVerifier()` for `redirect_uri`, `decentralized_identifier`, and legacy pre-registered `did:web` allowlist entries.
 [ ] Replace development `redirect_uri:` Verifier with registered production `did:web` Verifier entries — spec: `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md` (gate dev `redirect_uri` to `__DEV__`; require `EXPO_PUBLIC_VERIFIER_DID_WEB_*` in production; DID fetch timeout/size). **Env checklist:** `docs/GETTING_STARTED.md` § Production Verifier OID4VP checklist + `.env.example`; E2E pending customer Verifier host.
 [x] `presentation_definition_uri` fetch support — `presentationDefinitionResolver.ts`; fetch after trust gate; AbortController timeout + max-bytes cap; PE/DCQL mutually exclusive in v1; P5 birth-date scope unchanged.
@@ -874,6 +1063,25 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 5. Session notes below are updated.
 
 ## Active Session Notes and Blockers
+
+### Session 2026-08-07 (History Log delivery-path captions)
+
+- Fixed History Log detail **ช่องทาง** showing protocol-only labels instead of intake path: QR scan vs deep link for issuance and Verifier-initiated OID4VP (success/fail/decline).
+- Added optional `deliveryPath` (`qr` | `deep-link`) on `WalletHistoryEvent`; Thai projection via `readChannelCaption()` in `walletHistory.ts`.
+- Runtime intake: `pendingOfferFlowOrigin` / `activeOfferFlowOrigin` on `deeplinkStore` (mirror VP flow origin); VP writes map `PresentationFlowOrigin` at history record time.
+- Legacy rows without `deliveryPath` keep prior captions (VP success → `ผ่าน QR Verifier`; VP fail/decline → `ดำเนินการใน Wallet`; issuance → `รับเอกสารจาก Issuer`).
+
+### Session 2026-08-07 (OID4VP verifier display mocks)
+
+- Until Verifiers send `client_name`, presentation UI and History Log use credential-type mocks in `src/config/presentationVerifierMocks.ts` (ThaiNationalID → ร้านอาหาร / สถานบันเทิง / Verified Age; DLT → Central; CU transcript → จุฬาฯ; Medical → โรงพยาบาล).
+- Wired through consent title, success panel, OID4VP history `partyName`, and History detail **ประเภทข้อมูลที่เข้าถึง** via `credentialType` on presentation events.
+- Remove mocks when OID4VP request metadata includes trusted verifier display names.
+
+### Session 2026-08-11 (History Log Thai + display-name fallback)
+
+- Wallet-authored History copy centralized in `walletHistoryCopy.ts`; OID4VP/OID4VCI **ช่องทาง** stays hybrid per CONTEXT.md.
+- Display names: protocol/offer first → mock when missing/generic (`historyDisplayNames.ts` + `presentationVerifierMocks.ts`); ThaiNationalID consent/history unified to ร้านอาหาร; access labels Thai-only; MedicalCertificate `issuanceConfirmation` added.
+- Re-project party/document/info box at read time (no MMKV migrate). Hide-from-history navigates with `router.replace('/(tabs)/history')` + list refresh on focus.
 
 ### Session 2026-07-14 (Wave 1 claims/errors/msw/verifier docs)
 

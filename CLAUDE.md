@@ -30,10 +30,17 @@ Primary references:
 
 When planning any new system, feature, or integration:
 
-1. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs.
-2. **Best practice before convenience** — prefer push notifications via APNs/FCM with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant flows over custom shortcuts.
-3. **Name the tradeoffs explicitly** — if recommending a simpler approach, state what production capability is deferred and when it must be addressed.
-4. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before implementation steps.
+1. **Read Cursor Canvas P1–P6 first** — before designing or implementing anything new, read the journey sequence canvases so the work matches the locked P1–P6 specs and step statuses. Do not invent divergent actors, steps, or outcomes. If a change would alter a P1–P6 sequence, update the relevant canvas (and related User Journey / specs) in the same change set. Canvas files live under the Cursor project `canvases/` directory:
+   - `canvases/p1-sequence-check.canvas.tsx`
+   - `canvases/p2-sequence-check.canvas.tsx`
+   - `canvases/p3-key-rotation-sequence-check.canvas.tsx`
+   - `canvases/p4-vp-presentation-sequence-check.canvas.tsx`
+   - `canvases/p5-vp-verification-audit.canvas.tsx`
+   - `canvases/p6-revocation-status-sequence-check.canvas.tsx`
+2. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs.
+3. **Best practice before convenience** — prefer push notifications via APNs/FCM with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant flows over custom shortcuts.
+4. **Name the tradeoffs explicitly** — if recommending a simpler approach, state what production capability is deferred and when it must be addressed.
+5. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before implementation steps.
 
 ## Architecture Rules
 

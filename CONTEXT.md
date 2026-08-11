@@ -100,10 +100,37 @@ A Holder-entered code required by some Issuers during the OID4VCI 1.0 Pre-Author
 
 ## Offer Delivery Channels
 
+How a Credential Offer reaches the Wallet during issuance:
+
 1. QR Scan: camera reads a QR code containing the offer URL.
 2. Deep link: `openid-credential-offer://` or issuer portal callback (`walletapp://callback`).
 3. NFC: NDEF tag read for issuance (Android, deferred full validation), or ISO 18013-5 proximity exchange for presentation.
 4. In-app SDK call: backend returns offer URL via the generated SDK.
+
+_Avoid_: Calling this the History protocol family (`oid4vci` / `oid4vp` / `wallet`); those name the protocol or initiator, not how the offer arrived.
+
+## History Channel Caption (ช่องทาง)
+
+Holder-facing hybrid label on a History Log detail: the delivery or presentation intake path (QR scan, deep link, NFC, etc.) together with the counterparty role (Issuer or Verifier). Answers “how did this enter the Wallet, and with whom?”
+
+Locked hybrid wording uses English role words and glossary “Deep link” spelling: `ผ่าน QR Verifier`, `ผ่าน Deep link Verifier`, `ผ่าน QR Issuer`, `ผ่าน Deep link Issuer`. Verify-failed adds failure sense: `ตรวจสอบเอกสารผ่าน QR Issuer ไม่ผ่าน`, `ตรวจสอบเอกสารผ่าน Deep link Issuer ไม่ผ่าน`.
+
+**History delivery path** (persisted on events when known): `qr` or `deep-link`. Maps from runtime flow origin at write time (e.g. QR scan → `qr`, same-device deep link → `deep-link`). Distinct from History protocol family (`channel`) and from presentation-only flow origins such as My QR or issuer renewal.
+
+**Issuance flow origin** (runtime, pre-history): `scan` or `same-device`, held in deeplink store as `pendingOfferFlowOrigin` / `activeOfferFlowOrigin` — mirrors presentation flow origin. Mapped to History `deliveryPath` (`qr` / `deep-link`) only when the history event is written.
+
+Verifier-initiated OID4VP **ช่องทาง** uses the same hybrid caption for success, failure, and decline when `deliveryPath` is known (`ผ่าน QR Verifier` / `ผ่าน Deep link Verifier`); outcome stays in status and action labels, not in ช่องทาง.
+
+**Legacy history rows** (no `deliveryPath` stored): Verifier-initiated OID4VP success keeps `ผ่าน QR Verifier`; failed/declined keep `ดำเนินการใน Wallet`. Issuance success without path keeps `รับเอกสารจาก Issuer`. Do not guess intake for old rows.
+
+**Unmapped delivery paths** (NFC, In-app SDK, or any intake without explicit origin tracking): omit `deliveryPath` on the history event and use legacy ช่องทาง captions until that path is wired.
+_Avoid_: Protocol-only captions that ignore intake; “Deeplink” as one word in this caption; storing raw `PresentationFlowOrigin` on history rows; treating ช่องทาง as a synonym for Offer Delivery Channel alone or for History protocol family alone.
+
+## History Display Name
+
+Holder-facing names shown on History Log for the counterparty (Verifier or Issuer) and the document type. Prefer the name the Issuer or Verifier actually sent. When the name is missing or is only a Wallet/config placeholder (for example a trusted-verifier default such as “Verifier API”, or a built-in English schema title such as “Thai National ID”), the Wallet may show a credential-type mock aligned with the demo UI reference until real metadata is available. An Issuer offer display name that was truly sent is kept even when it is English.
+
+_Avoid_: Treating History Channel Caption wording as the party or document name; inventing names when a real protocol/offer display name is present.
 
 ## NFC Presentation
 
