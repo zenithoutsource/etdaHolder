@@ -17,10 +17,14 @@
     "sync-env": "node scripts/sync-env.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "proof:generate": "node scripts/generate-oid4vci-pop-jwt.mjs",
+    "probe:strongbox": "node scripts/probe-strongbox-keymint.mjs"
   },
   "dependencies": {
+    "@animo-id/expo-secure-environment": "^0.1.5",
     "@expo/vector-icons": "^15.0.3",
+    "@noble/curves": "^2.3.0",
     "@noble/ed25519": "^3.1.0",
     "@noble/hashes": "^2.2.0",
     "@openid4vc/openid4vci": "0.5.4",
@@ -92,6 +96,7 @@
       "reactNativeDirectoryCheck": {
         "exclude": [
           "expo-mdoc-proximity",
+          "expo-wallet-hardware-ecdsa",
           "react-native-nfc-manager",
           "react-native-ssl-pinning"
         ]

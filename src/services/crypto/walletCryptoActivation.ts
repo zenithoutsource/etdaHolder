@@ -5,11 +5,12 @@ import {
 } from '@/src/config/walletCryptoPolicy'
 
 import { logWalletStep } from '../debug/walletLogger'
-import { getMetaStorage } from '../storage/storage'
 import { readStoredCredentials } from '../credentials/storedCredentials'
-import { hasWalletKey } from './crypto'
+import { getMetaStorage } from '../storage/storage'
+
 import { listCredentialKeyRecords } from './credentialKeyRegistry'
 import { ensureWalletAttestKey } from './walletAttestKey'
+import { hasWalletKey } from './walletKeyRegistration'
 import { createWalletAttestClient } from './walletAttestClient'
 
 type CachedAttestation = {

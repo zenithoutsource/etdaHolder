@@ -1,7 +1,7 @@
 # Defer First-Install Keychain Biometric Design
 
 **Date:** 2026-08-07  
-**Status:** Approved for implementation planning  
+**Status:** Implemented (device validation pending on Galaxy A26)  
 **Scope:** Remove the blank first-install Keychain fingerprint prompt ("Authenticate to retrieve secret") by deferring Keychain seed create/retrieve off cold start, and completing every new-credential claim with exactly one biometric prompt (issuance-only; presentation activation out of scope).
 
 ## Context

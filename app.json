@@ -47,6 +47,7 @@
       "./plugins/with-android-long-paths.js",
       "./plugins/with-android-backup-rules.js",
       "./modules/expo-mdoc-proximity/app.plugin.js",
+      "./modules/expo-wallet-hardware-ecdsa/app.plugin.js",
       "expo-camera",
       "expo-notifications",
       [

@@ -129,11 +129,11 @@ describe('Keychain Ed25519 wallet crypto service', () => {
       kid: `${ED25519_DID_KEY_VECTOR}#${ED25519_DID_KEY_VECTOR.replace('did:key:', '')}`,
     })
     expect(base64UrlDecode(encodedPayload)).toMatchObject({
-      iss: ED25519_DID_KEY_VECTOR,
-      sub: ED25519_DID_KEY_VECTOR,
       aud: 'https://issuer.example.com',
       nonce: 'nonce-123',
     })
+    expect(base64UrlDecode(encodedPayload)).not.toHaveProperty('iss')
+    expect(base64UrlDecode(encodedPayload)).not.toHaveProperty('sub')
     expect(base64UrlDecodeBytes(jwt.split('.')[2])).toHaveLength(64)
     expect(Keychain.getGenericPassword).toHaveBeenLastCalledWith(expect.objectContaining({
       service: 'etda.wallet.ed25519_seed',
@@ -405,6 +405,23 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(backfilled).toBe(true)
     expect(getWalletKeyRegisteredAt()).toBe('2026-07-31T00:00:00.000Z')
     expect(ensureWalletKeyRegisteredAtBackfill()).toBe(false)
+  })
+
+  test('ensureWalletKeyRegisteredAtBackfill uses earliest credential bind for v2 wallets', () => {
+    getMetaStorage().set(WALLET_CRYPTO_V2_META_KEY, 'true')
+    getMetaStorage().set(
+      'wallet.credential_keys.cred-v2',
+      JSON.stringify({
+        credentialId: 'cred-v2',
+        holderDid: 'did:key:z6Mkexample',
+        keychainService: 'wallet.ed25519_seed.cred.cred-v2',
+        credentialType: 'ThaID',
+        createdAt: '2026-06-01T12:00:00.000Z',
+      }),
+    )
+
+    expect(ensureWalletKeyRegisteredAtBackfill()).toBe(true)
+    expect(getWalletKeyRegisteredAt()).toBe('2026-06-01T12:00:00.000Z')
   })
 
   test('getWalletKeyRegisteredAt returns an ISO 8601 timestamp when a fresh key is generated', async () => {

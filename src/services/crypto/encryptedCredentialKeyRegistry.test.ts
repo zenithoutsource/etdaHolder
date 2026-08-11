@@ -1,0 +1,118 @@
+import { getCredentialStorage } from '../storage/storage'
+import {
+  bindPendingCredentialAlias,
+  destroyEncryptedCredentialKey,
+  findEncryptedCredentialKeyByType,
+  getEncryptedCredentialKeyRecord,
+  listEncryptedCredentialKeyRecords,
+  registerEncryptedCredentialKey,
+  removeEncryptedCredentialKeyRecord,
+  retryEncryptedCredentialKeyRegistryCleanup,
+  type EncryptedCredentialKeyRecord,
+} from './encryptedCredentialKeyRegistry'
+import { createMockHardwareEcdsaSigner } from './hardwareEcdsaSigner.mock'
+
+jest.mock('../storage/storage', () => ({
+  getCredentialStorage: jest.fn(),
+}))
+
+jest.mock('../debug/walletLogger', () => ({
+  logWalletStep: jest.fn(),
+  logWalletError: jest.fn(),
+}))
+
+const getCredentialStorageMock = getCredentialStorage as jest.Mock
+
+function mockStorage() {
+  const values = new Map<string, string>()
+  const storage = {
+    getString: jest.fn((key: string) => values.get(key)),
+    set: jest.fn((key: string, value: string) => {
+      values.set(key, value)
+    }),
+    remove: jest.fn((key: string) => {
+      values.delete(key)
+      return true
+    }),
+    getAllKeys: jest.fn(() => [...values.keys()]),
+  }
+  getCredentialStorageMock.mockReturnValue(storage)
+  return { storage, values }
+}
+
+const SAMPLE: EncryptedCredentialKeyRecord = {
+  credentialId: 'cred-1',
+  holderDid: 'did:key:zExamplePid',
+  alias: 'wallet.p256.cred.pending.abc',
+  credentialType: 'ThaiNationalID',
+  createdAt: '2026-08-04T00:00:00.000Z',
+  securityLevelHint: 'STRONGBOX',
+}
+
+describe('encryptedCredentialKeyRegistry', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  test('registerEncryptedCredentialKey stores and retrieves records from encrypted storage', () => {
+    mockStorage()
+    registerEncryptedCredentialKey(SAMPLE)
+    expect(getEncryptedCredentialKeyRecord('cred-1')).toEqual(SAMPLE)
+  })
+
+  test('bindPendingCredentialAlias writes alias without renaming it', () => {
+    mockStorage()
+    const record = bindPendingCredentialAlias({
+      credentialId: 'cred-1',
+      alias: 'wallet.p256.cred.pending.abc',
+      holderDid: 'did:key:zExamplePid',
+      credentialType: 'ThaiNationalID',
+      securityLevelHint: 'TEE',
+    })
+    expect(record.alias).toBe('wallet.p256.cred.pending.abc')
+    expect(getEncryptedCredentialKeyRecord('cred-1')?.alias).toBe('wallet.p256.cred.pending.abc')
+  })
+
+  test('destroyEncryptedCredentialKey deletes keystore alias before registry row', async () => {
+    mockStorage()
+    registerEncryptedCredentialKey(SAMPLE)
+    const signer = createMockHardwareEcdsaSigner()
+    await signer.createKey(SAMPLE.alias)
+
+    await destroyEncryptedCredentialKey('cred-1', signer)
+
+    expect(await signer.hasKey(SAMPLE.alias)).toBe(false)
+    expect(getEncryptedCredentialKeyRecord('cred-1')).toBeUndefined()
+  })
+
+  test('retryEncryptedCredentialKeyRegistryCleanup removes registry row after keystore delete', async () => {
+    mockStorage()
+    registerEncryptedCredentialKey(SAMPLE)
+    const signer = createMockHardwareEcdsaSigner()
+    await signer.createKey(SAMPLE.alias)
+    await signer.deleteKey(SAMPLE.alias)
+
+    retryEncryptedCredentialKeyRegistryCleanup('cred-1')
+    expect(getEncryptedCredentialKeyRecord('cred-1')).toBeUndefined()
+  })
+
+  test('findEncryptedCredentialKeyByType locates PID records', () => {
+    mockStorage()
+    registerEncryptedCredentialKey(SAMPLE)
+    registerEncryptedCredentialKey({
+      ...SAMPLE,
+      credentialId: 'cred-2',
+      credentialType: 'ChulalongkornUniversityTranscript',
+    })
+
+    expect(findEncryptedCredentialKeyByType('ThaiNationalID')?.credentialId).toBe('cred-1')
+    expect(listEncryptedCredentialKeyRecords()).toHaveLength(2)
+  })
+
+  test('removeEncryptedCredentialKeyRecord deletes the entry', () => {
+    mockStorage()
+    registerEncryptedCredentialKey(SAMPLE)
+    removeEncryptedCredentialKeyRecord('cred-1')
+    expect(getEncryptedCredentialKeyRecord('cred-1')).toBeUndefined()
+  })
+})

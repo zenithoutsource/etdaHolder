@@ -70,3 +70,11 @@ export function readFirstCredentialHolderDid(): string | undefined {
   records.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   return records[0]?.holderDid
 }
+
+/** Oldest per-credential key bind time — wallet key TTL anchor for v2 wallets. */
+export function readEarliestCredentialKeyCreatedAt(): string | undefined {
+  const records = listCredentialKeyRecords()
+  if (records.length === 0) return undefined
+  records.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  return records[0]?.createdAt
+}

@@ -1,9 +1,12 @@
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import {
+  createHardwareMemoryIssuanceProofSession,
   createMemoryIssuanceProofSession,
   type ProofSigningSession,
 } from './crypto'
 import { discardPendingCredentialKey } from './credentialSigningKey'
+import { discardPendingHardwareCredentialKey } from './hardwareCredentialSigningKey'
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
 import {
   activateWalletCryptoV2,
   isWalletCryptoV2Enabled,
@@ -23,7 +26,9 @@ export type IssuanceKeySession = {
 export async function withIssuanceKeySession<T>(
   run: (session: IssuanceKeySession) => Promise<T>,
 ): Promise<T> {
-  const proofSession = createMemoryIssuanceProofSession()
+  const proofSession = isHardwareP256SigningEnabled()
+    ? await createHardwareMemoryIssuanceProofSession()
+    : createMemoryIssuanceProofSession()
   const pendingCredentialKeyId = proofSession.credentialKeyId
   if (!pendingCredentialKeyId) {
     proofSession.close()
@@ -55,7 +60,11 @@ export async function withIssuanceKeySession<T>(
   } finally {
     proofSession.close()
     if (!runSucceeded) {
-      await discardPendingCredentialKey(pendingCredentialKeyId)
+      if (isHardwareP256SigningEnabled()) {
+        await discardPendingHardwareCredentialKey(pendingCredentialKeyId)
+      } else {
+        await discardPendingCredentialKey(pendingCredentialKeyId)
+      }
     }
   }
 }

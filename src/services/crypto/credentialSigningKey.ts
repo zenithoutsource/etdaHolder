@@ -14,6 +14,7 @@ import {
   removeCredentialKeyRecord,
   type CredentialKeyRecord,
 } from './credentialKeyRegistry'
+import { seedInitialWalletKeyRegisteredAt } from './walletKeyRegistration'
 
 hashes.sha512 = sha512
 
@@ -255,6 +256,7 @@ async function bindPendingKeyWithSeed(
   try {
     await writeEd25519Seed(seed, credentialService, 'ยืนยันเพื่อบันทึกกุญแจเอกสาร')
     registerCredentialKey(record)
+    seedInitialWalletKeyRegisteredAt(record.createdAt)
     await Keychain.resetGenericPassword({ service: credentialKeychainService(pendingId) })
     removePendingKeyMeta(pendingId)
   } catch (error) {

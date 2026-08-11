@@ -2,6 +2,7 @@ import { isWalletKeyExpiredAt } from '@/src/config/walletKeyPolicy'
 
 import {
   clearPreviousWalletKey,
+  ensureWalletKeyRegisteredAtBackfill,
   forceRotateWalletKey,
   getHolderDid,
   getWalletKeyRegisteredAt,
@@ -24,7 +25,13 @@ export type WalletKeyRotationRecord = {
 }
 
 export function isWalletKeyExpired(now = new Date()): boolean {
-  const registeredAt = getWalletKeyRegisteredAt()
+  let registeredAt = getWalletKeyRegisteredAt()
+  // v2 wallets anchor TTL on per-credential bind times; backfill on read so time-travel
+  // and wallets created before registeredAt seeding still reach the expiry modal.
+  if (!registeredAt && isWalletCryptoV2Enabled()) {
+    ensureWalletKeyRegisteredAtBackfill(now)
+    registeredAt = getWalletKeyRegisteredAt()
+  }
   if (!registeredAt) {
     return hasWalletKey()
   }

@@ -306,20 +306,27 @@ Android binds the attestation challenge at **`createKey`**. If activation is int
 
 ```text
 wallet.activation.tx → {
-  phase: 'challenge_received' | 'key_created' | 'wp_submitted' | 'activated',
+  phase: 'challenge_received' | 'key_created' | 'wp_submit_pending' | 'wp_submitted' | 'activated',
   challengeId,
-  attestAlias,          // stable e.g. wallet.p256.attest
+  attestAlias,                    // stable e.g. wallet.p256.attest
   createdAt,
+  publicJwk,                      // from challenged createKey; required for wp retry
+  certificateChainDerBase64[],    // base64 DER certs from createKey; required for wp retry
+  securityLevelHint,              // cached at create for diagnostics only
+  submissionIdempotencyKey?,      // stable UUID/hex persisted before WP request is sent
   lastWpAttemptAt?
 }
 ```
 
 **Retry rules:**
 1. **`activated`:** no-op; wallet is OPERATIONAL.
-2. **`wp_submitted`:** retry WUA/WIA submission with the **same** key and chain; do **not** recreate the key.
-3. **`key_created` or `challenge_received` with a new WP challenge:** `deleteKey(attestAlias)` if `hasKey(attestAlias)`, then `createKey(attestAlias, { attestationChallenge: newChallenge })`, update `phase → key_created`, submit WUA/WIA.
-4. **Never** delete an **activated** `k_attest` except wallet reset/reinstall.
-5. If `hasKey(attestAlias)` but no persisted tx (crash before tx write): treat as unactivated — delete and recreate on next activation attempt with the current WP challenge.
+2. **`wp_submit_pending` or `wp_submitted`:** retry WUA/WIA with the **same** persisted `publicJwk`, `certificateChainDerBase64`, and `submissionIdempotencyKey`; do **not** recreate the key. `wp_submit_pending` covers crash after intent is persisted but before local `wp_submitted`/`activated` is recorded.
+3. **`key_created` with persisted artifacts and the same challenge:** submit/resubmit WUA/WIA using persisted artifacts; do **not** recreate the key.
+4. **`key_created` or `challenge_received` with a new WP challenge:** `deleteKey(attestAlias)` if `hasKey(attestAlias)`, then `createKey(attestAlias, { attestationChallenge: newChallenge })`, persist artifacts, update `phase → key_created`, then submit WUA/WIA.
+5. **Never** delete an **activated** `k_attest` except wallet reset/reinstall.
+6. If `hasKey(attestAlias)` but no persisted tx (crash before tx write): treat as unactivated — delete and recreate on next activation attempt with the current WP challenge.
+
+**Crash-idempotent submission:** persist `phase → wp_submit_pending` and a stable `submissionIdempotencyKey` **before** sending WUA/WIA to WP. WP must treat the idempotency key as safe to replay (same activation outcome on duplicate submit). On relaunch, query WP activation status when available; otherwise resubmit with the same idempotency key and persisted artifacts instead of regenerating `k_attest`.
 
 Ordinary `k_cred` keys default to public JWK / PoP only (no attestation challenge) unless a future issuer policy adds per-credential attestation. The facade retains optional `attestationChallenge` on `k_cred` create for that future path.
 
@@ -359,10 +366,11 @@ Until Secure Enclave P-256 work is specified and implemented:
 1. Load or start `wallet.activation.tx` (see Activation transaction).
 2. Fetch WP attestation challenge (or reuse persisted challenge when still valid per WP policy).
 3. If phase is `key_created`/`challenge_received` and challenge changed, or orphan unactivated key exists: `deleteKey(attestAlias)` then `createKey(attestAlias, { attestationChallenge })`.
-4. Persist public metadata + `securityLevelHint`; set `phase → key_created`.
-5. Submit WUA/WIA with public JWK **and** attestation certificate chain; set `phase → wp_submitted`; fail closed if WP rejects.
-6. On WP success: set `phase → activated`; set operational/activation gate.
-7. Mark Ed25519-bound credentials as requiring **fresh reissue** with **PID-first** ordering; do not use legacy seeds for new protocol ops.
+4. Persist `publicJwk`, `certificateChainDerBase64`, and `securityLevelHint`; set `phase → key_created`.
+5. Persist `phase → wp_submit_pending` and a stable `submissionIdempotencyKey` **before** sending WUA/WIA.
+6. Submit WUA/WIA with persisted public JWK, attestation chain, and idempotency key; on transport success set `phase → wp_submitted`; fail closed if WP rejects.
+7. On WP activation success: set `phase → activated`; set operational/activation gate.
+8. Mark Ed25519-bound credentials as requiring **fresh reissue** with **PID-first** ordering; do not use legacy seeds for new protocol ops.
 
 ### Issuance (including cutover reissue)
 
@@ -436,8 +444,9 @@ Default trusted base includes `ES256` and `EdDSA` while the ecosystem still emit
 | iOS holder signing requested | Fail closed until Secure Enclave slice |
 | Cutover path asks for old-key proof | Reject / unsupported — use fresh reissue only |
 | Legacy Ed25519 for credential C | No legacy signing; delete C’s legacy material only after C’s validated fresh reissue + present |
-| WP rejects `k_attest` attestation | Activation fails closed; wallet not OPERATIONAL for v2 issuance; tx remains retryable per Activation transaction |
-| Activation interrupted after `k_attest` create | Resume via persisted tx; delete/regenerate **unactivated** key on new challenge; retry WUA/WIA without recreating on `wp_submitted` |
+| WP rejects `k_attest` attestation | Activation fails closed; wallet not OPERATIONAL for v2 issuance; tx returns to `key_created` and clears `submissionIdempotencyKey`; retryable per Activation transaction |
+| Activation interrupted after `k_attest` create | Resume via persisted tx + artifacts; delete/regenerate **unactivated** key on new challenge; retry WUA/WIA without recreating on `wp_submit_pending` / `wp_submitted` |
+| Crash after WP accepts but before local `wp_submitted`/`activated` | Relaunch reads `wp_submit_pending`; resubmit with same idempotency key + persisted artifacts or query WP activation status; do **not** regenerate `k_attest` |
 | P2 reissue of non-PID during cutover without hardware PID | Block with user-visible “reissue PID first” guidance |
 | `k_attest` create without challenge in production | Reject / programming error — attestation required for first production |
 | Any caught error | Scoped raw log (`[hardware-ecdsa]`) then friendly UI mapping; no key material, JWTs, or PII |
@@ -458,7 +467,7 @@ Production Android posture: wallet crypto is not OPERATIONAL for issuance/presen
 - Cutover: old-key renewal/presentation path is rejected; fresh reissue path succeeds.
 - Proximity: handle-only handoff; native mock rejects mismatched purpose; no JS sign callback during simulated APDU.
 - iOS platform gate: issuance/presentation blocked.
-- Activation: production `k_attest` without challenge fails; WP reject fails closed; interrupted activation resumes (new challenge → delete/recreate unactivated key; `wp_submitted` → resubmit same key).
+- Activation: production `k_attest` without challenge fails; WP reject fails closed; interrupted activation resumes (new challenge → delete/recreate unactivated key; `wp_submit_pending` / `wp_submitted` → resubmit same artifacts + idempotency key); crash after WP accept before local persist covered.
 - Cutover ordering: block non-PID P2 reissue until hardware PID exists; PID-first migration succeeds end-to-end.
 
 ### Device gate (blocks production cutover)
@@ -528,6 +537,7 @@ On Galaxy A26 (exact production-intent firmware):
 6. Issuer UX/API details for fresh reissue entry points (portal vs offer) — must match “no old-key proof.”
 7. Wire details of WP challenge/WUA/WIA request fields (must include attestation chain + properties WP verifies).
 8. WP challenge freshness/TTL policy for activation tx resume vs forced recreate.
+9. WP activation-status query contract for crash recovery when `wp_submit_pending` is persisted locally.
 
 ## Success criteria
 

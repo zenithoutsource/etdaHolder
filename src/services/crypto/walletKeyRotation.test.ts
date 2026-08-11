@@ -20,6 +20,8 @@ import {
   rotateWalletKey,
 } from './walletKeyRotation'
 import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
+import { registerCredentialKey } from './credentialKeyRegistry'
+import { WALLET_CRYPTO_V2_META_KEY } from '@/src/config/walletCryptoPolicy'
 
 jest.mock('./walletCryptoActivation', () => ({
   isWalletCryptoV2Enabled: jest.fn(() => false),
@@ -158,6 +160,7 @@ describe('rotateWalletKey re-rotation guard', () => {
     getMetaStorage().clearAll()
     __resetStore()
     jest.clearAllMocks()
+    isWalletCryptoV2EnabledMock.mockReturnValue(false)
     process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING = 'true'
   })
 
@@ -230,5 +233,21 @@ describe('rotateWalletKey re-rotation guard', () => {
     getMetaStorage().remove('wallet.key_registered_at')
 
     expect(isWalletKeyExpired()).toBe(true)
+  })
+
+  test('isWalletKeyExpired backfills v2 registeredAt from earliest credential bind', () => {
+    isWalletCryptoV2EnabledMock.mockReturnValue(true)
+    getMetaStorage().set(WALLET_CRYPTO_V2_META_KEY, 'true')
+    registerCredentialKey({
+      credentialId: 'cred-1',
+      holderDid: 'did:key:z6Mkexample',
+      keychainService: 'wallet.ed25519_seed.cred.cred-1',
+      credentialType: 'ThaID',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })
+
+    expect(getWalletKeyRegisteredAt()).toBeUndefined()
+    expect(isWalletKeyExpired(new Date('2037-01-01T00:00:00.000Z'))).toBe(true)
+    expect(getWalletKeyRegisteredAt()).toBe('2026-01-01T00:00:00.000Z')
   })
 })
