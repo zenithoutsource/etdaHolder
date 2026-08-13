@@ -137,6 +137,7 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
             const presentation = await buildCompanionPresentation(pluginId, {
               sdJwt: record.rawVc,
               nonceBytes: base64UrlToBytes(event.nonceBase64Url),
+              credentialId,
             })
             await requireNativeProximityModule().supplyCompanionPresentation(presentation)
           } catch (error) {

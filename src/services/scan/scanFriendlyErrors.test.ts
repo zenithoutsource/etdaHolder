@@ -91,4 +91,16 @@ describe('toFriendlyError', () => {
 
     expect(message).toContain('Credential signing session failed')
   })
+
+  test('maps unsupported issuer credential alg to a reissue message', () => {
+    expect(toFriendlyError('CredentialSignatureAlgUnsupported: issuer credential alg must be ES256 or EdDSA, got RS256')).toContain(
+      'signing algorithm this wallet does not accept',
+    )
+  })
+
+  test('maps invalid issuer credential signature to a reissue message', () => {
+    expect(toFriendlyError('CredentialIssuerSignatureInvalid: issuer JWT signature does not match did:web public key')).toContain(
+      'could not be verified',
+    )
+  })
 })

@@ -1,4 +1,4 @@
-import { decodeJwtPayload, readString } from '@/src/utils/jwtUtils'
+import { decodeJwtHeader, decodeJwtPayload, readString } from '@/src/utils/jwtUtils'
 
 function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
@@ -54,6 +54,28 @@ export function readProofJwtDiagnostics(proofJwt: string): {
     popIss: readString(payload?.iss),
     popAud: readString(payload?.aud),
     popNoncePresent: Boolean(readString(payload?.nonce)),
+  }
+}
+
+export function readProofHeaderBindingDiagnostics(proofJwt: string): {
+  popHeaderAlg?: string
+  popHasJwk: boolean
+  popHasKid: boolean
+  popHasCoseKey: boolean
+  popJwkKty?: string
+  popJwkCrv?: string
+} {
+  const header = decodeJwtHeader(proofJwt)
+  const jwk = header && typeof header.jwk === 'object' && header.jwk !== null
+    ? (header.jwk as Record<string, unknown>)
+    : undefined
+  return {
+    popHeaderAlg: readString(header?.alg),
+    popHasJwk: Boolean(jwk),
+    popHasKid: typeof header?.kid === 'string',
+    popHasCoseKey: typeof header?.cose_key === 'string',
+    popJwkKty: readString(jwk?.kty),
+    popJwkCrv: readString(jwk?.crv),
   }
 }
 

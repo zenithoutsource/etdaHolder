@@ -1,6 +1,6 @@
 # ADR 0002 - Native Signing Module: @animo-id/expo-secure-environment
 
-Status: Accepted
+Status: Superseded by [ADR 0011](./0011-hardware-p256-es256-holder-keys.md)
 
 Date: 2026-06-02
 
@@ -32,3 +32,7 @@ Reasons:
 - Public key bytes must be converted to DID/JWK formats by wallet code.
 - `react-native-quick-crypto` remains non-signing only.
 - No production software fallback is allowed.
+
+## Supersession Note
+
+On 2026-08-13, ADR 0011 selected the custom Expo module `modules/expo-wallet-hardware-ecdsa` after the Animo spike failed attestation-at-create and StrongBox-first policy. This ADR is superseded for the production native signer.

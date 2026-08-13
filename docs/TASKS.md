@@ -1,5 +1,186 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-13 (ตรวจสอบสำเร็จ Thai vowel clipping)
+
+- Presentation success title/body used `leading-6` / `leading-5`, which clips Thai
+  tone marks on **ตรวจสอบสำเร็จ**. Matched AppDialog spacing: 18px → `leading-[26px]`,
+  14px → `leading-[22px]`.
+
+### Session 2026-08-13 (device: rebuild, claim, presentation)
+
+- Native rebuild on device, then a fresh claim and presentation, succeeded.
+- This closes the standing “Kotlin TEE/StrongBox/receiver/biometric-cancel still
+  needs a native rebuild” gate from the 2:54 PM review slice.
+- Still out of slice: real WP attestation verify, default hardware flag on,
+  PID-first cutover, removing Ed25519 `k_cred`, native mdoc P-256 device-auth
+  (`ProximityHardwareDeviceAuthUnavailable` until an opaque session handle exists).
+
+### Session 2026-08-13 (review 2:54 PM remaining P1/P2)
+
+- HTTPS issuer JWTs without a `did:key` kid fail closed (`CredentialIssuerSignatureInvalid`).
+- Wallet-level `getHolderDid` / `getPublicKeyJwk` stay on the Ed25519 wallet key when a
+  hardware credential also exists.
+- Software and hardware replacement commit keep the live key until the new mapping is
+  durable; a failed hardware alias delete is queued for GC instead of rolling back.
+- Dual-format proximity arm runs the same hardware mdoc fail-closed gate as mdoc-only.
+- mso_mdoc PoP requires a P-256 `jwk` only when hardware P-256 is on; Ed25519 `jwk`+`kid`
+  remains valid with the flag off.
+- Dual-format finalize commits a staged replacement only after logical save is durable.
+- Unmatched `credential_identifier` no longer inherits another format's identifier.
+- Wallet attest activation is single-flight; WP challenge/attest POSTs time out
+  (`EXPO_PUBLIC_WALLET_ATTEST_FETCH_TIMEOUT_MS`, default 15s).
+- Native `createKey` rolls back the alias if attestation-chain retrieval throws.
+
+### Session 2026-08-13 (review P1/P2 remaining fixes)
+
+- Reissuance cancel no longer destroys the live `k_cred`: preview bind stages a
+  replacement; save commits it; cancel discards only the staged alias.
+- Signing routes by stored key backend: hardware flag plus a bound hardware key.
+  Legacy Ed25519 credentials still sign EdDSA when the flag is on.
+- Ambiguous WP submit failures (no status, 5xx, 409) keep `wp_submit_pending` and
+  the idempotency key so retry resubmits the same challenge.
+- Dual-format token exchange forwards `authorizationCodeExchange`, reuses one DPoP
+  session, and selects a per-format `credential_identifier`.
+- HTTPS ES256 issuer JWTs with `did:key` kids must match Issuer `/resolveDID`
+  (no local-only trust). Hardware mdoc device-auth fails closed
+  (`ProximityHardwareDeviceAuthUnavailable`) until a native P-256 session handle exists.
+- Lifecycle revoke/delete calls `destroyIssuanceCredentialKey` (hardware or Ed25519).
+- Manual `credential_identifier` requests retry once on `DPoP-Nonce`.
+- Local WP mock binds idempotent replay to challenge+JWK+chain and prunes expired state.
+- Kotlin TEE/StrongBox/receiver/biometric-cancel needed a native rebuild
+  (device claim + presentation succeeded after rebuild; see session above).
+
+### Session 2026-08-13 (SD-JWT binding methods + keep unused nonce)
+
+- Dual-format SD-JWT failed locally with `CredentialProofUnsupported` before any PoP.
+  Issuer lists DID methods as `did:key` (OID4VCI 1.0), not the bare `did` string.
+- `readProofKeyBinding` now treats `did` / `did:*` as DID binding, `did:jwk` as JWK,
+  and falls back to `jwk` for SD-JWT when methods are unrecognized.
+- Nonce Endpoint refresh runs only after SD-JWT actually consumed the token nonce.
+  If SD-JWT fails before signing, mDOC keeps the original token nonce.
+
+### Session 2026-08-13 (dual-format: rotate c_nonce before mDOC)
+
+- Dual-format SD-JWT succeeded; first mDOC proof reused the token `c_nonce`
+  (`invalid_proof`: nonce already used). The one invalid_proof retry then got
+  `credential_request_denied`.
+- After a successful credential response, propagate `c_nonce` via `onCNonceUpdated`.
+- Before the second format, fetch a fresh nonce from the Nonce Endpoint when the
+  token nonce was not rotated. Do not spend the invalid_proof retry on a used nonce.
+- Reload and retry. Look for `dual-format-nonce-refreshed` then mDOC request.
+  If mDOC is still `credential_request_denied` with a fresh nonce, that is Issuer-side.
+
+### Session 2026-08-13 (review P1/P2 hardware trust fixes)
+
+- Remaining review findings from high to low, except the intentional mDL PoP `jwk`+`kid` exception.
+- Default hardware ECDSA backend is `custom` (Animo remains explicit opt-in).
+- Keystore software/unknown levels fail closed (`KeyNotHardwareBacked`); StrongBox fallback is typed `StrongBoxUnavailableException` only.
+- JAR verify uses the trusted verifier key / JWKS, not an embedded attacker JWK.
+- Preview cancel and MMKV save-fail destroy hardware `k_cred`; pending-key delete failures go on a GC queue; rebind deletes the previous alias.
+- SD-JWT PoP follows `cryptographic_binding_methods_supported` (DID-only → `did-kid`).
+- Companion KB and mdoc device auth require `credentialId`; `credential_identifier` requests send DPoP when enabled.
+- StrongBox probe receiver is no longer exported. Native rebuild + device claim
+  and presentation succeeded later the same day.
+
+### Session 2026-08-13 (dev PoP JWT script matches driving-licence wallet)
+
+- `scripts/generate-oid4vci-pop-jwt.mjs` now defaults to the current driving-licence
+  hardware PoP: ES256, P-256 `jwk` + `kid`, payload `{ aud, iat, nonce }`, no `cose_key`.
+- Output also includes the OID4VCI 1.0 bodies the wallet posts (SD-JWT then mDOC):
+  `{ credential_configuration_id, proofs.jwt }` with no `doctype` / `format`.
+
+### Session 2026-08-13 (mDL claim: 1.0 request still credential_request_denied)
+
+- After dropping body `doctype`, wire is OID4VCI 1.0: `proofs` + `credential_configuration_id`.
+- PoP remains ES256 P-256 `jwk`+`kid`, no `cose_key`. Issuer returns HTTP 400
+  `credential_request_denied` (not `invalid_proof`) — processing denial, not a
+  malformed proof/request the wallet can repair.
+- Driving-licence claim no longer uses the mDOC-only debug slice. Next retry uses
+  production dual-format (SD-JWT then mDOC, shared token) so logs split
+  `dual-format-sd-jwt-failed` vs `dual-format-mdoc-failed`.
+- Do not flip PoP headers or request body again without the Issuer inner exception.
+
+### Session 2026-08-13 (mDL 1.0 request: drop body doctype)
+
+- After jwk+kid PoP (no `cose_key`), Issuer still returned `credential_request_denied`.
+- Wire body was `proofs` + `credential_configuration_id` + `doctype`. OID4VCI 1.0 puts
+  `doctype` in metadata, not the credential request.
+- mso_mdoc additional payload now sends only `credential_configuration_id`.
+- Reload and retry; `bodyKeysOnWire` should be `proofs`, `credential_configuration_id`.
+
+### Session 2026-08-13 (P2 canvas 31: Issuer JWT ES256/EdDSA verify)
+
+- Holder signing stays hardware P-256 / `alg: ES256`. Issuer VC verify no longer requires EdDSA-only.
+- Trusted allowlist is `ES256` | `EdDSA` (`src/config/issuerJwtVerifyPolicy.ts`). `RS256` / `none` still fail closed.
+- `assertIssuerDidWebCredentialSignature` verifies ES256 (`did:web` JWK or local P-256 `did:key`) and EdDSA (`did:web` or `/resolveDID`).
+- P2 canvas 31 is **match**. Trust Registry accreditation on receive remains peer (journey 21, no API).
+
+### Session 2026-08-13 (WP challenge 404 must not block Zenith claim)
+
+- Device POSTed `https://wallet.zenithcomp.co.th:455/wallet-api/wallet-attestations/challenge`
+  and the peer WP returned Express 404 (`Cannot POST`). That is not the local mock.
+- Hardware `k_attest` activation now **skips** on challenge 404 when WUA is not requested
+  (default), caches the skip for `EXPO_PUBLIC_WALLET_ATTEST_CHALLENGE_UNSUPPORTED_TTL_MS`
+  (default 1 hour), and continues `k_cred` claim.
+- Still fail-closed on 404 when `EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED`
+  is on, and on any other WP error (503/400/network).
+- Reload Metro and retry the claim; no native rebuild.
+
+### Session 2026-08-13 (hardware k_attest activation)
+
+- Replaced Ed25519 Keychain `k_attest` with hardware P-256 `wallet.p256.attest`.
+- Activation: POST `/wallet-api/wallet-attestations/challenge`, `createKey` with challenge,
+  POST P-256 JWK + chain + idempotency. Skip only when alias exists and tx phase is `activated`.
+- After WP 201, `destroyWalletAttestKey()` removes leftover Ed25519 attest seed (reset only).
+- Local mock: single-use challenge, idempotent replay, unsigned `alg: none`. Does not verify
+  Android roots/revocation/app identity. Never a production WP.
+- Spec `2026-08-13-hardware-k-attest-activation-design.md`; ADR 0011; P1 canvas steps 6/8 done
+  against mock (step 9 still peer).
+- Device: point `EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL` at the updated mock or claim fail-closes.
+  Second claim should skip activation. One biometric remains `k_cred` PoP.
+
+### Session 2026-08-13 (mDL PoP: jwk+kid, no cose_key header)
+
+- After jwk+kid were accepted, Issuer returned HTTP 400 `credential_request_denied`
+  (`the credential request could not be processed`) — not `invalid_proof`.
+- OID4VCI proof headers are `kid` | `jwk` | `x5c`. Extra `cose_key` is non-IANA and
+  previously produced .NET "key not present in the dictionary" on this stack.
+- Hardware mDOC PoP now sends P-256 `jwk` + `kid` only. Device COSE binding stays
+  Issuer-side from the JWK.
+- `doctype` on the 1.0 credential request body is unchanged this slice.
+
+### Session 2026-08-13 (P2 journey 12 / canvas 20: k_cred default)
+
+- Amended ADR 0010: `k_cred` is the default issuance path (new `did:key` per document) without Wallet Provider WUA.
+- `usesPerCredentialSigning()` is on unless `EXPO_PUBLIC_PER_CREDENTIAL_SIGNING_ENABLED=false`.
+- Claim no longer calls WP attest unless `EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED` is on.
+- Legacy v1 credentials (no registry row) still present with the wallet-level key; startup no longer throws `WalletCryptoLegacyWallet`.
+
+### Session 2026-08-13 (P2 step 18 canvas match)
+
+- P2 step 18 (Display error) is **match**: Wallet already surfaces OID4VP / PID-gate / claim errors via `toFriendlyError`, including Issuer reject on VP submit.
+- Later Issuer-side PID verify failure still needs peer step 17 (notify). No fake PID-fail screen and no new notify channel.
+
+### Session 2026-08-13 (review P2: destroy retry + biometric cancel)
+
+- `destroyEncryptedCredentialKey` is retry-safe when the Keystore alias is already gone:
+  skip `deleteKey` if `hasKey` is false; if `deleteKey` throws, remove the registry row
+  when the alias is gone instead of leaving a stuck row.
+- Hardware biometric cancel (Android codes 5 / 10 / 13) now maps to
+  `WalletHardwareEcdsaSigningCancelled` → `WalletKeySigningCancelled` so UI treats it as
+  cancel, not a signing failure. Native rebuild required for the Kotlin mapping.
+- Left unchanged: SD-JWT force-`jwk`, hardware `k_attest` cutover.
+  mDL PoP now sends P-256 `jwk` and `kid` together (see session note above).
+
+### Session 2026-08-13 (IdCard claim preview after DOPA)
+
+- IdCard after acquire no longer skips to a leftover `receive` phase (which would
+  also re-show DOPA if routed through `preview`).
+- Flow: DOPA confirm → acquire (one biometric at `signProof`) → `ThaiIdReceivePanel`
+  preview → save → `ScanSuccessPanel`. DL/Transcript still add issuerConfirm after preview.
+- Claim-screen tests cover DOPA gone after acquire, save only on document confirm,
+  and success copy `รับเอกสารสำเร็จ`.
+
 ### Session 2026-08-11 (Verifier missing_holder_binding_key → PoP jwk)
 
 - Verifier error: `reason: missing_holder_binding_key` with credential `cnf: { kid only }`.
@@ -1049,7 +1230,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 ### Blocked on the customer ecosystem services (external)
 
-[ ] Trust Registry integration: wallet-side Issuer accreditation check on credential receive (P2 journey step 21) and Verifier trust check before presenting (P4 steps 6–7). Blocked: no Trust Registry service/API exists. Note: Issuer `did:web` document resolve + EdDSA signature verify on receive is implemented (`issuerDidWebVerify.ts`) when VC `iss` is `did:web:` — that is crypto verify, not Trust Registry accreditation.
+[ ] Trust Registry integration: wallet-side Issuer accreditation check on credential receive (P2 journey step 21) and Verifier trust check before presenting (P4 steps 6–7). Blocked: no Trust Registry service/API exists. Note: Issuer JWT signature verify on receive is implemented (`issuerDidWebVerify.ts`, ES256 / EdDSA allowlist) when VC `iss` is `did:web:` or `kid` is `did:key:` — that is crypto verify, not Trust Registry accreditation.
 [ ] DID Resolver integration: resolve Verifier public key (P4 steps 4–5) and Issuer public key for wallet-side verification. Partially overlaps the open JAR signature-verification item above; production resolution mechanism blocked on ecosystem DID method decision.
 [ ] VC Status Registry checking: wallet-side credential status refresh (suspended/revoked/used) from a central registry instead of dev polling endpoints. Blocked: no registry exists; current P6 Case 2 dev polling is the stand-in.
 [ ] P2 identity verification via real PID VC presentation to Issuer (journey steps 3–10): **Wallet handler shipped** (Scan OID4VP path + `EXPO_PUBLIC_ISSUER_OID4VP_*` trust env; spec `2026-07-10-p2-issuer-oid4vp-pid-auth-design.md`). E2E blocked until customer Issuer sends live `openid4vp` Authorization Request and `response_uri`. P1 ThaID interstitial remains until Issuer drives real OID4VP. Issuer-side Trust Registry + VC Status Registry checks (steps 8–17) remain peer-owned.

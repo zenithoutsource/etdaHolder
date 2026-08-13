@@ -53,12 +53,21 @@ internal object AndroidKeyStoreHardwareEcdsa {
       keyCreatePath = "tee-direct-no-strongbox"
     }
 
-    val publicJwk = readPublicJwk(alias)
-    val securityLevel = AndroidKeyStoreProbe.getSecurityLevel(alias)
-    val keyDiagnostics = AndroidKeyStoreProbe.readKeyDiagnostics(alias)
-    val certificateChainDer =
-      attestationChallenge?.let { readCertificateChainDer(alias) }
-        ?: emptyList()
+    val publicJwk: Map<String, String>
+    val securityLevel: String
+    val keyDiagnostics: Map<String, Any>
+    val certificateChainDer: List<String>
+    try {
+      publicJwk = readPublicJwk(alias)
+      securityLevel = AndroidKeyStoreProbe.getSecurityLevel(alias)
+      keyDiagnostics = AndroidKeyStoreProbe.readKeyDiagnostics(alias)
+      certificateChainDer =
+        attestationChallenge?.let { readCertificateChainDer(alias) }
+          ?: emptyList()
+    } catch (error: Throwable) {
+      deleteKeyQuietly(alias)
+      throw error
+    }
 
     if (attestationChallenge != null && certificateChainDer.isEmpty()) {
       deleteKeyQuietly(alias)
@@ -179,9 +188,12 @@ internal object AndroidKeyStoreHardwareEcdsa {
   }
 
   private fun isExplicitStrongBoxUnavailable(error: Throwable): Boolean {
-    if (error is StrongBoxUnavailableException) return true
-    val message = error.message?.lowercase().orEmpty()
-    return message.contains("strongbox") && message.contains("unavailable")
+    var current: Throwable? = error
+    while (current != null) {
+      if (current is StrongBoxUnavailableException) return true
+      current = current.cause
+    }
+    return false
   }
 
   private fun formatFallbackReason(error: Throwable): String {

@@ -58,6 +58,27 @@ describe('hardwareEcdsaSigner.custom', () => {
     expect(publicKey).toHaveLength(33)
   })
 
+  test('createKey rejects software security levels and deletes the alias', async () => {
+    const jwk = {
+      kty: 'EC' as const,
+      crv: 'P-256' as const,
+      x: 'abc',
+      y: 'def',
+    }
+    mockNative.createKey.mockResolvedValue({
+      publicJwk: jwk,
+      securityLevel: 'SOFTWARE',
+      certificateChainDerBase64: [],
+    })
+    mockNative.deleteKey.mockResolvedValue(undefined)
+
+    const signer = createCustomHardwareEcdsaSigner()
+    await expect(signer.createKey('wallet.p256.attest')).rejects.toThrow(
+      'Hardware key is not hardware-backed: wallet.p256.attest:SOFTWARE',
+    )
+    expect(mockNative.deleteKey).toHaveBeenCalledWith('wallet.p256.attest')
+  })
+
   test('openSigningSession signs via native session handle', async () => {
     const { secretKey } = p256.keygen()
     const publicKey = p256.getPublicKey(secretKey, true)
@@ -126,5 +147,26 @@ describe('hardwareEcdsaSigner.custom', () => {
     })
 
     await expect(session.sign(new Uint8Array([0x01]))).rejects.toThrow(HardwareSigningSessionError)
+  })
+
+  test('maps native biometric cancellation to WalletKeySigningCancelled', async () => {
+    const { secretKey } = p256.keygen()
+    const publicKey = p256.getPublicKey(secretKey, true)
+
+    mockNative.hasKey.mockResolvedValue(true)
+    mockNative.getPublicJwk.mockResolvedValue(p256PublicKeyToJwk(publicKey))
+    mockNative.openSigningSession.mockResolvedValue({ opaqueNativeHandle: 'native-session-cancel' })
+    mockNative.signWithSession.mockRejectedValue({
+      code: 'WalletHardwareEcdsaSigningCancelled',
+      message: 'BiometricAuthenticationCancelled:10',
+    })
+
+    const signer = createCustomHardwareEcdsaSigner()
+    const session = await signer.openSigningSession('wallet.p256.attest', {
+      purpose: 'oid4vp',
+      maxSignatures: 1,
+    })
+
+    await expect(session.sign(new Uint8Array([0x01]))).rejects.toThrow('WalletKeySigningCancelled')
   })
 })

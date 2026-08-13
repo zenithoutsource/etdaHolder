@@ -2,7 +2,7 @@
   <application>
     <receiver
       android:name=".StrongBoxKeyMintProbeReceiver"
-      android:exported="true">
+      android:exported="false">
       <intent-filter>
         <action android:name="com.etdawallet.hardwareecdsa.PROBE_STRONGBOX" />
       </intent-filter>

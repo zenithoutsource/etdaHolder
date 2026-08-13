@@ -178,12 +178,7 @@ internal object HardwareSigningSessionManager {
           object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
               if (continuation.isActive) {
-                continuation.resumeWithException(
-                  WalletHardwareEcdsaException(
-                    "WalletHardwareEcdsaSigningFailed",
-                    "BiometricAuthenticationFailed:$errString",
-                  ),
-                )
+                continuation.resumeWithException(mapAuthenticationError(errorCode, errString))
               }
             }
 
@@ -226,6 +221,24 @@ internal object HardwareSigningSessionManager {
         }
       }
     }
+  }
+
+  private fun mapAuthenticationError(errorCode: Int, errString: CharSequence): WalletHardwareEcdsaException {
+    if (
+      errorCode == BiometricPrompt.ERROR_CANCELED ||
+      errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+      errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
+    ) {
+      return WalletHardwareEcdsaException(
+        "WalletHardwareEcdsaSigningCancelled",
+        "BiometricAuthenticationCancelled:$errorCode",
+      )
+    }
+
+    return WalletHardwareEcdsaException(
+      "WalletHardwareEcdsaSigningFailed",
+      "BiometricAuthenticationFailed:$errString",
+    )
   }
 }
 

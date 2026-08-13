@@ -58,6 +58,26 @@ export class HardwareSigningSessionError extends Error {
   }
 }
 
+export class HardwareKeyNotHardwareBackedError extends Error {
+  readonly alias: string
+  readonly reportedLevel: string
+
+  constructor(alias: string, reportedLevel: string) {
+    super(`Hardware key is not hardware-backed: ${alias}:${reportedLevel}`)
+    this.name = 'HardwareKeyNotHardwareBackedError'
+    this.alias = alias
+    this.reportedLevel = reportedLevel
+  }
+}
+
+export function assertHardwareSecurityLevel(
+  level: string,
+  alias: string,
+): asserts level is HardwareSecurityLevel {
+  if (level === 'STRONGBOX' || level === 'TEE') return
+  throw new HardwareKeyNotHardwareBackedError(alias, level)
+}
+
 export interface HardwareEcdsaSigner {
   createKey(alias: string, options?: CreateKeyOptions): Promise<CreateKeyResult>
   getPublicJwk(alias: string): Promise<EcP256Jwk>

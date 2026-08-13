@@ -11,6 +11,7 @@ import {
   type EncryptedCredentialKeyRecord,
 } from './encryptedCredentialKeyRegistry'
 import { createMockHardwareEcdsaSigner } from './hardwareEcdsaSigner.mock'
+import { HardwareKeyNotFoundError } from './hardwareEcdsaTypes'
 
 jest.mock('../storage/storage', () => ({
   getCredentialStorage: jest.fn(),
@@ -93,6 +94,46 @@ describe('encryptedCredentialKeyRegistry', () => {
     await signer.deleteKey(SAMPLE.alias)
 
     retryEncryptedCredentialKeyRegistryCleanup('cred-1')
+    expect(getEncryptedCredentialKeyRecord('cred-1')).toBeUndefined()
+  })
+
+  test('destroyEncryptedCredentialKey removes registry when alias is already gone', async () => {
+    mockStorage()
+    registerEncryptedCredentialKey(SAMPLE)
+    const inner = createMockHardwareEcdsaSigner()
+    await inner.createKey(SAMPLE.alias)
+    await inner.deleteKey(SAMPLE.alias)
+    const signer = {
+      ...inner,
+      async deleteKey(alias: string) {
+        if (!(await inner.hasKey(alias))) {
+          throw new HardwareKeyNotFoundError(alias)
+        }
+        await inner.deleteKey(alias)
+      },
+    }
+
+    await destroyEncryptedCredentialKey('cred-1', signer)
+
+    expect(getEncryptedCredentialKeyRecord('cred-1')).toBeUndefined()
+  })
+
+  test('destroyEncryptedCredentialKey removes registry when deleteKey throws after alias is gone', async () => {
+    mockStorage()
+    registerEncryptedCredentialKey(SAMPLE)
+    const inner = createMockHardwareEcdsaSigner()
+    await inner.createKey(SAMPLE.alias)
+    const signer = {
+      ...inner,
+      async deleteKey(alias: string) {
+        await inner.deleteKey(alias)
+        throw new HardwareKeyNotFoundError(alias)
+      },
+    }
+
+    await destroyEncryptedCredentialKey('cred-1', signer)
+
+    expect(await inner.hasKey(SAMPLE.alias)).toBe(false)
     expect(getEncryptedCredentialKeyRecord('cred-1')).toBeUndefined()
   })
 

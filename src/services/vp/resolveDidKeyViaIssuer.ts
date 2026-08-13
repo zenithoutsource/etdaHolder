@@ -167,6 +167,120 @@ export async function resolveDidKeyPublicJwk(
   throw lastError ?? new Error('ResolveDidFailed: issuer URL missing')
 }
 
+function isP256PublicJwk(value: unknown): value is { kty: 'EC'; crv: 'P-256'; x: string; y: string } {
+  if (!value || typeof value !== 'object') return false
+  const jwk = value as Record<string, unknown>
+  return (
+    jwk.kty === 'EC' &&
+    jwk.crv === 'P-256' &&
+    typeof jwk.x === 'string' &&
+    jwk.x.length > 0 &&
+    typeof jwk.y === 'string' &&
+    jwk.y.length > 0
+  )
+}
+
+function readP256JwkFromResolveBody(body: IssuerResolveDidResponse & { jwk?: unknown }): {
+  kty: 'EC'
+  crv: 'P-256'
+  x: string
+  y: string
+} {
+  if (isP256PublicJwk(body.jwk)) {
+    return { kty: 'EC', crv: 'P-256', x: body.jwk.x, y: body.jwk.y }
+  }
+  if (typeof body.data === 'string' && body.data.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(body.data) as unknown
+      if (isP256PublicJwk(parsed)) {
+        return { kty: 'EC', crv: 'P-256', x: parsed.x, y: parsed.y }
+      }
+    } catch {
+      throw new Error('ResolveDidInvalidResponse')
+    }
+  }
+  throw new Error('ResolveDidInvalidResponse')
+}
+
+export async function resolveDidKeyP256PublicJwk(
+  didKey: string,
+  options: {
+    issuerUrls?: string[]
+    fetchImpl?: typeof fetch
+    timeoutMs?: number
+    maxBytes?: number
+  } = {},
+): Promise<{ kty: 'EC'; crv: 'P-256'; x: string; y: string }> {
+  const fetchImpl = options.fetchImpl ?? fetch
+  const issuerUrls = options.issuerUrls ?? []
+  let lastError: Error | undefined
+
+  for (const issuerUrl of issuerUrls) {
+    try {
+      return await resolveDidKeyP256ViaIssuerOnce(issuerUrl, didKey, fetchImpl, options)
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+    }
+  }
+
+  throw lastError ?? new Error('ResolveDidFailed: issuer URL missing')
+}
+
+async function resolveDidKeyP256ViaIssuerOnce(
+  issuerUrl: string,
+  didKey: string,
+  fetchImpl: typeof fetch,
+  options: { timeoutMs?: number; maxBytes?: number } = {},
+): Promise<{ kty: 'EC'; crv: 'P-256'; x: string; y: string }> {
+  const base = normalizeIssuerUrl(issuerUrl)
+  const did = didKey.startsWith('did:key:') ? didKey.split('#')[0]! : `did:key:${didKey.split('#')[0]!}`
+  const url = `${base}/resolveDID?didKey=${encodeURIComponent(did)}`
+  const timeoutMs = options.timeoutMs ?? DID_WEB_FETCH_TIMEOUT_MS
+  const maxBytes = options.maxBytes ?? DID_WEB_MAX_BYTES
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  let response: Response
+  let bodyBytes: ArrayBuffer
+  try {
+    response = await fetchImpl(url, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      throw new Error(`ResolveDidFailed:${response.status}`)
+    }
+    bodyBytes = await response.arrayBuffer()
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('ResolveDidFailed:')) {
+      throw error
+    }
+    if (isAbortError(error)) {
+      throw new Error('ResolveDidFailed: fetch timed out')
+    }
+    throw new Error(`ResolveDidFailed: network error: ${readErrorMessage(error)}`)
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  if (bodyBytes.byteLength > maxBytes) {
+    throw new Error('ResolveDidFailed: response exceeds max bytes')
+  }
+
+  let body: IssuerResolveDidResponse & { jwk?: unknown }
+  try {
+    body = JSON.parse(new TextDecoder().decode(bodyBytes)) as IssuerResolveDidResponse & { jwk?: unknown }
+  } catch {
+    throw new Error('ResolveDidInvalidResponse')
+  }
+
+  if (!body.success) {
+    throw new Error('ResolveDidInvalidResponse')
+  }
+
+  return readP256JwkFromResolveBody(body)
+}
+
 export async function resolveDidKeyViaIssuer(
   issuerUrl: string,
   didKey: string,

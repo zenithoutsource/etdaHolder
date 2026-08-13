@@ -2,6 +2,7 @@ import {
   readAccessTokenDiagnostics,
   readAccessTokenSafeDiagnostics,
   readProofBindingDiagnostics,
+  readProofHeaderBindingDiagnostics,
   readProofJwtDiagnostics,
 } from './accessTokenDiagnostics'
 
@@ -87,6 +88,26 @@ describe('accessTokenDiagnostics', () => {
       popIssuerMatchesWalletHolder: undefined,
       popAudiencePresent: true,
       walletHolderDidAvailable: false,
+    })
+  })
+
+  test('readProofHeaderBindingDiagnostics reports jwk vs kid without key material', () => {
+    const header = Buffer.from(JSON.stringify({
+      alg: 'ES256',
+      typ: 'openid4vci-proof+jwt',
+      jwk: { kty: 'EC', crv: 'P-256', x: 'abc', y: 'def' },
+      cose_key: 'cose',
+    })).toString('base64url')
+    const body = Buffer.from(JSON.stringify({ aud: 'https://issuer.example', nonce: 'n' })).toString('base64url')
+    const proof = `${header}.${body}.sig`
+
+    expect(readProofHeaderBindingDiagnostics(proof)).toEqual({
+      popHeaderAlg: 'ES256',
+      popHasJwk: true,
+      popHasKid: false,
+      popHasCoseKey: true,
+      popJwkKty: 'EC',
+      popJwkCrv: 'P-256',
     })
   })
 })

@@ -41,14 +41,12 @@ function createAdapterVerifyJwtImpl(input: {
 
       let verificationJwk: JwtSignerJwk['publicJwk'] | undefined
 
-      if (jwtSigner.method === 'jwk') {
-        verificationJwk = jwtSigner.publicJwk
-      } else if (jwtSigner.method === 'did') {
-        const clientId = readString(payload.client_id)
-        if (!clientId) {
-          return { verified: false as const }
-        }
+      const clientId = readString(payload.client_id)
+      if (!clientId) {
+        return { verified: false as const }
+      }
 
+      try {
         verificationJwk = (await resolveRequestObjectVerificationJwk({
           clientId,
           responseUri: readString(payload.response_uri),
@@ -56,7 +54,15 @@ function createAdapterVerifyJwtImpl(input: {
           trustedVerifiers: input.trustedVerifiers,
           fetchImpl: input.fetchImpl ?? fetch,
         })) as JwtSignerJwk['publicJwk']
-      } else {
+      } catch (error) {
+        logWalletError('oid4vp', 'jar_verify_key_resolve_failed', error, {
+          signerMethod: jwtSigner.method,
+          clientId,
+        })
+        return { verified: false as const }
+      }
+
+      if (jwtSigner.method !== 'jwk' && jwtSigner.method !== 'did') {
         logWalletError(
           'oid4vp',
           'jar_verify_rejected_signer_method',

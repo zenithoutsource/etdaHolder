@@ -92,28 +92,8 @@ function hasStrongBoxFeature(serial) {
 
 function isProbeReceiverRegistered(serial) {
   const args = serial
-    ? [
-        '-s',
-        serial,
-        'shell',
-        'cmd',
-        'package',
-        'query-receivers',
-        '--brief',
-        '-a',
-        'com.etdawallet.hardwareecdsa.PROBE_STRONGBOX',
-        WALLET_PACKAGE,
-      ]
-    : [
-        'shell',
-        'cmd',
-        'package',
-        'query-receivers',
-        '--brief',
-        '-a',
-        'com.etdawallet.hardwareecdsa.PROBE_STRONGBOX',
-        WALLET_PACKAGE,
-      ]
+    ? ['-s', serial, 'shell', 'dumpsys', 'package', WALLET_PACKAGE]
+    : ['shell', 'dumpsys', 'package', WALLET_PACKAGE]
   const { status, stdout } = runAdb(args)
   return status === 0 && stdout.includes(RECEIVER_COMPONENT)
 }

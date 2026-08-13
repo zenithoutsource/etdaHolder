@@ -43,6 +43,14 @@ jest.mock('./oid4vc/retrieveViaOid4vc', () => {
   }
 })
 
+jest.mock('../crypto/walletCryptoActivation', () => {
+  const actual = jest.requireActual('../crypto/walletCryptoActivation') as typeof import('../crypto/walletCryptoActivation')
+  return {
+    ...actual,
+    activateWalletCryptoV2: jest.fn(async () => undefined),
+  }
+})
+
 import {
   acquireCredentialRecord,
   claimCredential,
@@ -50,6 +58,7 @@ import {
   InvalidProofError,
   pollDeferredCredential,
   readCompactCredentialFromResponse,
+  readCNonceFromCredentialResponse,
   readDeferredTransactionId,
   readMdocCredentialFromResponse,
   resolveOffer,
@@ -66,6 +75,29 @@ test('exchange service contract module loads', () => {
   expect(typeof claimCredential).toBe('function')
   expect(typeof saveCredentialRecord).toBe('function')
   expect(typeof syncCredentialToBackend).toBe('function')
+})
+
+describe('readCNonceFromCredentialResponse', () => {
+  test('reads c_nonce from a successful credential response', () => {
+    expect(
+      readCNonceFromCredentialResponse({
+        successBody: {
+          credential: 'issuer.jwt.sd-jwt~disclosure~',
+          c_nonce: 'next-nonce',
+        },
+      }),
+    ).toBe('next-nonce')
+  })
+
+  test('returns undefined when the credential response omits c_nonce', () => {
+    expect(
+      readCNonceFromCredentialResponse({
+        successBody: {
+          credential: 'issuer.jwt.sd-jwt~disclosure~',
+        },
+      }),
+    ).toBeUndefined()
+  })
 })
 
 describe('readCompactCredentialFromResponse', () => {
@@ -597,7 +629,7 @@ test('EdDSA issuance rejects returned SD-JWT credentials without matching holder
   ).rejects.toThrow('CredentialHolderBindingMismatch')
 })
 
-test('EdDSA issuance rejects returned credentials signed with non-EdDSA alg', async () => {
+test('issuance rejects returned credentials signed with an untrusted alg', async () => {
   const resolved = await resolveOffer(transcriptOfferUri, {
     fetchIssuerMetadata: async () => ({
       credential_issuer: 'https://issuer.example.com',
@@ -621,11 +653,42 @@ test('EdDSA issuance rejects returned credentials signed with non-EdDSA alg', as
           jti: 'transcript-1',
           vct: 'https://issuer.example.com/vct/TranscriptCredential',
           cnf: { kid: 'did:key:z6Mkwallet' },
-        }, 'ES256')}~`,
+        }, 'RS256')}~`,
         getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
       },
     }),
   ).rejects.toThrow('CredentialSignatureAlgUnsupported')
+})
+
+test('issuance accepts returned credentials signed with ES256 alg', async () => {
+  const resolved = await resolveOffer(transcriptOfferUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        'TranscriptCredential_dc+sd-jwt': {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/TranscriptCredential',
+          claims: [],
+        },
+      },
+    }),
+  })
+
+  const record = await acquireCredentialRecord(resolved, {
+    dependencies: {
+      acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+      signProof: async () => proofJwtWithJwk({ kty: 'OKP', crv: 'Ed25519', x: 'wallet-ed25519-key' }),
+      requestCredential: async () => `${unsignedJwt({
+        jti: 'transcript-es256',
+        vct: 'https://issuer.example.com/vct/TranscriptCredential',
+        cnf: { kid: 'did:key:z6Mkwallet' },
+      }, 'ES256')}~`,
+      getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+    },
+  })
+
+  expect(record.id).toBe('transcript-es256')
 })
 
 test('saveCredentialRecord clears a stale local lifecycle status for a reissued credential', () => {
@@ -1327,6 +1390,25 @@ test('pre-authorized token exchange uses oid4vc retrieve with resolved offer con
   )
 })
 
+test('acquireCredentialRecord reports c_nonce from a successful credential response', async () => {
+  const resolved = await contract()
+  const onCNonceUpdated = jest.fn()
+  const credential = unsignedJwt({ vc: { type: ['VerifiableCredential', 'ThaiNationalID'] } })
+
+  await acquireCredentialRecord(resolved, {
+    tx_code: '123456',
+    onCNonceUpdated,
+    dependencies: {
+      acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
+      signProof: async () => 'proof.jwt',
+      requestCredential: async () => ({ credential, cNonce: 'next-nonce' }),
+      getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+    },
+  })
+
+  expect(onCNonceUpdated).toHaveBeenCalledWith('next-nonce')
+})
+
 test('acquireCredentialRecord retries once with a refreshed c_nonce on invalid_proof', async () => {
   const resolved = await contract()
 
@@ -1391,8 +1473,18 @@ test('acquireCredentialRecord uses one proof signing session for retry without a
   })
 
   expect(sessionSignProof).toHaveBeenCalledTimes(2)
-  expect(sessionSignProof).toHaveBeenNthCalledWith(1, 'nonce', resolved.issuer, { keyBinding: 'jwk' })
-  expect(sessionSignProof).toHaveBeenNthCalledWith(2, 'fresh-nonce', resolved.issuer, { keyBinding: 'jwk' })
+  expect(sessionSignProof).toHaveBeenNthCalledWith(
+    1,
+    'nonce',
+    resolved.issuer,
+    expect.objectContaining({ keyBinding: 'jwk' }),
+  )
+  expect(sessionSignProof).toHaveBeenNthCalledWith(
+    2,
+    'fresh-nonce',
+    resolved.issuer,
+    expect.objectContaining({ keyBinding: 'jwk' }),
+  )
   expect(dependencySignProof).not.toHaveBeenCalled()
   expect(close).not.toHaveBeenCalled()
 })

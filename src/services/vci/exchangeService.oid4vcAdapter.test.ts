@@ -1,7 +1,9 @@
 import type { IssuerMetadataV1_0_15 } from './walletVciTypes'
 
-jest.mock('@/src/services/crypto/walletCryptoActivation', () => ({
+jest.mock('../crypto/walletCryptoActivation', () => ({
   isWalletCryptoV2Enabled: jest.fn(() => false),
+  activateWalletCryptoV2: jest.fn(async () => undefined),
+  readCachedWalletAttestations: jest.fn(() => ({})),
 }))
 
 const preAuthOfferUri =

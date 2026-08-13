@@ -3,6 +3,7 @@ import { createHash } from 'react-native-quick-crypto'
 import {
     base64UrlDecodeToString,
     base64UrlToBytes,
+    decodeJwtHeader,
     decodeJwtPayloadStrict as decodeJwtPayload,
     isRecord,
     isSameJwk,
@@ -30,17 +31,17 @@ import { notifyCredentialsChanged } from '../credentials/storedCredentials'
 import {
     bindPendingKeyToCredential,
     createPendingCredentialKey,
-    destroyCredentialKey,
-    discardPendingCredentialKey,
     getCredentialHolderDid as getPerCredentialHolderDid,
 } from '../crypto/credentialSigningKey'
+import { getCredentialKeyRecord } from '../crypto/credentialKeyRegistry'
 import {
     bindPendingHardwareKeyToCredential,
     createPendingHardwareCredentialKey,
-    discardPendingHardwareCredentialKey,
 } from '../crypto/hardwareCredentialSigningKey'
 import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
-import { usesPerCredentialSigning } from '../crypto/perCredentialSigning'
+import { isTrustedIssuerJwtAlg } from '@/src/config/issuerJwtVerifyPolicy'
+import { isWalletAttestationRequested } from '@/src/config/walletCryptoPolicy'
+import { usesPerCredentialSigning, commitIssuanceCredentialKeyReplacement, destroyIssuanceCredentialKey, discardPendingIssuanceCredentialKey } from '../crypto/perCredentialSigning'
 import {
     createProofSigningSession as defaultCreateProofSigningSession,
     signProof as defaultSignProof,
@@ -79,7 +80,7 @@ import {
 } from '../oid4vc/dpopIssuanceSession'
 import { InvalidProofError } from './invalidProofError'
 import { assertIssuerDidWebCredentialSignature } from './issuerDidWebVerify'
-import { readAccessTokenDiagnostics, readAccessTokenSafeDiagnostics, readProofBindingDiagnostics } from './accessTokenDiagnostics'
+import { readAccessTokenDiagnostics, readAccessTokenSafeDiagnostics, readProofBindingDiagnostics, readProofHeaderBindingDiagnostics } from './accessTokenDiagnostics'
 import { mapCredentialOfferObjectToWalletOffer } from './oid4vc/mapOid4vcOfferToWalletShape'
 import {
   parseCredentialOfferViaOid4vc,
@@ -205,8 +206,10 @@ export type AcquireAccessTokenResult = {
   accessToken: string
   cNonce: string
   credentialIdentifier?: string
+  credentialIdentifiersByConfigurationId?: Record<string, string>
   tokenType?: string
   dpop?: RequestDpopOptions
+  dpopSession?: DpopIssuanceSession
 }
 
 export type RequestCredentialInput = {
@@ -220,9 +223,14 @@ export type RequestCredentialInput = {
   dpopSession?: DpopIssuanceSession
 }
 
+export type RequestCredentialResult = string | {
+  credential: string
+  cNonce?: string
+}
+
 export type ClaimCredentialDependencies = {
   acquireAccessToken: (input: AcquireAccessTokenInput) => Promise<AcquireAccessTokenResult>
-  requestCredential: (input: RequestCredentialInput) => Promise<string>
+  requestCredential: (input: RequestCredentialInput) => Promise<RequestCredentialResult>
   signProof: SignProof
   createProofSigningSession?: (credentialKeyId?: string) => Promise<ProofSigningSession>
   getCredentialStorage: () => CredentialStorage
@@ -237,7 +245,7 @@ export type ClaimCredentialOptions = {
   proofSession?: ProofSigningSession
   /** Pending credential key id from an outer issuance key session. */
   pendingCredentialKeyId?: string
-  /** Reports a fresh c_nonce received while retrying an invalid proof. */
+  /** Reports a fresh c_nonce from a credential response or an invalid_proof retry. */
   onCNonceUpdated?: (cNonce: string) => void
   /** Reuse a pre-authorized access token (dual-format second credential request). */
   reuseToken?: AcquireAccessTokenResult
@@ -256,7 +264,7 @@ export type AuthorizationCodeExchangeInput = {
 }
 
 export type AcquireCredentialRecordOptions = ClaimCredentialOptions & {
-  /** Pending credential key id created by claimCredential when v2 crypto is enabled. */
+  /** Pending credential key id created when per-credential signing is on. */
   pendingCredentialKeyId?: string
   /** Keep a shared dual-format pending key available for the next format request. */
   deferCredentialKeyBinding?: boolean
@@ -488,6 +496,7 @@ export async function claimCredential(
     await persistClaimedCredentialFormats(record, resolvedOffer, dependencies)
     logWalletStep('oid4vci', 'credential-save-start', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
     saveCredentialRecord(record, { getCredentialStorage: dependencies.getCredentialStorage })
+    await commitIssuanceCredentialKeyReplacement(record.id)
     logWalletStep('oid4vci', 'credential-save-complete', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
     return record
   } catch (error) {
@@ -498,7 +507,7 @@ export async function claimCredential(
       issuer: resolvedOffer.issuer,
     })
     try {
-      await destroyCredentialKey(record.id)
+      await destroyIssuanceCredentialKey(record.id)
     } catch (destroyError) {
       logWalletError('oid4vci', 'credential-key-destroy-after-save-failed', destroyError, {
         id: record.id,
@@ -547,7 +556,9 @@ export async function acquireCredentialRecord(
     txCodeProvided: Boolean(options.tx_code),
     reuseToken: Boolean(options.reuseToken),
   })
-  const dpopSession = isDpopIssuanceEnabled() ? createDpopIssuanceSession() : undefined
+  const reusedDpopSession = options.reuseToken?.dpopSession
+  const dpopSession = reusedDpopSession ?? (isDpopIssuanceEnabled() ? createDpopIssuanceSession() : undefined)
+  const ownsDpopSession = Boolean(dpopSession) && dpopSession !== reusedDpopSession
   const token = options.reuseToken
     ?? await awaitCredentialAcquisition(
       Promise.resolve().then(() => dependencies.acquireAccessToken({
@@ -631,10 +642,16 @@ export async function acquireCredentialRecord(
     let proof = await signProofForClaim(token.cNonce, resolvedOffer.issuer, {
       keyBinding: proofKeyBinding,
     })
+    assertProofHeaderMatchesKeyBinding(
+      proof,
+      proofKeyBinding,
+      resolvedOffer.credentialConfigurations[0],
+    )
     logWalletStep('oid4vci', 'proof-signed', {
       issuer: resolvedOffer.issuer,
       popBytes: proof.length,
       keyBinding: proofKeyBinding,
+      ...readProofHeaderBindingDiagnostics(proof),
       ...readProofBindingDiagnostics(proof, hasWalletKey() ? getHolderDid() : undefined),
     })
 
@@ -646,7 +663,10 @@ export async function acquireCredentialRecord(
           resolvedOffer,
           accessToken: activeToken.accessToken,
           proof: activeProof,
-          credentialIdentifier: activeToken.credentialIdentifier,
+          credentialIdentifier: readTokenCredentialIdentifier(
+            activeToken,
+            resolvedOffer.credentialConfigurations[0],
+          ),
           ...(walletAttestations ? { walletAttestations } : {}),
           ...(isDpopIssuanceEnabled() && activeToken.dpop ? { dpop: activeToken.dpop } : {}),
           ...(isDpopIssuanceEnabled() && dpopSession ? { dpopSession } : {}),
@@ -654,6 +674,13 @@ export async function acquireCredentialRecord(
         })),
         options.signal,
       )
+    const rememberCredentialResult = (result: RequestCredentialResult) => {
+      const parsed = readRequestCredentialResult(result)
+      rawVc = parsed.rawVc
+      if (parsed.cNonce) {
+        options.onCNonceUpdated?.(parsed.cNonce)
+      }
+    }
 
     try {
       const requestConfiguration = resolvedOffer.credentialConfigurations[0]
@@ -672,6 +699,7 @@ export async function acquireCredentialRecord(
         credentialIdentifier: token.credentialIdentifier,
         popBytes: proof.length,
         keyBinding: proofKeyBinding,
+        ...readProofHeaderBindingDiagnostics(proof),
         tokenReused: Boolean(options.reuseToken),
         dpopEnabled: isDpopIssuanceEnabled(),
         walletV2Enabled: isWalletCryptoV2Enabled(),
@@ -680,7 +708,7 @@ export async function acquireCredentialRecord(
         additionalRequestKeys: Object.keys(additionalRequestPayloadPreview),
       })
       clearLastCredentialRequestWireFailure()
-      rawVc = await submitCredentialRequest(token, proof)
+      rememberCredentialResult(await submitCredentialRequest(token, proof))
     } catch (error) {
       credentialRequestError = error
     }
@@ -725,6 +753,7 @@ export async function acquireCredentialRecord(
         hasLegacyProofOnWire: wireFailure?.hasProof,
         hasWalletAttestationFieldsOnWire: wireFailure?.hasWalletAttestationFields,
         bodyKeysOnWire: wireFailure?.bodyKeys,
+        ...readProofHeaderBindingDiagnostics(proof),
         ...readAccessTokenDiagnostics(token.accessToken),
         ...readAccessTokenSafeDiagnostics(
           token.accessToken,
@@ -745,12 +774,18 @@ export async function acquireCredentialRecord(
       proof = await signProofForClaim(credentialRequestError.cNonce, resolvedOffer.issuer, {
         keyBinding: proofKeyBinding,
       })
+      assertProofHeaderMatchesKeyBinding(
+        proof,
+        proofKeyBinding,
+        resolvedOffer.credentialConfigurations[0],
+      )
       logWalletStep('oid4vci', 'proof-resigned', {
         issuer: resolvedOffer.issuer,
         popBytes: proof.length,
         keyBinding: proofKeyBinding,
+        ...readProofHeaderBindingDiagnostics(proof),
       })
-      rawVc = await submitCredentialRequest(token, proof)
+      rememberCredentialResult(await submitCredentialRequest(token, proof))
     }
 
     if (!rawVc) {
@@ -775,7 +810,7 @@ export async function acquireCredentialRecord(
     return boundRecord
   } finally {
     ownedProofSession?.close()
-    if (dpopSession) {
+    if (ownsDpopSession && dpopSession) {
       clearDpopIssuanceSession(dpopSession)
     }
     if (pendingCredentialKeyId && ownsPendingCredentialKey) {
@@ -785,11 +820,7 @@ export async function acquireCredentialRecord(
 }
 
 async function discardOwnedPendingCredentialKey(pendingCredentialKeyId: string): Promise<void> {
-  if (isHardwareP256SigningEnabled()) {
-    await discardPendingHardwareCredentialKey(pendingCredentialKeyId)
-    return
-  }
-  await discardPendingCredentialKey(pendingCredentialKeyId)
+  await discardPendingIssuanceCredentialKey(pendingCredentialKeyId)
 }
 
 function throwIfCredentialAcquisitionAborted(signal?: AbortSignal): void {
@@ -1047,9 +1078,11 @@ export async function syncCredentialToBackend(
     ...options.dependencies,
   }
 
-  const associatedDid = isWalletCryptoV2Enabled()
-    ? (dependencies.getCredentialHolderDid?.(record.id) ?? getPerCredentialHolderDid(record.id))
-    : dependencies.getHolderDid()
+  const associatedDid = dependencies.getCredentialHolderDid
+    ? dependencies.getCredentialHolderDid(record.id)
+    : getCredentialKeyRecord(record.id)
+      ? getPerCredentialHolderDid(record.id)
+      : dependencies.getHolderDid()
 
   let response: Awaited<ReturnType<ImportCredentialToBackend>>
   try {
@@ -1480,7 +1513,7 @@ export function readCredentialIdentifierFromTokenResponse(
       [configuration?.requestId, configuration?.id]
         .filter((id): id is string => typeof id === 'string')
         .some((id) => detail.credential_configuration_id === id),
-    ) ?? openIdCredentialDetails[0]
+    ) ?? undefined
 
   const credentialIdentifier = readString(matchedDetail?.credential_identifier)
   if (credentialIdentifier) return credentialIdentifier
@@ -1489,6 +1522,38 @@ export function readCredentialIdentifierFromTokenResponse(
   if (!Array.isArray(credentialIdentifiers)) return undefined
 
   return credentialIdentifiers.find((item): item is string => typeof item === 'string' && item.length > 0)
+}
+
+export function readCredentialIdentifiersByConfigurationId(
+  response: unknown,
+  configurations: OfferedCredentialConfiguration[],
+): Record<string, string> {
+  const mapped: Record<string, string> = {}
+  for (const configuration of configurations) {
+    const identifier = readCredentialIdentifierFromTokenResponse(response, configuration)
+    if (!identifier) continue
+    mapped[configuration.id] = identifier
+    if (configuration.requestId !== configuration.id) {
+      mapped[configuration.requestId] = identifier
+    }
+  }
+  return mapped
+}
+
+export function readTokenCredentialIdentifier(
+  token: Pick<AcquireAccessTokenResult, 'credentialIdentifier' | 'credentialIdentifiersByConfigurationId'>,
+  configuration: OfferedCredentialConfiguration | undefined,
+): string | undefined {
+  const ids = token.credentialIdentifiersByConfigurationId
+  if (ids && configuration) {
+    const matched = [configuration.id, configuration.requestId]
+      .filter((id): id is string => typeof id === 'string')
+      .map((id) => ids[id])
+      .find((id): id is string => typeof id === 'string' && id.length > 0)
+    if (matched) return matched
+    if (Object.keys(ids).length > 0) return undefined
+  }
+  return token.credentialIdentifier
 }
 
 function toCredentialDisplay(
@@ -1586,8 +1651,12 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
           cNonce,
           ...(tokenType ? { tokenType } : {}),
           credentialIdentifier: readCredentialIdentifierFromTokenResponse(response, resolvedOffer.credentialConfigurations[0]),
+          credentialIdentifiersByConfigurationId: readCredentialIdentifiersByConfigurationId(
+            response,
+            resolvedOffer.credentialConfigurations,
+          ),
           ...(activeDpopSession && isDpopIssuanceEnabled()
-            ? { dpop: getRequestDpopOptions(activeDpopSession) }
+            ? { dpop: getRequestDpopOptions(activeDpopSession), dpopSession: activeDpopSession }
             : {}),
         }
       } catch (error) {
@@ -1653,10 +1722,10 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
         }
 
         if (isMsoMdocFormat(credentialConfiguration.format)) {
-          return readMdocCredentialFromResponse(response)
+          return withOptionalResponseCNonce(readMdocCredentialFromResponse(response), response)
         }
 
-        return readCompactCredentialFromResponse(response)
+        return withOptionalResponseCNonce(readCompactCredentialFromResponse(response), response)
       } catch (error) {
         if (signal?.aborted) {
           throw new Error('CredentialAcquisitionAborted')
@@ -1787,6 +1856,32 @@ export function readCompactCredentialFromResponse(response: unknown): string {
   throw new Error(
     `CredentialResponseUnsupported: compact credential response is required (${describeCredentialResponseShape(response)})`,
   )
+}
+
+export function readCNonceFromCredentialResponse(response: unknown): string | undefined {
+  const body = readCredentialResponseBody(response)
+  return readString(body?.c_nonce)
+}
+
+function withOptionalResponseCNonce(
+  credential: string,
+  response: unknown,
+): RequestCredentialResult {
+  const cNonce = readCNonceFromCredentialResponse(response)
+  return cNonce ? { credential, cNonce } : credential
+}
+
+function readRequestCredentialResult(result: RequestCredentialResult): {
+  rawVc: string
+  cNonce?: string
+} {
+  if (typeof result === 'string') {
+    return { rawVc: result }
+  }
+  return {
+    rawVc: result.credential,
+    ...(result.cNonce ? { cNonce: result.cNonce } : {}),
+  }
 }
 
 /**
@@ -1983,6 +2078,45 @@ function isMsoMdocFormat(format: string): boolean {
   return format === 'mso_mdoc'
 }
 
+function isDidBindingMethod(method: unknown): method is string {
+  return typeof method === 'string' && (method === 'did' || method.startsWith('did:'))
+}
+
+function isP256DeviceJwk(value: unknown): value is { kty: 'EC'; crv: 'P-256' } {
+  if (!isRecord(value)) return false
+  return value.kty === 'EC' && value.crv === 'P-256'
+    && typeof value.x === 'string' && value.x.length > 0
+    && typeof value.y === 'string' && value.y.length > 0
+}
+
+function assertProofHeaderMatchesKeyBinding(
+  proof: string,
+  keyBinding: 'did-kid' | 'jwk',
+  configuration: OfferedCredentialConfiguration | undefined,
+): void {
+  if (keyBinding !== 'jwk') return
+  const header = decodeJwtHeader(proof)
+  if (!header) return
+
+  if (configuration && isMsoMdocFormat(configuration.format)) {
+    if (isHardwareP256SigningEnabled()) {
+      if (!isP256DeviceJwk(header.jwk)) {
+        throw new Error('CredentialProofInvalid: jwk header (P-256 device key) is required for mso_mdoc')
+      }
+    } else if (!isRecord(header.jwk)) {
+      throw new Error('CredentialProofInvalid: jwk header is required for mso_mdoc')
+    }
+    if (typeof header.kid !== 'string' || header.kid.length === 0) {
+      throw new Error('CredentialProofInvalid: kid header is required for mso_mdoc')
+    }
+    return
+  }
+
+  if (!isRecord(header.jwk)) {
+    throw new Error('CredentialProofInvalid: jwk header is required for this credential format')
+  }
+}
+
 /** mso_mdoc / cose_key configs need public key material in the PoP JWT (`jwk` header).
  * SD-JWT VC Verifiers that require `cnf.jwk` also need the Issuer to receive a PoP `jwk`
  * (did-kid alone yields credentials with only `cnf.kid` → `missing_holder_binding_key`).
@@ -1992,12 +2126,28 @@ function readProofKeyBinding(
 ): 'did-kid' | 'jwk' {
   if (!configuration) return 'did-kid'
   if (isMsoMdocFormat(configuration.format)) return 'jwk'
-  if (isSdJwtVcFormat(configuration.format)) return 'jwk'
+  if (isIsoMdocDoctypeOfferId(configuration.id) || isIsoMdocDoctypeOfferId(configuration.requestId)) {
+    return 'jwk'
+  }
 
   const raw = readRecord(configuration.rawConfiguration)
+  const rawFormat = readString(raw?.format)
+  if (rawFormat && isMsoMdocFormat(rawFormat)) return 'jwk'
+  const doctype = readString(raw?.doctype) ?? readString(raw?.docType)
+  if (doctype && isIsoMdocDoctypeOfferId(doctype)) return 'jwk'
+
   const methods = raw?.cryptographic_binding_methods_supported
-  if (!Array.isArray(methods)) return 'did-kid'
-  if (methods.some((method) => method === 'cose_key' || method === 'jwk')) return 'jwk'
+  if (Array.isArray(methods)) {
+    if (methods.some((method) => method === 'cose_key' || method === 'jwk' || method === 'did:jwk')) {
+      return 'jwk'
+    }
+    if (methods.some((method) => isDidBindingMethod(method))) return 'did-kid'
+    if (isSdJwtVcFormat(configuration.format)) return 'jwk'
+    throw new Error('CredentialProofUnsupported: cryptographic_binding_methods_supported has no usable method')
+  }
+
+  // SD-JWT without binding metadata: send jwk so Verifiers that require cnf.jwk can bind.
+  if (isSdJwtVcFormat(configuration.format)) return 'jwk'
   return 'did-kid'
 }
 
@@ -2007,8 +2157,7 @@ function readMdocDocType(configuration: OfferedCredentialConfiguration): string 
 }
 
 export function isCredentialWalletAttestationEnabled(): boolean {
-  const raw = process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED
-  return raw === 'true' || raw === '1'
+  return isWalletAttestationRequested()
 }
 
 function readWalletAttestationsForCredentialRequest(): { wua: string; wia: string } | undefined {
@@ -2067,23 +2216,23 @@ function applyMsoMdocCredentialRequestFields(
     return credentialRequest
   }
 
-  const docType = readMdocDocType(configuration)
   const {
     proof: _legacyProof,
     format: _legacyFormat,
+    doctype: _legacyDoctype,
     cose_key: _requestCoseKey,
     proofs: _existingProofs,
     credential_configuration_id: _configId,
     ...rest
   } = credentialRequest
 
-  // Issuer `/credential` expects OID4VCI 1.0:
-  // { credential_configuration_id, proofs: { jwt: [...] } }.
-  // PoP JWTs are attached by retrieveCredentialViaOid4vc — not in additionalRequestPayload.
+  // OID4VCI 1.0 credential request is { credential_configuration_id, proofs }.
+  // `doctype` belongs in issuer metadata, not this body. Mixing it with
+  // credential_configuration_id has produced issuer processing denials.
+  // PoP JWTs are attached by retrieveCredentialViaOid4vc.
   return {
     ...rest,
     credential_configuration_id: configuration.requestId,
-    ...(docType ? { doctype: docType } : {}),
   }
 }
 
@@ -2181,10 +2330,12 @@ function isCompactSdJwt(rawVc: string): boolean {
 
 function assertCredentialIssuerSignatureAlg(rawVc: string): void {
   const issuerJwt = isCompactSdJwt(rawVc) ? rawVc.split('~')[0] : rawVc
-  const header = decodeJwtHeader(issuerJwt)
+  const header = decodeCredentialJwtHeader(issuerJwt)
   const alg = readString(header.alg)
-  if (alg !== 'EdDSA') {
-    throw new Error(`CredentialSignatureAlgUnsupported: issuer credential alg must be EdDSA, got ${alg ?? 'missing'}`)
+  if (!isTrustedIssuerJwtAlg(alg)) {
+    throw new Error(
+      `CredentialSignatureAlgUnsupported: issuer credential alg must be ES256 or EdDSA, got ${alg ?? 'missing'}`,
+    )
   }
 }
 
@@ -2214,11 +2365,7 @@ function assertDevelopmentEddsaHolderBinding(rawVc: string, proofJwt: string): v
 }
 
 function readProofJwtHeader(proofJwt: string): Record<string, unknown> | undefined {
-  try {
-    return decodeJwtHeader(proofJwt)
-  } catch {
-    return undefined
-  }
+  return decodeJwtHeader(proofJwt)
 }
 
 function decodeSdJwtClaims(compactSdJwt: string): Record<string, unknown> {
@@ -2272,7 +2419,7 @@ function flattenCredentialSubject(claims: Record<string, unknown>): Record<strin
   }
 }
 
-function decodeJwtHeader(jwt: string): Record<string, unknown> {
+function decodeCredentialJwtHeader(jwt: string): Record<string, unknown> {
   const parts = jwt.split('.')
 
   if (parts.length < 2 || !parts[0]) {

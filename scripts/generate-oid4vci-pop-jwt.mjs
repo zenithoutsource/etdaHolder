@@ -2,15 +2,20 @@
 /**
  * Dev helper: build an OID4VCI 1.0 PoP JWT for Swagger/curl.
  *
+ * Default matches current driving-licence wallet hardware PoP (k_cred P-256):
+ *   alg ES256, typ openid4vci-proof+jwt, header jwk + kid, payload { aud, iat, nonce }.
+ * Dual-format claim posts that proof twice: dc+sd-jwt first, then mso_mdoc.
+ * Request bodies are { credential_configuration_id, proofs.jwt } — no doctype/format/cose_key.
+ *
  * Usage:
  *   node scripts/generate-oid4vci-pop-jwt.mjs --nonce=<c_nonce from POST /token>
- *   node scripts/generate-oid4vci-pop-jwt.mjs --nonce=abc --alg=ES256
- *   node scripts/generate-oid4vci-pop-jwt.mjs --nonce=abc --alg=EdDSA --audience=https://issuer.zenithcomp.co.th:455
- *   node scripts/generate-oid4vci-pop-jwt.mjs --nonce=abc --alg=ES256 --key-binding=jwk
+ *   node scripts/generate-oid4vci-pop-jwt.mjs --nonce=abc
+ *   node scripts/generate-oid4vci-pop-jwt.mjs --nonce=abc --alg=EdDSA --key-binding=did-kid
  *
- * --alg=EdDSA (default): ephemeral Ed25519 did:key (z6Mk…)
- * --alg=ES256: ephemeral P-256 did:key (zDnae…) matching wallet hardware PoP shape
- * --key-binding=did-kid (default) | jwk  (ES256 only; jwk also embeds cose_key)
+ * --alg=ES256 (default) | EdDSA
+ * --key-binding=jwk (default for ES256) | did-kid (default for EdDSA)
+ * --mdoc-configuration-id=org.iso.18013.5.1.mDL
+ * --sd-jwt-configuration-id=Iso18013DriversLicenseCredential_dc+sd-jwt
  *
  * Uses a fresh ephemeral key unless --seed=<64 hex chars> is set (32-byte seed for both algs).
  */
@@ -74,6 +79,18 @@ function readArg(name) {
   return hit ? hit.slice(prefix.length) : undefined
 }
 
+function decodeJwtPart(part) {
+  const padded = part.replace(/-/g, '+').replace(/_/g, '/')
+  return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'))
+}
+
+function oid4vci10CredentialRequest(configurationId, proofJwt) {
+  return {
+    credential_configuration_id: configurationId,
+    proofs: { jwt: [proofJwt] },
+  }
+}
+
 function compressP256PublicKey(publicKey) {
   if (publicKey.length === 33) return publicKey
   if (publicKey.length === 65 && publicKey[0] === 0x04) {
@@ -93,28 +110,6 @@ function p256PublicKeyToJwk(publicKey) {
     x: base64UrlEncode(uncompressed.slice(1, 33)),
     y: base64UrlEncode(uncompressed.slice(33, 65)),
   }
-}
-
-/** COSE_Key map for EC2 P-256 / ES256, base64url of CBOR. Minimal definite-length encoding. */
-function encodeP256CoseKeyBase64Url(compressedOrRawPublicKey) {
-  const uncompressed =
-    compressedOrRawPublicKey.length === 65 && compressedOrRawPublicKey[0] === 0x04
-      ? compressedOrRawPublicKey
-      : p256.Point.fromBytes(compressedOrRawPublicKey).toBytes(false)
-  const x = uncompressed.slice(1, 33)
-  const y = uncompressed.slice(33, 65)
-  // {1:2, 3:-7, -1:1, -2:x, -3:y} as CBOR map(5)
-  const parts = [
-    Buffer.from([0xa5]),
-    Buffer.from([0x01, 0x02]),
-    Buffer.from([0x03, 0x26]),
-    Buffer.from([0x20, 0x01]),
-    Buffer.from([0x21, 0x58, 0x20]),
-    Buffer.from(x),
-    Buffer.from([0x22, 0x58, 0x20]),
-    Buffer.from(y),
-  ]
-  return base64UrlEncode(Buffer.concat(parts))
 }
 
 function buildEdDsaProof(seed, audience, nonce, iat) {
@@ -157,7 +152,7 @@ function buildEs256Proof(seed, audience, nonce, iat, keyBinding) {
           alg: 'ES256',
           typ: 'openid4vci-proof+jwt',
           jwk: publicJwk,
-          cose_key: encodeP256CoseKeyBase64Url(publicKey),
+          kid,
         }
       : {
           alg: 'ES256',
@@ -194,8 +189,13 @@ if (!nonce) {
 }
 
 const audience = readArg('audience') ?? 'https://issuer.zenithcomp.co.th:455'
-const alg = (readArg('alg') ?? 'EdDSA').toUpperCase()
-const keyBinding = (readArg('key-binding') ?? 'did-kid').toLowerCase()
+const alg = (readArg('alg') ?? 'ES256').toUpperCase()
+const keyBinding = (
+  readArg('key-binding') ?? (alg === 'ES256' ? 'jwk' : 'did-kid')
+).toLowerCase()
+const mdocConfigurationId = readArg('mdoc-configuration-id') ?? 'org.iso.18013.5.1.mDL'
+const sdJwtConfigurationId =
+  readArg('sd-jwt-configuration-id') ?? 'Iso18013DriversLicenseCredential_dc+sd-jwt'
 const seedHex = readArg('seed')
 const seed = seedHex ? Buffer.from(seedHex, 'hex') : randomBytes(32)
 if (seed.length !== 32) {
@@ -224,10 +224,16 @@ const result =
     ? buildEs256Proof(seed, audience, nonce, iat, keyBinding)
     : buildEdDsaProof(seed, audience, nonce, iat)
 
+const [headerB64, payloadB64] = result.proofJwt.split('.')
+const header = decodeJwtPart(headerB64)
+const payload = decodeJwtPart(payloadB64)
+
 console.log(
   JSON.stringify(
     {
       proofJwt: result.proofJwt,
+      header,
+      payload,
       holderDid: result.holderDid,
       kid: result.kid,
       alg: result.alg,
@@ -236,6 +242,10 @@ console.log(
       nonce,
       iat,
       publicJwk: result.publicJwk,
+      credentialRequests: {
+        'dc+sd-jwt': oid4vci10CredentialRequest(sdJwtConfigurationId, result.proofJwt),
+        mso_mdoc: oid4vci10CredentialRequest(mdocConfigurationId, result.proofJwt),
+      },
       ...(seedHex ? {} : { ephemeralSeedHex: Buffer.from(seed).toString('hex') }),
     },
     null,

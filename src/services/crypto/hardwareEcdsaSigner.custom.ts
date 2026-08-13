@@ -11,6 +11,7 @@ import {
   HardwareEcdsaUnavailableError,
   HardwareKeyNotFoundError,
   HardwareSigningSessionError,
+  assertHardwareSecurityLevel,
 } from './hardwareEcdsaTypes'
 import { assertEs256SignatureBytes, p256JwkToPublicKey, verifyEs256Prehash } from './p256Identity'
 import {
@@ -62,6 +63,17 @@ export function createCustomHardwareEcdsaSigner(): HardwareEcdsaSigner {
           securityLevel: result.securityLevel,
         }
 
+        try {
+          assertHardwareSecurityLevel(createResult.securityLevel, alias)
+        } catch (error) {
+          try {
+            await native.deleteKey(alias)
+          } catch (cleanupError) {
+            logWalletError('hardware-ecdsa', 'custom-create-key-software-cleanup-failed', cleanupError, { alias })
+          }
+          throw error
+        }
+
         if (result.certificateChainDerBase64.length > 0) {
           createResult.certificateChainDer = result.certificateChainDerBase64.map(base64ToBytes)
         }
@@ -84,7 +96,9 @@ export function createCustomHardwareEcdsaSigner(): HardwareEcdsaSigner {
 
     async getSecurityLevel(alias: string) {
       try {
-        return await native.getSecurityLevel(alias)
+        const level = await native.getSecurityLevel(alias)
+        assertHardwareSecurityLevel(level, alias)
+        return level
       } catch (error) {
         logWalletError('hardware-ecdsa', 'custom-get-security-level-failed', error, { alias })
         throw mapNativeError(error)

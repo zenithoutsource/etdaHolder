@@ -7,7 +7,7 @@ import { isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 
 import { logWalletStep } from '@/src/services/debug/walletLogger'
 import { InvalidProofError } from '../invalidProofError'
-import { createDpopSignJwtCallback, type DpopIssuanceSession } from '@/src/services/oid4vc/dpopIssuanceSession'
+import { createDpopProofJwt, createDpopSignJwtCallback, type DpopIssuanceSession } from '@/src/services/oid4vc/dpopIssuanceSession'
 import { createOid4vcVciClient } from './createOid4vcVciClient'
 import type { Oid4vcAuthorizationCodeExchangeInput, Oid4vcVciAdapterContext } from './types'
 
@@ -137,21 +137,6 @@ function createDebugCredentialFetch(fetchImpl?: typeof fetch): typeof fetch | un
         ...bodyShape,
       }
       logWalletStep('oid4vci', 'debug-credential-request-wire', wireShape)
-      // #region agent log
-      fetch('http://127.0.0.1:7299/ingest/bf197faa-a717-4eb9-bdf8-a2aa24a25fe4', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'ade581' },
-        body: JSON.stringify({
-          sessionId: 'ade581',
-          runId: 'invalid-token-v2',
-          hypothesisId: 'H',
-          location: 'retrieveViaOid4vc.ts:debugFetch',
-          message: 'credential-request-wire',
-          data: wireShape,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
     }
 
     const response = await baseFetch(input, init)
@@ -170,21 +155,6 @@ function createDebugCredentialFetch(fetchImpl?: typeof fetch): typeof fetch | un
       }
       lastCredentialRequestWireFailure = wireError
       logWalletStep('oid4vci', 'credential-request-wire-error', wireError)
-      // #region agent log
-      fetch('http://127.0.0.1:7299/ingest/bf197faa-a717-4eb9-bdf8-a2aa24a25fe4', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'ade581' },
-        body: JSON.stringify({
-          sessionId: 'ade581',
-          runId: 'invalid-token-v2',
-          hypothesisId: 'H',
-          location: 'retrieveViaOid4vc.ts:debugFetch',
-          message: 'credential-request-wire-error',
-          data: wireError,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
     }
     return response
   }
@@ -497,6 +467,57 @@ export async function retrievePreAuthorizedTokenViaOid4vc(input: {
   }
 }
 
+function readDpopNonceHeader(response: Response): string | undefined {
+  return response.headers.get('DPoP-Nonce') ?? response.headers.get('dpop-nonce') ?? undefined
+}
+
+function throwCredentialIdentifierRequestFailed(response: Response, oauth: ReturnType<typeof readOauthErrorFields>): never {
+  throw new Error(
+    oauth.error
+      ? `CredentialRequestFailed: ${oauth.error}${oauth.error_description ? ` - ${oauth.error_description}` : ''}`
+      : `CredentialRequestFailed: HTTP ${response.status}`,
+    { cause: { response: { status: response.status }, ...oauth } },
+  )
+}
+
+async function postCredentialIdentifierRequest(input: {
+  fetchImpl: typeof fetch
+  credentialEndpoint: string
+  credentialIdentifier: string
+  proofJwt: string
+  accessToken: string
+  signal?: AbortSignal
+  dpop?: RequestDpopOptions
+  dpopSession?: DpopIssuanceSession
+}): Promise<Response> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (input.dpop && input.dpopSession) {
+    const dpopJwt = await createDpopProofJwt({
+      session: input.dpopSession,
+      htm: 'POST',
+      htu: input.credentialEndpoint,
+      accessToken: input.accessToken,
+      nonce: input.dpopSession.nonce ?? input.dpop.nonce,
+    })
+    headers.Authorization = `DPoP ${input.accessToken}`
+    headers.DPoP = dpopJwt
+  } else {
+    headers.Authorization = `Bearer ${input.accessToken}`
+  }
+
+  return input.fetchImpl(input.credentialEndpoint, {
+    method: 'POST',
+    headers,
+    signal: input.signal,
+    body: JSON.stringify({
+      credential_identifier: input.credentialIdentifier,
+      proofs: { jwt: [input.proofJwt] },
+    }),
+  })
+}
+
 export async function retrieveCredentialViaOid4vc(input: {
   oid4vcContext: Oid4vcVciAdapterContext
   accessToken: string
@@ -522,27 +543,31 @@ export async function retrieveCredentialViaOid4vc(input: {
   try {
     if (input.credentialIdentifier) {
       const credentialEndpoint = input.oid4vcContext.issuerMetadataResult.credentialIssuer.credential_endpoint
-      const credentialRequest = {
-        credential_identifier: input.credentialIdentifier,
-        proofs: { jwt: [input.proofJwt] },
+      if (!credentialEndpoint) {
+        throw new Error('CredentialRequestFailed: credential_endpoint is missing')
       }
-      const response = await (credentialFetch ?? input.fetchImpl ?? fetch)(credentialEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${input.accessToken}`,
-        },
+      const credentialFetchImpl = credentialFetch ?? input.fetchImpl ?? fetch
+      const postInput = {
+        fetchImpl: credentialFetchImpl,
+        credentialEndpoint,
+        credentialIdentifier: input.credentialIdentifier,
+        proofJwt: input.proofJwt,
+        accessToken: input.accessToken,
         signal: input.signal,
-        body: JSON.stringify(credentialRequest),
-      })
+        dpop: input.dpop,
+        dpopSession: input.dpopSession,
+      }
+      let response = await postCredentialIdentifierRequest(postInput)
+      if (!response.ok && input.dpop && input.dpopSession) {
+        const dpopNonce = readDpopNonceHeader(response)
+        if (dpopNonce && dpopNonce !== input.dpopSession.nonce) {
+          input.dpopSession.nonce = dpopNonce
+          response = await postCredentialIdentifierRequest(postInput)
+        }
+      }
       if (!response.ok) {
         const oauth = readOauthErrorFields(await response.clone().json().catch(() => undefined))
-        throw new Error(
-          oauth.error
-            ? `CredentialRequestFailed: ${oauth.error}${oauth.error_description ? ` - ${oauth.error_description}` : ''}`
-            : `CredentialRequestFailed: HTTP ${response.status}`,
-          { cause: { response: { status: response.status }, ...oauth } },
-        )
+        throwCredentialIdentifierRequestFailed(response, oauth)
       }
       return (await response.json()) as Record<string, unknown>
     }

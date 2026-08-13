@@ -1,5 +1,6 @@
 import { createHash } from 'react-native-quick-crypto'
 
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
 import { signProof, withUnlockedHolderSeedForProximity } from '../crypto/crypto'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { requireNativeProximityModule } from './nativeProximityModule'
@@ -8,10 +9,17 @@ export type DeviceAuthInput = {
   sessionTranscript: Uint8Array
   docType: string
   deviceNameSpaces: Record<string, Record<string, unknown>>
+  credentialId: string
 }
 
 export async function prepareMdocDeviceAuthForArm(): Promise<void> {
   logWalletStep('proximity-auth', 'preparing mdoc device auth for arm')
+  if (isHardwareP256SigningEnabled()) {
+    const error = new Error('ProximityHardwareDeviceAuthUnavailable')
+    logWalletError('proximity-auth', 'hardware mdoc device auth unavailable', error)
+    throw error
+  }
+
   try {
     await withUnlockedHolderSeedForProximity(async (seed, publicKey) => {
       await requireNativeProximityModule().installMdocDeviceKey(seed, publicKey)
@@ -26,7 +34,7 @@ export async function signDeviceAuthentication(input: DeviceAuthInput): Promise<
   logWalletStep('proximity-auth', 'signing device authentication')
   try {
     const nonce = createHash('sha256').update(input.sessionTranscript).digest('base64url')
-    return await signProof(nonce, input.docType)
+    return await signProof(nonce, input.docType, { credentialKeyId: input.credentialId })
   } catch (error) {
     logWalletError('proximity-auth', 'signing failed', error)
     throw new Error('ProximityAuthenticationFailed')

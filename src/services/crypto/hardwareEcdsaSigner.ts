@@ -28,9 +28,9 @@ export function __setHardwareEcdsaSignerForTests(
 
 export function readHardwareEcdsaBackendPreference(): HardwareEcdsaBackend {
   const raw = process.env.EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND
-  if (raw === 'custom') return 'custom'
+  if (raw === 'animo') return 'animo'
   if (raw === 'mock') return 'mock'
-  return 'animo'
+  return 'custom'
 }
 
 function resolveBackendForRuntime(): HardwareEcdsaBackend {

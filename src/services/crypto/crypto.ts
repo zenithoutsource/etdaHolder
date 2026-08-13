@@ -22,11 +22,12 @@ import {
   signWithCredentialKey,
   type CredentialKeySigningSession,
 } from './credentialSigningKey'
-import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
-import { readEarliestCredentialKeyCreatedAt } from './credentialKeyRegistry'
+import { getCredentialKeyRecord, readEarliestCredentialKeyCreatedAt } from './credentialKeyRegistry'
+import { usesPerCredentialSigning } from './perCredentialSigning'
 import { readFirstEncryptedCredentialHolderDid } from './encryptedCredentialKeyRegistry'
 import {
   createHardwarePendingCredentialKeySession,
+  hasHardwareCredentialKey,
   openHardwareCredentialSigningSession,
   readHardwareCredentialSigningPublicJwk,
   resolveHardwareCredentialHolderDid,
@@ -61,6 +62,14 @@ const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01])
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 const metaStorage = getMetaStorage()
+
+function shouldUseHardwareCredentialKey(credentialId?: string): credentialId is string {
+  return Boolean(
+    isHardwareP256SigningEnabled() &&
+      credentialId &&
+      hasHardwareCredentialKey(credentialId),
+  )
+}
 
 if (__DEV__) {
   logWalletStep('hardware-ecdsa', 'holder-signing-mode', {
@@ -423,11 +432,9 @@ export function ensureWalletKeyRegisteredAtBackfill(now = new Date()): boolean {
     return seedInitialWalletKeyRegisteredAt(now.toISOString())
   }
 
-  if (isWalletCryptoV2Enabled()) {
-    const earliestCredentialBind = readEarliestCredentialKeyCreatedAt()
-    if (earliestCredentialBind) {
-      return seedInitialWalletKeyRegisteredAt(earliestCredentialBind)
-    }
+  const earliestCredentialBind = readEarliestCredentialKeyCreatedAt()
+  if (earliestCredentialBind) {
+    return seedInitialWalletKeyRegisteredAt(earliestCredentialBind)
   }
 
   return false
@@ -437,7 +444,7 @@ export function ensureWalletKeyRegisteredAtBackfill(now = new Date()): boolean {
 export function refreshWalletKeyRegisteredAt(now = new Date()): void {
   if (
     !metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE) &&
-    !isWalletCryptoV2Enabled()
+    !readEarliestCredentialKeyCreatedAt()
   ) {
     return
   }
@@ -452,10 +459,12 @@ export function refreshWalletKeyRegisteredAt(now = new Date()): void {
 /** Returns the Holder DID derived from the cached Ed25519 public key. Sync, no biometric. */
 /** @deprecated Use getCredentialHolderDid(credentialId) for protocol signing in v2 crypto. */
 export function getHolderDid(): string {
+  if (metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE)) {
+    return ed25519PublicKeyToDidKey(readStoredEd25519PublicKey())
+  }
   if (isHardwareP256SigningEnabled()) {
     const did = readFirstEncryptedCredentialHolderDid()
-    if (!did) throw new Error('WalletKeyNotInitialized')
-    return did
+    if (did) return did
   }
   return ed25519PublicKeyToDidKey(readStoredEd25519PublicKey())
 }
@@ -471,10 +480,12 @@ export function getPreviousHolderDid(): string | undefined {
 
 /** Returns the public key JWK. Sync, no biometric. */
 export function getPublicKeyJwk(): JsonWebKey {
+  if (metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE)) {
+    return publicKeyToEd25519Jwk(readStoredEd25519PublicKey())
+  }
   if (isHardwareP256SigningEnabled()) {
     const did = readFirstEncryptedCredentialHolderDid()
-    if (!did) throw new Error('WalletKeyNotInitialized')
-    return didKeyToP256PublicJwk(did)
+    if (did) return didKeyToP256PublicJwk(did)
   }
   return publicKeyToEd25519Jwk(readStoredEd25519PublicKey())
 }
@@ -626,10 +637,12 @@ export async function createProofSigningSession(
 ): Promise<ProofSigningSession> {
   if (isHardwareP256SigningEnabled()) {
     if (!credentialKeyId) throw new Error('HardwareCredentialKeyRequired')
-    return createHardwareBoundProofSigningSession(credentialKeyId)
+    if (hasHardwareCredentialKey(credentialKeyId)) {
+      return createHardwareBoundProofSigningSession(credentialKeyId)
+    }
   }
 
-  if (credentialKeyId && isWalletCryptoV2Enabled()) {
+  if (credentialKeyId && usesPerCredentialSigning()) {
     const credentialSession = await createCredentialKeySigningSession(credentialKeyId)
     return createCredentialProofSigningSession(credentialKeyId, credentialSession)
   }
@@ -742,8 +755,9 @@ export async function signProof(
   options: SignProofOptions = {},
 ): Promise<string> {
   if (isHardwareP256SigningEnabled()) {
+    if (!options.credentialKeyId) throw new Error('HardwareCredentialKeyRequired')
+    if (shouldUseHardwareCredentialKey(options.credentialKeyId)) {
     const credentialKeyId = options.credentialKeyId
-    if (!credentialKeyId) throw new Error('HardwareCredentialKeyRequired')
 
     const publicJwk = await readHardwareCredentialSigningPublicJwk(credentialKeyId)
     const holderDid = resolveHardwareCredentialHolderDid(credentialKeyId)
@@ -760,6 +774,7 @@ export async function signProof(
     } finally {
       await hardwareSession.close()
     }
+    }
   }
 
   return signProofWithSeed(nonce, audience, options)
@@ -773,7 +788,7 @@ async function signProofWithSeed(
 ): Promise<string> {
   const keyBinding = options.keyBinding ?? 'did-kid'
   const credentialKeyId = options.credentialKeyId
-  const useCredentialKey = Boolean(credentialKeyId && isWalletCryptoV2Enabled())
+  const useCredentialKey = Boolean(credentialKeyId && usesPerCredentialSigning())
 
   const header =
     keyBinding === 'jwk'
@@ -952,7 +967,7 @@ export type HolderStatusChangePopInput = {
 export async function signHolderStatusChangePop(
   input: HolderStatusChangePopInput,
 ): Promise<string> {
-  if (isHardwareP256SigningEnabled()) {
+  if (shouldUseHardwareCredentialKey(input.credentialId)) {
     const did = resolveHardwareCredentialHolderDid(input.credentialId)
     const kid = `${did}#${did.slice('did:key:'.length)}`
     const hardwareSession = await openHardwareCredentialSigningSession(input.credentialId, 'oid4vci')
@@ -978,7 +993,7 @@ export async function signHolderStatusChangePop(
     }
   }
 
-  if (isWalletCryptoV2Enabled()) {
+  if (getCredentialKeyRecord(input.credentialId)) {
     const did = await getCredentialSigningHolderDid(input.credentialId)
     const kid = `${did}#${did.slice('did:key:'.length)}`
     const header = { alg: 'EdDSA', typ: 'holder-status-change+jwt', kid }
@@ -1040,7 +1055,7 @@ export type SdJwtKbPresentationTokenInput = {
  * Biometric fires here on every presentation approval.
  */
 export async function signPresentationVpToken(input: PresentationVpTokenInput): Promise<string> {
-  if (input.credentialId && isHardwareP256SigningEnabled()) {
+  if (shouldUseHardwareCredentialKey(input.credentialId)) {
     const did = resolveHardwareCredentialHolderDid(input.credentialId)
     const kid = `${did}#${did.slice('did:key:'.length)}`
     const hardwareSession = await openHardwareCredentialSigningSession(input.credentialId, 'oid4vp')
@@ -1068,7 +1083,7 @@ export async function signPresentationVpToken(input: PresentationVpTokenInput): 
     }
   }
 
-  if (input.credentialId && isWalletCryptoV2Enabled()) {
+  if (input.credentialId && getCredentialKeyRecord(input.credentialId)) {
     return signPresentationVpTokenWithCredentialKey(input)
   }
 
@@ -1167,7 +1182,9 @@ async function signSdJwtKbPresentationTokenWithSeed(
   input: SdJwtKbPresentationTokenInput,
   seedKind: 'active' | 'previous',
 ): Promise<string> {
-  if (input.credentialId && isHardwareP256SigningEnabled() && seedKind === 'active') {
+  if (isHardwareP256SigningEnabled() && seedKind === 'active') {
+    if (!input.credentialId) throw new Error('HardwareCredentialKeyRequired')
+    if (hasHardwareCredentialKey(input.credentialId)) {
     const did = resolveHardwareCredentialHolderDid(input.credentialId)
     const jwk = await readHardwareCredentialSigningPublicJwk(input.credentialId)
     const kid = `${did}#${did.slice('did:key:'.length)}`
@@ -1199,9 +1216,10 @@ async function signSdJwtKbPresentationTokenWithSeed(
     } finally {
       await hardwareSession.close()
     }
+    }
   }
 
-  if (input.credentialId && isWalletCryptoV2Enabled() && seedKind === 'active') {
+  if (input.credentialId && seedKind === 'active' && getCredentialKeyRecord(input.credentialId)) {
     return signSdJwtKbPresentationTokenWithCredentialKey(input)
   }
 
@@ -1260,7 +1278,7 @@ async function signJwtLikeObject(
   const signingInput = `${headerB64}.${payloadB64}`
   let signatureBytes: Uint8Array
   try {
-    if (credentialKeyId && isWalletCryptoV2Enabled()) {
+    if (credentialKeyId && usesPerCredentialSigning()) {
       signatureBytes = await signWithCredentialKey(credentialKeyId, new TextEncoder().encode(signingInput))
     } else if (signerOverride) {
       signatureBytes = await signerOverride(new TextEncoder().encode(signingInput))

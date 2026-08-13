@@ -6,6 +6,7 @@ import type { EcP256Jwk, HardwareSecurityLevel, OpenSigningSessionOptions } from
 import {
   HardwareEcdsaUnavailableError,
   HardwareKeyNotFoundError,
+  HardwareKeyNotHardwareBackedError,
   HardwareSigningSessionError,
 } from './hardwareEcdsaTypes'
 
@@ -136,15 +137,30 @@ function parseSignWithSessionResult(
 }
 
 function mapNativeError(error: unknown): Error {
+  if (error instanceof HardwareKeyNotHardwareBackedError) return error
+  if (error instanceof HardwareKeyNotFoundError) return error
+  if (error instanceof HardwareSigningSessionError) return error
+
   const code =
     typeof error === 'object' && error !== null && 'code' in error
       ? String((error as { code?: string }).code)
       : undefined
   const message = error instanceof Error ? error.message : String(error)
 
+  if (code === 'WalletHardwareEcdsaKeyNotHardwareBacked' || message.includes('KeyNotHardwareBacked')) {
+    const parts = message.split(':')
+    const alias = parts[1] ?? 'unknown'
+    const reportedLevel = parts.slice(2).join(':') || 'unknown'
+    return new HardwareKeyNotHardwareBackedError(alias, reportedLevel)
+  }
+
   if (code === 'WalletHardwareEcdsaKeyNotFound' || message.includes('KeyNotFound')) {
     const alias = message.split(':').pop() ?? 'unknown'
     return new HardwareKeyNotFoundError(alias)
+  }
+
+  if (code === 'WalletHardwareEcdsaSigningCancelled') {
+    return new Error('WalletKeySigningCancelled')
   }
 
   if (

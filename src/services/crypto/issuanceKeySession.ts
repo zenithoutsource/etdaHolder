@@ -1,3 +1,5 @@
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
+
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import {
   createHardwareMemoryIssuanceProofSession,
@@ -6,7 +8,6 @@ import {
 } from './crypto'
 import { discardPendingCredentialKey } from './credentialSigningKey'
 import { discardPendingHardwareCredentialKey } from './hardwareCredentialSigningKey'
-import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
 import {
   activateWalletCryptoV2,
   isWalletCryptoV2Enabled,
@@ -19,9 +20,9 @@ export type IssuanceKeySession = {
 }
 
 /**
- * Opens a short-lived issuance session: pending seed stays in memory for PoP,
- * v2 activates with attest reuse when needed, and bind performs the single
- * biometric Keychain write of the lasting credential seed.
+ * Opens a short-lived issuance session: pending `k_cred` stays in memory for PoP,
+ * hardware `k_attest` activation runs when needed, and bind performs the single
+ * biometric write of the lasting credential key.
  */
 export async function withIssuanceKeySession<T>(
   run: (session: IssuanceKeySession) => Promise<T>,
@@ -42,12 +43,10 @@ export async function withIssuanceKeySession<T>(
       pendingCredentialKeyId,
       proofSession,
       activateV2IfNeeded: async () => {
-        if (isWalletCryptoV2Enabled()) {
-          logWalletStep('crypto', 'issuance-key-session-v2-already-enabled')
-          return
-        }
         await activateWalletCryptoV2()
-        logWalletStep('crypto', 'issuance-key-session-v2-activated')
+        logWalletStep('crypto', 'issuance-key-session-v2-activated', {
+          v2Enabled: isWalletCryptoV2Enabled(),
+        })
       },
     }
 

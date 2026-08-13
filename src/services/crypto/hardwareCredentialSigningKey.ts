@@ -25,6 +25,8 @@ import {
 } from './p256Identity'
 
 const PENDING_META_PREFIX = 'wallet.pending_hardware_credential_keys.'
+const PENDING_KEY_GC_META_KEY = 'wallet.hardware_pending_key_gc'
+const REPLACEMENT_PREFIX = 'wallet.p256.credential_key_replacements.'
 
 type PendingHardwareKeyMeta = {
   pendingId: string
@@ -33,6 +35,11 @@ type PendingHardwareKeyMeta = {
   publicJwk: EcP256Jwk
   securityLevel: HardwareSecurityLevel
   createdAt: string
+}
+
+type PendingHardwareKeyGcEntry = {
+  pendingId: string
+  alias: string
 }
 
 function pendingMetaKey(pendingId: string): string {
@@ -74,6 +81,101 @@ function removePendingHardwareKeyMeta(pendingId: string): void {
   getMetaStorage().remove(pendingMetaKey(pendingId))
 }
 
+function replacementMetaKey(credentialId: string): string {
+  return `${REPLACEMENT_PREFIX}${credentialId}`
+}
+
+function parseHardwareKeyReplacement(raw: string): EncryptedCredentialKeyRecord | undefined {
+  try {
+    const parsed = JSON.parse(raw) as Partial<EncryptedCredentialKeyRecord>
+    if (
+      typeof parsed.credentialId === 'string' &&
+      typeof parsed.holderDid === 'string' &&
+      typeof parsed.alias === 'string' &&
+      typeof parsed.credentialType === 'string' &&
+      typeof parsed.createdAt === 'string' &&
+      (parsed.securityLevelHint === 'STRONGBOX' || parsed.securityLevelHint === 'TEE')
+    ) {
+      return parsed as EncryptedCredentialKeyRecord
+    }
+  } catch {
+    return undefined
+  }
+  return undefined
+}
+
+export function getHardwareCredentialKeyReplacement(
+  credentialId: string,
+): EncryptedCredentialKeyRecord | undefined {
+  const raw = getMetaStorage().getString(replacementMetaKey(credentialId))
+  if (!raw) return undefined
+  return parseHardwareKeyReplacement(raw)
+}
+
+function writeHardwareCredentialKeyReplacement(record: EncryptedCredentialKeyRecord): void {
+  getMetaStorage().set(replacementMetaKey(record.credentialId), JSON.stringify(record))
+}
+
+function removeHardwareCredentialKeyReplacement(credentialId: string): void {
+  getMetaStorage().remove(replacementMetaKey(credentialId))
+}
+
+export function hasHardwareCredentialKey(keyId: string): boolean {
+  return Boolean(getEncryptedCredentialKeyRecord(keyId) || readPendingHardwareKeyMeta(keyId))
+}
+
+function readPendingKeyGcQueue(): PendingHardwareKeyGcEntry[] {
+  const raw = getMetaStorage().getString(PENDING_KEY_GC_META_KEY)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((entry): entry is PendingHardwareKeyGcEntry => {
+      if (!entry || typeof entry !== 'object') return false
+      const record = entry as Partial<PendingHardwareKeyGcEntry>
+      return typeof record.pendingId === 'string' && typeof record.alias === 'string'
+    })
+  } catch {
+    return []
+  }
+}
+
+function writePendingKeyGcQueue(entries: PendingHardwareKeyGcEntry[]): void {
+  if (entries.length === 0) {
+    getMetaStorage().remove(PENDING_KEY_GC_META_KEY)
+    return
+  }
+  getMetaStorage().set(PENDING_KEY_GC_META_KEY, JSON.stringify(entries))
+}
+
+function enqueuePendingKeyGc(entry: PendingHardwareKeyGcEntry): void {
+  const queue = readPendingKeyGcQueue()
+  if (queue.some((item) => item.pendingId === entry.pendingId && item.alias === entry.alias)) return
+  writePendingKeyGcQueue([...queue, entry])
+}
+
+export async function sweepPendingHardwareKeyGc(): Promise<void> {
+  const queue = readPendingKeyGcQueue()
+  if (queue.length === 0) return
+
+  const signer = getHardwareEcdsaSigner()
+  const remaining: PendingHardwareKeyGcEntry[] = []
+  for (const entry of queue) {
+    try {
+      if (await signer.hasKey(entry.alias)) {
+        await signer.deleteKey(entry.alias)
+      }
+      removePendingHardwareKeyMeta(entry.pendingId)
+    } catch (error) {
+      logWalletError('hardware-ecdsa', 'hardware-credential-pending-key-gc-failed', error, {
+        pendingId: entry.pendingId,
+      })
+      remaining.push(entry)
+    }
+  }
+  writePendingKeyGcQueue(remaining)
+}
+
 function resolveAliasForKey(keyId: string): string | undefined {
   const bound = getEncryptedCredentialKeyRecord(keyId)
   if (bound) return bound.alias
@@ -91,6 +193,7 @@ export type HardwareCredentialKeySigningSession = {
 }
 
 export async function createPendingHardwareCredentialKey(now = new Date()): Promise<string> {
+  await sweepPendingHardwareKeyGc()
   const pendingId = createPendingId()
   const alias = pendingCredentialAlias(pendingId)
   const signer = getHardwareEcdsaSigner()
@@ -196,6 +299,24 @@ export async function bindPendingHardwareKeyToCredential(
     throw new Error('HardwareCredentialKeyAliasMissing')
   }
 
+  const existing = getEncryptedCredentialKeyRecord(credentialId)
+  if (existing && existing.alias !== meta.alias) {
+    writeHardwareCredentialKeyReplacement({
+      credentialId,
+      alias: meta.alias,
+      holderDid: meta.holderDid,
+      credentialType,
+      securityLevelHint: meta.securityLevel,
+      createdAt: now.toISOString(),
+    })
+    removePendingHardwareKeyMeta(pendingId)
+    logWalletStep('hardware-ecdsa', 'hardware-credential-key-replacement-staged', {
+      credentialId,
+      credentialType,
+    })
+    return existing
+  }
+
   const record = bindPendingCredentialAlias({
     credentialId,
     alias: meta.alias,
@@ -208,6 +329,61 @@ export async function bindPendingHardwareKeyToCredential(
   removePendingHardwareKeyMeta(pendingId)
   logWalletStep('hardware-ecdsa', 'hardware-credential-key-bound', { credentialId, credentialType })
   return record
+}
+
+export async function commitHardwareCredentialKeyReplacement(credentialId: string): Promise<void> {
+  const replacement = getHardwareCredentialKeyReplacement(credentialId)
+  if (!replacement) return
+
+  const existing = getEncryptedCredentialKeyRecord(credentialId)
+  bindPendingCredentialAlias({
+    credentialId: replacement.credentialId,
+    alias: replacement.alias,
+    holderDid: replacement.holderDid,
+    credentialType: replacement.credentialType,
+    securityLevelHint: replacement.securityLevelHint,
+    createdAt: replacement.createdAt,
+  })
+  removeHardwareCredentialKeyReplacement(credentialId)
+
+  if (existing && existing.alias !== replacement.alias) {
+    const signer = getHardwareEcdsaSigner()
+    try {
+      if (await signer.hasKey(existing.alias)) {
+        await signer.deleteKey(existing.alias)
+      }
+    } catch (error) {
+      logWalletError('hardware-ecdsa', 'hardware-credential-previous-alias-delete-failed', error, {
+        credentialId,
+        alias: existing.alias,
+      })
+      enqueuePendingKeyGc({ pendingId: `previous:${credentialId}`, alias: existing.alias })
+    }
+  }
+
+  logWalletStep('hardware-ecdsa', 'hardware-credential-key-replacement-committed', { credentialId })
+}
+
+export async function discardHardwareCredentialKeyReplacement(credentialId: string): Promise<boolean> {
+  const replacement = getHardwareCredentialKeyReplacement(credentialId)
+  if (!replacement) return false
+
+  const signer = getHardwareEcdsaSigner()
+  try {
+    if (await signer.hasKey(replacement.alias)) {
+      await signer.deleteKey(replacement.alias)
+    }
+  } catch (error) {
+    logWalletError('hardware-ecdsa', 'hardware-credential-key-replacement-discard-failed', error, {
+      credentialId,
+    })
+    enqueuePendingKeyGc({ pendingId: `replacement:${credentialId}`, alias: replacement.alias })
+    return true
+  }
+
+  removeHardwareCredentialKeyReplacement(credentialId)
+  logWalletStep('hardware-ecdsa', 'hardware-credential-key-replacement-discarded', { credentialId })
+  return true
 }
 
 export function readHardwareCredentialHolderDid(credentialId: string): string {
@@ -250,6 +426,7 @@ export async function discardPendingHardwareCredentialKey(pendingId: string): Pr
     logWalletStep('hardware-ecdsa', 'hardware-credential-pending-key-discarded', { pendingId })
   } catch (error) {
     logWalletError('hardware-ecdsa', 'hardware-credential-pending-key-discard-failed', error, { pendingId })
+    enqueuePendingKeyGc({ pendingId, alias: meta.alias })
   }
 }
 

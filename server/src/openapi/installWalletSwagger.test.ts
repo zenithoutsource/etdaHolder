@@ -20,6 +20,7 @@ describe('Wallet Swagger routes', () => {
     expect(response.body.openapi).toBe('3.0.3')
     expect(response.body.paths).toHaveProperty('/wallet-api/wallet/push-token')
     expect(response.body.paths).toHaveProperty('/wallet-api/wallet-attestations')
+    expect(response.body.paths).toHaveProperty('/wallet-api/wallet-attestations/challenge')
   })
 
   test('keeps development routes out of the public document', async () => {

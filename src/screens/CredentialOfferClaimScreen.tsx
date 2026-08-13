@@ -38,17 +38,15 @@ import {
   readExpiredCredentialsForCleanupAfterClaim,
 } from '../services/credentials/documentExpiryCleanup'
 import {
-  acquireDrivingLicenceMdocOnlyForPreview,
   acquireDualFormatForPreview,
   finalizeDualFormatCredential,
   isDualFormatOffer,
-  isDrivingLicenceDualFormatOffer,
   selectOfferForSingleFormatAcquire,
   type PendingMdocCredential,
 } from '../services/credentials/dualFormatIssuance'
 import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
-import { discardPendingCredentialKey } from '../services/crypto/credentialSigningKey'
+import { discardIssuanceCredentialArtifacts, commitIssuanceCredentialKeyReplacement } from '../services/crypto/perCredentialSigning'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
 import {
   describeCredentialForLog,
@@ -80,7 +78,6 @@ type ClaimPhase =
   | { tag: 'dopaConfirm'; offer: ResolvedCredentialOffer; txCode?: string }
   | { tag: 'acquiring' }
   | { tag: 'preview'; record: VerifiableCredentialRecord; pendingMdoc?: PendingMdocCredential }
-  | { tag: 'receive'; record: VerifiableCredentialRecord; pendingMdoc?: PendingMdocCredential }
   | { tag: 'issuerConfirm'; record: VerifiableCredentialRecord; pendingMdoc?: PendingMdocCredential }
   | { tag: 'saving' }
   | { tag: 'success'; record: VerifiableCredentialRecord }
@@ -186,37 +183,6 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     })
     try {
       if (isDualFormatOffer(offer.credentialConfigurations)) {
-        if (isDrivingLicenceDualFormatOffer(offer.credentialConfigurations)) {
-          logWalletStep('deeplink', 'credential-acquire-driving-licence-mdoc-only', describeOfferForLog(offer))
-          const mdocPreview = await withTimeout(
-            acquireDrivingLicenceMdocOnlyForPreview(offer, {
-              tx_code: code,
-              signal: acquireAbortController.signal,
-              ...(authorizationCodeExchangeRef.current
-                ? { authorizationCodeExchange: authorizationCodeExchangeRef.current }
-                : {}),
-            }),
-            ACQUIRE_TIMEOUT_MS,
-            'DeeplinkTimeout: acquiring credential timed out',
-            () => acquireAbortController.abort(),
-          )
-          logWalletStep('deeplink', 'credential-acquire-complete', {
-            ...describeCredentialForLog(mdocPreview.primaryRecord),
-            mdocPresent: Boolean(mdocPreview.pendingMdoc),
-            mdocOnlyDebugSlice: true,
-          })
-          if (generationRef.current === gen) {
-            setPhase({
-              tag: 'preview',
-              record: mdocPreview.primaryRecord,
-              ...(mdocPreview.pendingMdoc ? { pendingMdoc: mdocPreview.pendingMdoc } : {}),
-            })
-          } else if (mdocPreview.pendingMdoc?.pendingCredentialKeyId) {
-            void discardPendingCredentialKey(mdocPreview.pendingMdoc.pendingCredentialKeyId)
-          }
-          return
-        }
-
         logWalletStep('deeplink', 'credential-acquire-dual-format', describeOfferForLog(offer))
         const dualPreview = await withTimeout(
           acquireDualFormatForPreview(offer, {
@@ -249,21 +215,16 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
             })
             return
           }
-          if (dualPreview.primaryRecord.type === 'ThaiNationalID') {
-            setPhase({
-              tag: 'receive',
-              record: dualPreview.primaryRecord,
-              ...(dualPreview.pendingMdoc ? { pendingMdoc: dualPreview.pendingMdoc } : {}),
-            })
-          } else {
-            setPhase({
-              tag: 'preview',
-              record: dualPreview.primaryRecord,
-              ...(dualPreview.pendingMdoc ? { pendingMdoc: dualPreview.pendingMdoc } : {}),
-            })
-          }
-        } else if (dualPreview.pendingMdoc?.pendingCredentialKeyId) {
-          void discardPendingCredentialKey(dualPreview.pendingMdoc.pendingCredentialKeyId)
+          setPhase({
+            tag: 'preview',
+            record: dualPreview.primaryRecord,
+            ...(dualPreview.pendingMdoc ? { pendingMdoc: dualPreview.pendingMdoc } : {}),
+          })
+        } else {
+          void discardIssuanceCredentialArtifacts({
+            credentialId: dualPreview.primaryRecord.id,
+            pendingCredentialKeyId: dualPreview.pendingMdoc?.pendingCredentialKeyId,
+          })
         }
         return
       }
@@ -287,11 +248,9 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       )
       logWalletStep('deeplink', 'credential-acquire-complete', describeCredentialForLog(record))
       if (generationRef.current === gen) {
-        setPhase(
-          record.type === 'ThaiNationalID'
-            ? { tag: 'receive', record }
-            : { tag: 'preview', record },
-        )
+        setPhase({ tag: 'preview', record })
+      } else {
+        void discardIssuanceCredentialArtifacts({ credentialId: record.id })
       }
     } catch (err) {
       logWalletError('deeplink', 'credential-acquire-failed', err, describeOfferForLog(offer))
@@ -600,11 +559,18 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     lastStartedOfferRef.current = null
     acquireAbortControllerRef.current?.abort()
     const pendingCredentialKeyId =
-      phase.tag === 'preview' || phase.tag === 'receive' || phase.tag === 'issuerConfirm'
+      phase.tag === 'preview' || phase.tag === 'issuerConfirm'
         ? phase.pendingMdoc?.pendingCredentialKeyId
         : undefined
-    if (pendingCredentialKeyId) {
-      void discardPendingCredentialKey(pendingCredentialKeyId)
+    const credentialId =
+      phase.tag === 'preview' || phase.tag === 'issuerConfirm'
+        ? phase.record.id
+        : undefined
+    if (credentialId || pendingCredentialKeyId) {
+      void discardIssuanceCredentialArtifacts({
+        credentialId,
+        pendingCredentialKeyId,
+      })
     }
     const uriToDismiss = activeOfferUriRef.current ?? incomingUrl
     if (uriToDismiss) setDismissedDeeplinkUri(uriToDismiss)
@@ -652,10 +618,15 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       } else {
         saveScannedCredential(record, { refreshCredentials })
       }
+      await commitIssuanceCredentialKeyReplacement(record.id)
       logWalletStep('deeplink', 'credential-save-complete', describeCredentialForLog(record))
       setPhase({ tag: 'success', record })
     } catch (err) {
       logWalletError('deeplink', 'credential-save-failed', err, describeCredentialForLog(record))
+      void discardIssuanceCredentialArtifacts({
+        credentialId: record.id,
+        pendingCredentialKeyId: pendingMdoc?.pendingCredentialKeyId,
+      })
       setPhase({ tag: 'error', message: err instanceof Error ? err.message : String(err) })
     }
   }
@@ -705,15 +676,11 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={exitFlow} />
-          <ThaiIdSuccessConfirmationPanel
+          <ThaiIdReceivePanel
             record={phase.record}
-            onConfirm={() =>
-              setPhase({
-                tag: 'receive',
-                record: phase.record,
-                ...(phase.pendingMdoc ? { pendingMdoc: phase.pendingMdoc } : {}),
-              })
-            }
+            onConfirm={() => {
+              void handleSave(phase.record, phase.pendingMdoc)
+            }}
           />
         </SafeAreaView>
       )
@@ -780,20 +747,6 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         <WalletHeader onBack={exitFlow} />
         <IssuanceTrustConfirmationPanel
           variant="issuer"
-          record={phase.record}
-          onConfirm={() => {
-            void handleSave(phase.record, phase.pendingMdoc)
-          }}
-        />
-      </SafeAreaView>
-    )
-  }
-
-  if (phase.tag === 'receive') {
-    return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-        <WalletHeader onBack={exitFlow} />
-        <ThaiIdReceivePanel
           record={phase.record}
           onConfirm={() => {
             void handleSave(phase.record, phase.pendingMdoc)

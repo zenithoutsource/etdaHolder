@@ -34,6 +34,14 @@ export function toFriendlyError(raw: string): string {
 
   }
 
+  if (raw.includes('CredentialSignatureAlgUnsupported')) {
+    return 'This credential uses a signing algorithm this wallet does not accept. Request a new document from the issuer.'
+  }
+
+  if (raw.includes('CredentialIssuerSignatureInvalid')) {
+    return 'This credential could not be verified. Request a new document from the issuer.'
+  }
+
   if (raw.includes('CredentialResponseUnsupported')) return 'The issuer response did not include a compact credential.'
 
   if (raw.includes('CredentialRequestFailed')) return raw

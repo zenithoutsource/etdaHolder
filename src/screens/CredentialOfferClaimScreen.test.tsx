@@ -6,7 +6,6 @@ import { CredentialOfferClaimScreen } from './CredentialOfferClaimScreen'
 import { useDeeplinkStore } from '../store/deeplinkStore'
 import { acquireCredentialRecord, resolveOffer } from '../services/vci/exchangeService'
 import {
-  acquireDrivingLicenceMdocOnlyForPreview,
   acquireDualFormatForPreview,
   finalizeDualFormatCredential,
 } from '../services/credentials/dualFormatIssuance'
@@ -94,7 +93,6 @@ jest.mock('../services/credentials/dualFormatIssuance', () => {
   )
   return {
     ...actual,
-    acquireDrivingLicenceMdocOnlyForPreview: jest.fn(),
     acquireDualFormatForPreview: jest.fn(),
     finalizeDualFormatCredential: jest.fn(),
   }
@@ -102,7 +100,6 @@ jest.mock('../services/credentials/dualFormatIssuance', () => {
 
 const resolveOfferMock = resolveOffer as jest.Mock
 const acquireCredentialRecordMock = acquireCredentialRecord as jest.Mock
-const acquireDrivingLicenceMdocOnlyForPreviewMock = acquireDrivingLicenceMdocOnlyForPreview as jest.Mock
 const acquireDualFormatForPreviewMock = acquireDualFormatForPreview as jest.Mock
 const finalizeDualFormatCredentialMock = finalizeDualFormatCredential as jest.Mock
 const readStoredCredentialsMock = readStoredCredentials as jest.Mock
@@ -121,7 +118,6 @@ describe('CredentialOfferClaimScreen', () => {
     useUrlMock.mockReturnValue(null)
     useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
     readStoredCredentialsMock.mockReturnValue([])
-    acquireDrivingLicenceMdocOnlyForPreviewMock.mockReset()
     acquireDualFormatForPreviewMock.mockReset()
     finalizeDualFormatCredentialMock.mockReset()
   })
@@ -427,6 +423,7 @@ describe('CredentialOfferClaimScreen', () => {
     resolveOfferMock.mockResolvedValue({
       credentialConfigurations: [{ id: 'ThaiNationalID', format: 'dc+sd-jwt', rawConfiguration: {} }],
       issuer: 'https://issuer.example',
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
       txCode: undefined,
     })
     acquireCredentialRecordMock.mockResolvedValue({
@@ -449,6 +446,16 @@ describe('CredentialOfferClaimScreen', () => {
       expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
       expect(screen.getByTestId('thai-id-receive-panel')).toBeTruthy()
     })
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+    expect(saveScannedCredentialMock).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
+
+    await waitFor(() => {
+      expect(saveScannedCredentialMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByText('รับเอกสารสำเร็จ')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
   })
 
   it('shows the issuer confirmation after DL preview and before saving', async () => {
@@ -556,7 +563,7 @@ describe('CredentialOfferClaimScreen', () => {
       issuer: 'https://issuer.example',
       rawBase64: 'AQIDBA',
     }
-    acquireDrivingLicenceMdocOnlyForPreviewMock.mockResolvedValue({ primaryRecord: record, pendingMdoc })
+    acquireDualFormatForPreviewMock.mockResolvedValue({ primaryRecord: record, pendingMdoc })
     let releaseFinalize: (() => void) | undefined
     finalizeDualFormatCredentialMock.mockImplementation(
       () => new Promise<void>((resolve) => {
@@ -569,13 +576,12 @@ describe('CredentialOfferClaimScreen', () => {
     await waitFor(() => {
       expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
     })
-    expect(acquireDrivingLicenceMdocOnlyForPreviewMock).not.toHaveBeenCalled()
+    expect(acquireDualFormatForPreviewMock).not.toHaveBeenCalled()
 
     fireEvent.press(screen.getByText('ยืนยัน'))
 
     await waitFor(() => {
-      expect(acquireDrivingLicenceMdocOnlyForPreviewMock).toHaveBeenCalledTimes(1)
-      expect(acquireDualFormatForPreviewMock).not.toHaveBeenCalled()
+      expect(acquireDualFormatForPreviewMock).toHaveBeenCalledTimes(1)
       expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
     })
 
@@ -760,6 +766,7 @@ describe('CredentialOfferClaimScreen', () => {
     })
 
     await act(async () => {
+      useDeeplinkStore.getState().clearDismissedDeeplinkUri()
       useDeeplinkStore.getState().setIncomingDeeplinkUri(offerUri)
     })
 

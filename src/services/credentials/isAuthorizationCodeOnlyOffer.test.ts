@@ -45,6 +45,16 @@ describe('isAuthorizationCodeOnlyOffer', () => {
     ).toBe(false)
   })
 
+  test('returns false when supportedFlows is missing', () => {
+    expect(
+      isAuthorizationCodeOnlyOffer(
+        buildOffer({
+          supportedFlows: undefined as unknown as string[],
+        }),
+      ),
+    ).toBe(false)
+  })
+
   test('returns false when only pre-authorized flow is supported', () => {
     expect(
       isAuthorizationCodeOnlyOffer(

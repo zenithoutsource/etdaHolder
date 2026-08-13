@@ -2,7 +2,6 @@ import { getHolderDid, signHolderStatusChangePop } from '../crypto/crypto'
 import { getCredentialHolderDid } from '../crypto/credentialSigningKey'
 import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
 import { readHardwareCredentialHolderDid } from '../crypto/hardwareCredentialSigningKey'
-import { isWalletCryptoV2Enabled } from '../crypto/walletCryptoActivation'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 
 const DEV_HOLDER_REVOKE_NONCE_ENDPOINT = '/wallet-api/dev/issuer/holder-revoke/nonce'
@@ -67,10 +66,11 @@ function resolveHolderDid(credentialId: string): string {
   if (isHardwareP256SigningEnabled()) {
     return readHardwareCredentialHolderDid(credentialId)
   }
-  if (isWalletCryptoV2Enabled()) {
+  try {
     return getCredentialHolderDid(credentialId)
+  } catch {
+    return getHolderDid()
   }
-  return getHolderDid()
 }
 
 async function requestHolderRevokeNonce(

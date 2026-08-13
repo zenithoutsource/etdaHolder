@@ -65,6 +65,7 @@ describe('per-credential', () => {
     jest
       .spyOn(walletCryptoActivation, 'readCachedWalletAttestations')
       .mockImplementation(() => mockReadCachedWalletAttestations())
+    jest.spyOn(walletCryptoActivation, 'activateWalletCryptoV2').mockResolvedValue()
 
     jest.spyOn(credentialSigningKey, 'createPendingCredentialKey').mockResolvedValue('pending-key-1')
     jest.spyOn(credentialSigningKey, 'bindPendingKeyToCredential').mockResolvedValue({
@@ -114,6 +115,50 @@ describe('per-credential', () => {
     })
 
     expect(capturedWalletAttestations).toBeUndefined()
+  })
+
+  test('claim flow creates pending k_cred when Wallet Provider v2 flag is off', async () => {
+    mockIsWalletCryptoV2Enabled.mockReturnValue(false)
+    delete process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED
+    const resolved = resolvedOffer()
+    let capturedSignOptions: { credentialKeyId?: string } | undefined
+    let capturedWalletAttestations: { wua: string; wia: string } | undefined
+    const writes = new Map<string, string>()
+    const rawVc = unsignedJwt({
+      jti: 'vc-123',
+      vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+      iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+    })
+
+    await claimCredential(resolved, {
+      tx_code: '123456',
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+        signProof: async (_nonce, _audience, options) => {
+          capturedSignOptions = options
+          return 'proof.jwt'
+        },
+        requestCredential: async ({ walletAttestations }) => {
+          capturedWalletAttestations = walletAttestations
+          return rawVc
+        },
+        getCredentialStorage: () => ({
+          getString: (key: string) => writes.get(key),
+          set: (key: string, value: string) => {
+            writes.set(key, value)
+          },
+        }),
+      },
+    })
+
+    expect(credentialSigningKey.createPendingCredentialKey).toHaveBeenCalledTimes(1)
+    expect(capturedSignOptions?.credentialKeyId).toBe('pending-key-1')
+    expect(capturedWalletAttestations).toBeUndefined()
+    expect(credentialSigningKey.bindPendingKeyToCredential).toHaveBeenCalledWith(
+      'pending-key-1',
+      'vc-123',
+      'ThaiNationalID',
+    )
   })
 
   test('claim flow creates pending key before signProof and binds after acquire', async () => {
@@ -295,7 +340,7 @@ describe('per-credential', () => {
     expect(credentialSigningKey.destroyCredentialKey).toHaveBeenCalledWith('vc-save-fail')
   })
 
-  test('sync uses per-credential associated_did when v2 is enabled', async () => {
+  test('sync uses per-credential associated_did when a k_cred registry row exists', async () => {
     mockIsWalletCryptoV2Enabled.mockReturnValue(true)
     const record: VerifiableCredentialRecord = {
       id: 'vc-123',
@@ -341,6 +386,7 @@ describe('per-credential', () => {
         securityLevelHint: 'STRONGBOX',
       })
       jest.spyOn(hardwareCredentialSigningKey, 'discardPendingHardwareCredentialKey').mockResolvedValue()
+      jest.spyOn(hardwareCredentialSigningKey, 'destroyHardwareCredentialKey').mockResolvedValue()
     })
 
     afterEach(() => {
@@ -380,6 +426,35 @@ describe('per-credential', () => {
         'ThaiNationalID',
       )
       expect(credentialSigningKey.bindPendingKeyToCredential).not.toHaveBeenCalled()
+    })
+
+    test('claimCredential destroys the hardware key when MMKV save fails after bind', async () => {
+      const resolved = resolvedOffer()
+      const rawVc = unsignedJwt({
+        jti: 'vc-hw-save-fail',
+        vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+        iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+      })
+
+      await expect(
+        claimCredential(resolved, {
+          tx_code: '123456',
+          dependencies: {
+            acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+            signProof: async () => 'proof.jwt',
+            requestCredential: async () => rawVc,
+            getCredentialStorage: () => ({
+              getString: () => undefined,
+              set: () => {
+                throw new Error('mmkv-write-failed')
+              },
+            }),
+          },
+        }),
+      ).rejects.toThrow('mmkv-write-failed')
+
+      expect(hardwareCredentialSigningKey.destroyHardwareCredentialKey).toHaveBeenCalledWith('vc-hw-save-fail')
+      expect(credentialSigningKey.destroyCredentialKey).not.toHaveBeenCalled()
     })
   })
 })

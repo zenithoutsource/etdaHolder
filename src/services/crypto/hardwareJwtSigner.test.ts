@@ -81,9 +81,25 @@ describe('hardwareJwtSigner', () => {
         sign: (message) => session.sign(message),
       })
       const jwkHeader = decodeJwtPart(jwkJwt.split('.')[0]!)
-      expect(jwkHeader.jwk).toBeDefined()
-      expect(jwkHeader.kid).toContain(holderDid)
-      expect(jwkHeader.cose_key).toBeDefined()
+      expect(jwkHeader.jwk).toMatchObject({
+        kty: 'EC',
+        crv: 'P-256',
+        x: publicJwk.x,
+        y: publicJwk.y,
+      })
+      expect(jwkHeader.kid).toBe(`${holderDid}#${holderDid.slice('did:key:'.length)}`)
+      expect(jwkHeader.cose_key).toBeUndefined()
+
+      const defaultJwt = await signHardwareProofJwt({
+        nonce: 'nonce-3',
+        audience: 'https://issuer.example.com',
+        publicJwk,
+        holderDid,
+        sign: (message) => session.sign(message),
+      })
+      const defaultHeader = decodeJwtPart(defaultJwt.split('.')[0]!)
+      expect(defaultHeader.jwk).toMatchObject({ kty: 'EC', crv: 'P-256' })
+      expect(defaultHeader.kid).toBe(`${holderDid}#${holderDid.slice('did:key:'.length)}`)
     } finally {
       await session.close()
     }

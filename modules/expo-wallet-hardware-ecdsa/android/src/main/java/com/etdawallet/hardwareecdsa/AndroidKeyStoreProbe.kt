@@ -24,7 +24,10 @@ internal object AndroidKeyStoreProbe {
       return when (keyInfo.securityLevel) {
         KeyProperties.SECURITY_LEVEL_STRONGBOX -> "STRONGBOX"
         KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT -> "TEE"
-        else -> "TEE"
+        else -> throw WalletHardwareEcdsaException(
+          "WalletHardwareEcdsaKeyNotHardwareBacked",
+          "KeyNotHardwareBacked:$alias:${securityLevelLabel(keyInfo.securityLevel)}",
+        )
       }
     }
 

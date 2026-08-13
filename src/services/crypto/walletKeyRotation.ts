@@ -10,6 +10,7 @@ import {
   refreshWalletKeyRegisteredAt,
 } from './crypto'
 import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
+import { getCredentialKeyRecord, listCredentialKeyRecords } from './credentialKeyRegistry'
 import { getMetaStorage } from '../storage/storage'
 import { readStoredCredentials } from '../credentials/storedCredentials'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
@@ -28,7 +29,7 @@ export function isWalletKeyExpired(now = new Date()): boolean {
   let registeredAt = getWalletKeyRegisteredAt()
   // v2 wallets anchor TTL on per-credential bind times; backfill on read so time-travel
   // and wallets created before registeredAt seeding still reach the expiry modal.
-  if (!registeredAt && isWalletCryptoV2Enabled()) {
+  if (!registeredAt && (isWalletCryptoV2Enabled() || listCredentialKeyRecords().length > 0)) {
     ensureWalletKeyRegisteredAtBackfill(now)
     registeredAt = getWalletKeyRegisteredAt()
   }
@@ -117,6 +118,7 @@ export async function rotateWalletKey(now = new Date()): Promise<{
 
   const affectedCredentialIds: string[] = []
   for (const credential of readStoredCredentials()) {
+    if (getCredentialKeyRecord(credential.id)) continue
     const boundHolderDid = readCredentialHolderDid(credential)
     if (!boundHolderDid || boundHolderDid === holderDid) continue
 

@@ -278,6 +278,39 @@ describe('authorizationRequestJar', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  test('rejects signed redirect_uri JARs that embed an attacker JWK instead of the JWKS key', async () => {
+    const { secretKey: attackerSecret, publicKey: attackerPublic } = p256.keygen()
+    const { publicKey: verifierPublic } = p256.keygen()
+    const verifierJwk = { ...p256PublicKeyToJwk(verifierPublic), kid: 'verifier-es256-1', alg: 'ES256' }
+    const attackerJwk = { ...p256PublicKeyToJwk(attackerPublic), kid: 'attacker', alg: 'ES256' }
+    const payload = {
+      client_id: 'redirect_uri:https://verifier.example.com:455/openid4vc/verify/request-1',
+      response_uri: 'https://verifier.example.com:455/openid4vc/verify/request-1',
+      response_mode: 'direct_post',
+      nonce: 'nonce-attacker',
+      dcql_query: { credentials: [] },
+    }
+    const jwt = signedEs256RequestJwt(payload, attackerSecret, {
+      kid: 'verifier-es256-1',
+      jwk: attackerJwk,
+    })
+    const fetchMock = jest.fn(async () => Response.json({ keys: [verifierJwk] }))
+
+    await expect(
+      parseAuthorizationRequestBody(jwt, {
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:https://verifier.example.com:455/openid4vc/verify',
+            name: 'Verifier',
+            allowedOrigins: ['https://verifier.example.com:455'],
+          },
+        ],
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/trusted verifier key|signature verification failed/)
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
   test('rejects unsigned decentralized_identifier request objects', async () => {
     const jwt = `${encodePart({ alg: 'none', typ: 'oauth-authz-req+jwt' })}.${encodePart({
       client_id: 'decentralized_identifier:did:web:verifier.example.com',

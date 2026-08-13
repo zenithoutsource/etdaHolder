@@ -23,6 +23,7 @@ const expectedPaths = [
   '/wallet-api/wallet/accounts/wallets',
   '/wallet-api/wallet/{wallet}/credentials/import',
   '/wallet-api/wallet/push-token',
+  '/wallet-api/wallet-attestations/challenge',
   '/wallet-api/wallet-attestations',
 ] as const
 
@@ -89,6 +90,12 @@ describe('walletOpenApiDocument', () => {
   })
 
   test('documents the development Wallet attestation endpoint', () => {
+    expect(paths()['/wallet-api/wallet-attestations/challenge'].post).toMatchObject({
+      summary: 'Create a development attestation challenge',
+      responses: {
+        201: expect.any(Object),
+      },
+    })
     expect(paths()['/wallet-api/wallet-attestations'].post).toMatchObject({
       summary: 'Issue development Wallet attestations',
       responses: {
@@ -102,7 +109,13 @@ describe('walletOpenApiDocument', () => {
       'development-only',
     )
     expect(paths()['/wallet-api/wallet-attestations'].post?.description).toContain(
-      'must never be used in production',
+      'must never be used as a production Wallet Provider',
+    )
+    expect(paths()['/wallet-api/wallet-attestations'].post?.description).toContain(
+      'does not verify attestation roots',
+    )
+    expect(paths()['/wallet-api/wallet-attestations/challenge'].post?.description).toContain(
+      'must never be used as a production Wallet Provider',
     )
   })
 
@@ -114,7 +127,11 @@ describe('walletOpenApiDocument', () => {
     expect(
       (walletOpenApiDocument.components.schemas as Record<string, unknown>).WalletAttestationJwk,
     ).toMatchObject({
-      required: ['kty', 'crv', 'x'],
+      required: ['kty', 'crv', 'x', 'y'],
+      properties: {
+        kty: { enum: ['EC'] },
+        crv: { enum: ['P-256'] },
+      },
     })
   })
 })

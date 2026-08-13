@@ -1,6 +1,7 @@
 import {
   decodeJsonBase64Url,
   isRecord,
+  isSameJwk,
   looksLikeCompactJwt,
   readString,
   toErrorMessage,
@@ -163,17 +164,20 @@ export async function resolveRequestObjectVerificationJwk(input: {
     : undefined
   const headerKid = readString(input.header.kid)
 
+  let resolved: Record<string, unknown> | undefined
+
   if (trustedVerifier?.verificationJwk) {
     const pinned = trustedVerifier.verificationJwk
     const pinnedKid = readString(pinned.kid)
     if (!headerKid || !pinnedKid || pinnedKid === headerKid) {
-      return pinned
+      resolved = pinned
     }
   }
 
   if (
-    parsedClientId.scheme === 'decentralized_identifier' &&
-    parsedClientId.originalClientId.startsWith('did:web:')
+    !resolved
+    && parsedClientId.scheme === 'decentralized_identifier'
+    && parsedClientId.originalClientId.startsWith('did:web:')
   ) {
     if (!input.responseUri) {
       throw new Error('PresentationRequestInvalid: response_uri is required')
@@ -182,7 +186,7 @@ export async function resolveRequestObjectVerificationJwk(input: {
       throw new Error('PresentationRequestInvalid: verifier is not trusted')
     }
 
-    return resolveDidWebVerificationJwk(
+    resolved = await resolveDidWebVerificationJwk(
       parsedClientId.originalClientId,
       headerKid,
       input.fetchImpl,
@@ -190,19 +194,17 @@ export async function resolveRequestObjectVerificationJwk(input: {
   }
 
   if (
-    parsedClientId.scheme === 'decentralized_identifier' &&
-    parsedClientId.originalClientId.startsWith('did:key:')
+    !resolved
+    && parsedClientId.scheme === 'decentralized_identifier'
+    && parsedClientId.originalClientId.startsWith('did:key:')
   ) {
     if (!trustedVerifier) {
       throw new Error('PresentationRequestInvalid: verifier is not trusted')
     }
-    return resolveDidKeyVerificationJwk(parsedClientId.originalClientId, headerKid)
+    resolved = resolveDidKeyVerificationJwk(parsedClientId.originalClientId, headerKid)
   }
 
-  const headerJwk = input.header.jwk
-  if (isRecord(headerJwk)) return headerJwk
-
-  if (parsedClientId.scheme === 'redirect_uri') {
+  if (!resolved && parsedClientId.scheme === 'redirect_uri') {
     if (!input.responseUri) {
       throw new Error('PresentationRequestInvalid: response_uri is required')
     }
@@ -210,14 +212,23 @@ export async function resolveRequestObjectVerificationJwk(input: {
       throw new Error('PresentationRequestInvalid: verifier is not trusted')
     }
 
-    return resolveJwkFromVerifierJwks({
+    resolved = await resolveJwkFromVerifierJwks({
       responseUri: input.responseUri,
       kid: headerKid,
       fetchImpl: input.fetchImpl,
     })
   }
 
-  throw new Error('PresentationRequestInvalid: verifier signing key is not available')
+  if (!resolved) {
+    throw new Error('PresentationRequestInvalid: verifier signing key is not available')
+  }
+
+  const headerJwk = input.header.jwk
+  if (isRecord(headerJwk) && !isSameJwk(headerJwk, resolved)) {
+    throw new Error('PresentationRequestInvalid: request object jwk does not match trusted verifier key')
+  }
+
+  return resolved
 }
 
 function resolveDidKeyVerificationJwk(did: string, kid: string | undefined): Record<string, unknown> {

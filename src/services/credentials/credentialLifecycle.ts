@@ -2,7 +2,8 @@ import {
   readHistoryDocumentLabel,
   readHistoryIssuerPartyName,
 } from '../../config/historyDisplayNames'
-import { destroyCredentialKey } from '../crypto/credentialSigningKey'
+import { destroyIssuanceCredentialKey } from '../crypto/perCredentialSigning'
+import { logWalletError } from '../debug/walletLogger'
 import { appendWalletHistoryEvent } from '../history/walletEventLog'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
@@ -53,7 +54,9 @@ export function recordCredentialLifecycleAction(
   }
   getCredentialStorage().set(`${LIFECYCLE_KEY_PREFIX}${credentialId}`, JSON.stringify(status))
 
-  void destroyCredentialKey(credentialId).catch(() => undefined)
+  void destroyIssuanceCredentialKey(credentialId).catch((error) => {
+    logWalletError('credential-lifecycle', 'destroy-credential-key-failed', error, { credentialId })
+  })
 
   const record = readStoredCredentialById(credentialId)
   if (record) {

@@ -5,7 +5,6 @@ import { logWalletStep } from '@/src/services/debug/walletLogger'
 import type { EcP256Jwk } from './hardwareEcdsaTypes'
 import {
   assertEs256SignatureBytes,
-  p256JwkToPublicKey,
   p256PublicKeyToCoseKey,
 } from './p256Identity'
 import { normalizeSdJwtWithoutKb } from './sdJwtNormalize'
@@ -76,23 +75,30 @@ export type HardwareSignProofInput = {
 }
 
 export async function signHardwareProofJwt(input: HardwareSignProofInput): Promise<string> {
-  const keyBinding = input.keyBinding ?? 'did-kid'
-  const publicKey = p256JwkToPublicKey(input.publicJwk)
+  // Default jwk: this Issuer requires a P-256 device key in the PoP header AND kid.
+  // Do not attach non-IANA `cose_key` — OID4VCI proof headers are kid | jwk | x5c,
+  // and extra JOSE params previously produced issuer dictionary misses.
+  const keyBinding = input.keyBinding ?? 'jwk'
+  const publicJwk = {
+    kty: input.publicJwk.kty,
+    crv: input.publicJwk.crv,
+    x: input.publicJwk.x,
+    y: input.publicJwk.y,
+  }
+  const kid = `${input.holderDid}#${input.holderDid.slice('did:key:'.length)}`
 
   const header =
     keyBinding === 'jwk'
       ? {
           alg: 'ES256' as const,
           typ: 'openid4vci-proof+jwt' as const,
-          jwk: input.publicJwk,
-          // Keep kid so Issuers can emit both cnf.jwk and cnf.kid when desired.
-          kid: `${input.holderDid}#${input.holderDid.slice('did:key:'.length)}`,
-          cose_key: encodeP256CoseKeyBase64Url(publicKey),
+          jwk: publicJwk,
+          kid,
         }
       : {
           alg: 'ES256' as const,
           typ: 'openid4vci-proof+jwt' as const,
-          kid: `${input.holderDid}#${input.holderDid.slice('did:key:'.length)}`,
+          kid,
         }
 
   const payload = {
@@ -104,6 +110,11 @@ export async function signHardwareProofJwt(input: HardwareSignProofInput): Promi
   logWalletStep('hardware-ecdsa', 'sign-proof-start', {
     alg: header.alg,
     keyBinding,
+    hasJwk: 'jwk' in header,
+    hasKid: 'kid' in header,
+    jwkKty: 'jwk' in header ? publicJwk.kty : undefined,
+    jwkCrv: 'jwk' in header ? publicJwk.crv : undefined,
+    coseKeyPresent: 'cose_key' in header,
     audience: input.audience,
     noncePresent: Boolean(input.nonce),
   })

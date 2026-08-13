@@ -1,5 +1,5 @@
 import type { JwtSignerJwk, RequestDpopOptions, SignJwtCallback } from '@openid4vc/oauth2'
-import { createSign, generateKeyPairSync, type KeyObject } from 'react-native-quick-crypto'
+import { createHash, createSign, generateKeyPairSync, randomBytes, type KeyObject } from 'react-native-quick-crypto'
 
 export type DpopIssuanceSession = {
   privateKey: KeyObject
@@ -83,6 +83,33 @@ export function createDpopSignJwtCallback(session: DpopIssuanceSession): SignJwt
       signerJwk: session.publicJwk,
     }
   }
+}
+
+export async function createDpopProofJwt(input: {
+  session: DpopIssuanceSession
+  htm: string
+  htu: string
+  accessToken: string
+  nonce?: string
+}): Promise<string> {
+  const ath = createHash('sha256').update(input.accessToken).digest('base64url')
+  const signJwt = createDpopSignJwtCallback(input.session)
+  const result = await signJwt(input.session.signer, {
+    header: {
+      alg: 'ES256',
+      typ: 'dpop+jwt',
+      jwk: input.session.publicJwk,
+    },
+    payload: {
+      jti: randomBytes(16).toString('hex'),
+      htm: input.htm,
+      htu: input.htu,
+      iat: Math.floor(Date.now() / 1000),
+      ath,
+      ...(input.nonce ? { nonce: input.nonce } : {}),
+    },
+  })
+  return result.jwt
 }
 
 export function registerDpopSessionForDeferred(transactionId: string, session: DpopIssuanceSession): void {

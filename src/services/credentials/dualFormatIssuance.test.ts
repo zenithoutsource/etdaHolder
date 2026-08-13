@@ -19,6 +19,22 @@ jest.mock('../notifications/documentExpiryNotificationService', () => ({
   cancelDocumentExpiryNotifications: jest.fn(async () => undefined),
 }))
 
+jest.mock('../vci/oid4vc/retrieveViaOid4vc', () => {
+  const actual = jest.requireActual('../vci/oid4vc/retrieveViaOid4vc') as typeof import('../vci/oid4vc/retrieveViaOid4vc')
+  return {
+    ...actual,
+    requestNonceViaOid4vc: jest.fn(async () => ({ c_nonce: 'nonce-from-endpoint' })),
+  }
+})
+
+jest.mock('../crypto/walletCryptoActivation', () => {
+  const actual = jest.requireActual('../crypto/walletCryptoActivation') as typeof import('../crypto/walletCryptoActivation')
+  return {
+    ...actual,
+    activateWalletCryptoV2: jest.fn(async () => undefined),
+  }
+})
+
 const sdJwtRecord: VerifiableCredentialRecord = {
   id: 'vc-transcript',
   type: 'ChulalongkornUniversityTranscript',
@@ -154,6 +170,7 @@ test('acquireDrivingLicenceMdocOnlyForPreview acquires mDOC only and returns a p
     logicalCredentialId: 'driving-1',
     issuer: 'https://issuer.example.com',
     rawBase64: 'AQIDBA',
+    pendingCredentialKeyId: expect.any(String),
   })
 })
 
@@ -290,6 +307,135 @@ test('acquireDualFormatForPreview returns SD-JWT and pending mDOC without storin
     issuer: 'https://issuer.example.com',
     rawBase64: 'AQIDBA',
   })
+})
+
+test('acquireDualFormatForPreview refreshes c_nonce before mDOC when SD-JWT leaves the token nonce spent', async () => {
+  const offer = makeDualOffer()
+  const requestNonce = jest.fn(async () => 'nonce-2')
+  const acquireRecord = jest.fn(async (
+    sliced: ResolvedCredentialOffer,
+    options: { reuseToken?: { cNonce: string } },
+  ) => {
+    const format = sliced.credentialConfigurations[0]?.format
+    return format === 'mso_mdoc'
+      ? {
+          id: 'mdoc-hash',
+          type: 'ChulalongkornUniversityTranscript',
+          rawVc: 'mdoc:AQIDBA',
+          claims: { doctype: 'th.go.etda.transcript' },
+          issuedAt: '2026-01-01T00:00:00.000Z',
+        }
+      : sdJwtRecord
+  })
+
+  await acquireDualFormatForPreview(offer, {
+    dependencies: {
+      acquireAccessToken: async () => ({
+        accessToken: 'shared-token',
+        cNonce: 'nonce-1',
+      }),
+      acquireCredentialRecord: acquireRecord as typeof import('../vci/exchangeService').acquireCredentialRecord,
+      requestNonce,
+      signProof: async () => 'proof',
+      requestCredential: async () => 'unused',
+      getCredentialStorage: () => ({
+        getString: () => undefined,
+        set: () => undefined,
+      }),
+    },
+  })
+
+  expect(requestNonce).toHaveBeenCalledTimes(1)
+  expect(acquireRecord.mock.calls[1]?.[1].reuseToken?.cNonce).toBe('nonce-2')
+})
+
+test('acquireDualFormatForPreview does not fetch a nonce when SD-JWT already rotated c_nonce', async () => {
+  const offer = makeDualOffer()
+  const requestNonce = jest.fn(async () => 'nonce-from-endpoint')
+  const acquireRecord = jest.fn(async (
+    sliced: ResolvedCredentialOffer,
+    options: {
+      reuseToken?: { cNonce: string }
+      onCNonceUpdated?: (cNonce: string) => void
+    },
+  ) => {
+    const format = sliced.credentialConfigurations[0]?.format
+    if (format === 'dc+sd-jwt') {
+      options.onCNonceUpdated?.('fresh-nonce')
+    }
+    return format === 'mso_mdoc'
+      ? {
+          id: 'mdoc-hash',
+          type: 'ChulalongkornUniversityTranscript',
+          rawVc: 'mdoc:AQIDBA',
+          claims: { doctype: 'th.go.etda.transcript' },
+          issuedAt: '2026-01-01T00:00:00.000Z',
+        }
+      : sdJwtRecord
+  })
+
+  await acquireDualFormatForPreview(offer, {
+    dependencies: {
+      acquireAccessToken: async () => ({
+        accessToken: 'shared-token',
+        cNonce: 'nonce-1',
+      }),
+      acquireCredentialRecord: acquireRecord as typeof import('../vci/exchangeService').acquireCredentialRecord,
+      requestNonce,
+      signProof: async () => 'proof',
+      requestCredential: async () => 'unused',
+      getCredentialStorage: () => ({
+        getString: () => undefined,
+        set: () => undefined,
+      }),
+    },
+  })
+
+  expect(requestNonce).not.toHaveBeenCalled()
+  expect(acquireRecord.mock.calls[1]?.[1].reuseToken?.cNonce).toBe('fresh-nonce')
+})
+
+test('acquireDualFormatForPreview keeps the token nonce when SD-JWT fails before consuming it', async () => {
+  const offer = makeDualOffer()
+  const requestNonce = jest.fn(async () => 'nonce-2')
+  const acquireRecord = jest.fn(async (
+    sliced: ResolvedCredentialOffer,
+    options: { reuseToken?: { cNonce: string } },
+  ) => {
+    const format = sliced.credentialConfigurations[0]?.format
+    if (format === 'dc+sd-jwt') {
+      throw new Error('CredentialProofUnsupported: cryptographic_binding_methods_supported has no usable method')
+    }
+    return {
+      id: 'mdoc-hash',
+      type: 'ChulalongkornUniversityTranscript',
+      rawVc: 'mdoc:AQIDBA',
+      claims: { doctype: 'th.go.etda.transcript' },
+      issuedAt: '2026-01-01T00:00:00.000Z',
+    }
+  })
+
+  const result = await acquireDualFormatForPreview(offer, {
+    dependencies: {
+      acquireAccessToken: async () => ({
+        accessToken: 'shared-token',
+        cNonce: 'nonce-1',
+      }),
+      acquireCredentialRecord: acquireRecord as typeof import('../vci/exchangeService').acquireCredentialRecord,
+      requestNonce,
+      signProof: async () => 'proof',
+      requestCredential: async () => 'unused',
+      getCredentialStorage: () => ({
+        getString: () => undefined,
+        set: () => undefined,
+      }),
+    },
+  })
+
+  expect(requestNonce).not.toHaveBeenCalled()
+  expect(acquireRecord.mock.calls[1]?.[1].reuseToken?.cNonce).toBe('nonce-1')
+  expect(result.missingFormat).toBe('dc+sd-jwt')
+  expect(result.pendingMdoc?.rawBase64).toBe('AQIDBA')
 })
 
 test('acquireDualFormatForPreview shares one proof signing session across both formats', async () => {
@@ -503,6 +649,47 @@ test('finalizeDualFormatCredential rolls back the record and mDOC when linking f
   expect(deleteMdoc).toHaveBeenCalledWith(record.id)
   expect(storage.get('credential:index')).toBeUndefined()
   expect(storage.get(`credential:${record.id}`)).toBeUndefined()
+})
+
+test('finalizeDualFormatCredential does not commit a key replacement before logical save', async () => {
+  const commit = jest.fn(async () => undefined)
+  const storage = new Map<string, string>()
+  const credentialStorage = {
+    getString: (key: string) => storage.get(key),
+    set: (key: string, value: string) => {
+      storage.set(key, value)
+    },
+    remove: (key: string) => storage.delete(key),
+  }
+  const record: VerifiableCredentialRecord = {
+    ...sdJwtRecord,
+    issuerUrl: 'https://issuer.example.com',
+    credentialConfigurationId: 'TranscriptCredential_dc+sd-jwt',
+  }
+  const pendingMdoc = {
+    docType: 'th.go.etda.transcript',
+    configurationId: 'TranscriptCredential_mso_mdoc',
+    sdJwtConfigurationId: 'TranscriptCredential_dc+sd-jwt',
+    logicalCredentialId: 'transcript-1',
+    rawBase64: 'AQIDBA',
+  }
+
+  await expect(
+    finalizeDualFormatCredential(record, pendingMdoc, {
+      getCredentialStorage: () => credentialStorage,
+      storeMdoc: async () => undefined,
+      deleteMdoc: async () => undefined,
+      hasMdoc: async () => false,
+      saveCredentialRecord: (savedRecord) =>
+        saveCredentialRecord(savedRecord, { getCredentialStorage: () => credentialStorage }),
+      saveLogicalCredential: () => {
+        throw new Error('logical-link-failed')
+      },
+      markCredentialAsNew: jest.fn(),
+      commitIssuanceCredentialKeyReplacement: commit,
+    }),
+  ).rejects.toThrow('logical-link-failed')
+  expect(commit).not.toHaveBeenCalled()
 })
 
 test('finalizeDualFormatCredential retains native mDOC when presence is unknown', async () => {
@@ -989,4 +1176,116 @@ test('acquireDualFormatForPreview surfaces both format failures when neither can
   ).rejects.toThrow(
     'DualFormatClaimFailed: neither format could be acquired (dc+sd-jwt: CredentialKeySigningSessionRequired; mso_mdoc: CredentialKeySigningSessionRequired)',
   )
+})
+
+function dualFormatCredentialStorage() {
+  const storage = new Map<string, string>()
+  return {
+    getString: (key: string) => storage.get(key),
+    set: (key: string, value: string) => {
+      storage.set(key, value)
+    },
+    remove: (key: string) => storage.delete(key),
+  }
+}
+
+function dualFormatMdocRecord(): VerifiableCredentialRecord {
+  return {
+    id: 'mdoc-hash',
+    type: 'ChulalongkornUniversityTranscript',
+    rawVc: 'mdoc:AQIDBA',
+    claims: { doctype: 'th.go.etda.transcript' },
+    issuedAt: '2026-01-01T00:00:00.000Z',
+  }
+}
+
+test('claimDualFormatCredential forwards authorizationCodeExchange to acquireAccessToken', async () => {
+  const acquireAccessToken = jest.fn(async () => ({
+    accessToken: 'shared-token',
+    cNonce: 'nonce-1',
+  }))
+  const authorizationCodeExchange = {
+    authorizationCode: 'auth-code',
+    codeVerifier: 'verifier',
+    redirectUri: 'walletapp://callback',
+    clientId: 'wallet-client',
+  }
+
+  await claimDualFormatCredential(makeDualOffer(), {
+    authorizationCodeExchange,
+    dependencies: {
+      acquireAccessToken,
+      acquireCredentialRecord: async (offer) =>
+        offer.credentialConfigurations[0]?.format === 'mso_mdoc' ? dualFormatMdocRecord() : sdJwtRecord,
+      storeMdoc: async () => undefined,
+      getCredentialStorage: dualFormatCredentialStorage,
+    },
+  })
+
+  expect(acquireAccessToken).toHaveBeenCalledWith(
+    expect.objectContaining({ authorizationCodeExchange }),
+  )
+})
+
+test('claimDualFormatCredential reuses per-format credential_identifier values from the token', async () => {
+  const reuseIdentifiers: string[] = []
+
+  await claimDualFormatCredential(makeDualOffer(), {
+    dependencies: {
+      acquireAccessToken: async () => ({
+        accessToken: 'shared-token',
+        cNonce: 'nonce-1',
+        credentialIdentifiersByConfigurationId: {
+          'TranscriptCredential_dc+sd-jwt': 'sdjwt-identifier',
+          'TranscriptCredential_mso_mdoc': 'mdoc-identifier',
+        },
+      }),
+      acquireCredentialRecord: async (offer, options) => {
+        reuseIdentifiers.push(options?.reuseToken?.credentialIdentifier ?? 'missing')
+        return offer.credentialConfigurations[0]?.format === 'mso_mdoc'
+          ? dualFormatMdocRecord()
+          : sdJwtRecord
+      },
+      storeMdoc: async () => undefined,
+      getCredentialStorage: dualFormatCredentialStorage,
+    },
+  })
+
+  expect(reuseIdentifiers).toEqual(['sdjwt-identifier', 'mdoc-identifier'])
+})
+
+test('claimDualFormatCredential reuses one DPoP session for both format requests', async () => {
+  const originalDpopFlag = process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED
+  process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED = 'true'
+  const dpopSessions: unknown[] = []
+
+  try {
+    await claimDualFormatCredential(makeDualOffer(), {
+      dependencies: {
+        acquireAccessToken: async (input) => ({
+          accessToken: 'shared-token',
+          cNonce: 'nonce-1',
+          dpopSession: input.dpopSession,
+        }),
+        acquireCredentialRecord: async (offer, options) => {
+          dpopSessions.push(options?.reuseToken?.dpopSession)
+          return offer.credentialConfigurations[0]?.format === 'mso_mdoc'
+            ? dualFormatMdocRecord()
+            : sdJwtRecord
+        },
+        storeMdoc: async () => undefined,
+        getCredentialStorage: dualFormatCredentialStorage,
+      },
+    })
+
+    expect(dpopSessions).toHaveLength(2)
+    expect(dpopSessions[0]).toBeDefined()
+    expect(dpopSessions[0]).toBe(dpopSessions[1])
+  } finally {
+    if (originalDpopFlag === undefined) {
+      delete process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED
+    } else {
+      process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED = originalDpopFlag
+    }
+  }
 })

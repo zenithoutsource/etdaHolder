@@ -20,6 +20,7 @@ hashes.sha512 = sha512
 
 const CREDENTIAL_KEYCHAIN_PREFIX = 'wallet.ed25519_seed.cred.'
 const PENDING_META_PREFIX = 'wallet.pending_credential_keys.'
+const REPLACEMENT_PREFIX = 'wallet.ed25519.credential_key_replacements.'
 const KEYCHAIN_USERNAME = 'wallet-ed25519-credential-seed'
 
 const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01])
@@ -217,6 +218,13 @@ export async function bindPendingKeyToCredential(
     throw new Error('PendingCredentialKeyNotFound')
   }
 
+  const existing = getCredentialKeyRecord(credentialId)
+  if (existing) {
+    getMetaStorage().set(`${REPLACEMENT_PREFIX}${credentialId}`, pendingId)
+    logWalletStep('crypto', 'credential-key-replacement-staged', { credentialId, credentialType })
+    return existing
+  }
+
   const pendingService = credentialKeychainService(pendingId)
   const seed = await readStoredEd25519Seed(pendingService)
   if (!seed) {
@@ -228,6 +236,60 @@ export async function bindPendingKeyToCredential(
   } finally {
     seed.fill(0)
   }
+}
+
+export async function commitSoftwareCredentialKeyReplacement(credentialId: string): Promise<void> {
+  const pendingId = getMetaStorage().getString(`${REPLACEMENT_PREFIX}${credentialId}`)
+  if (!pendingId) return
+
+  const previousRecord = getCredentialKeyRecord(credentialId)
+  const previousSnapshot = previousRecord ? { ...previousRecord } : undefined
+  const credentialService = credentialKeychainService(credentialId)
+  const previousSeed = previousRecord
+    ? await readStoredEd25519Seed(credentialService)
+    : undefined
+
+  const pendingService = credentialKeychainService(pendingId)
+  const seed = await readStoredEd25519Seed(pendingService)
+  if (!seed) {
+    throw new Error('PendingCredentialKeySeedMissing')
+  }
+
+  try {
+    await bindPendingKeyWithSeed(
+      pendingId,
+      credentialId,
+      previousRecord?.credentialType ?? 'unknown',
+      seed,
+      new Date(),
+    )
+    getMetaStorage().remove(`${REPLACEMENT_PREFIX}${credentialId}`)
+    logWalletStep('crypto', 'credential-key-replacement-committed', { credentialId })
+  } catch (error) {
+    if (previousSnapshot && previousSeed) {
+      try {
+        await writeEd25519Seed(previousSeed, credentialService, 'ยืนยันเพื่อบันทึกกุญแจเอกสาร')
+        registerCredentialKey(previousSnapshot)
+      } catch (restoreError) {
+        logWalletError('crypto', 'credential-key-replacement-restore-failed', restoreError, {
+          credentialId,
+        })
+      }
+    }
+    throw error
+  } finally {
+    seed.fill(0)
+    previousSeed?.fill(0)
+  }
+}
+
+export async function discardSoftwareCredentialKeyReplacement(credentialId: string): Promise<boolean> {
+  const pendingId = getMetaStorage().getString(`${REPLACEMENT_PREFIX}${credentialId}`)
+  if (!pendingId) return false
+  await discardPendingCredentialKey(pendingId)
+  getMetaStorage().remove(`${REPLACEMENT_PREFIX}${credentialId}`)
+  logWalletStep('crypto', 'credential-key-replacement-discarded', { credentialId })
+  return true
 }
 
 async function bindPendingKeyWithSeed(

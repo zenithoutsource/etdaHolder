@@ -340,7 +340,6 @@ export default function RootLayout() {
 
       if (detectLegacySingleKeyWallet()) {
         logWalletStep('startup', 'wallet-crypto-v2-legacy-wallet-detected');
-        throw new Error('WalletCryptoLegacyWallet');
       }
 
       if (isWalletCryptoV2Enabled()) {

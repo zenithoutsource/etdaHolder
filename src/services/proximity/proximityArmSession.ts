@@ -58,7 +58,7 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
     companionPayloadBytes: companionPayloadBytes ?? 0,
   })
 
-  if (input.sharingMode === 'mdoc-only') {
+  if (input.sharingMode === 'mdoc-only' || input.sharingMode === 'dual-format') {
     await prepareMdocDeviceAuthForArm()
   }
 

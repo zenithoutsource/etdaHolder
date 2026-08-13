@@ -31,4 +31,6 @@ Use a hardware-backed non-extractable signing key.
 
 ## Supersession Note
 
-On 2026-06-16, ADR 0008 established that the target Android hardware (Galaxy S24 Ultra) cannot generate Ed25519 keys in AndroidKeyStore (it silently returns EC keys instead — see ADR 0007). For the Ed25519 wallet signing key specifically, ADR 0008 supersedes the "no production software fallback" decision here with a Keychain-protected software Ed25519 signer. This ADR's hardware-non-extractable principle remains the target for any future signing key where the platform can satisfy it.
+On 2026-06-16, ADR 0008 established that the target Android hardware (Galaxy S24 Ultra) cannot generate Ed25519 keys in AndroidKeyStore (it silently returns EC keys instead — see ADR 0007). For the Ed25519 wallet signing key specifically, ADR 0008 superseded the "no production software fallback" decision here with a Keychain-protected software Ed25519 signer.
+
+On 2026-08-13, ADR 0011 restored this ADR's hardware-non-extractable principle for production holder keys using P-256 / ES256 in AndroidKeyStore (`k_attest` and, when enabled, `k_cred`). Ed25519 `k_cred` remains only behind `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=false` until the Galaxy A26 cutover gate.

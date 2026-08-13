@@ -164,7 +164,6 @@ describe('Keychain Ed25519 wallet crypto service', () => {
   })
 
   test('uses one authenticated per-credential proof session for both dual-format proofs', async () => {
-    getMetaStorage().set(WALLET_CRYPTO_V2_META_KEY, 'true')
     const pendingKeyId = await createPendingCredentialKey()
     jest.clearAllMocks()
 

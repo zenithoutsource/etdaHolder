@@ -54,12 +54,18 @@ curl -sS -X POST "https://wallet.example.invalid/wallet-api/wallet/push-token" \
 
 ## Wallet attestation (development only)
 
-`POST /wallet-api/wallet-attestations` accepts an Ed25519 public JWK and returns `wua`, `wia`, and `expiresAt`. The current handler returns **unsigned `alg: none` development mocks** — not production Wallet Provider attestations. Do not treat these values as trusted in production deployments.
+`POST /wallet-api/wallet-attestations/challenge` creates a single-use challenge (`challengeId`, `attestationChallengeBase64`, `expiresAt`). `POST /wallet-api/wallet-attestations` accepts a P-256 public JWK, a non-empty Android attestation certificate chain, that `challengeId`, and `submissionIdempotencyKey`. First success consumes the challenge; the same idempotency key may replay the 201.
+
+The current handler returns **unsigned `alg: none` development mocks**. It does **not** verify attestation roots, revocation, or app identity. It is not a production Wallet Provider. Never point a production `EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL` at this mock.
 
 ```bash
+curl -sS -X POST "https://wallet.example.invalid/wallet-api/wallet-attestations/challenge" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
 curl -sS -X POST "https://wallet.example.invalid/wallet-api/wallet-attestations" \
   -H "Content-Type: application/json" \
-  -d '{"pubKAttestJwk":{"kty":"OKP","crv":"Ed25519","x":"SyntheticEd25519PublicKey"}}'
+  -d '{"challengeId":"<id>","pubKAttestJwk":{"kty":"EC","crv":"P-256","x":"SyntheticP256X","y":"SyntheticP256Y"},"certificateChainDerBase64":["MAMBAgME"],"submissionIdempotencyKey":"idem-1"}'
 ```
 
 ## Field reference

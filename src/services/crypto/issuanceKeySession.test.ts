@@ -4,23 +4,29 @@ import { WALLET_CRYPTO_V2_META_KEY } from '@/src/config/walletCryptoPolicy'
 import { getMetaStorage } from '../storage/storage'
 import { getCredentialKeyRecord } from './credentialKeyRegistry'
 import { withIssuanceKeySession } from './issuanceKeySession'
+import { activateWalletCryptoV2 } from './walletCryptoActivation'
 
 const resetKeychainStore = (Keychain as unknown as { __resetStore: () => void }).__resetStore
 
-jest.mock('./walletAttestClient', () => ({
-  createWalletAttestClient: () => ({
-    requestAttestations: jest.fn(async () => ({
-      wua: 'wua-token',
-      wia: 'wia-token',
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    })),
-  }),
-}))
+jest.mock('./walletCryptoActivation', () => {
+  const { getMetaStorage: readMeta } = jest.requireActual('../storage/storage') as typeof import('../storage/storage')
+  const { WALLET_CRYPTO_V2_META_KEY: v2Key } = jest.requireActual(
+    '@/src/config/walletCryptoPolicy',
+  ) as typeof import('@/src/config/walletCryptoPolicy')
+
+  return {
+    isWalletCryptoV2Enabled: () => readMeta().getString(v2Key) === 'true',
+    activateWalletCryptoV2: jest.fn(async () => {
+      readMeta().set(v2Key, 'true')
+    }),
+  }
+})
 
 describe('withIssuanceKeySession', () => {
   beforeEach(() => {
     resetKeychainStore()
     getMetaStorage().clearAll()
+    jest.mocked(activateWalletCryptoV2).mockClear()
     jest.mocked(Keychain.setGenericPassword).mockClear()
     jest.mocked(Keychain.getGenericPassword).mockClear()
   })
@@ -29,6 +35,7 @@ describe('withIssuanceKeySession', () => {
     await withIssuanceKeySession(async (session) => {
       await session.activateV2IfNeeded()
       expect(getMetaStorage().getString(WALLET_CRYPTO_V2_META_KEY)).toBe('true')
+      expect(activateWalletCryptoV2).toHaveBeenCalledTimes(1)
 
       jest.mocked(Keychain.getGenericPassword).mockClear()
       jest.mocked(Keychain.setGenericPassword).mockClear()
@@ -55,19 +62,30 @@ describe('withIssuanceKeySession', () => {
     })
   })
 
+  test('activateV2IfNeeded calls activateWalletCryptoV2 even when v2 is already enabled', async () => {
+    getMetaStorage().set(WALLET_CRYPTO_V2_META_KEY, 'true')
+
+    await withIssuanceKeySession(async (session) => {
+      await session.activateV2IfNeeded()
+    })
+
+    expect(activateWalletCryptoV2).toHaveBeenCalledTimes(1)
+  })
+
   test('activateV2IfNeeded reuses attest cache without rewriting on second session', async () => {
     await withIssuanceKeySession(async (session) => {
       await session.activateV2IfNeeded()
     })
 
     jest.mocked(Keychain.setGenericPassword).mockClear()
-    jest.mocked(Keychain.getGenericPassword).mockClear()
+    jest.mocked(activateWalletCryptoV2).mockClear()
 
     await withIssuanceKeySession(async (session) => {
       await session.activateV2IfNeeded()
-      expect(Keychain.setGenericPassword).not.toHaveBeenCalled()
-      expect(Keychain.getGenericPassword).not.toHaveBeenCalled()
     })
+
+    expect(activateWalletCryptoV2).toHaveBeenCalledTimes(1)
+    expect(Keychain.setGenericPassword).not.toHaveBeenCalled()
   })
 
   test('failure discards pending meta without leaving a pending Keychain seed', async () => {

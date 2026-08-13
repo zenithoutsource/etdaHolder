@@ -107,7 +107,7 @@ export function bindPendingCredentialAlias(input: {
 
 /**
  * Destroy ordering: deleteKey → hasKey === false → remove encrypted registry row.
- * Registry cleanup is retryable if interrupted after Keystore delete.
+ * Retry-safe when the Keystore alias is already gone (native deleteKey throws KeyNotFound).
  */
 export async function destroyEncryptedCredentialKey(
   credentialId: string,
@@ -120,10 +120,15 @@ export async function destroyEncryptedCredentialKey(
   logWalletStep('hardware-ecdsa', 'destroy-credential-key-start', { credentialId })
 
   try {
-    await signer.deleteKey(alias)
+    if (await signer.hasKey(alias)) {
+      await signer.deleteKey(alias)
+    }
   } catch (error) {
-    logWalletError('hardware-ecdsa', 'destroy-credential-key-delete-failed', error, { credentialId, alias })
-    throw error
+    if (await signer.hasKey(alias)) {
+      logWalletError('hardware-ecdsa', 'destroy-credential-key-delete-failed', error, { credentialId, alias })
+      throw error
+    }
+    logWalletStep('hardware-ecdsa', 'destroy-credential-key-already-gone', { credentialId, alias })
   }
 
   if (await signer.hasKey(alias)) {

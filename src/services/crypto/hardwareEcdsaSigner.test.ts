@@ -54,9 +54,9 @@ describe('hardwareEcdsaSigner resolver', () => {
     expect(getHardwareEcdsaSigner().createKey).toEqual(expect.any(Function))
   })
 
-  test('readHardwareEcdsaBackendPreference defaults to animo', () => {
+  test('readHardwareEcdsaBackendPreference defaults to custom after Animo spike failure', () => {
     delete process.env.EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND
-    expect(readHardwareEcdsaBackendPreference()).toBe('animo')
+    expect(readHardwareEcdsaBackendPreference()).toBe('custom')
   })
 
   test('throws when flag is off outside __DEV__', () => {

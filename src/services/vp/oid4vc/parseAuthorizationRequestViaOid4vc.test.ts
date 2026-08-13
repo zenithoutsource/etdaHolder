@@ -271,6 +271,37 @@ describe('parseAuthorizationRequestViaOid4vc', () => {
     expect(adapterResult.authorizationRequest.dcql_query).toEqual(requestPayload.dcql_query)
   })
 
+  it('rejects signed redirect_uri JARs that verify only against an embedded attacker JWK', async () => {
+    const { secretKey: attackerSecret, publicKey: attackerPublic } = p256.keygen()
+    const { publicKey: verifierPublic } = p256.keygen()
+    const verifierJwk = { ...p256PublicKeyToJwk(verifierPublic), kid: 'verifier-es256-1', alg: 'ES256' }
+    const attackerJwk = { ...p256PublicKeyToJwk(attackerPublic), kid: 'attacker', alg: 'ES256' }
+    const payload = {
+      ...requestPayload,
+      nonce: 'attacker-nonce',
+      state: 'attacker-state',
+    }
+    const header = encodePart({
+      alg: 'ES256',
+      typ: 'oauth-authz-req+jwt',
+      kid: 'verifier-es256-1',
+      jwk: attackerJwk,
+    })
+    const body = encodePart(payload)
+    const unsigned = `${header}.${body}`
+    const signature = signEs256Prehash(new TextEncoder().encode(unsigned), attackerSecret)
+    const jwt = `${unsigned}.${base64UrlEncodeBytes(signature)}`
+    const fetchImpl = jest.fn(async () => Response.json({ keys: [verifierJwk] }))
+
+    await expect(
+      parseAuthorizationRequestViaOid4vc(
+        { rawBody: jwt },
+        { trustedVerifiers, fetchImpl: fetchImpl as unknown as typeof fetch },
+      ),
+    ).rejects.toThrow(/PresentationRequestInvalid/)
+    expect(fetchImpl).toHaveBeenCalled()
+  })
+
   it('verifies signed decentralized_identifier JARs via adapter verifyJwt', async () => {
     const privateKey = Uint8Array.from({ length: 32 }, (_, index) => index + 11)
     const publicJwk = {

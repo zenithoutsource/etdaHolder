@@ -1,4 +1,5 @@
 import { p256 } from '@noble/curves/nist.js'
+import * as Keychain from 'react-native-keychain'
 
 import { getCredentialStorage, getMetaStorage } from '../storage/storage'
 import {
@@ -7,9 +8,17 @@ import {
   readHardwareCredentialSigningPublicJwk,
 } from './hardwareCredentialSigningKey'
 import {
+  bindPendingKeyToCredential,
+  createPendingCredentialKey,
+} from './credentialSigningKey'
+import {
   createProofSigningSession,
+  generateWalletKeyIfNeeded,
+  getHolderDid,
+  getPublicKeyJwk,
   signHolderStatusChangePop,
   signProof,
+  signSdJwtKbPresentationToken,
 } from './crypto'
 import { p256JwkToPublicKey, verifyEs256Prehash } from './p256Identity'
 
@@ -55,6 +64,7 @@ describe('crypto hardware P-256 router', () => {
   beforeEach(() => {
     getMetaStorage().clearAll()
     mockCredentialStorage()
+    ;(Keychain as unknown as { __resetStore: () => void }).__resetStore()
     __resetHardwareEcdsaSignerCacheForTests()
     process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
     delete process.env.EXPO_PUBLIC_WALLET_CRYPTO_V2_ENABLED
@@ -72,6 +82,21 @@ describe('crypto hardware P-256 router', () => {
       process.env.EXPO_PUBLIC_WALLET_CRYPTO_V2_ENABLED = originalV2Flag
     }
     __resetHardwareEcdsaSignerCacheForTests()
+  })
+
+  test('signProof embeds P-256 jwk for mso_mdoc keyBinding', async () => {
+    const pendingId = await createPendingHardwareCredentialKey()
+    const proof = await signProof('nonce-mdoc', 'https://issuer.example.com', {
+      credentialKeyId: pendingId,
+      keyBinding: 'jwk',
+    })
+    const header = decodeJwtPart(proof.split('.')[0]!)
+    expect(header.alg).toBe('ES256')
+    expect(header.typ).toBe('openid4vci-proof+jwt')
+    expect(header.jwk).toMatchObject({ kty: 'EC', crv: 'P-256' })
+    expect(typeof header.kid).toBe('string')
+    expect(header.kid).toContain('did:key:')
+    expect(header.cose_key).toBeUndefined()
   })
 
   test('signProof uses ES256 when hardware flag is enabled', async () => {
@@ -121,5 +146,45 @@ describe('crypto hardware P-256 router', () => {
     const header = decodeJwtPart(jwt.split('.')[0]!)
     expect(header.alg).toBe('ES256')
     expect(header.typ).toBe('holder-status-change+jwt')
+  })
+
+  test('signProof throws HardwareCredentialKeyRequired without a credential key id', async () => {
+    await expect(signProof('nonce-1', 'https://issuer.example.com')).rejects.toThrow(
+      'HardwareCredentialKeyRequired',
+    )
+  })
+
+  test('signSdJwtKbPresentationToken throws HardwareCredentialKeyRequired without credentialId', async () => {
+    await expect(
+      signSdJwtKbPresentationToken({
+        audience: 'https://verifier.example.com',
+        nonce: 'nonce-kb',
+        sdJwt: 'header.payload.signature',
+      }),
+    ).rejects.toThrow('HardwareCredentialKeyRequired')
+  })
+
+  test('signHolderStatusChangePop uses Ed25519 when hardware is on but the credential is software-bound', async () => {
+    const pendingId = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingId, 'legacy-ed25519', 'ThaiNationalID')
+
+    const jwt = await signHolderStatusChangePop({
+      nonce: 'revoke-nonce',
+      audience: 'https://issuer.example.com',
+      credentialId: 'legacy-ed25519',
+    })
+
+    const header = decodeJwtPart(jwt.split('.')[0]!)
+    expect(header.alg).toBe('EdDSA')
+  })
+
+  test('getHolderDid stays on the Ed25519 wallet key when a hardware credential also exists', async () => {
+    await generateWalletKeyIfNeeded()
+    const ed25519Did = getHolderDid()
+    const pendingId = await createPendingHardwareCredentialKey()
+    await bindPendingHardwareKeyToCredential(pendingId, 'hw-cred-mixed', 'ThaiNationalID')
+
+    expect(getHolderDid()).toBe(ed25519Did)
+    expect(getPublicKeyJwk().crv).toBe('Ed25519')
   })
 })

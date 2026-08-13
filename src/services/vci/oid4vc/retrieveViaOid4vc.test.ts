@@ -136,4 +136,102 @@ describe('retrieveCredentialViaOid4vc', () => {
       }),
     ).rejects.toThrow('CredentialRequestFailed: invalid_request - bad request')
   })
+
+  test('sends DPoP on credential_identifier requests instead of Bearer-only', async () => {
+    const {
+      createDpopIssuanceSession,
+      getRequestDpopOptions,
+    } = require('@/src/services/oid4vc/dpopIssuanceSession') as typeof import('@/src/services/oid4vc/dpopIssuanceSession')
+    const dpopSession = createDpopIssuanceSession()
+    const dpop = getRequestDpopOptions(dpopSession)
+    const fetchImpl = jest.fn(async () => Response.json({ credential: 'vc.jwt' })) as unknown as typeof fetch
+    const context = {
+      ...oid4vcContext,
+      issuerMetadataResult: {
+        ...oid4vcContext.issuerMetadataResult,
+        credentialIssuer: {
+          ...oid4vcContext.issuerMetadataResult.credentialIssuer,
+          credential_issuer: 'https://issuer.example.com',
+          credential_endpoint: 'https://issuer.example.com/credential',
+        },
+      },
+    }
+
+    await retrieveCredentialViaOid4vc({
+      oid4vcContext: context,
+      accessToken: 'access-token',
+      proofJwt: 'proof.jwt',
+      credentialConfigurationId: 'test-config',
+      credentialIdentifier: 'issuer-credential-id-1',
+      dpop,
+      dpopSession,
+      fetchImpl,
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://issuer.example.com/credential',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'DPoP access-token',
+          DPoP: expect.any(String),
+        }),
+      }),
+    )
+    expect(mockRetrieveCredentials).not.toHaveBeenCalled()
+  })
+
+  test('retries credential_identifier request once when the issuer returns a DPoP nonce', async () => {
+    const {
+      createDpopIssuanceSession,
+      getRequestDpopOptions,
+    } = require('@/src/services/oid4vc/dpopIssuanceSession') as typeof import('@/src/services/oid4vc/dpopIssuanceSession')
+    const dpopSession = createDpopIssuanceSession()
+    const dpop = getRequestDpopOptions(dpopSession)
+    let calls = 0
+    const fetchImpl = jest.fn(async () => {
+      calls += 1
+      if (calls === 1) {
+        return new Response(JSON.stringify({ error: 'use_dpop_nonce' }), {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'DPoP-Nonce': 'as-dpop-nonce',
+          },
+        })
+      }
+      return Response.json({ credential: 'vc.jwt' })
+    }) as unknown as typeof fetch
+    const context = {
+      ...oid4vcContext,
+      issuerMetadataResult: {
+        ...oid4vcContext.issuerMetadataResult,
+        credentialIssuer: {
+          ...oid4vcContext.issuerMetadataResult.credentialIssuer,
+          credential_issuer: 'https://issuer.example.com',
+          credential_endpoint: 'https://issuer.example.com/credential',
+        },
+      },
+    }
+
+    await retrieveCredentialViaOid4vc({
+      oid4vcContext: context,
+      accessToken: 'access-token',
+      proofJwt: 'proof.jwt',
+      credentialConfigurationId: 'test-config',
+      credentialIdentifier: 'issuer-credential-id-1',
+      dpop,
+      dpopSession,
+      fetchImpl,
+    })
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    const retryHeaders = (fetchImpl as unknown as jest.Mock).mock.calls[1]?.[1]?.headers as Record<string, string>
+    const retryPayload = JSON.parse(
+      Buffer.from(String(retryHeaders.DPoP).split('.')[1], 'base64url').toString('utf8'),
+    ) as { nonce?: string }
+    expect(retryPayload.nonce).toBe('as-dpop-nonce')
+    expect(dpopSession.nonce).toBe('as-dpop-nonce')
+    expect(mockRetrieveCredentials).not.toHaveBeenCalled()
+  })
 })

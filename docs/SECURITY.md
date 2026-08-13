@@ -4,19 +4,15 @@ This document defines mandatory security constraints for the the wallet. Any cod
 
 ## 1. Cryptographic Key Policy
 
-### Signing Key
+### Holder keys (`k_attest` and `k_cred`)
 
-The wallet uses exactly one Keychain-protected Ed25519 seed for Proof of Possession and presentation signatures.
+Production holder keys follow ADR 0011 (topology from ADR 0010):
 
-- Keychain service: `etda.wallet.ed25519_seed`
-- Public key cache: `wallet.ed25519_pub_key`
-- Backing store: `react-native-keychain` with biometric/device-passcode access control and hardware-backed storage when the platform provides it
-- Private key material: a software-generated 32-byte Ed25519 seed, retrieved only for signing
-- Generation: once on first launch
-- Rotation: explicit user-initiated re-enrollment only
-- Native AndroidKeyStore Ed25519 module: diagnostic/experimental only
-
-This satisfies protocol-level `alg: EdDSA` / Ed25519 compatibility. It does not provide hardware-backed non-extractability because the target Android device generated EC keys for AndroidKeyStore Ed25519 requests.
+- **`k_attest`** — one hardware P-256 key per wallet at AndroidKeyStore alias `wallet.p256.attest`. JavaScript never receives private key bytes. Wallet Provider remote attestation applies to this key only: the wallet POSTs a challenge, creates the key with those bytes, then POSTs `pub_k_attest` plus the Android attestation certificate chain. The wallet does not sign WUA/WIA with `k_attest`. The local `server/` handler is a development mock (`alg: none`; no root, revocation, or app-identity verify) and must never be used as a production Wallet Provider.
+- **`k_cred`** — one key per credential. When `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=true` on Android, that key is hardware P-256 (`alg: ES256`, `did:key` multicodec `0x1200`). Otherwise the flag-off path remains a Keychain-protected software Ed25519 seed (`alg: EdDSA`, multicodec `[0xed, 0x01]`). Hardware `k_cred` is not remotely attested in P1–P6.
+- **Native module** — `modules/expo-wallet-hardware-ecdsa`. StrongBox-first at create; TEE only on explicit StrongBox unavailability.
+- **iOS** — production issuance and presentation are blocked until Secure Enclave lands.
+- **Biometric** — one prompt per user action on `k_cred` PoP or presentation. Activation does not add a second `k_attest` prompt.
 
 ### Non-Signing Crypto
 
@@ -28,11 +24,13 @@ This satisfies protocol-level `alg: EdDSA` / Ed25519 compatibility. It does not 
 - AES-GCM wrapping for non-signing local storage keys
 - base64url and encoding support
 
-It must not be used for Ed25519 signing. Ed25519 signing is performed by `@noble/ed25519` using the Keychain-protected seed.
+It must not be used for holder signing. Hardware ECDSA signing stays in the native module. Flag-off Ed25519 signing uses `@noble/ed25519` with the Keychain-protected seed.
 
 ### Public Key and Holder DID
 
-The public key is exported as raw 32-byte Ed25519 public bytes only. The Holder DID is:
+Hardware P-256 public keys are exported as JWK `{ "kty": "EC", "crv": "P-256", "x", "y" }`. The Holder DID is `did:key` with multicodec varint `0x1200` and the 33-byte compressed public key. PoP and presentation JWT headers use `alg: ES256`.
+
+Flag-off Ed25519 public keys remain raw 32-byte bytes. The Holder DID is:
 
 ```text
 did:key:z<base58btc(varint(0xed01) + raw_ed25519_public_key)>
@@ -111,4 +109,4 @@ Resolved items from the June 4 auth and crypto review (predates ADR 0007 and ADR
 - Android production MMKV key storage uses hardware-backed constraints where available.
 - Startup errors are mapped to user-facing messages.
 
-Superseded by later decisions: ADR 0008 (2026-06-16) reintroduced software Ed25519 signing as the accepted production design — see Section 1 above. The "software signing fallback was removed" finding above refers only to the pre-ADR-0007 temporary path, not the current signing key design.
+Superseded by later decisions: ADR 0008 (2026-06-16) reintroduced software Ed25519 signing after AndroidKeyStore Ed25519 failed on target hardware. ADR 0011 (2026-08-13) restored hardware P-256 / ES256 for holder keys (`k_attest`, and `k_cred` when the hardware flag is on) — see Section 1 above. The "software signing fallback was removed" finding above refers only to the pre-ADR-0007 temporary path, not the ADR 0008 flag-off Ed25519 `k_cred` path.

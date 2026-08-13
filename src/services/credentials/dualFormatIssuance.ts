@@ -12,11 +12,13 @@ import {
   appendCredentialReceivedHistory,
   claimCredential,
   type CredentialStorage,
+  type AcquireAccessTokenInput,
   type AcquireAccessTokenResult,
   type ClaimCredentialOptions,
   type OfferedCredentialConfiguration,
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
+  readTokenCredentialIdentifier,
   saveCredentialRecord,
   createDefaultClaimCredentialDependencies,
   awaitCredentialAcquisition,
@@ -24,6 +26,7 @@ import {
 } from '../vci/exchangeService'
 import { getCredentialStorage as getDefaultCredentialStorage } from '../storage/storage'
 import { base64UrlToBytes } from '@/src/utils/jwtUtils'
+import { requestNonceViaOid4vc } from '../vci/oid4vc/retrieveViaOid4vc'
 
 import {
   buildLogicalCredential,
@@ -49,17 +52,60 @@ import {
 import {
   bindPendingHardwareKeyToCredential,
   createPendingHardwareCredentialKey,
-  discardPendingHardwareCredentialKey,
-  destroyHardwareCredentialKey,
 } from '../crypto/hardwareCredentialSigningKey'
 import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
-import { usesPerCredentialSigning } from '../crypto/perCredentialSigning'
+import {
+  commitIssuanceCredentialKeyReplacement,
+  destroyIssuanceCredentialKey,
+  discardPendingIssuanceCredentialKey,
+  usesPerCredentialSigning,
+} from '../crypto/perCredentialSigning'
 import type { CredentialKeyRecord } from '../crypto/credentialKeyRegistry'
 import type { EncryptedCredentialKeyRecord } from '../crypto/encryptedCredentialKeyRegistry'
 import { withIssuanceKeySession } from '../crypto/issuanceKeySession'
-import { isWalletCryptoV2Enabled } from '../crypto/walletCryptoActivation'
+import {
+  createDpopIssuanceSession,
+  isDpopIssuanceEnabled,
+  type DpopIssuanceSession,
+} from '../oid4vc/dpopIssuanceSession'
 
 const HOLDER_BINDING_REF = 'etda_wallet_signing_key'
+
+function buildDualFormatAccessTokenInput(
+  resolvedOffer: ResolvedCredentialOffer,
+  options: DualFormatClaimOptions,
+  dpopSession?: DpopIssuanceSession,
+): AcquireAccessTokenInput {
+  return {
+    resolvedOffer,
+    tx_code: options.tx_code,
+    signal: options.signal,
+    ...(options.authorizationCodeExchange
+      ? { authorizationCodeExchange: options.authorizationCodeExchange }
+      : {}),
+    ...(dpopSession ? { dpopSession } : {}),
+  }
+}
+
+function withSharedDpopSession(
+  token: AcquireAccessTokenResult,
+  dpopSession?: DpopIssuanceSession,
+): AcquireAccessTokenResult {
+  if (!dpopSession || token.dpopSession) return token
+  return { ...token, dpopSession }
+}
+
+function reuseTokenForConfiguration(
+  token: AcquireAccessTokenResult,
+  configuration: OfferedCredentialConfiguration | undefined,
+  cNonce: string,
+): AcquireAccessTokenResult {
+  return {
+    ...token,
+    cNonce,
+    credentialIdentifier: readTokenCredentialIdentifier(token, configuration),
+  }
+}
 
 async function createPendingCredentialKeyForIssuance(): Promise<string> {
   if (isHardwareP256SigningEnabled()) {
@@ -80,19 +126,11 @@ async function bindPendingCredentialKeyForIssuance(
 }
 
 async function discardPendingCredentialKeyForIssuance(pendingCredentialKeyId: string): Promise<void> {
-  if (isHardwareP256SigningEnabled()) {
-    await discardPendingHardwareCredentialKey(pendingCredentialKeyId)
-    return
-  }
-  await discardPendingCredentialKey(pendingCredentialKeyId)
+  await discardPendingIssuanceCredentialKey(pendingCredentialKeyId)
 }
 
 async function destroyCredentialKeyForIssuance(credentialId: string): Promise<void> {
-  if (isHardwareP256SigningEnabled()) {
-    await destroyHardwareCredentialKey(credentialId)
-    return
-  }
-  await destroyCredentialKey(credentialId)
+  await destroyIssuanceCredentialKey(credentialId)
 }
 
 export type DualFormatClaimResult = {
@@ -132,6 +170,28 @@ export type DualFormatClaimDependencies = ClaimCredentialDependencies & {
   bindPendingCredentialKey?: typeof bindPendingKeyToCredential
   discardPendingCredentialKey?: typeof discardPendingCredentialKey
   destroyCredentialKey?: typeof destroyCredentialKey
+  requestNonce?: (input: {
+    resolvedOffer: ResolvedCredentialOffer
+    signal?: AbortSignal
+  }) => Promise<string>
+}
+
+async function acquireSharedDualFormatToken(
+  resolvedOffer: ResolvedCredentialOffer,
+  options: DualFormatClaimOptions,
+  dependencies: DualFormatClaimDependencies,
+): Promise<AcquireAccessTokenResult> {
+  const dpopSession = isDpopIssuanceEnabled() ? createDpopIssuanceSession() : undefined
+  const token = await awaitCredentialAcquisition(
+    Promise.resolve().then(() =>
+      dependencies.acquireAccessToken(buildDualFormatAccessTokenInput(resolvedOffer, options, dpopSession)),
+    ),
+    options.signal,
+  )
+  if (!token) {
+    throw new Error('CredentialTokenExchangeFailed: token response was empty')
+  }
+  return withSharedDpopSession(token, dpopSession)
 }
 
 export type DualFormatFinalizeDependencies = {
@@ -150,6 +210,7 @@ export type DualFormatFinalizeDependencies = {
   ) => void
   markCredentialAsNew?: (credentialId: string) => void
   refreshCredentials?: () => void
+  commitIssuanceCredentialKeyReplacement?: (credentialId: string) => Promise<void>
 }
 
 export { isDualFormatOffer, isDrivingLicenceDualFormatOffer }
@@ -213,18 +274,8 @@ export async function acquireDrivingLicenceMdocOnlyForPreview(
     mdocConfigurationId: group.mdoc.configurationId,
   })
 
-  const sharedToken = await awaitCredentialAcquisition(
-    Promise.resolve().then(() => dependencies.acquireAccessToken({
-      resolvedOffer,
-      tx_code: options.tx_code,
-      signal: options.signal,
-    })),
-    options.signal,
-  )
+  const sharedToken = await acquireSharedDualFormatToken(resolvedOffer, options, dependencies)
   throwIfDualFormatAcquisitionAborted(options.signal)
-  if (!sharedToken) {
-    throw new Error('CredentialTokenExchangeFailed: token response was empty')
-  }
 
   let credentialKeyId = options.pendingCredentialKeyId ?? options.proofSession?.credentialKeyId
   if (
@@ -313,24 +364,15 @@ export async function acquireDualFormatForPreview(
 
   const dependencies: DualFormatClaimDependencies = {
     ...createDefaultClaimCredentialDependencies(),
+    requestNonce: requestNonceForResolvedOffer,
     ...options.dependencies,
   }
   const acquireRecord = dependencies.acquireCredentialRecord ?? acquireCredentialRecord
   const sdJwtOffer = sliceOfferForConfiguration(resolvedOffer, group.sdJwt.configurationId)
   const mdocOffer = sliceOfferForConfiguration(resolvedOffer, group.mdoc.configurationId)
 
-  const sharedToken = await awaitCredentialAcquisition(
-    Promise.resolve().then(() => dependencies.acquireAccessToken({
-      resolvedOffer,
-      tx_code: options.tx_code,
-      signal: options.signal,
-    })),
-    options.signal,
-  )
+  const sharedToken = await acquireSharedDualFormatToken(resolvedOffer, options, dependencies)
   throwIfDualFormatAcquisitionAborted(options.signal)
-  if (!sharedToken) {
-    throw new Error('CredentialTokenExchangeFailed: token response was empty')
-  }
   let currentNonce = sharedToken.cNonce
   const onCNonceUpdated = (cNonce: string) => {
     currentNonce = cNonce
@@ -387,7 +429,11 @@ export async function acquireDualFormatForPreview(
         ...(credentialKeyId ? { deferCredentialKeyBinding: true } : {}),
         onCNonceUpdated,
         dependencies: acquireDependencies,
-        reuseToken: { ...sharedToken, cNonce: currentNonce },
+        reuseToken: reuseTokenForConfiguration(
+          sharedToken,
+          sdJwtOffer.credentialConfigurations[0],
+          currentNonce,
+        ),
       })
       throwIfDualFormatAcquisitionAborted(options.signal)
     } catch (error) {
@@ -398,6 +444,15 @@ export async function acquireDualFormatForPreview(
     }
 
     throwIfDualFormatAcquisitionAborted(options.signal)
+    currentNonce = await refreshSharedCNonceBeforeNextFormat({
+      currentNonce,
+      originalNonce: sharedToken.cNonce,
+      nonceConsumed: Boolean(sdJwtRecord),
+      resolvedOffer,
+      signal: options.signal,
+      requestNonce: dependencies.requestNonce,
+      onCNonceUpdated,
+    })
     try {
       pendingMdoc = await acquirePendingMdoc(
         mdocOffer,
@@ -411,7 +466,11 @@ export async function acquireDualFormatForPreview(
         },
         acquireDependencies,
         acquireRecord,
-        { ...sharedToken, cNonce: currentNonce },
+        reuseTokenForConfiguration(
+          sharedToken,
+          mdocOffer.credentialConfigurations[0],
+          currentNonce,
+        ),
         {
           issuer: resolvedOffer.issuer,
           logicalCredentialId: group.logicalCredentialIdHint,
@@ -456,6 +515,66 @@ export async function acquireDualFormatForPreview(
 function throwIfDualFormatAcquisitionAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new Error('CredentialAcquisitionAborted')
+  }
+}
+
+async function requestNonceForResolvedOffer(input: {
+  resolvedOffer: ResolvedCredentialOffer
+  signal?: AbortSignal
+}): Promise<string> {
+  const result = await requestNonceViaOid4vc({
+    oid4vcContext: input.resolvedOffer.oid4vcContext,
+    signal: input.signal,
+  })
+  if (!result.c_nonce) {
+    throw new Error('CredentialNonceRequestFailed: nonce endpoint returned an empty c_nonce')
+  }
+  return result.c_nonce
+}
+
+async function refreshSharedCNonceBeforeNextFormat(input: {
+  currentNonce: string
+  originalNonce: string
+  nonceConsumed: boolean
+  resolvedOffer: ResolvedCredentialOffer
+  signal?: AbortSignal
+  requestNonce?: DualFormatClaimDependencies['requestNonce']
+  onCNonceUpdated: (cNonce: string) => void
+}): Promise<string> {
+  if (input.currentNonce !== input.originalNonce) {
+    logWalletStep('oid4vci', 'dual-format-nonce-already-rotated', {
+      issuer: input.resolvedOffer.issuer,
+    })
+    return input.currentNonce
+  }
+  if (!input.nonceConsumed) {
+    logWalletStep('oid4vci', 'dual-format-nonce-kept', {
+      issuer: input.resolvedOffer.issuer,
+    })
+    return input.currentNonce
+  }
+  if (!input.requestNonce) {
+    return input.currentNonce
+  }
+
+  try {
+    const nextNonce = await input.requestNonce({
+      resolvedOffer: input.resolvedOffer,
+      signal: input.signal,
+    })
+    if (nextNonce && nextNonce !== input.currentNonce) {
+      input.onCNonceUpdated(nextNonce)
+    }
+    logWalletStep('oid4vci', 'dual-format-nonce-refreshed', {
+      issuer: input.resolvedOffer.issuer,
+      nonceChanged: Boolean(nextNonce && nextNonce !== input.originalNonce),
+    })
+    return nextNonce || input.currentNonce
+  } catch (error) {
+    logWalletError('oid4vci', 'dual-format-nonce-refresh-failed', error, {
+      issuer: input.resolvedOffer.issuer,
+    })
+    return input.currentNonce
   }
 }
 
@@ -519,6 +638,8 @@ export async function finalizeDualFormatCredential(
   const destroyCredentialKeyForRecord = options.destroyCredentialKey ?? destroyCredentialKeyForIssuance
   const saveLogical = options.saveLogicalCredential ?? saveLogicalCredential
   const markCredentialAsNew = options.markCredentialAsNew ?? defaultMarkCredentialAsNew
+  const commitReplacement =
+    options.commitIssuanceCredentialKeyReplacement ?? commitIssuanceCredentialKeyReplacement
   let mdocWriteAttempted = false
   let mdocWriteCompleted = false
   let mdocPresence: boolean | undefined
@@ -548,6 +669,7 @@ export async function finalizeDualFormatCredential(
     saveLogical(logicalCredential, storage)
     markCredentialAsNew(record.id)
     appendCredentialReceivedHistory(record)
+    await commitReplacement(record.id)
     options.refreshCredentials?.()
 
     logWalletStep('oid4vci', 'dual-format-finalization-complete', {
@@ -589,15 +711,14 @@ export async function finalizeDualFormatCredential(
     }
 
     restoreDualFormatStorage(storage, snapshot)
-    if (credentialKeyBound) {
-      try {
-        await destroyCredentialKeyForRecord(record.id)
-      } catch (rollbackError) {
-        logWalletError('oid4vci', 'dual-format-credential-key-rollback-failed', rollbackError, {
-          credentialId: record.id,
-        })
-      }
-    } else if (pendingMdoc.pendingCredentialKeyId) {
+    try {
+      await destroyCredentialKeyForRecord(record.id)
+    } catch (rollbackError) {
+      logWalletError('oid4vci', 'dual-format-credential-key-rollback-failed', rollbackError, {
+        credentialId: record.id,
+      })
+    }
+    if (pendingMdoc.pendingCredentialKeyId && !credentialKeyBound) {
       await discardPendingKey(pendingMdoc.pendingCredentialKeyId)
     }
     previousMdocBytes?.fill(0)
@@ -630,6 +751,8 @@ async function finalizeMdocOnlyCredential(
   const destroyCredentialKeyForRecord = options.destroyCredentialKey ?? destroyCredentialKeyForIssuance
   const saveLogical = options.saveLogicalCredential ?? saveLogicalCredential
   const markCredentialAsNew = options.markCredentialAsNew ?? defaultMarkCredentialAsNew
+  const commitReplacement =
+    options.commitIssuanceCredentialKeyReplacement ?? commitIssuanceCredentialKeyReplacement
   let mdocWriteAttempted = false
   let mdocWriteCompleted = false
   let mdocPresence: boolean | undefined
@@ -659,6 +782,7 @@ async function finalizeMdocOnlyCredential(
     saveLogical(logicalCredential, storage)
     markCredentialAsNew(record.id)
     appendCredentialReceivedHistory(record)
+    await commitReplacement(record.id)
     options.refreshCredentials?.()
 
     logWalletStep('oid4vci', 'mdoc-only-finalization-complete', {
@@ -700,15 +824,14 @@ async function finalizeMdocOnlyCredential(
     }
 
     restoreDualFormatStorage(storage, snapshot)
-    if (credentialKeyBound) {
-      try {
-        await destroyCredentialKeyForRecord(record.id)
-      } catch (rollbackError) {
-        logWalletError('oid4vci', 'mdoc-only-credential-key-rollback-failed', rollbackError, {
-          credentialId: record.id,
-        })
-      }
-    } else if (pendingMdoc.pendingCredentialKeyId) {
+    try {
+      await destroyCredentialKeyForRecord(record.id)
+    } catch (rollbackError) {
+      logWalletError('oid4vci', 'mdoc-only-credential-key-rollback-failed', rollbackError, {
+        credentialId: record.id,
+      })
+    }
+    if (pendingMdoc.pendingCredentialKeyId && !credentialKeyBound) {
       await discardPendingKey(pendingMdoc.pendingCredentialKeyId)
     }
     previousMdocBytes?.fill(0)
@@ -882,6 +1005,7 @@ export async function claimDualFormatCredential(
 
   const dependencies: DualFormatClaimDependencies = {
     ...createDefaultClaimCredentialDependencies(),
+    requestNonce: requestNonceForResolvedOffer,
     ...options.dependencies,
   }
   const acquireRecord = dependencies.acquireCredentialRecord ?? acquireCredentialRecord
@@ -891,14 +1015,7 @@ export async function claimDualFormatCredential(
   const sdJwtOffer = sliceOfferForConfiguration(resolvedOffer, group.sdJwt.configurationId)
   const mdocOffer = sliceOfferForConfiguration(resolvedOffer, group.mdoc.configurationId)
 
-  const sharedToken = options.reuseToken ?? await awaitCredentialAcquisition(
-    Promise.resolve().then(() => dependencies.acquireAccessToken({
-      resolvedOffer,
-      tx_code: options.tx_code,
-      signal: options.signal,
-    })),
-    options.signal,
-  )
+  const sharedToken = options.reuseToken ?? await acquireSharedDualFormatToken(resolvedOffer, options, dependencies)
   throwIfDualFormatAcquisitionAborted(options.signal)
   if (!sharedToken) {
     throw new Error('CredentialTokenExchangeFailed: token response was empty')
@@ -964,7 +1081,11 @@ export async function claimDualFormatCredential(
         ...(credentialKeyId ? { deferCredentialKeyBinding: true } : {}),
         onCNonceUpdated,
         dependencies: acquireDependencies,
-        reuseToken: { ...sharedToken, cNonce: currentNonce },
+        reuseToken: reuseTokenForConfiguration(
+          sharedToken,
+          sdJwtOffer.credentialConfigurations[0],
+          currentNonce,
+        ),
       })
       throwIfDualFormatAcquisitionAborted(options.signal)
       saveCredentialRecord(sdJwtRecord, { getCredentialStorage: dependencies.getCredentialStorage })
@@ -975,6 +1096,7 @@ export async function claimDualFormatCredential(
         try {
           await bindSharedCredentialKey(credentialKeyId, sdJwtRecord, proofSession, bindPendingKey)
           credentialKeyBound = true
+          await commitIssuanceCredentialKeyReplacement(sdJwtRecord.id)
         } catch (bindError) {
           removeStoredCredential(sdJwtRecord.id, dependencies.getCredentialStorage)
           savedSdJwtCredentialId = undefined
@@ -995,6 +1117,15 @@ export async function claimDualFormatCredential(
     }
 
     throwIfDualFormatAcquisitionAborted(options.signal)
+    currentNonce = await refreshSharedCNonceBeforeNextFormat({
+      currentNonce,
+      originalNonce: sharedToken.cNonce,
+      nonceConsumed: Boolean(sdJwtRecord),
+      resolvedOffer,
+      signal: options.signal,
+      requestNonce: dependencies.requestNonce,
+      onCNonceUpdated,
+    })
     try {
       const pendingMdoc = await acquirePendingMdoc(
         mdocOffer,
@@ -1008,7 +1139,11 @@ export async function claimDualFormatCredential(
         },
         acquireDependencies,
         acquireRecord,
-        { ...sharedToken, cNonce: currentNonce },
+        reuseTokenForConfiguration(
+          sharedToken,
+          mdocOffer.credentialConfigurations[0],
+          currentNonce,
+        ),
         {
           issuer: resolvedOffer.issuer,
           logicalCredentialId: group.logicalCredentialIdHint,
@@ -1323,7 +1458,10 @@ async function acquirePendingMdoc(
 
   const mdocRaw = await acquireMdocCredentialBytes(
     mdocOffer,
-    { ...options, reuseToken: sharedToken },
+    {
+      ...options,
+      reuseToken: reuseTokenForConfiguration(sharedToken, mdocConfiguration, sharedToken.cNonce),
+    },
     dependencies,
     acquireRecord,
   )

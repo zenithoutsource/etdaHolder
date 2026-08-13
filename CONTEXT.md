@@ -40,11 +40,11 @@ The app's local normalized credential record. It contains `id`, `type`, `rawVc`,
 
 ## Wallet Attestation Key (`k_attest`)
 
-One Ed25519 keypair per wallet used for Wallet Provider attestation (WUA/WIA) at v2 crypto activation. Stored as a Keychain-protected seed; not used for VC Proof of Possession or presentation signing.
+One hardware P-256 key per wallet (`wallet.p256.attest`) used for Wallet Provider attestation (WUA/WIA) at v2 crypto activation. The Wallet Provider receives `pub_k_attest` plus the Android attestation certificate chain; the key is not used for VC Proof of Possession or presentation signing.
 
 ## Credential Signing Key (`k_cred`)
 
-One Ed25519 keypair per issued credential (ADR 0010). Each credential's Holder `did:key` is derived from its public key. OID4VCI PoP JWTs, OID4VP presentation tokens, and SD-JWT KB-JWTs for that credential are signed with its key. Destroyed on P3 renewal or P6 lifecycle actions that remove the credential's cryptographic binding.
+One Ed25519 keypair per issued credential (ADR 0010). Each credential's Holder `did:key` is derived from its public key. OID4VCI PoP JWTs, OID4VP presentation tokens, and SD-JWT KB-JWTs for that credential are signed with its key. Created at issuance without Wallet Provider WUA. Destroyed on P3 renewal or P6 lifecycle actions that remove the credential's cryptographic binding.
 
 ## Holder DID
 
@@ -78,6 +78,11 @@ A company-controlled service distinct from Issuers. Authenticates Holders, manag
 
 The development backend under `server/`. It mirrors the allowed Wallet Backend boundary for local XAMPP MySQL testing: register, login, logout, list wallets, and import finalized credentials.
 
+## Credential Offer Request
+
+The Wallet asking an Issuer to prepare a Credential Offer for the Holder (P2 sequence: Wallet → Issuer). Distinct from consuming a Credential Offer URL that already exists, and from the OID4VCI Credential Request that carries Proof of Possession after an offer exists.
+_Avoid_: Calling the PoP Credential Request a “credential offer request”; calling QR/deeplink intake a Credential Offer Request.
+
 ## Credential Offer URL
 
 A URL such as `openid-credential-offer://...` returned by the company backend, read from a QR code, or received via NFC. Consumed by `@openid4vc/openid4vci` via `src/services/vci/oid4vc/` to run issuance.
@@ -93,6 +98,12 @@ An OID4VCI 1.0 issuer-issued identifier returned after token exchange for a spec
 ## Holder Confirmation
 
 The Holder's explicit consent to acquire a credential from an Issuer after reviewing the resolved Credential Offer. It occurs before credential issuance, not merely before local wallet storage.
+_Avoid_: PID Presentation Consent; Wallet PIN unlock; the success screen after storage.
+
+## PID Presentation Consent
+
+The Holder's approval to present the PID VC in an OID4VP Authorization Request (Issuer or Verifier). Distinct from Holder Confirmation (issuance) and from Wallet PIN.
+_Avoid_: Treating DOPA / issuance confirm as this step; a second PIN prompt in front of the sign-time gate.
 
 ## Transaction Code (`tx_code`)
 

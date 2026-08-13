@@ -6,6 +6,7 @@ import { getCredentialKeyRecord } from './credentialKeyRegistry'
 import {
   bindPendingKeyToCredential,
   createPendingCredentialKey,
+  commitSoftwareCredentialKeyReplacement,
   destroyCredentialKey,
   gcStalePendingKeys,
   getCredentialHolderDid,
@@ -115,5 +116,24 @@ describe('credentialSigningKey', () => {
     })
     expect(staleCredentials).toBe(false)
     expect(freshCredentials).toBeTruthy()
+  })
+
+  test('commitSoftwareCredentialKeyReplacement keeps the live key if the new bind fails', async () => {
+    const firstPending = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(firstPending, 'cred-replace', 'ThaiNationalID')
+    const firstDid = getCredentialHolderDid('cred-replace')
+
+    const secondPending = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(secondPending, 'cred-replace', 'ThaiNationalID')
+
+    const originalSet = Keychain.setGenericPassword as jest.MockedFunction<typeof Keychain.setGenericPassword>
+    originalSet.mockImplementationOnce(async () => {
+      throw new Error('KeychainWriteFailed')
+    })
+
+    await expect(commitSoftwareCredentialKeyReplacement('cred-replace')).rejects.toThrow(
+      'KeychainWriteFailed',
+    )
+    expect(getCredentialHolderDid('cred-replace')).toBe(firstDid)
   })
 })
