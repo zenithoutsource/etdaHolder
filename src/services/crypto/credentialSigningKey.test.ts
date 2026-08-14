@@ -8,6 +8,7 @@ import {
   createPendingCredentialKey,
   commitSoftwareCredentialKeyReplacement,
   destroyCredentialKey,
+  deleteLegacyEd25519KeysForCutover,
   gcStalePendingKeys,
   getCredentialHolderDid,
   signWithCredentialKey,
@@ -87,6 +88,44 @@ describe('credentialSigningKey', () => {
     await expect(signWithCredentialKey('cred-destroy', new Uint8Array([1]))).rejects.toThrow(
       'CredentialKeyNotFound',
     )
+  })
+
+  test('destroyCredentialKey for C does not delete D', async () => {
+    const pendingC = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingC, 'cred-c', 'ThaiNationalID')
+    const pendingD = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingD, 'cred-d', 'ChulalongkornUniversityTranscript')
+
+    await destroyCredentialKey('cred-c')
+
+    expect(getCredentialKeyRecord('cred-c')).toBeUndefined()
+    expect(getCredentialKeyRecord('cred-d')?.credentialId).toBe('cred-d')
+    const remaining = await Keychain.getGenericPassword({
+      service: 'wallet.ed25519_seed.cred.cred-d',
+    })
+    expect(remaining).not.toBe(false)
+  })
+
+  test('deleteLegacyEd25519KeysForCutover removes same-id and same-type keys only', async () => {
+    const pendingSameId = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingSameId, 'cred-c', 'ThaiNationalID')
+    const pendingSameType = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingSameType, 'cred-c-old', 'ThaiNationalID')
+    const pendingOtherType = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingOtherType, 'cred-d', 'ChulalongkornUniversityTranscript')
+
+    await deleteLegacyEd25519KeysForCutover({
+      credentialId: 'cred-c',
+      credentialType: 'ThaiNationalID',
+    })
+
+    expect(getCredentialKeyRecord('cred-c')).toBeUndefined()
+    expect(getCredentialKeyRecord('cred-c-old')).toBeUndefined()
+    expect(getCredentialKeyRecord('cred-d')?.credentialId).toBe('cred-d')
+    const remaining = await Keychain.getGenericPassword({
+      service: 'wallet.ed25519_seed.cred.cred-d',
+    })
+    expect(remaining).not.toBe(false)
   })
 
   test('gcStalePendingKeys removes pending older than TTL', async () => {

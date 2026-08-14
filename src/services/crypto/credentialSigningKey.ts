@@ -10,6 +10,7 @@ import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getMetaStorage } from '../storage/storage'
 import {
   getCredentialKeyRecord,
+  listCredentialKeyRecords,
   registerCredentialKey,
   removeCredentialKeyRecord,
   type CredentialKeyRecord,
@@ -546,6 +547,28 @@ export async function destroyCredentialKey(credentialId: string): Promise<void> 
   await Keychain.resetGenericPassword({ service: record.keychainService }).catch(() => undefined)
   removeCredentialKeyRecord(credentialId)
   logWalletStep('crypto', 'credential-key-destroyed', { credentialId })
+}
+
+/** After a hardware k_cred bind, drop Ed25519 material for that id and same type only. */
+export async function deleteLegacyEd25519KeysForCutover(input: {
+  credentialId: string
+  credentialType: string
+}): Promise<void> {
+  const records = listCredentialKeyRecords()
+  for (const record of records) {
+    const sameCredential = record.credentialId === input.credentialId
+    const sameType = record.credentialType === input.credentialType
+    if (!sameCredential && !sameType) {
+      continue
+    }
+    try {
+      await destroyCredentialKey(record.credentialId)
+    } catch (error) {
+      logWalletError('crypto', 'legacy-ed25519-cutover-delete-failed', error, {
+        credentialId: record.credentialId,
+      })
+    }
+  }
 }
 
 export function gcStalePendingKeys(now = new Date()): number {

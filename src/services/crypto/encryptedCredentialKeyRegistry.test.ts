@@ -150,6 +150,28 @@ describe('encryptedCredentialKeyRegistry', () => {
     expect(listEncryptedCredentialKeyRecords()).toHaveLength(2)
   })
 
+  test('destroying credential C does not remove credential D registry or alias', async () => {
+    mockStorage()
+    registerEncryptedCredentialKey(SAMPLE)
+    const other: EncryptedCredentialKeyRecord = {
+      ...SAMPLE,
+      credentialId: 'cred-d',
+      alias: 'wallet.p256.cred.pending.def',
+      credentialType: 'ChulalongkornUniversityTranscript',
+    }
+    registerEncryptedCredentialKey(other)
+    const signer = createMockHardwareEcdsaSigner()
+    await signer.createKey(SAMPLE.alias)
+    await signer.createKey(other.alias)
+
+    await destroyEncryptedCredentialKey('cred-1', signer)
+
+    expect(getEncryptedCredentialKeyRecord('cred-1')).toBeUndefined()
+    expect(await signer.hasKey(SAMPLE.alias)).toBe(false)
+    expect(getEncryptedCredentialKeyRecord('cred-d')).toEqual(other)
+    expect(await signer.hasKey(other.alias)).toBe(true)
+  })
+
   test('removeEncryptedCredentialKeyRecord deletes the entry', () => {
     mockStorage()
     registerEncryptedCredentialKey(SAMPLE)

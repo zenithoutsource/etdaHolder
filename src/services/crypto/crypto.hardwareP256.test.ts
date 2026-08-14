@@ -19,6 +19,7 @@ import {
   signHolderStatusChangePop,
   signProof,
   signSdJwtKbPresentationToken,
+  withUnlockedHolderSeedForProximity,
 } from './crypto'
 import { p256JwkToPublicKey, verifyEs256Prehash } from './p256Identity'
 
@@ -164,18 +165,23 @@ describe('crypto hardware P-256 router', () => {
     ).rejects.toThrow('HardwareCredentialKeyRequired')
   })
 
-  test('signHolderStatusChangePop uses Ed25519 when hardware is on but the credential is software-bound', async () => {
+  test('signHolderStatusChangePop throws LegacyHolderSigningUnsupported for software-bound credentials', async () => {
     const pendingId = await createPendingCredentialKey()
     await bindPendingKeyToCredential(pendingId, 'legacy-ed25519', 'ThaiNationalID')
 
-    const jwt = await signHolderStatusChangePop({
-      nonce: 'revoke-nonce',
-      audience: 'https://issuer.example.com',
-      credentialId: 'legacy-ed25519',
-    })
+    await expect(
+      signHolderStatusChangePop({
+        nonce: 'revoke-nonce',
+        audience: 'https://issuer.example.com',
+        credentialId: 'legacy-ed25519',
+      }),
+    ).rejects.toThrow('LegacyHolderSigningUnsupported')
+  })
 
-    const header = decodeJwtPart(jwt.split('.')[0]!)
-    expect(header.alg).toBe('EdDSA')
+  test('withUnlockedHolderSeedForProximity is blocked when hardware signing is on', async () => {
+    await expect(
+      withUnlockedHolderSeedForProximity(async () => undefined),
+    ).rejects.toThrow('LegacyHolderSigningUnsupported')
   })
 
   test('getHolderDid stays on the Ed25519 wallet key when a hardware credential also exists', async () => {

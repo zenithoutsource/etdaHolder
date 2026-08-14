@@ -1,5 +1,6 @@
 import { p256 } from '@noble/curves/nist.js'
 import { randomBytes } from 'react-native-quick-crypto'
+import * as Keychain from 'react-native-keychain'
 
 import { getCredentialStorage, getMetaStorage } from '../storage/storage'
 import { __resetHardwareEcdsaSignerCacheForTests, getHardwareEcdsaSigner } from './hardwareEcdsaSigner'
@@ -18,6 +19,11 @@ import {
   resolveHardwareCredentialHolderDid,
 } from './hardwareCredentialSigningKey'
 import { getEncryptedCredentialKeyRecord } from './encryptedCredentialKeyRegistry'
+import {
+  bindPendingKeyToCredential,
+  createPendingCredentialKey,
+} from './credentialSigningKey'
+import { getCredentialKeyRecord } from './credentialKeyRegistry'
 import { p256JwkToPublicKey, verifyEs256Prehash } from './p256Identity'
 
 jest.mock('../storage/storage', () => {
@@ -52,6 +58,7 @@ describe('hardwareCredentialSigningKey', () => {
     getMetaStorage().clearAll()
     mockCredentialStorage()
     __resetHardwareEcdsaSignerCacheForTests()
+    ;(Keychain as unknown as { __resetStore: () => void }).__resetStore()
     jest.mocked(randomBytes).mockImplementation((size: number) => Buffer.alloc(size, 0))
   })
 
@@ -71,6 +78,20 @@ describe('hardwareCredentialSigningKey', () => {
     expect(getEncryptedCredentialKeyRecord('cred-hw-1')).toEqual(record)
     expect(readHardwareCredentialHolderDid('cred-hw-1')).toBe(record.holderDid)
     expect(() => resolveHardwareCredentialHolderDid(pendingId)).toThrow('HardwareCredentialKeyNotFound')
+  })
+
+  test('bindPendingHardwareKeyToCredential deletes same-type Ed25519 keys and keeps other types', async () => {
+    const pidPending = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pidPending, 'cred-pid-old', 'ThaiNationalID')
+    const transcriptPending = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(transcriptPending, 'cred-transcript', 'ChulalongkornUniversityTranscript')
+
+    const hardwarePending = await createPendingHardwareCredentialKey()
+    await bindPendingHardwareKeyToCredential(hardwarePending, 'cred-pid-new', 'ThaiNationalID')
+
+    expect(getEncryptedCredentialKeyRecord('cred-pid-new')).toBeDefined()
+    expect(getCredentialKeyRecord('cred-pid-old')).toBeUndefined()
+    expect(getCredentialKeyRecord('cred-transcript')?.credentialId).toBe('cred-transcript')
   })
 
   test('openHardwareCredentialSigningSession signs ES256 prehash', async () => {

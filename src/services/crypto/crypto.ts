@@ -71,6 +71,21 @@ function shouldUseHardwareCredentialKey(credentialId?: string): credentialId is 
   )
 }
 
+function assertHardwareHolderSigningAllowed(credentialId?: string): void {
+  if (!isHardwareP256SigningEnabled()) return
+  requireHardwareCredentialKeyId(credentialId)
+}
+
+function requireHardwareCredentialKeyId(credentialId?: string): string {
+  if (!credentialId) {
+    throw new Error('HardwareCredentialKeyRequired')
+  }
+  if (!hasHardwareCredentialKey(credentialId)) {
+    throw new Error('LegacyHolderSigningUnsupported')
+  }
+  return credentialId
+}
+
 if (__DEV__) {
   logWalletStep('hardware-ecdsa', 'holder-signing-mode', {
     mode: isHardwareP256SigningEnabled() ? 'p256' : 'ed25519',
@@ -510,6 +525,9 @@ function readStoredEd25519PublicKey(): Uint8Array {
 export async function withUnlockedHolderSeedForProximity(
   operation: (seed: Uint8Array, publicKey: Uint8Array) => Promise<void>,
 ): Promise<void> {
+  if (isHardwareP256SigningEnabled()) {
+    throw new Error('LegacyHolderSigningUnsupported')
+  }
   const publicKey = readStoredEd25519PublicKey()
   const seed = await readStoredEd25519Seed(KEYCHAIN_SERVICE, 'Present document via NFC')
   if (!seed) {
@@ -636,10 +654,7 @@ export async function createProofSigningSession(
   credentialKeyId?: string,
 ): Promise<ProofSigningSession> {
   if (isHardwareP256SigningEnabled()) {
-    if (!credentialKeyId) throw new Error('HardwareCredentialKeyRequired')
-    if (hasHardwareCredentialKey(credentialKeyId)) {
-      return createHardwareBoundProofSigningSession(credentialKeyId)
-    }
+    return createHardwareBoundProofSigningSession(requireHardwareCredentialKeyId(credentialKeyId))
   }
 
   if (credentialKeyId && usesPerCredentialSigning()) {
@@ -755,10 +770,7 @@ export async function signProof(
   options: SignProofOptions = {},
 ): Promise<string> {
   if (isHardwareP256SigningEnabled()) {
-    if (!options.credentialKeyId) throw new Error('HardwareCredentialKeyRequired')
-    if (shouldUseHardwareCredentialKey(options.credentialKeyId)) {
-    const credentialKeyId = options.credentialKeyId
-
+    const credentialKeyId = requireHardwareCredentialKeyId(options.credentialKeyId)
     const publicJwk = await readHardwareCredentialSigningPublicJwk(credentialKeyId)
     const holderDid = resolveHardwareCredentialHolderDid(credentialKeyId)
     const hardwareSession = await openHardwareCredentialSigningSession(credentialKeyId, 'oid4vci')
@@ -773,7 +785,6 @@ export async function signProof(
       })
     } finally {
       await hardwareSession.close()
-    }
     }
   }
 
@@ -967,6 +978,9 @@ export type HolderStatusChangePopInput = {
 export async function signHolderStatusChangePop(
   input: HolderStatusChangePopInput,
 ): Promise<string> {
+  if (isHardwareP256SigningEnabled()) {
+    assertHardwareHolderSigningAllowed(input.credentialId)
+  }
   if (shouldUseHardwareCredentialKey(input.credentialId)) {
     const did = resolveHardwareCredentialHolderDid(input.credentialId)
     const kid = `${did}#${did.slice('did:key:'.length)}`
@@ -1055,6 +1069,9 @@ export type SdJwtKbPresentationTokenInput = {
  * Biometric fires here on every presentation approval.
  */
 export async function signPresentationVpToken(input: PresentationVpTokenInput): Promise<string> {
+  if (isHardwareP256SigningEnabled()) {
+    assertHardwareHolderSigningAllowed(input.credentialId)
+  }
   if (shouldUseHardwareCredentialKey(input.credentialId)) {
     const did = resolveHardwareCredentialHolderDid(input.credentialId)
     const kid = `${did}#${did.slice('did:key:'.length)}`
@@ -1183,13 +1200,12 @@ async function signSdJwtKbPresentationTokenWithSeed(
   seedKind: 'active' | 'previous',
 ): Promise<string> {
   if (isHardwareP256SigningEnabled() && seedKind === 'active') {
-    if (!input.credentialId) throw new Error('HardwareCredentialKeyRequired')
-    if (hasHardwareCredentialKey(input.credentialId)) {
-    const did = resolveHardwareCredentialHolderDid(input.credentialId)
-    const jwk = await readHardwareCredentialSigningPublicJwk(input.credentialId)
+    const credentialId = requireHardwareCredentialKeyId(input.credentialId)
+    const did = resolveHardwareCredentialHolderDid(credentialId)
+    const jwk = await readHardwareCredentialSigningPublicJwk(credentialId)
     const kid = `${did}#${did.slice('did:key:'.length)}`
     const cnfKid = assertSdJwtHolderBinding(input.sdJwt, { jwk, kid })
-    const hardwareSession = await openHardwareCredentialSigningSession(input.credentialId, 'oid4vp')
+    const hardwareSession = await openHardwareCredentialSigningSession(credentialId, 'oid4vp')
 
     logWalletStep('crypto', 'sign-sd-jwt-kb-hardware-start', {
       credentialId: input.credentialId,
@@ -1215,7 +1231,6 @@ async function signSdJwtKbPresentationTokenWithSeed(
       return presentation
     } finally {
       await hardwareSession.close()
-    }
     }
   }
 

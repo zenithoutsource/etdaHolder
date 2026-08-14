@@ -1,6 +1,6 @@
 import { randomBytes } from 'react-native-quick-crypto'
 
-import { readDefaultMaxSignatures } from '@/src/config/hardwareSigningPolicy'
+import { isHardwareP256SigningEnabled, readDefaultMaxSignatures } from '@/src/config/hardwareSigningPolicy'
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 import { getMetaStorage } from '@/src/services/storage/storage'
 
@@ -23,6 +23,7 @@ import {
   p256PublicKeyToDidKey,
   p256PublicKeyToJwk,
 } from './p256Identity'
+import { deleteLegacyEd25519KeysForCutover } from './credentialSigningKey'
 
 const PENDING_META_PREFIX = 'wallet.pending_hardware_credential_keys.'
 const PENDING_KEY_GC_META_KEY = 'wallet.hardware_pending_key_gc'
@@ -121,7 +122,18 @@ function removeHardwareCredentialKeyReplacement(credentialId: string): void {
 }
 
 export function hasHardwareCredentialKey(keyId: string): boolean {
-  return Boolean(getEncryptedCredentialKeyRecord(keyId) || readPendingHardwareKeyMeta(keyId))
+  try {
+    if (getEncryptedCredentialKeyRecord(keyId)) return true
+  } catch (error) {
+    logWalletError('hardware-ecdsa', 'hardware-credential-key-lookup-failed', error, { keyId })
+  }
+  return Boolean(readPendingHardwareKeyMeta(keyId))
+}
+
+/** Hardware-on credentials without a P-256 k_cred must not sign; they need fresh reissue. */
+export function credentialRequiresHardwareReissue(credentialId: string): boolean {
+  if (!isHardwareP256SigningEnabled()) return false
+  return !hasHardwareCredentialKey(credentialId)
 }
 
 function readPendingKeyGcQueue(): PendingHardwareKeyGcEntry[] {
@@ -314,6 +326,14 @@ export async function bindPendingHardwareKeyToCredential(
       credentialId,
       credentialType,
     })
+    try {
+      await deleteLegacyEd25519KeysForCutover({ credentialId, credentialType })
+    } catch (error) {
+      logWalletError('hardware-ecdsa', 'legacy-ed25519-cutover-delete-failed', error, {
+        credentialId,
+        credentialType,
+      })
+    }
     return existing
   }
 
@@ -328,6 +348,14 @@ export async function bindPendingHardwareKeyToCredential(
 
   removePendingHardwareKeyMeta(pendingId)
   logWalletStep('hardware-ecdsa', 'hardware-credential-key-bound', { credentialId, credentialType })
+  try {
+    await deleteLegacyEd25519KeysForCutover({ credentialId, credentialType })
+  } catch (error) {
+    logWalletError('hardware-ecdsa', 'legacy-ed25519-cutover-delete-failed', error, {
+      credentialId,
+      credentialType,
+    })
+  }
   return record
 }
 
@@ -362,6 +390,14 @@ export async function commitHardwareCredentialKeyReplacement(credentialId: strin
   }
 
   logWalletStep('hardware-ecdsa', 'hardware-credential-key-replacement-committed', { credentialId })
+  try {
+    await deleteLegacyEd25519KeysForCutover({
+      credentialId,
+      credentialType: replacement.credentialType,
+    })
+  } catch (error) {
+    logWalletError('hardware-ecdsa', 'legacy-ed25519-cutover-delete-failed', error, { credentialId })
+  }
 }
 
 export async function discardHardwareCredentialKeyReplacement(credentialId: string): Promise<boolean> {
