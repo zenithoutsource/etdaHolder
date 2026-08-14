@@ -1,4 +1,5 @@
 import { toFriendlyError } from './scanFriendlyErrors'
+import { WALLET_HOME_COPY } from '../credentials/walletHomeCopy'
 import { PRESENTATION_REQUEST_ALREADY_USED_MESSAGE } from '../vp/presentationIntakeRejection'
 
 describe('toFriendlyError', () => {
@@ -101,6 +102,27 @@ describe('toFriendlyError', () => {
   test('maps invalid issuer credential signature to a reissue message', () => {
     expect(toFriendlyError('CredentialIssuerSignatureInvalid: issuer JWT signature does not match did:web public key')).toContain(
       'could not be verified',
+    )
+  })
+
+  test('maps PID-first cutover blocks to the hardware ThaID reissue message', () => {
+    expect(
+      toFriendlyError('Reissue your national ID (PID) on hardware P-256 before reissuing other credentials.'),
+    ).toBe(WALLET_HOME_COPY.hardwarePidReissueRequiredMessage)
+  })
+
+  test('maps legacy-key renewal blocks to the fresh-reissue message', () => {
+    expect(
+      toFriendlyError('Legacy key renewal presentation is unsupported; use fresh issuer reissue without old-key proof.'),
+    ).toBe(WALLET_HOME_COPY.legacyKeyRenewalUnsupportedMessage)
+  })
+
+  test('maps hardware cutover signing blocks to the reissue message', () => {
+    expect(toFriendlyError('LegacyHolderSigningUnsupported')).toBe(
+      WALLET_HOME_COPY.hardwareReissueRequiredMessage,
+    )
+    expect(toFriendlyError('ProximityHardwareDeviceAuthUnavailable')).toBe(
+      WALLET_HOME_COPY.hardwareReissueRequiredMessage,
     )
   })
 })

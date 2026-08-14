@@ -16,7 +16,11 @@ import { useAndroidBackNavigation } from '@/src/hooks/useAndroidBackNavigation'
 import { useReturnToWallet } from '@/src/hooks/useReturnToWallet'
 import { useStoredCredentials } from '@/src/hooks/useStoredCredentials'
 import { isCredentialDocumentExpired } from '@/src/services/credentials/credentialDocumentExpiry'
+import { isCredentialPresentable } from '@/src/services/credentials/credentialLifecycle'
 import { WALLET_HOME_COPY } from '@/src/services/credentials/walletHomeCopy'
+import { credentialRequiresHardwareReissue } from '@/src/services/crypto/hardwareCredentialSigningKey'
+import { toFriendlyError } from '@/src/services/scan/scanFriendlyErrors'
+import { ensureNativeMdocStored } from '@/src/services/proximity/mdocCredential'
 import { hasStoredMdoc } from '@/src/services/proximity/mdocStorage'
 import { useProximityStore } from '@/src/store/proximityStore'
 
@@ -29,6 +33,13 @@ export default function PresentScreen() {
   const isDocumentExpired = credential
     ? isCredentialDocumentExpired(credential)
     : false
+  const requiresHardwareReissue = credential
+    ? credentialRequiresHardwareReissue(credential.id)
+    : false
+  const isPresentationBlocked =
+    isDocumentExpired ||
+    requiresHardwareReissue ||
+    (credential ? !isCredentialPresentable(credential) : false)
   const status = useProximityStore((state) => state.status)
   const sharingMode = useProximityStore((state) => state.sharingMode)
   const sharedFields = useProximityStore((state) => state.sharedFields)
@@ -47,13 +58,18 @@ export default function PresentScreen() {
   const [mdocAvailable, setMdocAvailable] = useState<boolean | null>(null)
 
   useEffect(() => {
-    if (!credentialId || isDocumentExpired) return
+    if (!credentialId || isPresentationBlocked) return
+    if (!credential) return
 
     let cancelled = false
     void (async () => {
       const stored = await hasStoredMdoc(credentialId)
       if (cancelled) return
-      const hasMdoc = stored === true
+      let hasMdoc = stored === true
+      if (!hasMdoc) {
+        hasMdoc = await ensureNativeMdocStored(credential)
+      }
+      if (cancelled) return
       setMdocAvailable(hasMdoc)
       if (!hasMdoc) return
       if (status === 'idle') {
@@ -64,7 +80,7 @@ export default function PresentScreen() {
     return () => {
       cancelled = true
     }
-  }, [credentialId, isDocumentExpired, openPresentation, status])
+  }, [credential, credentialId, isPresentationBlocked, openPresentation, status])
 
   useEffect(() => () => reset(), [reset])
 
@@ -87,10 +103,14 @@ export default function PresentScreen() {
           </Text>
         ) : null}
 
-        {credential && isDocumentExpired ? (
+        {credential && isPresentationBlocked ? (
           <View className="rounded-[12px] bg-white px-5 py-6">
             <Text className="text-center text-base font-semibold text-ink">
-              {WALLET_HOME_COPY.documentExpiredMessage}
+              {requiresHardwareReissue
+                ? WALLET_HOME_COPY.hardwareReissueRequiredMessage
+                : isDocumentExpired
+                  ? WALLET_HOME_COPY.documentExpiredMessage
+                  : WALLET_HOME_COPY.myQrNoEligibleDocumentMessage}
             </Text>
             <View className="mt-4 items-center">
               <AppButton variant="solid-block" label="Back" onPress={exitFlow} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
@@ -98,7 +118,7 @@ export default function PresentScreen() {
           </View>
         ) : null}
 
-        {mdocAvailable === false && !isDocumentExpired ? (
+        {mdocAvailable === false && !isPresentationBlocked ? (
           <View className="rounded-[12px] bg-white px-5 py-6">
             <Text className="text-center text-base font-semibold text-ink">
               No mDOC credential available for proximity presentation
@@ -125,7 +145,11 @@ export default function PresentScreen() {
           </View>
         ) : null}
 
-        {status === 'approved' || status === 'hce-armed' || status === 'engaged' ? (
+        {status === 'approved' ? (
+          <WaitingForTapPanel preparing onCancel={exitFlow} />
+        ) : null}
+
+        {status === 'hce-armed' || status === 'engaged' ? (
           <WaitingForTapPanel deviceEngagementUri={deviceEngagementUri} onCancel={exitFlow} />
         ) : null}
 
@@ -136,7 +160,7 @@ export default function PresentScreen() {
         {status === 'error' ? (
           <View className="rounded-[12px] bg-white px-5 py-6">
             <Text className="text-center text-base font-semibold text-danger">
-              {error ?? 'Connection lost. Try again.'}
+              {toFriendlyError(error ?? 'Connection lost. Try again.')}
             </Text>
           </View>
         ) : null}

@@ -71,7 +71,7 @@ import {
   isCredentialDeletionBiometricCancellation,
 } from "../../../src/services/credentials/credentialDeletionBiometric";
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
-import { isProximityPresentationSupported } from "../../../src/services/proximity/proximityPresentation";
+import { canShowNfcPresentButton } from "../../../src/services/proximity/mdocCredential";
 import { hasStoredMdoc } from "../../../src/services/proximity/mdocStorage";
 import { readCompactTokenSignature } from "../../../src/services/vp/presentationEvidence";
 import { VpQrModal } from "../../../src/components/VpQrModal";
@@ -117,10 +117,14 @@ export default function CredentialDetailScreen() {
       return;
     }
 
+    if (credential.rawVc.startsWith("mdoc:")) {
+      setHasMdoc(true);
+    }
+
     let cancelled = false;
     void (async () => {
       const stored = await hasStoredMdoc(credential.id);
-      if (!cancelled) setHasMdoc(stored === true);
+      if (!cancelled) setHasMdoc(stored === true || credential.rawVc.startsWith("mdoc:"));
     })();
 
     return () => {
@@ -180,14 +184,16 @@ export default function CredentialDetailScreen() {
     inactiveState.kind === "renewal-processing" ||
     inactiveState.kind === "old-revoked" ||
     inactiveState.kind === "cleanup-pending" ||
-    inactiveState.kind === "document-expired";
+    inactiveState.kind === "document-expired" ||
+    inactiveState.kind === "hardware-reissue-required";
   const canRequestDocumentReissue =
-    inactiveState.kind === "document-expired" &&
-    shouldOfferDocumentReissueCta({
-      lane: walletKeyExpiryLane,
-      documentExpired: true,
-      renewalState: renewalStatus?.state,
-    });
+    inactiveState.kind === "hardware-reissue-required" ||
+    (inactiveState.kind === "document-expired" &&
+      shouldOfferDocumentReissueCta({
+        lane: walletKeyExpiryLane,
+        documentExpired: true,
+        renewalState: renewalStatus?.state,
+      }));
   const showWalletKeyExpiredPrompt =
     inactiveState.kind === "document-expired" &&
     shouldShowWalletKeyExpiredPrompt(walletKeyExpiryLane);
@@ -676,11 +682,15 @@ export default function CredentialDetailScreen() {
                         }
                 }
                 onPresentViaNfc={
-                  !isRenewalBlocked && credential && hasMdoc && isProximityPresentationSupported()
+                  canShowNfcPresentButton({
+                    record: credential,
+                    hasNativeMdoc: hasMdoc,
+                    renewalBlocked: isRenewalBlocked,
+                  })
                     ? () => {
                         router.push({
                           pathname: "/(tabs)/present",
-                          params: { credentialId: credential.id },
+                          params: { credentialId: credential!.id },
                         });
                       }
                     : undefined

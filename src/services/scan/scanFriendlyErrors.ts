@@ -1,3 +1,4 @@
+import { WALLET_HOME_COPY } from '../credentials/walletHomeCopy'
 import { PRESENTATION_REQUEST_ALREADY_USED_MESSAGE } from '../vp/presentationIntakeRejection'
 
 export function toFriendlyError(raw: string): string {
@@ -32,6 +33,21 @@ export function toFriendlyError(raw: string): string {
 
     return formatHolderBindingMismatchFriendlyError(raw, 'issuance')
 
+  }
+
+  if (raw.includes('Reissue your national ID')) {
+    return WALLET_HOME_COPY.hardwarePidReissueRequiredMessage
+  }
+
+  if (raw.includes('Legacy key renewal presentation is unsupported')) {
+    return WALLET_HOME_COPY.legacyKeyRenewalUnsupportedMessage
+  }
+
+  if (
+    raw.includes('LegacyHolderSigningUnsupported') ||
+    raw.includes('ProximityHardwareDeviceAuthUnavailable')
+  ) {
+    return WALLET_HOME_COPY.hardwareReissueRequiredMessage
   }
 
   if (raw.includes('CredentialSignatureAlgUnsupported')) {

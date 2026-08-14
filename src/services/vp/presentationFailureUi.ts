@@ -8,6 +8,7 @@ import {
   resolvePresentationDisclosureLabel,
 } from '../../config/cardSchemas'
 import { PRESENTATION_REQUEST_ALREADY_USED_MESSAGE } from './presentationIntakeRejection'
+import { WALLET_HOME_COPY } from '../credentials/walletHomeCopy'
 import {
   PresentationCredentialUnavailableError,
   type PresentationMatchFailureKind,
@@ -316,6 +317,19 @@ function resolveMessageFailureUi(raw: string, error?: unknown): PresentationFail
         ? 'คำขอส่งข้อมูลไม่ผ่านการตรวจสอบของผู้ออกเอกสาร'
         : 'คำขอส่งข้อมูลไม่ผ่านการตรวจสอบของผู้ตรวจสอบ',
       hint: 'ลองใหม่อีกครั้ง หรือติดต่อผู้เกี่ยวข้องหากปัญหายังคงอยู่',
+      showRequestButton: false,
+    }
+  }
+
+  if (
+    raw.includes('LegacyHolderSigningUnsupported') ||
+    raw.includes('ProximityHardwareDeviceAuthUnavailable')
+  ) {
+    return {
+      kind: 'not-presentable',
+      title: 'เอกสารไม่พร้อมใช้งาน',
+      body: WALLET_HOME_COPY.hardwareReissueRequiredMessage,
+      hint: 'ขอเอกสารใหม่จากผู้ออกเอกสารบนกุญแจฮาร์ดแวร์',
       showRequestButton: false,
     }
   }

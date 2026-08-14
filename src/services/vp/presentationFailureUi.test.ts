@@ -136,4 +136,22 @@ describe('resolvePresentationFailureUi', () => {
       }),
     )
   })
+
+  test('maps hardware cutover signing blocks to a reissue screen', () => {
+    expect(resolvePresentationFailureUi(new Error('LegacyHolderSigningUnsupported'))).toEqual(
+      expect.objectContaining({
+        kind: 'not-presentable',
+        body: 'เอกสารนี้ยังผูกกับกุญแจเก่า กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+        showRequestButton: false,
+      }),
+    )
+    expect(
+      resolvePresentationFailureUi(new Error('ProximityHardwareDeviceAuthUnavailable')),
+    ).toEqual(
+      expect.objectContaining({
+        kind: 'not-presentable',
+        showRequestButton: false,
+      }),
+    )
+  })
 })
