@@ -23,7 +23,7 @@ Use hardware non-extractable P-256 keys and wire algorithm `alg: ES256` for hold
 1. **Curve / JWT alg** — P-256 (`secp256r1`); JWS signature is 64-byte `r‖s`.
 2. **Storage** — AndroidKeyStore via `modules/expo-wallet-hardware-ecdsa`. StrongBox-first at `createKey`; TEE fallback only on explicit StrongBox unavailability. JavaScript never receives private key bytes.
 3. **`k_attest`** — alias `wallet.p256.attest`. Activation POSTs a Wallet Provider challenge, creates the key with that challenge, then POSTs `pub_k_attest` plus the Android attestation certificate chain. The wallet does not sign WUA/WIA with `k_attest`. After success, destroy leftover Ed25519 attest Keychain material (`wallet.ed25519_seed.attest`) without a biometric prompt.
-4. **`k_cred`** — one hardware P-256 key per credential when `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=true`. Until that flag is the production default (Galaxy A26 gate), Ed25519 `k_cred` remains the flag-off path (ADR 0008 storage for those keys only).
+4. **`k_cred`** — one hardware P-256 key per credential when `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED` is on (default). Set `false` to use the Keychain Ed25519 `k_cred` path (ADR 0008 storage for those keys only). Native backend is `EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND=custom` unless explicitly set to `animo` or `mock`.
 5. **Remote attestation** — Wallet Provider must verify `k_attest` hardware backing (chain, roots, revocation, app identity, security level, user-auth). The local `server/` handler is a development mock: unsigned `alg: none`, no root/revocation/app-identity verify. Never point production `EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL` at that mock. `k_cred` is not remotely attested in P1–P6.
 6. **Platform** — Android production only. iOS issuance and presentation stay blocked until Secure Enclave lands.
 7. **Biometric** — one prompt per user action on `k_cred` PoP / presentation. Activation does not add a `k_attest` biometric.
@@ -31,9 +31,9 @@ Use hardware non-extractable P-256 keys and wire algorithm `alg: ES256` for hold
 ## Consequences
 
 - Holder proofs use `alg: ES256` and P-256 `did:key` (multicodec `0x1200`) when hardware signing is enabled.
-- ADR 0008 is no longer the production holder algorithm/storage decision. Ed25519 `k_cred` is a temporary flag-off path until the A26 cutover gate.
+- ADR 0008 is no longer the production holder algorithm/storage decision. Ed25519 `k_cred` remains only when `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=false`.
 - ADR 0002 is superseded; do not reintroduce Animo as the production signer.
-- Production Wallet Provider verification, signed WUA/WIA, PID-first cutover, proximity opaque-handle signing, and defaulting the hardware flag on remain out of this activation slice.
+- Production Wallet Provider verification, signed WUA/WIA, and removing Ed25519 `k_cred` remain follow-on work. Proximity mdoc device-auth uses an opaque native `mdoc` session handle (no Keystore alias and no Ed25519 seed on the hardware path). PID-first cutover is enforced when the hardware flag is on.
 
 ## Related decisions
 

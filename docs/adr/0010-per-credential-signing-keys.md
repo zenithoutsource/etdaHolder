@@ -16,7 +16,7 @@ User journeys (P1, P2, P3, P6) describe:
 
 ADR 0009 accepted a single wallet-level Holder signing key for v1: one Keychain Ed25519 seed, one `did:key` for all OID4VCI PoP, OID4VP, and SD-JWT KB-JWT. Document lifecycle used MMKV markers only — no per-document cryptographic key destruction.
 
-ADR 0008 remains the algorithm and storage baseline **only for flag-off Ed25519 `k_cred`**. Production holder algorithm and storage for hardware keys are ADR 0011 (P-256 / ES256, AndroidKeyStore). Hardware WSCD / non-extractable keys for `k_attest` are in scope under ADR 0011; defaulting the hardware `k_cred` flag on still waits on the Galaxy A26 gate.
+ADR 0008 remains the algorithm and storage baseline **only for flag-off Ed25519 `k_cred`**. Production holder algorithm and storage for hardware keys are ADR 0011 (P-256 / ES256, AndroidKeyStore). Hardware WSCD / non-extractable keys for `k_attest` are in scope under ADR 0011. `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED` defaults on; Galaxy A26 device-gate evidence (StrongBox, capacity, WP attestation, E2E issue/present/proximity) is still required before production cutover is treated as validated.
 
 ## Decision
 

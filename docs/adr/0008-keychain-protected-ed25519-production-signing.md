@@ -33,4 +33,4 @@ Use a production Keychain-protected software Ed25519 signer:
 
 ## Supersession Note
 
-On 2026-08-13, ADR 0011 restored hardware P-256 / ES256 as the production holder algorithm and storage model (`k_attest` always; `k_cred` when `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=true`). Ed25519 `k_cred` remains only as the flag-off path until the Galaxy A26 cutover gate. This ADR no longer describes production holder signing.
+On 2026-08-13, ADR 0011 restored hardware P-256 / ES256 as the production holder algorithm and storage model (`k_attest` always; `k_cred` by default). Ed25519 `k_cred` remains only as the `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=false` path. This ADR no longer describes production holder signing.

@@ -146,7 +146,7 @@ Pre-tap consent uses this profile as the **disclosure ceiling**. Native code rej
 - **Compile:** PASS — `org.multipaz:multipaz:0.100.0` + `org.multipaz:multipaz-compose:0.100.0`; `:expo-mdoc-proximity:compileDebugKotlin` succeeds.
 - **API evidence:** `org.multipaz.mdoc.transport.NfcTransportMdoc.processCommandApdu`, `org.multipaz.compose.mdoc.MdocNfcDataTransferService` (AID `A0000002480400`).
 - **Runtime / physical:** PENDING — A26 + ACR1311 Part G; `presentationReady` is true when Multipaz probe passes on device; E2E DeviceResponse still requires Part G.
-- **Integration:** `MultipazPresentmentSession` builds QR engagement + runs `Iso18013Presentment`; APDUs delegate to `NfcTransportMdoc.processCommandApdu`. Pre-tap device auth via `installMdocDeviceKey` (one Keychain unlock at arm).
+- **Integration:** `MultipazPresentmentSession` builds QR engagement + runs `Iso18013Presentment`. `CompanionHostApduService` forwards mdoc APDUs including SELECT to `NfcTransportMdoc.processCommandApdu` and returns null, completing via `sendResponseApdu`. Hardware-on device auth uses an opaque `mdoc` session handle (`installMdocSigningHandle`); flag-off still uses `installMdocDeviceKey`.
 
 
 1. Add Multipaz Android dependency to `expo-mdoc-proximity`.

@@ -1,5 +1,165 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-14 (hard hardware P-256 holder-signing cutover)
+
+- When `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED` is on (production default), holder
+  signing no longer falls back to Ed25519. Missing `k_cred` fails closed
+  (`HardwareCredentialKeyRequired` / `LegacyHolderSigningUnsupported`).
+- Binding a hardware replacement deletes Ed25519 Keychain+registry rows for that
+  credential id and the same document type only; other types stay. MMKV credential
+  records remain for display/history until the Holder requests a fresh issuer reissue.
+- Ed25519 cards show `hardware-reissue-required`, are excluded from OID4VP / My QR /
+  NFC, and get a portal **ขอเอกสารใหม่** CTA. Jest keeps the flag off unless a test
+  opts in.
+- Left unchanged: flag-off Ed25519 path, production WP attestation verify, A26
+  device-gate, NFC negotiated handover.
+
+### Session 2026-08-14 (SELECT 6985 after consent)
+
+- Host `6985` after Allow was not skipped consent. HCE used `6985` for engine/URI
+  not ready, and Waiting for tap appeared before the QR. SELECT now returns `6A82`
+  until Multipaz is listening; `selectMdoc()` only after async dispatch; arm fails
+  closed without a URI; start waits 150ms after transport reset. Rebuild native
+  (`npx expo run:android`) before the next ACR1311 tap. Tap only after the QR
+  is on screen.
+
+### Session 2026-08-14 (host maps Multipaz open-transport wrapper)
+
+- `tools/acr1311u-n2` page copy "Failed while opening transport" is Multipaz wrapping
+  SELECT. The host now walks the cause chain so `6A82` / `6985` show the armed/consent
+  copy. Restart `gradlew run` before the next tap.
+
+### Session 2026-08-14 (hardware P-256 spec remaining gaps)
+
+- Spec `2026-08-04-hardware-p256-es256-signing-design.md` is already the production
+  holder path (ADR 0011, custom `expo-wallet-hardware-ecdsa`, flag default on,
+  PID-first cutover, opaque-handle mdoc, encrypted `k_cred` registry, activation tx).
+- Closed remaining wallet-owned gaps: verify allowlist now **narrows only** from
+  Issuer/Verifier metadata (`issuerJwtVerifyPolicy`); P3 journey docs note cutover
+  fresh-reissue supersession; SECURITY.md documents residual auth window, encrypted
+  registry, native mdoc handle, WP `k_attest` checklist, and PID-first cutover.
+  Destroying credential C still must not delete D (regression tests).
+- Still not this slice: production WP root/revocation/app-identity verify (peer WP);
+  removing the flag-off Ed25519 `k_cred` path; A26 device-gate rows (StrongBox,
+  capacity, WP chain accept, residual window); NFC negotiated handover.
+
+### Session 2026-08-14 (proximity DeviceAuthBridge wiped on Multipaz start)
+
+- `PROXIMITY_NOT_READY: Device authentication is not pre-authorized` was caused by
+  `MultipazPresentmentSession.start()` calling `stop()`, which cleared the
+  hardware handle / Ed25519 seed JS had just installed. Native error disarmed
+  the session, so consent `approve` then failed with `PRESENTATION_INACTIVE`.
+- `start()` now resets transport only. `DeviceAuthBridge.clear()` stays on
+  explicit `stop()` / disarm. Approve skips restarting Multipaz when the
+  engagement QR already exists. Rebuild the Android native module before retest.
+
+### Session 2026-08-14 (offline mdoc NFC host + test mDL inject)
+
+- Added `tools/acr1311u-n2/` Kotlin JVM host (Multipaz `0.100.0`, PC/SC, `127.0.0.1:8787`).
+  Paste/scan the wallet **Waiting for tap** `mdoc:` QR, then tap A26 to ACR1311.
+  Runbook: `tools/acr1311u-n2/README.md`. Pass = three mDL claims on the page **and**
+  wallet Success; a reader beep alone is not pass.
+- `__DEV__` Home **Add test mDL** creates `k_cred`, native TEST IssuerSigned bound to
+  that DeviceKey, `storeMdoc` + `DLTDrivingLicence`. Skips PID gate for this inject
+  only. Release / non-debug native rejects generate. JVM `generate-mdl` without
+  `--device-jwk` is inspect-only — do not inject that file into the wallet.
+- Part G physical run is still manual: inject or real claim → `gradlew run` → rebuilt
+  debug wallet. See `docs/superpowers/plans/2026-07-13-a26-acr1311-hardware-validation.md`.
+
+### Session 2026-08-14 (iOS out of scope)
+
+- Do **not** implement iOS Secure Enclave, iOS HCE/BLE proximity, or iOS
+  issuance/presentation unblocking. v1 remains Android Galaxy A26 + ACR1311U-N2.
+  iOS stays fail-closed (ADR 0011). Do not pick iOS up as “next code.”
+
+### Session 2026-08-14 (mdoc consent ceiling)
+
+- Native Multipaz consent now fail-closes when `DeviceRequest` asks for any
+  element outside `approvedMdocFields` (`DISCLOSURE_CEILING_EXCEEDED`).
+  Pre-tap consent stays the only biometric. Field identifiers are matched as
+  `namespace.identifier` or `namespace:identifier`; claim values are not logged.
+- UI copy is `Presentation failed — try again`. Rebuild native before the
+  Part G negative case (out-of-ceiling DeviceRequest).
+
+### Session 2026-08-14 (HCE async Multipaz APDU bridge)
+
+- `CompanionHostApduService` now forwards ISO mdoc APDUs **including SELECT**
+  to `NfcTransportMdoc.processCommandApdu` and returns `null`, completing via
+  `sendResponseApdu`. Companion AID stays synchronous.
+- Removed the sync `pendingResponse.get()` adapter (it always returned null
+  because Multipaz 0.100 answers from a coroutine). Unarmed SELECT is still
+  `6A82`; not approved is still `6985`. NFC field drop calls
+  `NfcTransportMdoc.onDeactivated()` and does **not** stop the presentment
+  session from HCE.
+- Native rebuild required. Validate: credential → NFC → consent → biometric →
+  Waiting for Tap + QR → host scans QR → tap ACR1311U. Pass = wallet Success
+  plus host `DeviceResponse`, with logcat `[hce] mdoc APDU` and
+  `[multipaz-session] NFC transport connected`. A reader beep alone is not pass.
+  After DeviceResponse, a reader field drop is treated as success (typical ACR1311
+  behavior) instead of a presentation error.
+
+### Session 2026-08-14 (proximity opaque-handle mdoc signing)
+
+- Hardware-on proximity arm opens a `purpose: mdoc` session and passes only
+  `opaqueNativeHandle` into native (`installMdocSigningHandle`). Biometric runs
+  at arm (`FragmentActivity`); APDU signs with `signMdocWithoutPrompt`.
+- Flag-off still installs the Ed25519 seed via `installMdocDeviceKey`. Hardware
+  on without a bound `k_cred` still fail-closes (`ProximityHardwareDeviceAuthUnavailable`)
+  — no seed handoff.
+- Native rebuild required before Galaxy A26 + ACR1311U-N2 tap validation.
+  Existing keys created with a 30s auth-validity window need a fresh hardware
+  `k_cred` (reissue) to cover the 60s HCE arm window.
+- Still out of slice: production WP attestation verify, removing Ed25519 `k_cred`,
+  iOS Secure Enclave.
+
+### Session 2026-08-14 (Swagger PoP: nonce is single-use)
+
+- Issuer `invalid_proof` / "nonce is invalid, expired, or already used" means the
+  `c_nonce` was stale or already consumed — not a bad jwk/kid header.
+- After a full Swagger retry this is usually a burned nonce: POST /nonce after
+  /token invalidates the token `c_nonce`, or Execute ran twice. Use one unused
+  nonce; on this error regenerate from the error body's `c_nonce` without /token.
+- Generate script defaults to one mso_mdoc body. Swagger auth is the
+  `access_token` from `POST /token` (Authorize). The script only needs `c_nonce`.
+
+### Session 2026-08-14 (holder-revoke ES256 PoP)
+
+- Dev issuer holder-revoke PoP verify accepts `alg: ES256` for P-256 `did:key`
+  (hardware `k_cred`) and still accepts `alg: EdDSA` for Ed25519. Hardware-bound
+  revoke was failing with `Holder PoP verification failed: invalid-alg`.
+- Wallet revoke DID lookup now follows the same hardware-vs-software key routing
+  as `signHolderStatusChangePop`.
+
+### Session 2026-08-13 (hardware P-256 default on)
+
+- Standing default is now `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=true` and
+  `EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND=custom` (code, `.env.example`, EAS
+  development/preview/production). Set the flag to `false` to use Ed25519 `k_cred`.
+- Jest still forces the flag off per test unless a case opts in, so Ed25519 unit
+  tests stay isolated.
+- Proximity mdoc device-auth now installs an opaque native `mdoc` handle when a
+  hardware `k_cred` exists; otherwise it fail-closes without Ed25519 seed handoff.
+  Real WP attestation verify and removing Ed25519 `k_cred` remain follow-on.
+
+### Session 2026-08-13 (PID-first cutover review P1/P2)
+
+- Cutover wallet-state lookup fail-closes when credential storage cannot be read
+  (`hasLegacyEd25519Credentials: true`, `hasHardwarePidCredential: false`). PID
+  reissue still proceeds; non-PID stays blocked. Injectable readers are wrapped
+  the same way as production lookups.
+- `hasHardwarePidCredential` now requires a usable hardware PID
+  (`hasUsablePidCredential`): expired, revoked, or withdrawn PIDs no longer
+  unlock non-PID reissue.
+
+### Session 2026-08-13 (PID-first cutover gate)
+
+- Wired `cutoverMigrationPolicy` into claim, dual-format preview/claim, and P3
+  old-key renewal. When hardware P-256 signing is on and legacy Ed25519 credentials
+  remain, non-PID reissue is blocked until a hardware P-256 ThaiNationalID exists.
+  PID reissue stays allowed. Flag-off Ed25519 path is unchanged.
+- Claim screen surfaces Thai copy (`hardwarePidReissueRequiredMessage`) before
+  token exchange; `toFriendlyError` maps the same block and legacy-renewal errors.
+
 ### Session 2026-08-13 (ตรวจสอบสำเร็จ Thai vowel clipping)
 
 - Presentation success title/body used `leading-6` / `leading-5`, which clips Thai
