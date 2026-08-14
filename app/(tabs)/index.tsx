@@ -14,6 +14,7 @@ import {
   WalletEmptyCredentialCard,
 } from "../../src/components/WalletCredentialSummaryCard";
 import { WalletDocumentMenuItem } from "../../src/components/WalletDocumentMenuItem";
+import { InjectTestMdlButton } from "../../src/components/proximity/InjectTestMdlButton";
 import { WalletHeader } from "../../src/components/WalletHeader";
 import { useScreenCaptureGuard } from "../../src/hooks/useScreenCaptureGuard";
 import { useStoredCredentials } from "../../src/hooks/useStoredCredentials";
@@ -375,6 +376,8 @@ export default function WalletHomeScreen() {
             </View>
           ) : null}
 
+          <InjectTestMdlButton />
+
           <View className="gap-2.5">
             {documentMenuItems.map((item) => {
               // When both an old (old-revoked) and a new (renewed-active) credential
@@ -597,6 +600,7 @@ export default function WalletHomeScreen() {
                         documentExpired: true,
                         renewalState: renewalStatus?.state,
                       })) ||
+                      inactiveState.kind === "hardware-reissue-required" ||
                       (shouldShowInactivePortalRequestCta(inactiveState) &&
                         isIssuerPortalCredentialType(item.credentialType)))
                   }
