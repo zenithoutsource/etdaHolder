@@ -10,6 +10,13 @@ export type Ed25519PublicJwk = {
   x: string
 }
 
+export type P256PublicJwk = {
+  kty: 'EC'
+  crv: 'P-256'
+  x: string
+  y: string
+}
+
 function readVerifierPresentationBaseUrl(): string {
   return readProductionUrl(
     'VERIFIER_PRESENTATION_BASE_URL',

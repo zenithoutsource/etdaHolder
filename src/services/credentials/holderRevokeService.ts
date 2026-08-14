@@ -1,7 +1,10 @@
 import { getHolderDid, signHolderStatusChangePop } from '../crypto/crypto'
 import { getCredentialHolderDid } from '../crypto/credentialSigningKey'
 import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
-import { readHardwareCredentialHolderDid } from '../crypto/hardwareCredentialSigningKey'
+import {
+  hasHardwareCredentialKey,
+  readHardwareCredentialHolderDid,
+} from '../crypto/hardwareCredentialSigningKey'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 
 const DEV_HOLDER_REVOKE_NONCE_ENDPOINT = '/wallet-api/dev/issuer/holder-revoke/nonce'
@@ -63,7 +66,7 @@ function isSigningCancellation(error: unknown): boolean {
 }
 
 function resolveHolderDid(credentialId: string): string {
-  if (isHardwareP256SigningEnabled()) {
+  if (isHardwareP256SigningEnabled() && hasHardwareCredentialKey(credentialId)) {
     return readHardwareCredentialHolderDid(credentialId)
   }
   try {

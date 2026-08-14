@@ -1,3 +1,8 @@
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
+import {
+  hasHardwareCredentialKey,
+  readHardwareCredentialHolderDid,
+} from '../crypto/hardwareCredentialSigningKey'
 import {
   HolderRevokeNetworkError,
   HolderRevokeRejectedError,
@@ -5,7 +10,33 @@ import {
   submitHolderRevokeRequest,
 } from './holderRevokeService'
 
+jest.mock('@/src/config/hardwareSigningPolicy', () => ({
+  isHardwareP256SigningEnabled: jest.fn(() => false),
+}))
+
+jest.mock('../crypto/hardwareCredentialSigningKey', () => ({
+  hasHardwareCredentialKey: jest.fn(() => false),
+  readHardwareCredentialHolderDid: jest.fn(),
+}))
+
+jest.mock('../crypto/credentialSigningKey', () => ({
+  getCredentialHolderDid: jest.fn(() => {
+    throw new Error('CredentialSigningKeyNotFound')
+  }),
+}))
+
+jest.mock('../crypto/crypto', () => ({
+  getHolderDid: jest.fn(() => 'did:key:z6Mkwallet'),
+  signHolderStatusChangePop: jest.fn(),
+}))
+
 describe('holderRevokeService', () => {
+  beforeEach(() => {
+    jest.mocked(isHardwareP256SigningEnabled).mockReturnValue(false)
+    jest.mocked(hasHardwareCredentialKey).mockReturnValue(false)
+    jest.mocked(readHardwareCredentialHolderDid).mockReset()
+  })
+
   test('submitHolderRevokeRequest fetches nonce, signs PoP, and posts revoke', async () => {
     const fetchMock = jest
       .fn()
@@ -162,6 +193,46 @@ describe('holderRevokeService', () => {
         body: JSON.stringify({
           credentialId: 'urn:uuid:cred-1',
           holderDid: 'did:key:z6Mkurn:uuid:cred-1',
+        }),
+      }),
+    )
+  })
+
+  test('submitHolderRevokeRequest uses the hardware holder DID when the credential is hardware-bound', async () => {
+    jest.mocked(isHardwareP256SigningEnabled).mockReturnValue(true)
+    jest.mocked(hasHardwareCredentialKey).mockReturnValue(true)
+    jest.mocked(readHardwareCredentialHolderDid).mockReturnValue('did:key:zDnaP256holder')
+
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          nonce: 'nonce-abc',
+          audience: 'urn:wallet:dev:issuer:holder-revoke',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          status: 'revoked',
+          credentialId: 'urn:uuid:hw-1',
+          confirmedAt: '2026-08-14T12:00:00.000Z',
+        }),
+      })
+
+    await submitHolderRevokeRequest('urn:uuid:hw-1', {
+      fetchImpl: fetchMock,
+      signHolderStatusChangePop: jest.fn().mockResolvedValue('pop.jwt.token'),
+    })
+
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          credentialId: 'urn:uuid:hw-1',
+          holderDid: 'did:key:zDnaP256holder',
         }),
       }),
     )

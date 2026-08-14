@@ -50,6 +50,7 @@ Mirror the local VP relay flow under `/dev/vp-session` and `/dev/vp-verify`:
 
 1. `POST /wallet-api/dev/issuer/holder-revoke/nonce` — issue nonce and audience for PoP.
 2. `POST /wallet-api/dev/issuer/holder-revoke` — submit `credentialId`, `holderDid`, and `popJwt`.
+   PoP `alg` is `EdDSA` for Ed25519 `did:key` or `ES256` for P-256 `did:key`.
 3. `GET /wallet-api/dev/wallet/revoke-status?credentialId=...` — query `none` or `revoked`.
 
 Use only synthetic DIDs and PoP JWTs such as `did:key:zSyntheticHolder` and `synthetic.pop.jwt`.
