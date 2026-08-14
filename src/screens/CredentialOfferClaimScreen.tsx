@@ -31,6 +31,7 @@ import {
   isPidCredentialOffer,
   readPidGateStatus,
 } from '../services/credentials/credentialGuard'
+import { assertHardwareCutoverReissueAllowedForOffer } from '../services/crypto/cutoverMigrationPolicy'
 import { readCredentialRenewalStatuses } from '../services/credentials/credentialKeyRenewal'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import {
@@ -276,6 +277,16 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       pidGateStatus,
       authorizationCodeFlow: Boolean(authorizationCodeExchangeRef.current),
     })
+    try {
+      assertHardwareCutoverReissueAllowedForOffer(offer)
+    } catch (error) {
+      logWalletError('deeplink', 'offer-cutover-blocked', error, describeOfferForLog(offer))
+      if (generationRef.current === gen) {
+        const raw = error instanceof Error ? error.message : String(error)
+        setPhase({ tag: 'error', message: toFriendlyError(raw) })
+      }
+      return
+    }
     if (!isPidOffer && pidGateStatus !== 'ready') {
       logWalletError(
         'deeplink',

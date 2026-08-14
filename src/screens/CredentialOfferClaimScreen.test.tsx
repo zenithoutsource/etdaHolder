@@ -63,15 +63,19 @@ jest.mock('../services/debug/walletLogger', () => ({
   logWalletStep: jest.fn(),
 }))
 
-jest.mock('../services/credentials/credentialGuard', () => ({
-  canRequestCredentialType: jest.fn(() => true),
-  isPidCredentialOffer: jest.fn((offer) =>
-    offer.credentialConfigurations.some((configuration: { id: string }) =>
-      configuration.id.toLowerCase().includes('thai'),
+jest.mock('../services/credentials/credentialGuard', () => {
+  const actual = jest.requireActual('../services/credentials/credentialGuard') as typeof import('../services/credentials/credentialGuard')
+  return {
+    ...actual,
+    canRequestCredentialType: jest.fn(() => true),
+    isPidCredentialOffer: jest.fn((offer) =>
+      offer.credentialConfigurations.some((configuration: { id: string }) =>
+        configuration.id.toLowerCase().includes('thai'),
+      ),
     ),
-  ),
-  readPidGateStatus: jest.fn(() => 'ready'),
-}))
+    readPidGateStatus: jest.fn(() => 'ready'),
+  }
+})
 
 jest.mock('../services/credentials/credentialKeyRenewal', () => ({
   readCredentialRenewalStatuses: jest.fn(() => ({})),
@@ -415,6 +419,43 @@ describe('CredentialOfferClaimScreen', () => {
       expect(acquireCredentialRecordMock).toHaveBeenCalledTimes(1)
       expect(screen.getByTestId('driving-licence-preview-panel')).toBeTruthy()
     })
+  })
+
+  it('blocks driving-licence offers until a hardware PID exists when hardware P-256 is on', async () => {
+    const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fdriving-licence-cutover'
+    readStoredCredentialsMock.mockReturnValue([
+      {
+        id: 'legacy-id-card',
+        type: 'ThaiNationalID',
+        rawVc: 'vc',
+        claims: {},
+        issuedAt: '2026-06-09T00:00:00.000Z',
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      },
+    ])
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'DLTDrivingLicence', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+
+    try {
+      render(<CredentialOfferClaimScreen />)
+
+      await waitFor(() => {
+        expect(screen.getByText(WALLET_HOME_COPY.hardwarePidReissueRequiredMessage)).toBeTruthy()
+      })
+      expect(acquireCredentialRecordMock).not.toHaveBeenCalled()
+    } finally {
+      if (originalHardwareFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+      } else {
+        process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
+      }
+    }
   })
 
   it('shows the DOPA confirmation before acquiring a ThaiNationalID credential', async () => {

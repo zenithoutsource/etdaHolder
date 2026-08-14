@@ -74,6 +74,29 @@ describe('presentOldCredentialForRenewal', () => {
     })
   })
 
+  test('rejects old-key renewal presentation when hardware P-256 is on', async () => {
+    const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    const resolvePresentationRequest = jest.fn()
+
+    try {
+      await expect(
+        presentOldCredentialForRenewal('openid4vp://authorize?nonce=1', credential, {
+          resolvePresentationRequest,
+          buildApprovedPresentationResponse: jest.fn(),
+          submitPresentationResponse: jest.fn(),
+        }),
+      ).rejects.toThrow('Legacy key renewal presentation is unsupported')
+      expect(resolvePresentationRequest).not.toHaveBeenCalled()
+    } finally {
+      if (originalHardwareFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+      } else {
+        process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
+      }
+    }
+  })
+
   test('rejects when matched credential is not the renewing VC', async () => {
     await expect(
       presentOldCredentialForRenewal('openid4vp://authorize?nonce=1', credential, {

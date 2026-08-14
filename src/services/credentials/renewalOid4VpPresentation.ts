@@ -3,6 +3,7 @@ import {
   signPresentationVpTokenWithPreviousKey,
   signSdJwtKbPresentationTokenWithPreviousKey,
 } from '../crypto/crypto'
+import { assertHardwareCutoverLegacyRenewalBlocked } from '../crypto/cutoverMigrationPolicy'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { buildApprovedPresentationResponse } from '../vp/presentationApproval'
@@ -48,6 +49,8 @@ export async function presentOldCredentialForRenewal(
   credential: VerifiableCredentialRecord,
   dependencies: Partial<SilentRenewalOid4VpDependencies> = {},
 ): Promise<void> {
+  assertHardwareCutoverLegacyRenewalBlocked()
+
   const resolved = resolveDependencies(dependencies)
 
   logWalletStep('renewal', 'oid4vp-auth-start', {

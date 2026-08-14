@@ -62,6 +62,7 @@ import {
 } from '../crypto/perCredentialSigning'
 import type { CredentialKeyRecord } from '../crypto/credentialKeyRegistry'
 import type { EncryptedCredentialKeyRecord } from '../crypto/encryptedCredentialKeyRegistry'
+import { assertHardwareCutoverReissueAllowedForOffer } from '../crypto/cutoverMigrationPolicy'
 import { withIssuanceKeySession } from '../crypto/issuanceKeySession'
 import {
   createDpopIssuanceSession,
@@ -241,6 +242,8 @@ export async function acquireDrivingLicenceMdocOnlyForPreview(
   resolvedOffer: ResolvedCredentialOffer,
   options: DualFormatClaimOptions = {},
 ): Promise<DualFormatPreviewResult> {
+  assertHardwareCutoverReissueAllowedForOffer(resolvedOffer)
+
   if (shouldOpenIssuanceKeySession(options)) {
     return withIssuanceKeySession(async (session) => {
       await session.activateV2IfNeeded()
@@ -345,6 +348,8 @@ export async function acquireDualFormatForPreview(
   resolvedOffer: ResolvedCredentialOffer,
   options: DualFormatClaimOptions = {},
 ): Promise<DualFormatPreviewResult> {
+  assertHardwareCutoverReissueAllowedForOffer(resolvedOffer)
+
   if (shouldOpenIssuanceKeySession(options)) {
     return withIssuanceKeySession(async (session) => {
       await session.activateV2IfNeeded()
@@ -998,6 +1003,8 @@ export async function claimDualFormatCredential(
   resolvedOffer: ResolvedCredentialOffer,
   options: DualFormatClaimOptions = {},
 ): Promise<DualFormatClaimResult> {
+  assertHardwareCutoverReissueAllowedForOffer(resolvedOffer)
+
   const group = findDualFormatGroup(resolvedOffer.credentialConfigurations)
   if (!group?.sdJwt || !group.mdoc) {
     throw new Error('DualFormatOfferMissing: offer does not include both dc+sd-jwt and mso_mdoc configurations')

@@ -39,8 +39,12 @@ import {
     createPendingHardwareCredentialKey,
 } from '../crypto/hardwareCredentialSigningKey'
 import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
-import { isTrustedIssuerJwtAlg } from '@/src/config/issuerJwtVerifyPolicy'
+import {
+  assertTrustedVerifyAlg,
+  readPeerAdvertisedVerifyAlgs,
+} from '@/src/config/issuerJwtVerifyPolicy'
 import { isWalletAttestationRequested } from '@/src/config/walletCryptoPolicy'
+import { assertHardwareCutoverReissueAllowedForOffer } from '../crypto/cutoverMigrationPolicy'
 import { usesPerCredentialSigning, commitIssuanceCredentialKeyReplacement, destroyIssuanceCredentialKey, discardPendingIssuanceCredentialKey } from '../crypto/perCredentialSigning'
 import {
     createProofSigningSession as defaultCreateProofSigningSession,
@@ -471,6 +475,8 @@ export async function claimCredential(
   resolvedOffer: ResolvedCredentialOffer,
   options: ClaimCredentialOptions = {},
 ): Promise<VerifiableCredentialRecord> {
+  assertHardwareCutoverReissueAllowedForOffer(resolvedOffer)
+
   if (shouldOpenIssuanceKeySession(options)) {
     return withIssuanceKeySession(async (session) => {
       await session.activateV2IfNeeded()
@@ -521,6 +527,8 @@ export async function acquireCredentialRecord(
   resolvedOffer: ResolvedCredentialOffer,
   options: AcquireCredentialRecordOptions = {},
 ): Promise<VerifiableCredentialRecord> {
+  assertHardwareCutoverReissueAllowedForOffer(resolvedOffer)
+
   // Claim-screen preview calls acquire (not claimCredential). Open the issuance
   // session here so fresh installs without a wallet seed can still PoP/bind.
   if (shouldOpenIssuanceKeySession(options)) {
@@ -886,7 +894,10 @@ async function finalizeCredentialRecord(
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<VerifiableCredentialRecord> {
   try {
-    assertCredentialIssuerSignatureAlg(rawVc)
+    assertCredentialIssuerSignatureAlg(
+      rawVc,
+      readPeerAdvertisedVerifyAlgs(resolvedOffer.issuerMetadata as Record<string, unknown>),
+    )
     await assertIssuerDidWebCredentialSignature(rawVc, {
       fetchImpl: options.fetchImpl,
       issuerBaseUrl: resolvedOffer.issuer,
@@ -2328,15 +2339,14 @@ function isCompactSdJwt(rawVc: string): boolean {
   return rawVc.includes('~') && rawVc.split('~')[0]?.split('.').length === 3
 }
 
-function assertCredentialIssuerSignatureAlg(rawVc: string): void {
+function assertCredentialIssuerSignatureAlg(
+  rawVc: string,
+  metadataAlgs?: readonly string[] | null,
+): void {
   const issuerJwt = isCompactSdJwt(rawVc) ? rawVc.split('~')[0] : rawVc
   const header = decodeCredentialJwtHeader(issuerJwt)
   const alg = readString(header.alg)
-  if (!isTrustedIssuerJwtAlg(alg)) {
-    throw new Error(
-      `CredentialSignatureAlgUnsupported: issuer credential alg must be ES256 or EdDSA, got ${alg ?? 'missing'}`,
-    )
-  }
+  assertTrustedVerifyAlg(alg, metadataAlgs)
 }
 
 function assertDevelopmentEddsaHolderBinding(rawVc: string, proofJwt: string): void {

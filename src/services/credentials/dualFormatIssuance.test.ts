@@ -14,6 +14,9 @@ import { readLogicalCredential } from './logicalCredentialStorage'
 import { getMetaStorage } from '../storage/storage'
 import { WALLET_CRYPTO_V2_META_KEY } from '@/src/config/walletCryptoPolicy'
 import { discardPendingCredentialKey } from '../crypto/credentialSigningKey'
+import * as credentialKeyRegistry from '../crypto/credentialKeyRegistry'
+import * as hardwareCredentialSigningKey from '../crypto/hardwareCredentialSigningKey'
+import * as storedCredentials from './storedCredentials'
 
 jest.mock('../notifications/documentExpiryNotificationService', () => ({
   cancelDocumentExpiryNotifications: jest.fn(async () => undefined),
@@ -1288,4 +1291,103 @@ test('claimDualFormatCredential reuses one DPoP session for both format requests
       process.env.EXPO_PUBLIC_OID4VC_DPOP_ENABLED = originalDpopFlag
     }
   }
+})
+
+describe('hardware P-256 PID-first cutover gate', () => {
+  const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    jest.spyOn(credentialKeyRegistry, 'listCredentialKeyRecords').mockReturnValue([
+      {
+        credentialId: 'vc-ed25519-pid',
+        holderDid: 'did:key:z6Mklegacy',
+        keychainService: 'wallet.ed25519_seed.cred.vc-ed25519-pid',
+        credentialType: 'ThaiNationalID',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ])
+    jest.spyOn(storedCredentials, 'readStoredCredentials').mockReturnValue([
+      {
+        id: 'vc-ed25519-pid',
+        type: 'ThaiNationalID',
+        rawVc: 'vc',
+        claims: {},
+        issuedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ])
+    jest.spyOn(hardwareCredentialSigningKey, 'hasHardwareCredentialKey').mockReturnValue(false)
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+    if (originalHardwareFlag === undefined) {
+      delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+    } else {
+      process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
+    }
+  })
+
+  test('acquireDualFormatForPreview blocks driving-licence offers before token exchange', async () => {
+    const acquireAccessToken = jest.fn()
+
+    await expect(
+      acquireDualFormatForPreview(makeDrivingLicenceDualOffer(), {
+        dependencies: {
+          acquireAccessToken,
+          acquireCredentialRecord: async () => {
+            throw new Error('acquire-should-not-run')
+          },
+          getCredentialStorage: () => ({
+            getString: () => undefined,
+            set: () => undefined,
+          }),
+        },
+      }),
+    ).rejects.toThrow('Reissue your national ID')
+
+    expect(acquireAccessToken).not.toHaveBeenCalled()
+  })
+
+  test('claimDualFormatCredential blocks transcript offers before token exchange', async () => {
+    const acquireAccessToken = jest.fn()
+
+    await expect(
+      claimDualFormatCredential(makeDualOffer(), {
+        dependencies: {
+          acquireAccessToken,
+          acquireCredentialRecord: async () => {
+            throw new Error('acquire-should-not-run')
+          },
+          getCredentialStorage: () => ({
+            getString: () => undefined,
+            set: () => undefined,
+          }),
+        },
+      }),
+    ).rejects.toThrow('Reissue your national ID')
+
+    expect(acquireAccessToken).not.toHaveBeenCalled()
+  })
+
+  test('acquireDrivingLicenceMdocOnlyForPreview blocks driving-licence offers before token exchange', async () => {
+    const acquireAccessToken = jest.fn()
+
+    await expect(
+      acquireDrivingLicenceMdocOnlyForPreview(makeDrivingLicenceDualOffer(), {
+        dependencies: {
+          acquireAccessToken,
+          acquireCredentialRecord: async () => {
+            throw new Error('acquire-should-not-run')
+          },
+          getCredentialStorage: () => ({
+            getString: () => undefined,
+            set: () => undefined,
+          }),
+        },
+      }),
+    ).rejects.toThrow('Reissue your national ID')
+
+    expect(acquireAccessToken).not.toHaveBeenCalled()
+  })
 })

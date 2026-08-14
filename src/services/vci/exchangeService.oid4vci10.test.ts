@@ -26,6 +26,8 @@ import {
   type OfferedCredentialConfiguration,
   type ResolvedCredentialOffer,
 } from './exchangeService'
+import * as credentialKeyRegistry from '../crypto/credentialKeyRegistry'
+import * as storedCredentials from '../credentials/storedCredentials'
 import type { Oid4vcVciAdapterContext } from './oid4vc/types'
 import { makeTestOid4vcContext } from './testFixtures'
 
@@ -229,6 +231,8 @@ describe('OID4VCI 1.0 credential request (oid4vc path)', () => {
 
   test('rejects mso_mdoc PoP JWT that omits the P-256 jwk header', async () => {
     process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    const listLegacyKeys = jest.spyOn(credentialKeyRegistry, 'listCredentialKeyRecords').mockReturnValue([])
+    const readCredentials = jest.spyOn(storedCredentials, 'readStoredCredentials').mockReturnValue([])
     try {
       const kidOnlyProof = unsignedJwt(
         { aud: 'https://issuer.example.com', iat: 1, nonce: 'nonce' },
@@ -253,12 +257,14 @@ describe('OID4VCI 1.0 credential request (oid4vc path)', () => {
       ).rejects.toThrow(/jwk header \(P-256 device key\) is required for mso_mdoc/)
       expect(mockRetrieveCredentialViaOid4vc).not.toHaveBeenCalled()
     } finally {
-      delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+      listLegacyKeys.mockRestore()
+      readCredentials.mockRestore()
+      process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'false'
     }
   })
 
   test('accepts mso_mdoc PoP JWT with Ed25519 jwk when hardware P-256 is off', async () => {
-    delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'false'
     mockRetrieveCredentialViaOid4vc.mockResolvedValue({
       credentialResponse: {
         format: 'mso_mdoc',

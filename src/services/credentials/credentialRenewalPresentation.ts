@@ -33,7 +33,8 @@ export function shouldShowCredentialRenewalRibbon(
     inactiveState.kind === 'renewal-processing' ||
     inactiveState.kind === 'old-revoked' ||
     inactiveState.kind === 'cleanup-pending' ||
-    inactiveState.kind === 'document-expired'
+    inactiveState.kind === 'document-expired' ||
+    inactiveState.kind === 'hardware-reissue-required'
   )
 }
 

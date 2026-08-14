@@ -1,6 +1,8 @@
 import * as credentialSigningKey from '../crypto/credentialSigningKey'
 import * as hardwareCredentialSigningKey from '../crypto/hardwareCredentialSigningKey'
 import * as walletCryptoActivation from '../crypto/walletCryptoActivation'
+import * as credentialKeyRegistry from '../crypto/credentialKeyRegistry'
+import * as storedCredentials from '../credentials/storedCredentials'
 import {
   acquireCredentialRecord,
   claimCredential,
@@ -429,6 +431,10 @@ describe('per-credential', () => {
     })
 
     test('claimCredential destroys the hardware key when MMKV save fails after bind', async () => {
+      jest.spyOn(hardwareCredentialSigningKey, 'discardHardwareCredentialKeyReplacement').mockResolvedValue(false)
+      jest.spyOn(hardwareCredentialSigningKey, 'hasHardwareCredentialKey').mockImplementation(
+        (keyId) => keyId === 'vc-hw-save-fail',
+      )
       const resolved = resolvedOffer()
       const rawVc = unsignedJwt({
         jti: 'vc-hw-save-fail',
@@ -455,6 +461,118 @@ describe('per-credential', () => {
 
       expect(hardwareCredentialSigningKey.destroyHardwareCredentialKey).toHaveBeenCalledWith('vc-hw-save-fail')
       expect(credentialSigningKey.destroyCredentialKey).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('hardware P-256 PID-first cutover gate', () => {
+    const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+
+    function drivingLicenceOffer(): ResolvedCredentialOffer {
+      const offer = resolvedOffer()
+      return {
+        ...offer,
+        credentialConfigurations: [
+          {
+            id: 'DLTDrivingLicence',
+            requestId: 'DLTDrivingLicence',
+            format: 'dc+sd-jwt',
+            rawConfiguration: { format: 'dc+sd-jwt' } as ResolvedCredentialOffer['credentialConfigurations'][number]['rawConfiguration'],
+          },
+        ],
+      }
+    }
+
+    beforeEach(() => {
+      process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+      jest.spyOn(credentialKeyRegistry, 'listCredentialKeyRecords').mockReturnValue([
+        {
+          credentialId: 'vc-ed25519-pid',
+          holderDid: 'did:key:z6Mklegacy',
+          keychainService: 'wallet.ed25519_seed.cred.vc-ed25519-pid',
+          credentialType: 'ThaiNationalID',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ])
+      jest.spyOn(storedCredentials, 'readStoredCredentials').mockReturnValue([
+        {
+          id: 'vc-ed25519-pid',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ])
+      jest.spyOn(hardwareCredentialSigningKey, 'hasHardwareCredentialKey').mockReturnValue(false)
+      jest.spyOn(hardwareCredentialSigningKey, 'createPendingHardwareCredentialKey').mockResolvedValue('pending-hw-cutover')
+      jest.spyOn(hardwareCredentialSigningKey, 'discardPendingHardwareCredentialKey').mockResolvedValue()
+    })
+
+    afterEach(() => {
+      if (originalHardwareFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+      } else {
+        process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
+      }
+    })
+
+    test('acquireCredentialRecord blocks driving-licence offers until a hardware PID exists', async () => {
+      const acquireAccessToken = jest.fn()
+
+      await expect(
+        acquireCredentialRecord(drivingLicenceOffer(), {
+          dependencies: {
+            acquireAccessToken,
+            signProof: async () => 'proof.jwt',
+            requestCredential: async () => 'unused',
+            getCredentialStorage: () => ({
+              getString: () => undefined,
+              set: () => undefined,
+            }),
+          },
+        }),
+      ).rejects.toThrow('Reissue your national ID')
+
+      expect(acquireAccessToken).not.toHaveBeenCalled()
+      expect(hardwareCredentialSigningKey.createPendingHardwareCredentialKey).not.toHaveBeenCalled()
+    })
+
+    test('claimCredential blocks driving-licence offers before opening an issuance session', async () => {
+      const acquireAccessToken = jest.fn()
+
+      await expect(
+        claimCredential(drivingLicenceOffer(), {
+          dependencies: {
+            acquireAccessToken,
+            signProof: async () => 'proof.jwt',
+            requestCredential: async () => 'unused',
+            getCredentialStorage: () => ({
+              getString: () => undefined,
+              set: () => undefined,
+            }),
+          },
+        }),
+      ).rejects.toThrow('Reissue your national ID')
+
+      expect(acquireAccessToken).not.toHaveBeenCalled()
+      expect(hardwareCredentialSigningKey.createPendingHardwareCredentialKey).not.toHaveBeenCalled()
+    })
+
+    test('acquireCredentialRecord still reaches token exchange for PID offers during cutover', async () => {
+      await expect(
+        acquireCredentialRecord(resolvedOffer(), {
+          dependencies: {
+            acquireAccessToken: async () => {
+              throw new Error('token-reached')
+            },
+            signProof: async () => 'proof.jwt',
+            requestCredential: async () => 'unused',
+            getCredentialStorage: () => ({
+              getString: () => undefined,
+              set: () => undefined,
+            }),
+          },
+        }),
+      ).rejects.toThrow('token-reached')
     })
   })
 })

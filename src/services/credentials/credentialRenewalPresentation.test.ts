@@ -106,6 +106,7 @@ describe('shouldShowCredentialRenewalRibbon', () => {
   'old-revoked',
   'cleanup-pending',
   'document-expired',
+  'hardware-reissue-required',
 ] as const)('shows inactive ribbon for %s', (kind) => {
     expect(
       shouldShowCredentialRenewalRibbon({
