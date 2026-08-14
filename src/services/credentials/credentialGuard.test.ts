@@ -8,7 +8,6 @@ import {
   readPidGateStatus,
 } from './credentialGuard'
 import {
-  readCredentialRenewal,
   type CredentialRenewalRecord,
 } from './credentialKeyRenewal'
 import {
@@ -17,24 +16,41 @@ import {
 } from './credentialLifecycle'
 import { writeIssuerSuspension } from './issuerSuspension'
 import { getCredentialStorage } from '../storage/storage'
+import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+
+jest.mock('../crypto/hardwareCredentialSigningKey', () => {
+  const actual = jest.requireActual('../crypto/hardwareCredentialSigningKey') as typeof import('../crypto/hardwareCredentialSigningKey')
+  return {
+    ...actual,
+    credentialRequiresHardwareReissue: jest.fn(() => false),
+  }
+})
+
+const credentialRequiresHardwareReissueMock = credentialRequiresHardwareReissue as jest.MockedFunction<
+  typeof credentialRequiresHardwareReissue
+>
 
 jest.mock('../storage/storage', () => {
   const values = new Map<string, string>()
+  const storage = {
+    getString: (key: string) => values.get(key),
+    set: (key: string, value: string) => {
+      values.set(key, value)
+    },
+    delete: (key: string) => {
+      values.delete(key)
+    },
+    remove: (key: string) => {
+      values.delete(key)
+      return true
+    },
+    getAllKeys: () => [...values.keys()],
+    clearAll: () => values.clear(),
+  }
   return {
-    getCredentialStorage: () => ({
-      getString: (key: string) => values.get(key),
-      set: (key: string, value: string) => {
-        values.set(key, value)
-      },
-      delete: (key: string) => {
-        values.delete(key)
-      },
-      remove: (key: string) => {
-        values.delete(key)
-        return true
-      },
-    }),
+    getCredentialStorage: () => storage,
+    getMetaStorage: () => storage,
   }
 })
 
@@ -79,6 +95,9 @@ const renewalStatuses = {
 } satisfies Record<string, CredentialRenewalRecord>
 
 describe('credentialGuard', () => {
+  beforeEach(() => {
+    credentialRequiresHardwareReissueMock.mockReturnValue(false)
+  })
   test('detects the foundational PID credential from stored records', () => {
     expect(hasPidCredential([])).toBe(false)
     expect(hasPidCredential([transcriptRecord])).toBe(false)
@@ -241,6 +260,26 @@ describe('credentialGuard', () => {
     expect(picked?.id).toBe('id-card-active')
   })
 
+  test('prefers an mdoc Driving Licence over a JWT Driving Licence of the same type', () => {
+    const jwtLicence: VerifiableCredentialRecord = {
+      id: 'dlt-jwt',
+      type: 'DLTDrivingLicence',
+      rawVc: 'eyJhbGciOiJFZERTQSJ9.e30.sig',
+      claims: {},
+      issuedAt: '2026-01-01T00:00:00.000Z',
+    }
+    const mdocLicence: VerifiableCredentialRecord = {
+      id: 'dlt-mdoc',
+      type: 'DLTDrivingLicence',
+      rawVc: 'mdoc:abc',
+      claims: { doctype: 'org.iso.18013.5.1.mDL' },
+      issuedAt: '2026-08-14T00:00:00.000Z',
+    }
+
+    const picked = pickPreferredHomeCredential([jwtLicence, mdocLicence], {})
+    expect(picked?.id).toBe('dlt-mdoc')
+  })
+
   test('prefers a new active PID over an issuer-suspended PID of the same type', () => {
     writeIssuerSuspension({
       credentialId: thaiIdRecord.id,
@@ -254,5 +293,27 @@ describe('credentialGuard', () => {
     } finally {
       getCredentialStorage().remove(`credential:suspension:${thaiIdRecord.id}`)
     }
+  })
+
+  test('treats Ed25519 PID as unusable and re-requestable when hardware reissue is required', () => {
+    credentialRequiresHardwareReissueMock.mockImplementation(
+      (credentialId) => credentialId === thaiIdRecord.id,
+    )
+
+    expect(hasUsablePidCredential([thaiIdRecord], {})).toBe(false)
+    expect(readPidGateStatus([thaiIdRecord], {})).toBe('renewal-required')
+    expect(canRequestCredentialType('ThaiNationalID', [thaiIdRecord], {})).toBe(true)
+    expect(
+      canRequestCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], {}),
+    ).toBe(false)
+  })
+
+  test('prefers a hardware-keyed credential over a legacy Ed25519 card of the same type', () => {
+    credentialRequiresHardwareReissueMock.mockImplementation(
+      (credentialId) => credentialId === thaiIdRecord.id,
+    )
+
+    const picked = pickPreferredHomeCredential([thaiIdRecord, renewedThaiIdRecord], {})
+    expect(picked?.id).toBe('id-card-2')
   })
 })

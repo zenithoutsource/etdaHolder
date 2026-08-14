@@ -45,7 +45,16 @@ jest.mock('../crypto/perCredentialSigning', () => {
   }
 })
 
+jest.mock('../crypto/hardwareCredentialSigningKey', () => ({
+  credentialRequiresHardwareReissue: jest.fn(() => false),
+}))
+
 import { destroyIssuanceCredentialKey } from '../crypto/perCredentialSigning'
+import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
+
+const credentialRequiresHardwareReissueMock = credentialRequiresHardwareReissue as jest.MockedFunction<
+  typeof credentialRequiresHardwareReissue
+>
 
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
 
@@ -76,6 +85,7 @@ const transcriptRecord: VerifiableCredentialRecord = {
 describe('credentialLifecycle', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    credentialRequiresHardwareReissueMock.mockReturnValue(false)
     mockStorage()
     readStoredCredentialByIdMock.mockReturnValue(undefined)
     isCredentialDocumentExpiredMock.mockImplementation(
@@ -269,5 +279,19 @@ describe('credentialLifecycle', () => {
     isCredentialDocumentExpiredMock.mockReturnValue(true)
 
     expect(filterPresentableCredentials([expiringSoonTranscript])).toEqual([])
+  })
+
+  test('excludes credentials that require hardware reissue from presentation candidates', () => {
+    credentialRequiresHardwareReissueMock.mockImplementation(
+      (credentialId) => credentialId === transcriptRecord.id,
+    )
+    const hardwareTranscript: VerifiableCredentialRecord = {
+      ...transcriptRecord,
+      id: 'fresh-transcript',
+    }
+
+    expect(filterPresentableCredentials([transcriptRecord, hardwareTranscript])).toEqual([
+      hardwareTranscript,
+    ])
   })
 })

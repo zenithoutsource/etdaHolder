@@ -7,6 +7,7 @@ import {
 } from './issuerSuspension'
 import { WALLET_HOME_COPY } from './walletHomeCopy'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
 
 type ActiveCredentialState = {
   kind: 'active'
@@ -23,6 +24,7 @@ type InactiveCredentialState = {
     | 'old-revoked'
     | 'cleanup-pending'
     | 'document-expired'
+    | 'hardware-reissue-required'
   badgeLabel: string
   badgeClassName: string
   panelMessage: string
@@ -135,6 +137,15 @@ export function readCredentialInactiveState({
       badgeLabel: 'Inactive',
       badgeClassName: 'bg-gray-badge',
       panelMessage: WALLET_HOME_COPY.renewalDeleteMessage,
+    }
+  }
+
+  if (credential && credentialRequiresHardwareReissue(credential.id)) {
+    return {
+      kind: 'hardware-reissue-required',
+      badgeLabel: WALLET_HOME_COPY.hardwareReissueRequiredBadge,
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: WALLET_HOME_COPY.hardwareReissueRequiredMessage,
     }
   }
 

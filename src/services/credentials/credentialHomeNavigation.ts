@@ -23,14 +23,23 @@ export function shouldNavigateInactiveCredentialToDetail(
   if (kind === 'renewal-processing' && shouldShowReadyRenewalReceiveCta(true, options?.renewalStatus)) {
     return false
   }
-  return kind === 'renewal-processing' || kind === 'document-expired'
+  return (
+    kind === 'renewal-processing' ||
+    kind === 'document-expired' ||
+    kind === 'hardware-reissue-required'
+  )
 }
 
 export function shouldShowInactivePortalRequestCta(
   inactiveState: CredentialInactiveState,
 ): boolean {
   const kind = inactiveState.kind as InactiveCredentialKind | 'active'
-  return kind === 'issuer-suspended' || kind === 'revoked' || kind === 'deleted'
+  return (
+    kind === 'issuer-suspended' ||
+    kind === 'revoked' ||
+    kind === 'deleted' ||
+    kind === 'hardware-reissue-required'
+  )
 }
 
 export function shouldShowReadyRenewalReceiveCta(

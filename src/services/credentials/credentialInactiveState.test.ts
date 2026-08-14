@@ -4,6 +4,15 @@ import {
 } from './credentialInactiveState'
 import type { CredentialLifecycleStatus } from './credentialLifecycle'
 import type { IssuerSuspensionRecord } from './issuerSuspension'
+import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
+
+jest.mock('../crypto/hardwareCredentialSigningKey', () => ({
+  credentialRequiresHardwareReissue: jest.fn(() => false),
+}))
+
+const credentialRequiresHardwareReissueMock = credentialRequiresHardwareReissue as jest.MockedFunction<
+  typeof credentialRequiresHardwareReissue
+>
 
 const revokedLifecycle: CredentialLifecycleStatus = {
   credentialId: 'credential-1',
@@ -26,6 +35,9 @@ const pendingSuspension: IssuerSuspensionRecord = {
 }
 
 describe('credentialInactiveState', () => {
+  beforeEach(() => {
+    credentialRequiresHardwareReissueMock.mockReturnValue(false)
+  })
   test('routes revoke to issuer acknowledgment while suspension is pending', () => {
     expect(resolveCredentialRevokeBehavior(pendingSuspension)).toBe('issuer-acknowledgment')
   })
@@ -322,6 +334,27 @@ describe('credentialInactiveState', () => {
       badgeLabel: 'Inactive',
       badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารผูกกับกุญแจ Wallet ที่หมดอายุแล้ว กรุณาขอเอกสารใหม่',
+    })
+  })
+
+  test('marks credentials without a hardware k_cred as hardware-reissue-required', () => {
+    credentialRequiresHardwareReissueMock.mockReturnValue(true)
+
+    expect(
+      readCredentialInactiveState({
+        credential: {
+          id: 'credential-1',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2026-01-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'hardware-reissue-required',
+      badgeLabel: 'ต้องขอใหม่',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารนี้ยังผูกกับกุญแจเก่า กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
     })
   })
 })

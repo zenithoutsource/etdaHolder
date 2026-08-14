@@ -7,6 +7,7 @@ import { logWalletError } from '../debug/walletLogger'
 import { appendWalletHistoryEvent } from '../history/walletEventLog'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
 import { blocksCredentialPresentation, readCredentialRenewalStatuses } from './credentialKeyRenewal'
 import { readIssuerSuspensionStatuses } from './issuerSuspension'
@@ -137,7 +138,8 @@ export function filterPresentableCredentials(
       !lifecycleStatuses[record.id] &&
       !suspensionStatuses[record.id] &&
       !blocksCredentialPresentation(renewalStatuses[record.id]) &&
-      !isCredentialDocumentExpired(record),
+      !isCredentialDocumentExpired(record) &&
+      !credentialRequiresHardwareReissue(record.id),
   )
 }
 

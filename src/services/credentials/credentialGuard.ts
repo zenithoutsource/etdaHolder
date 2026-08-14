@@ -7,6 +7,7 @@ import {
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
 import { readCredentialLifecycleStatus } from './credentialLifecycle'
 import { readIssuerSuspension } from './issuerSuspension'
+import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 const PID_CREDENTIAL_TYPE = 'ThaiNationalID'
@@ -71,6 +72,7 @@ export function hasUsablePidCredential(
     if (credential.type !== PID_CREDENTIAL_TYPE) return false
     if (isCredentialDocumentExpired(credential)) return false
     if (isCredentialWithdrawnFromUse(credential.id)) return false
+    if (credentialRequiresHardwareReissue(credential.id)) return false
 
     const state = readRenewalState(credential.id, renewalStatuses)
     if (!state) return true
@@ -133,29 +135,41 @@ export function pickPreferredHomeCredential(
     isCredentialPreferredOnHome(record, renewalStatuses),
   )
   const candidates = preferredMatches.length > 0 ? preferredMatches : baseCandidates
+  const hardwareReadyMatches = candidates.filter(
+    (record) => !credentialRequiresHardwareReissue(record.id),
+  )
+  const rankedCandidates =
+    hardwareReadyMatches.length > 0 ? hardwareReadyMatches : candidates
 
-  const renewedActive = candidates.find(
+  const renewedActive = rankedCandidates.find(
     (record) => readRenewalState(record.id, renewalStatuses) === 'renewed-active',
   )
   if (renewedActive) return renewedActive
 
-  const normalActive = candidates.find(
+  const mdocNormalActive = rankedCandidates.find(
+    (record) =>
+      readRenewalState(record.id, renewalStatuses) === undefined &&
+      record.rawVc.startsWith('mdoc:'),
+  )
+  if (mdocNormalActive) return mdocNormalActive
+
+  const normalActive = rankedCandidates.find(
     (record) => readRenewalState(record.id, renewalStatuses) === undefined,
   )
   if (normalActive) return normalActive
 
-  const waiting = candidates.find((record) => {
+  const waiting = rankedCandidates.find((record) => {
     const state = readRenewalState(record.id, renewalStatuses)
     return state === 'renewal-required' || state === 'renewal-processing'
   })
   if (waiting) return waiting
 
-  const cleanupPending = candidates.find(
+  const cleanupPending = rankedCandidates.find(
     (record) => readRenewalState(record.id, renewalStatuses) === 'cleanup-pending',
   )
   if (cleanupPending) return cleanupPending
 
-  return candidates[0]
+  return rankedCandidates[0]
 }
 
 export function canRequestCredentialType(
@@ -183,7 +197,11 @@ export function canRequestCredentialType(
       if (isCredentialWithdrawnFromUse(credential.id)) return true
 
       const state = readRenewalState(credential.id, statuses)
-      return state === 'renewal-required' || isCredentialDocumentExpired(credential)
+      return (
+        state === 'renewal-required' ||
+        isCredentialDocumentExpired(credential) ||
+        credentialRequiresHardwareReissue(credential.id)
+      )
     })
   }
 

@@ -5,6 +5,14 @@ export const WALLET_HOME_COPY = {
   activeBadge: 'ใช้งานได้',
   pidRequiredTitle: 'ต้องมี ThaID ก่อน',
   pidRequiredMessage: 'กรุณาขอ ThaID ก่อนขอเอกสารอื่น',
+  hardwarePidReissueRequiredTitle: 'ต้องขอ ThaID ใหม่ก่อน',
+  hardwarePidReissueRequiredMessage:
+    'กรุณาขอ ThaID ใหม่บนกุญแจฮาร์ดแวร์ก่อนขอเอกสารอื่น',
+  hardwareReissueRequiredBadge: 'ต้องขอใหม่',
+  hardwareReissueRequiredMessage:
+    'เอกสารนี้ยังผูกกับกุญแจเก่า กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+  legacyKeyRenewalUnsupportedMessage:
+    'ไม่สามารถต่ออายุด้วยกุญแจเดิมได้ กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
   cancel: 'ยกเลิก',
   requestCredential: 'ขอเอกสาร',
   requestThaId: 'ขอ ThaID',

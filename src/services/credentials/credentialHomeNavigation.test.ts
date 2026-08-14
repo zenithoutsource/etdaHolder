@@ -1,5 +1,6 @@
 import {
   shouldNavigateInactiveCredentialToDetail,
+  shouldShowInactivePortalRequestCta,
   shouldShowReadyRenewalReceiveCta,
 } from './credentialHomeNavigation'
 import type { CredentialInactiveState } from './credentialInactiveState'
@@ -33,6 +34,9 @@ describe('credentialHomeNavigation', () => {
     expect(
       shouldNavigateInactiveCredentialToDetail(inactiveState('document-expired')),
     ).toBe(true)
+    expect(
+      shouldNavigateInactiveCredentialToDetail(inactiveState('hardware-reissue-required')),
+    ).toBe(true)
   })
 
   test('navigates issuer-suspended credentials to detail for acknowledgment and delete actions', () => {
@@ -54,6 +58,13 @@ describe('credentialHomeNavigation', () => {
     expect(
       shouldNavigateInactiveCredentialToDetail(inactiveState('deleted')),
     ).toBe(false)
+  })
+
+  test('shows a portal request CTA for hardware-reissue-required credentials', () => {
+    expect(shouldShowInactivePortalRequestCta(inactiveState('hardware-reissue-required'))).toBe(
+      true,
+    )
+    expect(shouldShowInactivePortalRequestCta(inactiveState('document-expired'))).toBe(false)
   })
 
   test('shows the Home receive CTA only for an expanded ready renewal', () => {
