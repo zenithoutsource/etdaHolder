@@ -352,4 +352,23 @@ describe('assertIssuerDidWebCredentialSignature', () => {
     ).rejects.toThrow('CredentialSignatureAlgUnsupported')
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  test('rejects did:web EdDSA when issuer metadata narrowed the allowlist to ES256', async () => {
+    const iss = 'did:web:issuer.example.com'
+    const jwt = `${encodeJson({ alg: 'EdDSA', kid: `${iss}#key-1` })}.${encodeJson({
+      iss,
+      jti: 'cred-eddsa',
+    })}.sig`
+    const fetchMock = jest.fn()
+
+    await expect(
+      assertIssuerDidWebCredentialSignature(jwt, {
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        issuerMetadata: { credential_signing_alg_values_supported: ['ES256'] },
+      }),
+    ).rejects.toThrow(
+      'CredentialSignatureAlgUnsupported: issuer credential alg must be ES256, got EdDSA',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

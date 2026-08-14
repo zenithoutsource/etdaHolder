@@ -12,6 +12,7 @@ import {
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
 import { logWalletError } from '@/src/services/debug/walletLogger'
+import { isTrustedIssuerJwtAlg } from '@/src/config/issuerJwtVerifyPolicy'
 import {
   resolveRequestObjectVerificationJwk,
   verifyAuthorizationRequestSignature,
@@ -34,7 +35,7 @@ function createAdapterVerifyJwtImpl(input: {
       }
 
       const alg = readString(jwtSigner.alg) ?? readString(header.alg)
-      if (!alg || alg === 'none' || (alg !== 'EdDSA' && alg !== 'ES256')) {
+      if (!alg || alg === 'none' || !isTrustedIssuerJwtAlg(alg)) {
         logWalletError('oid4vp', 'jar_verify_rejected_alg', new Error(`unsupported alg: ${alg ?? 'missing'}`))
         return { verified: false as const }
       }

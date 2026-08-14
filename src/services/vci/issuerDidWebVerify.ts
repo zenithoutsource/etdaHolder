@@ -1,4 +1,8 @@
-import { isTrustedIssuerJwtAlg } from '@/src/config/issuerJwtVerifyPolicy'
+import {
+  assertTrustedVerifyAlg,
+  readPeerAdvertisedVerifyAlgs,
+  type TrustedIssuerJwtAlg,
+} from '@/src/config/issuerJwtVerifyPolicy'
 import {
   decodeJwtHeader,
   decodeJwtPayload,
@@ -26,8 +30,8 @@ export type AssertIssuerDidWebOptions = {
  * P2 canvas 31: verify Issuer JWT signature after resolving the signing key from
  * `did:web` DID documents or Issuer `GET /resolveDID` when `kid` is `did:key:…`.
  * ES256 HTTPS `did:key` kids are bound to the issuer-resolved P-256 JWK (no
- * local-only trust). Trusted algs are ES256 and EdDSA (holder signing is
- * independent). Trust Registry accreditation is still out of scope until a
+ * local-only trust). Trusted algs are the local ES256/EdDSA base; Issuer
+ * metadata may narrow only. Trust Registry accreditation is still out of scope until a
  * registry API exists.
  */
 export async function assertIssuerDidWebCredentialSignature(
@@ -52,9 +56,10 @@ export async function assertIssuerDidWebCredentialSignature(
   const kid = readString(header?.kid)
   const alg = readString(header?.alg)
   const fetchImpl = options.fetchImpl ?? fetch
+  const metadataAlgs = readPeerAdvertisedVerifyAlgs(options.issuerMetadata)
 
   if (iss.startsWith('did:web:')) {
-    assertTrustedIssuerJwtAlg(alg)
+    assertTrustedVerifyAlg(alg, metadataAlgs)
     logWalletStep('oid4vci', 'issuer-did-web-resolve-start', { iss, alg })
     const publicJwk = await resolveDidWebVerificationJwk(iss, kid, fetchImpl)
     logWalletStep('oid4vci', 'issuer-did-web-resolve-complete', { iss })
@@ -69,7 +74,7 @@ export async function assertIssuerDidWebCredentialSignature(
   }
 
   if (kid?.startsWith('did:key:')) {
-    assertTrustedIssuerJwtAlg(alg)
+    assertTrustedVerifyAlg(alg, metadataAlgs)
 
     if (alg === 'ES256') {
       const issuerUrls = readIssuerResolveBaseUrls(
@@ -127,7 +132,7 @@ export async function assertIssuerDidWebCredentialSignature(
   }
 
   if (iss.startsWith('https:') || iss.startsWith('http:')) {
-    assertTrustedIssuerJwtAlg(alg)
+    assertTrustedVerifyAlg(alg, metadataAlgs)
     throw new Error(
       'CredentialIssuerSignatureInvalid: HTTPS issuer JWT requires a did:key kid or did:web iss',
     )
@@ -139,18 +144,10 @@ export async function assertIssuerDidWebCredentialSignature(
   })
 }
 
-function assertTrustedIssuerJwtAlg(alg: string | undefined): asserts alg is 'ES256' | 'EdDSA' {
-  if (!isTrustedIssuerJwtAlg(alg)) {
-    throw new Error(
-      `CredentialSignatureAlgUnsupported: issuer credential alg must be ES256 or EdDSA, got ${alg ?? 'missing'}`,
-    )
-  }
-}
-
 function assertIssuerJwtMatchesKey(
   issuerJwt: string,
   publicJwk: Record<string, unknown>,
-  alg: 'ES256' | 'EdDSA',
+  alg: TrustedIssuerJwtAlg,
   invalidMessage: string,
 ): void {
   const verified =

@@ -1,3 +1,4 @@
+import { isTrustedIssuerJwtAlg } from '@/src/config/issuerJwtVerifyPolicy'
 import {
   decodeJsonBase64Url,
   isRecord,
@@ -258,7 +259,7 @@ export function verifyAuthorizationRequestSignature(
   publicJwk: Record<string, unknown>,
   alg: string,
 ): boolean {
+  if (!isTrustedIssuerJwtAlg(alg)) return false
   if (alg === 'EdDSA') return verifyEdDsaCompactJwt(jwt, publicJwk)
-  if (alg === 'ES256') return verifyEs256CompactJwt(jwt, publicJwk)
-  return false
+  return verifyEs256CompactJwt(jwt, publicJwk)
 }
