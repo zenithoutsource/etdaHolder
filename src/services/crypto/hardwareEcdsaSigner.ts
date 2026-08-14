@@ -39,7 +39,7 @@ function resolveBackendForRuntime(): HardwareEcdsaBackend {
   if (!isHardwareP256SigningEnabled()) {
     if (__DEV__) return 'mock'
     throw new HardwareEcdsaUnavailableError(
-      'HardwareP256SigningDisabled: set EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=true on Android dev builds',
+      'HardwareP256SigningDisabled: EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=false',
     )
   }
 

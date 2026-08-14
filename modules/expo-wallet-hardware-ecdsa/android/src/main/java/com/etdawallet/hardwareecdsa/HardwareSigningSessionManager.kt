@@ -19,9 +19,12 @@ internal data class NativeSigningSession(
   val expiresAtMs: Long,
   var signaturesUsed: Int = 0,
   var closed: Boolean = false,
+  var authenticatedForMdoc: Boolean = false,
 )
 
-internal object HardwareSigningSessionManager {
+object HardwareSigningSessionManager {
+  const val PURPOSE_MDOC = "mdoc"
+
   private val sessions = ConcurrentHashMap<String, NativeSigningSession>()
   private val sessionCounter = AtomicLong(0)
 
@@ -46,7 +49,7 @@ internal object HardwareSigningSessionManager {
     return handle
   }
 
-  suspend fun sign(
+  internal suspend fun sign(
     handle: String,
     data: ByteArray,
     activity: FragmentActivity,
@@ -107,6 +110,55 @@ internal object HardwareSigningSessionManager {
     )
   }
 
+  /**
+   * One biometric at arm time for `purpose=mdoc`. APDU signing then uses the
+   * Android auth-validity window and must not show a prompt from HCE.
+   */
+  suspend fun authenticateMdocSession(handle: String, activity: FragmentActivity) {
+    val session = requireOpenMdocSession(handle)
+    authenticateUser(activity)
+    session.authenticatedForMdoc = true
+  }
+
+  fun readPublicJwkForHandle(handle: String): Map<String, String> {
+    val session = requireOpenMdocSession(handle)
+    return AndroidKeyStoreHardwareEcdsa.readPublicJwk(session.alias)
+  }
+
+  /**
+   * Tap-time mdoc device-auth sign. No biometric UI. Fail closed if the
+   * session is not mdoc, expired, exhausted, or the auth window has elapsed.
+   */
+  fun signMdocWithoutPrompt(handle: String, data: ByteArray): ByteArray {
+    val session = requireOpenMdocSession(handle)
+    if (!session.authenticatedForMdoc) {
+      throw WalletHardwareEcdsaException(
+        "WalletHardwareEcdsaSessionClosed",
+        "MdocSessionNotAuthenticated",
+      )
+    }
+    if (session.signaturesUsed >= session.maxSignatures) {
+      throw WalletHardwareEcdsaException(
+        "WalletHardwareEcdsaSessionMaxSignaturesExceeded",
+        "SigningSessionMaxSignaturesExceeded",
+      )
+    }
+
+    val derSignature =
+      try {
+        signWithoutPrompt(session.alias, data)
+      } catch (error: Throwable) {
+        throw WalletHardwareEcdsaException(
+          "WalletHardwareEcdsaSigningFailed",
+          error.message ?: "MdocSignFailed",
+          error,
+        )
+      }
+
+    session.signaturesUsed += 1
+    return EcP256Encoding.derEcdsaSignatureToJoseRaw(derSignature)
+  }
+
   private fun needsUserAuthentication(error: Throwable): Boolean {
     var current: Throwable? = error
     while (current != null) {
@@ -126,6 +178,26 @@ internal object HardwareSigningSessionManager {
 
   fun closeSession(handle: String) {
     sessions.remove(handle)?.closed = true
+  }
+
+  private fun requireOpenMdocSession(handle: String): NativeSigningSession {
+    val session =
+      sessions[handle]
+        ?: throw WalletHardwareEcdsaException("WalletHardwareEcdsaSessionClosed", "SigningSessionClosed")
+
+    if (session.closed) {
+      throw WalletHardwareEcdsaException("WalletHardwareEcdsaSessionClosed", "SigningSessionClosed")
+    }
+    if (session.purpose != PURPOSE_MDOC) {
+      throw WalletHardwareEcdsaException(
+        "WalletHardwareEcdsaSessionClosed",
+        "SigningSessionPurposeMismatch:${session.purpose}",
+      )
+    }
+    if (System.currentTimeMillis() > session.expiresAtMs) {
+      throw WalletHardwareEcdsaException("WalletHardwareEcdsaSessionExpired", "SigningSessionExpired")
+    }
+    return session
   }
 
   fun invalidateAliasSessions(alias: String) {

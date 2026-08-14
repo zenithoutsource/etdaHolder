@@ -1,6 +1,6 @@
 import { Platform } from 'react-native'
 
-import { readHardwareSigningSessionTtlMs } from '@/src/config/hardwareSigningPolicy'
+import { readHardwareSigningSessionTtlMsForPurpose } from '@/src/config/hardwareSigningPolicy'
 
 import type { EcP256Jwk, HardwareSecurityLevel, OpenSigningSessionOptions } from './hardwareEcdsaTypes'
 import {
@@ -107,7 +107,7 @@ function requireNativeModule(): WalletHardwareEcdsaNative {
 }
 
 function readAuthValiditySeconds(): number {
-  return Math.max(1, Math.floor(readHardwareSigningSessionTtlMs() / 1000))
+  return Math.max(1, Math.floor(readHardwareSigningSessionTtlMsForPurpose('mdoc') / 1000))
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

@@ -1,4 +1,4 @@
-import { readHardwareSigningSessionTtlMs } from '@/src/config/hardwareSigningPolicy'
+import { readHardwareSigningSessionTtlMsForPurpose } from '@/src/config/hardwareSigningPolicy'
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 
 import type {
@@ -133,7 +133,7 @@ export function createCustomHardwareEcdsaSigner(): HardwareEcdsaSigner {
           alias,
           purpose: options.purpose,
           maxSignatures: options.maxSignatures,
-          expiresAtMs: Date.now() + readHardwareSigningSessionTtlMs(),
+          expiresAtMs: Date.now() + readHardwareSigningSessionTtlMsForPurpose(options.purpose),
         })
         sessionHandle = opened.opaqueNativeHandle
       } catch (error) {

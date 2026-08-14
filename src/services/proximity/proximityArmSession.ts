@@ -4,10 +4,11 @@ import {
   readerProfileUsesCompanion,
 } from '@/src/config/readerProfiles'
 import { HCE_ARM_WINDOW_MS } from '@/src/config/dualFormatPolicy'
+import { logWalletError } from '@/src/services/debug/walletLogger'
 import { readStoredCredentialById } from '@/src/services/credentials/storedCredentials'
 
 import { estimateCompanionPayloadBytes } from './companionPayloadSize'
-import { prepareMdocDeviceAuthForArm } from './deviceAuth'
+import { prepareMdocDeviceAuthForArm, releaseMdocDeviceAuthSession } from './deviceAuth'
 import { validateProximityArmPayload } from './proximityArmPolicy'
 import {
   ProximityPresentationError,
@@ -58,37 +59,53 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
     companionPayloadBytes: companionPayloadBytes ?? 0,
   })
 
-  if (input.sharingMode === 'mdoc-only' || input.sharingMode === 'dual-format') {
-    await prepareMdocDeviceAuthForArm()
+  try {
+    if (input.sharingMode === 'mdoc-only' || input.sharingMode === 'dual-format') {
+      await prepareMdocDeviceAuthForArm(input.credentialId)
+    }
+
+    await startProximityPresentation(input.credentialId, {
+      onDeviceEngaged: () => undefined,
+      onRequestReceived: () => undefined,
+      onPresentationComplete: () => undefined,
+      onError: () => undefined,
+    })
+
+    const record = readStoredCredentialById(input.credentialId)
+    const profile = record
+      ? getReaderProfileForDocumentType(record.type, input.sharingMode)
+      : undefined
+
+    await requireNativeProximityModule().armProximitySession({
+      credentialId: input.credentialId,
+      sharingMode: input.sharingMode,
+      profileId: profile?.profileId ?? 'unknown-profile',
+      approvedMdocFields: input.approvedMdocFields,
+      companionTransportPluginId: profile?.companion?.transportPluginId,
+      ...(profile && readerProfileUsesCompanion(profile) && record?.rawVc
+        ? { companionSdJwt: record.rawVc }
+        : {}),
+      armWindowMs: HCE_ARM_WINDOW_MS,
+    })
+
+    await approveProximityPresentation(input.approvedMdocFields)
+  } catch (error) {
+    logWalletError('proximity-arm', 'arm proximity presentation failed', error)
+    try {
+      await stopProximityPresentation()
+    } catch (stopError) {
+      logWalletError('proximity-arm', 'arm-failure stop cleanup failed', stopError)
+    }
+    try {
+      await releaseMdocDeviceAuthSession()
+    } catch (releaseError) {
+      logWalletError('proximity-arm', 'arm-failure session release failed', releaseError)
+    }
+    throw error
   }
-
-  await startProximityPresentation(input.credentialId, {
-    onDeviceEngaged: () => undefined,
-    onRequestReceived: () => undefined,
-    onPresentationComplete: () => undefined,
-    onError: () => undefined,
-  })
-
-  const record = readStoredCredentialById(input.credentialId)
-  const profile = record
-    ? getReaderProfileForDocumentType(record.type, input.sharingMode)
-    : undefined
-
-  await requireNativeProximityModule().armProximitySession({
-    credentialId: input.credentialId,
-    sharingMode: input.sharingMode,
-    profileId: profile?.profileId ?? 'unknown-profile',
-    approvedMdocFields: input.approvedMdocFields,
-    companionTransportPluginId: profile?.companion?.transportPluginId,
-    ...(profile && readerProfileUsesCompanion(profile) && record?.rawVc
-      ? { companionSdJwt: record.rawVc }
-      : {}),
-    armWindowMs: HCE_ARM_WINDOW_MS,
-  })
-
-  await approveProximityPresentation(input.approvedMdocFields)
 }
 
 export async function disarmProximityPresentation(): Promise<void> {
   await stopProximityPresentation()
+  await releaseMdocDeviceAuthSession()
 }

@@ -4,6 +4,7 @@ jest.mock('./deviceAuth', () => ({
   prepareMdocDeviceAuthForArm: jest.fn(async () => {
     throw new Error('ProximityHardwareDeviceAuthUnavailable')
   }),
+  releaseMdocDeviceAuthSession: jest.fn(async () => undefined),
 }))
 
 jest.mock('./proximityPresentation', () => ({
@@ -56,6 +57,7 @@ describe('armProximityPresentation', () => {
     ).rejects.toThrow('ProximityHardwareDeviceAuthUnavailable')
 
     expect(prepareMdocDeviceAuthForArm).toHaveBeenCalledTimes(1)
+    expect(prepareMdocDeviceAuthForArm).toHaveBeenCalledWith('cred-dual')
     expect(startProximityPresentation).not.toHaveBeenCalled()
   })
 })

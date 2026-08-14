@@ -71,6 +71,8 @@ function toUserFacingError(error: unknown): string {
         return 'No credential available for proximity'
       case 'PROXIMITY_NOT_READY':
         return error.message
+      case 'DISCLOSURE_CEILING_EXCEEDED':
+        return 'Presentation failed — try again'
       default:
         return 'Connection lost. Try again.'
     }
@@ -162,6 +164,9 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
           set({ status: 'complete', sharedFields: event.sharedFields })
           activeUnsubscribe?.()
           activeUnsubscribe = null
+          void disarmProximityPresentation().catch((e) =>
+            logWalletError('proximity-store', 'complete-disarm-failed', e),
+          )
         },
         onError: (event: { code: string; message: string }) => {
           logWalletError('proximity-store', 'presentation error', new Error(`${event.code}: ${event.message}`))
@@ -180,6 +185,9 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
           set({ status: 'error', error: toUserFacingError(event) })
           activeUnsubscribe?.()
           activeUnsubscribe = null
+          void disarmProximityPresentation().catch((e) =>
+            logWalletError('proximity-store', 'error-disarm-failed', e),
+          )
         },
       })
 
@@ -194,6 +202,9 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
       set({ status: 'hce-armed', deviceEngagementUri })
     } catch (error) {
       logWalletError('proximity-store', 'arm failed', error)
+      void disarmProximityPresentation().catch((e) =>
+        logWalletError('proximity-store', 'arm-failure-disarm-failed', e),
+      )
       const credentialId = get().selectedCredentialId
       const sharingMode = get().sharingMode
       if (credentialId) {

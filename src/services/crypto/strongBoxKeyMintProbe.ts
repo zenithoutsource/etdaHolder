@@ -1,6 +1,6 @@
 import { Platform } from 'react-native'
 
-import { readHardwareSigningSessionTtlMs } from '@/src/config/hardwareSigningPolicy'
+import { readHardwareSigningSessionTtlMsForPurpose } from '@/src/config/hardwareSigningPolicy'
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 
 import { isWalletHardwareEcdsaNativeAvailable } from './walletHardwareEcdsaNative'
@@ -57,7 +57,7 @@ function loadProbeNativeModule(): {
 }
 
 function readAuthValiditySeconds(): number {
-  return Math.max(1, Math.floor(readHardwareSigningSessionTtlMs() / 1000))
+  return Math.max(1, Math.floor(readHardwareSigningSessionTtlMsForPurpose('mdoc') / 1000))
 }
 
 export function interpretKnoxVaultStrongBoxProbe(

@@ -1,8 +1,8 @@
 package com.etdawallet.mdocproximity
 
 /**
- * Compile-time / runtime probe for Multipaz ISO mdoc NFC data-transfer APIs.
- * Gate #2 for v1: [NfcTransportMdoc.processCommandApdu] + [MdocNfcDataTransferService].
+ * Runtime probe for Multipaz ISO mdoc NFC data-transfer APIs.
+ * Gate #2 for v1: [NfcTransportMdoc.processCommandApdu] on the HCE mdoc path.
  */
 data class MdocEngineProbeResult(
   val engine: String,
@@ -25,7 +25,7 @@ object MdocEngineProbe {
       Function1::class.java,
     )
 
-    val hasNfcDataTransfer = hasNfcTransport && hasDataTransferService && hasProcessApdu
+    val hasNfcDataTransfer = hasNfcTransport && hasProcessApdu
 
     return MdocEngineProbeResult(
       engine = "multipaz",
@@ -37,7 +37,7 @@ object MdocEngineProbe {
         append("MdocNfcDataTransferService=$hasDataTransferService; ")
         append("processCommandApdu=$hasProcessApdu. ")
         if (hasNfcDataTransfer) {
-          append("Delegate APDUs to NfcTransportMdoc.processCommandApdu from CompanionHostApduService mdoc path.")
+          append("CompanionHostApduService forwards mdoc APDUs asynchronously to NfcTransportMdoc.processCommandApdu.")
         } else {
           append("Physical A26 spike required after dependency resolves in Android compile.")
         }

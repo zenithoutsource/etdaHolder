@@ -1,6 +1,6 @@
 import { p256 } from '@noble/curves/nist.js'
 
-import { readHardwareSigningSessionTtlMs } from '@/src/config/hardwareSigningPolicy'
+import { readHardwareSigningSessionTtlMsForPurpose } from '@/src/config/hardwareSigningPolicy'
 
 import { p256PublicKeyToJwk, signEs256Prehash } from './p256Identity'
 import type {
@@ -109,7 +109,7 @@ export function createMockHardwareEcdsaSigner(store = new Map<string, StoredMock
       const session: ActiveSession = {
         alias,
         purpose: options.purpose,
-        expiresAtMs: Date.now() + readHardwareSigningSessionTtlMs(),
+        expiresAtMs: Date.now() + readHardwareSigningSessionTtlMsForPurpose(options.purpose),
         maxSignatures: options.maxSignatures,
         signaturesUsed: 0,
         closed: false,

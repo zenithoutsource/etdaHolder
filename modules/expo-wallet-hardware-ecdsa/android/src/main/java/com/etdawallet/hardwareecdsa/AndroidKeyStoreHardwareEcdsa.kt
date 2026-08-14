@@ -56,7 +56,7 @@ internal object AndroidKeyStoreHardwareEcdsa {
     val publicJwk: Map<String, String>
     val securityLevel: String
     val keyDiagnostics: Map<String, Any>
-    val certificateChainDer: List<String>
+    val certificateChainDer: List<ByteArray>
     try {
       publicJwk = readPublicJwk(alias)
       securityLevel = AndroidKeyStoreProbe.getSecurityLevel(alias)

@@ -6,7 +6,7 @@ import {
   sign as animoSign,
 } from '@animo-id/expo-secure-environment'
 
-import { readHardwareSigningSessionTtlMs } from '@/src/config/hardwareSigningPolicy'
+import { readHardwareSigningSessionTtlMsForPurpose } from '@/src/config/hardwareSigningPolicy'
 import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 
 import type {
@@ -112,7 +112,7 @@ export function createAnimoHardwareEcdsaSigner(): HardwareEcdsaSigner {
       const session: AnimoSessionState = {
         alias,
         purpose: options.purpose,
-        expiresAtMs: Date.now() + readHardwareSigningSessionTtlMs(),
+        expiresAtMs: Date.now() + readHardwareSigningSessionTtlMsForPurpose(options.purpose),
         maxSignatures: options.maxSignatures,
         signaturesUsed: 0,
         biometricUnlocked: false,

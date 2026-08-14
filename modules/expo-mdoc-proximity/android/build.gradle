@@ -18,4 +18,15 @@ dependencies {
   implementation("org.multipaz:multipaz:0.100.0")
   implementation("org.multipaz:multipaz-compose:0.100.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+  implementation("androidx.fragment:fragment-ktx:1.8.5")
+  def hardwareEcdsa = [":expo-wallet-hardware-ecdsa", ":expo_wallet_hardware_ecdsa"]
+    .collect { rootProject.findProject(it) }
+    .find { it != null }
+  if (hardwareEcdsa == null) {
+    throw new GradleException(
+      "Autolinked expo-wallet-hardware-ecdsa project not found (needed for mdoc opaque-handle signing)"
+    )
+  }
+  implementation hardwareEcdsa
 }

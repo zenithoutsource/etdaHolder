@@ -4,8 +4,10 @@ import org.multipaz.crypto.EcCurve
 import org.multipaz.crypto.EcPrivateKeyOkp
 
 /**
- * Holds holder Ed25519 material unlocked once at pre-tap approve time.
- * Cleared on session stop, cancel, or timeout — never logged.
+ * Pre-tap device-auth material for ISO 18013-5.
+ *
+ * Hardware P-256: opaque native signing handle only (no private key bytes).
+ * Flag-off Ed25519: 32-byte seed installed once at arm time, cleared on stop.
  */
 object DeviceAuthBridge {
   private const val ED25519_SEED_LENGTH = 32
@@ -16,6 +18,9 @@ object DeviceAuthBridge {
 
   @Volatile
   private var publicKey: ByteArray? = null
+
+  @Volatile
+  private var hardwareHandle: String? = null
 
   fun install(seedBytes: ByteArray, publicKeyBytes: ByteArray) {
     if (seedBytes.size != ED25519_SEED_LENGTH || publicKeyBytes.size != ED25519_PUBLIC_KEY_LENGTH) {
@@ -29,7 +34,22 @@ object DeviceAuthBridge {
     publicKey = publicKeyBytes.copyOf()
   }
 
-  fun isReady(): Boolean = seed != null && publicKey != null
+  fun installHardwareHandle(handle: String) {
+    if (handle.isBlank()) {
+      throw MdocProximityException(
+        MdocProximityErrors.INVALID_ARGUMENT,
+        "opaqueNativeHandle is required",
+      )
+    }
+    clear()
+    hardwareHandle = handle
+  }
+
+  fun isReady(): Boolean = hasHardwareHandle() || (seed != null && publicKey != null)
+
+  fun hasHardwareHandle(): Boolean = hardwareHandle != null
+
+  fun hardwareHandle(): String? = hardwareHandle
 
   fun buildPrivateKey(): EcPrivateKeyOkp? {
     val seedBytes = seed ?: return null
@@ -45,5 +65,6 @@ object DeviceAuthBridge {
     seed?.fill(0)
     seed = null
     publicKey = null
+    hardwareHandle = null
   }
 }

@@ -4,8 +4,8 @@ import android.util.Log
 
 /**
  * Bridges armed consent + stored mDOC bytes into the HCE session.
- * Full ISO 18013-5 session crypto is delegated to a Multipaz adapter (ADR 0006);
- * this engine tracks engagement and approved field ceilings until that adapter lands.
+ * Full ISO 18013-5 session crypto is delegated to Multipaz; APDUs are
+ * dispatched asynchronously from [CompanionHostApduService].
  */
 object StoredMdocPresentationEngine : MdocPresentationEngine {
   private const val TAG = "StoredMdocEngine"
@@ -24,19 +24,11 @@ object StoredMdocPresentationEngine : MdocPresentationEngine {
   }
 
   override fun processApdu(commandApdu: ByteArray): ByteArray {
-    if (armState == null) return sw(0x69, 0x85)
-
-    val multipazResponse = MultipazMdocAdapter.processApdu(commandApdu)
-    if (multipazResponse != null) {
-      return multipazResponse
-    }
-
-    Log.w(TAG, "[mdoc-engine] Multipaz unavailable; failing closed")
+    Log.w(TAG, "[mdoc-engine] sync processApdu is unused; HCE must dispatch async")
     return sw(0x69, 0x85)
   }
 
   override fun stop() {
-    MultipazMdocAdapter.resetSession()
     armState = null
   }
 

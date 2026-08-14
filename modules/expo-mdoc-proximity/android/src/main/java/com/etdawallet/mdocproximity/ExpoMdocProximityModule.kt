@@ -3,7 +3,12 @@ package com.etdawallet.mdocproximity
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import androidx.fragment.app.FragmentActivity
+import com.etdawallet.hardwareecdsa.HardwareSigningSessionManager
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class ExpoMdocProximityModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -47,9 +52,62 @@ class ExpoMdocProximityModule : Module() {
       DeviceAuthBridge.install(seed, publicKey)
     }
 
+    AsyncFunction("installMdocSigningHandle") { handle: String, promise: Promise ->
+      val activity = appContext.currentActivity as? FragmentActivity
+      if (activity == null) {
+        promise.reject(
+          MdocProximityErrors.PROXIMITY_NOT_READY,
+          "CurrentActivityUnavailable",
+          null,
+        )
+        return@AsyncFunction
+      }
+
+      CoroutineScope(Dispatchers.Main.immediate).launch {
+        try {
+          HardwareSigningSessionManager.authenticateMdocSession(handle, activity)
+          DeviceAuthBridge.installHardwareHandle(handle)
+          promise.resolve(null)
+        } catch (error: MdocProximityException) {
+          promise.reject(error.code, error.message, error)
+        } catch (error: Exception) {
+          promise.reject(MdocProximityErrors.PROXIMITY_NOT_READY, error.message, error)
+        }
+      }
+    }
+
     AsyncFunction("storeMdoc") { credentialId: String, docType: String, mdocBytes: ByteArray ->
       val context = requireContext()
       MdocProximityEngine.storeMdoc(context, credentialId, docType, mdocBytes)
+    }
+
+    AsyncFunction("generateTestMdl") { deviceJwkJson: String, promise: Promise ->
+      val context = appContext.reactContext?.applicationContext
+      if (context == null) {
+        promise.reject(MdocProximityErrors.PROXIMITY_NOT_READY, "Application context is unavailable", null)
+        return@AsyncFunction
+      }
+      val debuggable =
+        context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+      if (!debuggable) {
+        promise.reject(
+          MdocProximityErrors.TEST_MDOC_INJECT_DISABLED,
+          "Test mDL inject is debug-only",
+          null,
+        )
+        return@AsyncFunction
+      }
+      CoroutineScope(Dispatchers.Default).launch {
+        try {
+          val publicKey = TestMdlGenerator.parseDevicePublicJwk(deviceJwkJson)
+          val mdocBytes = TestMdlGenerator.generate(publicKey)
+          promise.resolve(mdocBytes)
+        } catch (error: MdocProximityException) {
+          promise.reject(error.code, error.message, error)
+        } catch (error: Exception) {
+          promise.reject(MdocProximityErrors.INVALID_ARGUMENT, error.message, error)
+        }
+      }
     }
 
     AsyncFunction("hasMdoc") { credentialId: String ->
@@ -79,13 +137,23 @@ class ExpoMdocProximityModule : Module() {
           ?: throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "sharingMode is required")
         val profileId = config["profileId"] as? String
           ?: throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "profileId is required")
-        val approvedFields = (config["approvedMdocFields"] as? List<*>)
-          ?.mapNotNull { it as? String }
-          ?: emptyList()
+        val approvedFields = readStringList(config["approvedMdocFields"])
+        if (approvedFields.isEmpty()) {
+          throw MdocProximityException(
+            MdocProximityErrors.INVALID_ARGUMENT,
+            "approvedMdocFields is required",
+          )
+        }
         val companionSdJwt = config["companionSdJwt"] as? String
         val armWindowMs = (config["armWindowMs"] as? Number)?.toLong() ?: 60_000L
 
         val context = requireContext()
+        if (!MdocProximityEngine.hasMdoc(context, credentialId)) {
+          throw MdocProximityException(
+            MdocProximityErrors.CREDENTIAL_NOT_FOUND,
+            "No mDOC is stored for this credential",
+          )
+        }
 
         CompanionSession.arm(
           ProximityArmState(
@@ -105,8 +173,12 @@ class ExpoMdocProximityModule : Module() {
           )
         }
 
-        if (MdocProximityEngine.hasMdoc(context, credentialId) && approvedFields.isNotEmpty()) {
-          MdocProximityEngine.preparePresentationEngine(context)
+        MdocProximityEngine.preparePresentationEngine(context)
+        if (MultipazPresentmentSession.deviceEngagementUri() == null) {
+          throw MdocProximityException(
+            MdocProximityErrors.PROXIMITY_NOT_READY,
+            "Device engagement QR was not produced",
+          )
         }
 
         promise.resolve(null)
@@ -167,4 +239,9 @@ class ExpoMdocProximityModule : Module() {
         MdocProximityErrors.PROXIMITY_NOT_READY,
         "Application context is unavailable",
       )
+
+  private fun readStringList(value: Any?): List<String> {
+    val items = value as? List<*> ?: return emptyList()
+    return items.mapNotNull { it as? String }
+  }
 }

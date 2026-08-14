@@ -3,6 +3,19 @@ export function readHardwareSigningSessionTtlMs(): number {
   return Number(process.env.EXPO_PUBLIC_HARDWARE_SIGNING_SESSION_TTL_MS) || 30_000
 }
 
+/**
+ * mdoc sessions must last at least as long as the HCE arm window so a tap
+ * inside that window is not rejected as SigningSessionExpired.
+ */
+export function readHardwareSigningSessionTtlMsForPurpose(
+  purpose: 'oid4vci' | 'oid4vp' | 'mdoc' | 'attest',
+): number {
+  const sessionTtlMs = readHardwareSigningSessionTtlMs()
+  if (purpose !== 'mdoc') return sessionTtlMs
+  const armWindowMs = Number(process.env.EXPO_PUBLIC_HCE_ARM_WINDOW_MS) || 60_000
+  return Math.max(sessionTtlMs, armWindowMs)
+}
+
 /** Default max signatures per purpose when caller does not override. */
 export function readDefaultMaxSignatures(purpose: 'oid4vci' | 'oid4vp' | 'mdoc' | 'attest'): number {
   const envKey =
@@ -18,7 +31,7 @@ export function readDefaultMaxSignatures(purpose: 'oid4vci' | 'oid4vp' | 'mdoc' 
   return Number(envKey) || fallback
 }
 
-/** When true, production Android uses hardware P-256 signer instead of Keychain Ed25519. */
+/** When true, production Android uses hardware P-256 signer instead of Keychain Ed25519. Default on; set `false` to use the Ed25519 path. */
 export function isHardwareP256SigningEnabled(): boolean {
-  return process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED === 'true'
+  return process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED !== 'false'
 }

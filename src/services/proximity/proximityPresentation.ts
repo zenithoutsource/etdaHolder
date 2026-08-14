@@ -16,6 +16,7 @@ export type ProximityPresentationErrorCode =
   | 'CREDENTIAL_NOT_FOUND'
   | 'PRESENTATION_ACTIVE'
   | 'PRESENTATION_INACTIVE'
+  | 'DISCLOSURE_CEILING_EXCEEDED'
   | 'UNKNOWN'
 
 export class ProximityPresentationError extends Error {
@@ -59,6 +60,11 @@ function mapNativeError(error: unknown): ProximityPresentationError {
       return new ProximityPresentationError('PROXIMITY_NOT_READY', message)
     case 'PROXIMITY_NOT_READY':
       return new ProximityPresentationError('PROXIMITY_NOT_READY', message)
+    case 'DISCLOSURE_CEILING_EXCEEDED':
+      return new ProximityPresentationError(
+        'DISCLOSURE_CEILING_EXCEEDED',
+        'Presentation failed — try again',
+      )
     default:
       return new ProximityPresentationError('UNKNOWN', message)
   }
@@ -123,7 +129,9 @@ export async function startProximityPresentation(
       activeUnsubscribe = null
     },
     onError: (event) => {
-      logWalletError('proximity-engagement', 'native error', new Error(`${event.code}: ${event.message}`))
+      const scope =
+        event.code === 'DISCLOSURE_CEILING_EXCEEDED' ? 'proximity-policy' : 'proximity-engagement'
+      logWalletError(scope, 'native error', new Error(`${event.code}: ${event.message}`))
       callbacks.onError?.(mapNativeError(event))
       activeUnsubscribe?.()
       activeUnsubscribe = null

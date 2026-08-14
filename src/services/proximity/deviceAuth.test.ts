@@ -11,6 +11,7 @@ jest.mock('../crypto/crypto', () => ({
 jest.mock('./nativeProximityModule', () => ({
   requireNativeProximityModule: () => ({
     installMdocDeviceKey: jest.fn(),
+    installMdocSigningHandle: jest.fn(),
   }),
 }))
 
@@ -51,7 +52,7 @@ describe('deviceAuth', () => {
       withUnlockedHolderSeedForProximity: jest.Mock
     }
 
-    await expect(prepareMdocDeviceAuthForArm()).rejects.toThrow(
+    await expect(prepareMdocDeviceAuthForArm('cred-mdoc-1')).rejects.toThrow(
       'ProximityHardwareDeviceAuthUnavailable',
     )
     expect(withUnlockedHolderSeedForProximity).not.toHaveBeenCalled()
