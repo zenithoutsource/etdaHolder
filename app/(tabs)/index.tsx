@@ -14,7 +14,6 @@ import {
   WalletEmptyCredentialCard,
 } from "../../src/components/WalletCredentialSummaryCard";
 import { WalletDocumentMenuItem } from "../../src/components/WalletDocumentMenuItem";
-import { InjectTestMdlButton } from "../../src/components/proximity/InjectTestMdlButton";
 import { WalletHeader } from "../../src/components/WalletHeader";
 import { useScreenCaptureGuard } from "../../src/hooks/useScreenCaptureGuard";
 import { useStoredCredentials } from "../../src/hooks/useStoredCredentials";
@@ -375,8 +374,6 @@ export default function WalletHomeScreen() {
               <Text className="text-sm text-red-600">{error}</Text>
             </View>
           ) : null}
-
-          <InjectTestMdlButton />
 
           <View className="gap-2.5">
             {documentMenuItems.map((item) => {

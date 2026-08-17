@@ -81,35 +81,6 @@ class ExpoMdocProximityModule : Module() {
       MdocProximityEngine.storeMdoc(context, credentialId, docType, mdocBytes)
     }
 
-    AsyncFunction("generateTestMdl") { deviceJwkJson: String, promise: Promise ->
-      val context = appContext.reactContext?.applicationContext
-      if (context == null) {
-        promise.reject(MdocProximityErrors.PROXIMITY_NOT_READY, "Application context is unavailable", null)
-        return@AsyncFunction
-      }
-      val debuggable =
-        context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
-      if (!debuggable) {
-        promise.reject(
-          MdocProximityErrors.TEST_MDOC_INJECT_DISABLED,
-          "Test mDL inject is debug-only",
-          null,
-        )
-        return@AsyncFunction
-      }
-      CoroutineScope(Dispatchers.Default).launch {
-        try {
-          val publicKey = TestMdlGenerator.parseDevicePublicJwk(deviceJwkJson)
-          val mdocBytes = TestMdlGenerator.generate(publicKey)
-          promise.resolve(mdocBytes)
-        } catch (error: MdocProximityException) {
-          promise.reject(error.code, error.message, error)
-        } catch (error: Exception) {
-          promise.reject(MdocProximityErrors.INVALID_ARGUMENT, error.message, error)
-        }
-      }
-    }
-
     AsyncFunction("hasMdoc") { credentialId: String ->
       val context = appContext.reactContext?.applicationContext
         ?: throw MdocProximityException(

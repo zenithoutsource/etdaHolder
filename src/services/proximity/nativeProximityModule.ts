@@ -35,7 +35,6 @@ type NativeProximityModule = {
   installMdocDeviceKey: (seed: Uint8Array, publicKey: Uint8Array) => Promise<void>
   installMdocSigningHandle: (opaqueNativeHandle: string) => Promise<void>
   storeMdoc: (credentialId: string, docType: string, mdocBytes: Uint8Array) => Promise<void>
-  generateTestMdl: (deviceJwkJson: string) => Promise<Uint8Array>
   hasMdoc: (credentialId: string) => Promise<boolean>
   readMdoc: (credentialId: string) => Promise<Uint8Array>
   deleteMdoc: (credentialId: string) => Promise<void>
