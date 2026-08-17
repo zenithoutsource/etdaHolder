@@ -91,6 +91,11 @@ object CompanionSession {
     ndefSelectedFile.set(fileId)
   }
 
+  fun clearSelectedAid() {
+    selectedAid.set(null)
+    ndefSelectedFile.set(null)
+  }
+
   fun readSelectedAid(): String? = selectedAid.get()
 
   fun readNdefSelectedFile(): Int? = ndefSelectedFile.get()

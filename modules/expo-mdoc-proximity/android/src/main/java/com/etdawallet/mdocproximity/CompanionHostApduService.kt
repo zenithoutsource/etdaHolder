@@ -11,9 +11,7 @@ class CompanionHostApduService : HostApduService() {
     }
 
     return try {
-      if (isSelectAid(commandApdu, NdefType4Handler.NDEF_AID) ||
-        CompanionSession.readSelectedAid() == "ndef"
-      ) {
+      if (isSelectAid(commandApdu, NdefType4Handler.NDEF_AID)) {
         return NdefType4Handler.process(commandApdu)
       }
 
@@ -62,6 +60,7 @@ class CompanionHostApduService : HostApduService() {
       }
 
       when (CompanionSession.readSelectedAid()) {
+        "ndef" -> NdefType4Handler.process(commandApdu)
         "mdoc" -> dispatchMdoc(commandApdu)
         "companion" -> CompanionApduHandler.process(commandApdu)
         else -> sw(0x6D, 0x00)
@@ -78,6 +77,7 @@ class CompanionHostApduService : HostApduService() {
     if (selected == "mdoc") {
       MultipazMdocAdapter.onNfcDeactivated()
     }
+    CompanionSession.clearSelectedAid()
   }
 
   private fun dispatchMdoc(commandApdu: ByteArray): ByteArray? {
