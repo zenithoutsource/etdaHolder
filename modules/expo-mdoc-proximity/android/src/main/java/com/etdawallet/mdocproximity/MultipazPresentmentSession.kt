@@ -12,7 +12,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.cbor.Cbor
-import org.multipaz.cbor.Simple
 import org.multipaz.cbor.toDataItem
 import org.multipaz.crypto.Algorithm
 import org.multipaz.crypto.Crypto
@@ -302,6 +301,13 @@ object MultipazPresentmentSession {
     CompanionSession.setNdefMessage(
       NfcStaticHandover.encode(encodedDeviceEngagement.toByteArray()),
     )
+    val nfcHandover = NfcStaticHandover.handoverDataItem(
+      CompanionSession.readNdefMessage()
+        ?: throw MdocProximityException(
+          MdocProximityErrors.PROXIMITY_NOT_READY,
+          "NFC static handover NDEF is unavailable",
+        ),
+    )
     Log.i(TAG, "[multipaz-session] engagement URI ready")
 
     // Keep the same DeviceEngagement (eDeviceKey) until Cancel or DeviceResponse.
@@ -361,7 +367,7 @@ object MultipazPresentmentSession {
             transport = transport,
             eDeviceKey = eDeviceKey,
             deviceEngagement = deviceEngagement,
-            handover = Simple.NULL,
+            handover = nfcHandover,
             source = presentmentSource,
             keyAgreementPossible = listOf(EcCurve.P256),
             timeout = null,
