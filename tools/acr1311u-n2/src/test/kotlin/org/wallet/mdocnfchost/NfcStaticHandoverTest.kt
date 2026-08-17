@@ -1,5 +1,6 @@
 package org.wallet.mdocnfchost
 
+import org.multipaz.cbor.Simple
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -18,5 +19,12 @@ class NfcStaticHandoverTest {
     assertFailsWith<IllegalArgumentException> {
       NfcStaticHandover.decode(byteArrayOf())
     }
+  }
+
+  @Test
+  fun nfcHandoverIsNotNull() {
+    val ndef = NfcStaticHandover.encode(byteArrayOf(0x01))
+    val item = NfcStaticHandover.handoverDataItem(ndef)
+    assertTrue(item !== Simple.NULL)
   }
 }

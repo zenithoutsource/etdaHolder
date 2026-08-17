@@ -6,6 +6,7 @@ const verifyBannerEl = document.getElementById('verifyBanner')
 const previewEl = document.getElementById('preview')
 const presentBtn = document.getElementById('present')
 const scanBtn = document.getElementById('scan')
+const labEl = document.getElementById('lab')
 
 let scanStream = null
 
@@ -16,18 +17,20 @@ function setStatus(text, kind) {
 
 presentBtn.addEventListener('click', async () => {
   const engagement = engagementEl.value.trim()
-  if (!engagement) {
-    setStatus('Paste or scan the wallet Waiting for tap QR first.', 'err')
-    return
-  }
   presentBtn.disabled = true
   resultEl.hidden = true
-  setStatus('Waiting for tap on ACR1311… keep the wallet screen on.', 'muted')
+  setStatus(
+    engagement
+      ? 'Waiting for tap on ACR1311… keep the wallet screen on.'
+      : 'Waiting for tap on ACR1311… hold the phone still.',
+    'muted',
+  )
   try {
+    const payload = engagement ? { engagement } : {}
     const response = await fetch('/api/present', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ engagement }),
+      body: JSON.stringify(payload),
     })
     const body = await response.json()
     if (!body.ok) {
@@ -72,6 +75,7 @@ scanBtn.addEventListener('click', async () => {
         const raw = codes[0] && (codes[0].rawValue || codes[0].rawValue === '' ? codes[0].rawValue : null)
         if (raw && String(raw).startsWith('mdoc')) {
           engagementEl.value = String(raw)
+          labEl.open = true
           clearInterval(timer)
           stopScan()
           setStatus('QR captured. Click Wait for tap, then hold the phone to the reader.', 'ok')

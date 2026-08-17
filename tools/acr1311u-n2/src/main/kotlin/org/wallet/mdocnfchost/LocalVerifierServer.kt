@@ -24,7 +24,7 @@ object LocalVerifierServer {
     server.executor = Executors.newCachedThreadPool()
     server.start()
     println("mdoc NFC host listening at http://$host:$port")
-    println("Paste the wallet Waiting for tap QR, then hold the phone to the ACR1311.")
+    println("Open the page, click Wait for tap, then hold the armed phone to the ACR1311.")
     return server
   }
 
@@ -37,7 +37,6 @@ object LocalVerifierServer {
     val engagement = try {
       val obj = Json.parseToJsonElement(body).jsonObject
       obj["engagement"]?.jsonPrimitive?.contentOrNull
-        ?: throw IllegalArgumentException("Missing engagement")
     } catch (error: Exception) {
       json(exchange, 400, errorJson("INVALID_QR", error.message ?: "Invalid JSON"))
       return

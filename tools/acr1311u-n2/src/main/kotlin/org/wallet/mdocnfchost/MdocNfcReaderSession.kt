@@ -2,6 +2,7 @@ package org.wallet.mdocnfchost
 
 import org.multipaz.cbor.Bstr
 import org.multipaz.cbor.Cbor
+import org.multipaz.cbor.DataItem
 import org.multipaz.cbor.Simple
 import org.multipaz.cbor.Tagged
 import org.multipaz.cbor.buildCborArray
@@ -28,7 +29,73 @@ class MdocPresentmentException(
 ) : Exception(message)
 
 object MdocNfcReaderSession {
-  suspend fun present(engagementUri: String, timeoutMs: Long = DEFAULT_TAP_TIMEOUT_MS): MdocPresentmentResult {
+  // A hand-held phone on the ACR1311 often breaks NFC coupling mid-exchange. The
+  // wallet stays armed and re-advertises the same DeviceEngagement, so one dropped
+  // tap should not fail the whole request: retry within the tap window until a full
+  // DeviceResponse arrives or the window expires. INVALID_QR fails fast.
+  suspend fun present(engagementUri: String?, timeoutMs: Long = DEFAULT_TAP_TIMEOUT_MS): MdocPresentmentResult {
+    if (PresentmentEngagement.isTapOnly(engagementUri)) {
+      return presentFromTap(timeoutMs)
+    }
+    return presentFromEngagementUri(engagementUri!!, timeoutMs)
+  }
+
+  private suspend fun presentFromTap(timeoutMs: Long): MdocPresentmentResult {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var lastError: MdocPresentmentException? = null
+    while (System.currentTimeMillis() < deadline) {
+      val remaining = deadline - System.currentTimeMillis()
+      try {
+        val tag = try {
+          PcscNfcIsoTag.waitForCard(remaining)
+        } catch (error: Exception) {
+          throw MdocPresentmentException("NFC_TIMEOUT", error.message ?: "NFC wait failed")
+        }
+        val ndefMessage = try {
+          NdefType4Reader.readNdefMessage(tag)
+        } finally {
+          try {
+            tag.close()
+          } catch (_: Exception) {
+          }
+        }
+        val engagementBytes = try {
+          NfcStaticHandover.decode(ndefMessage)
+        } catch (error: IllegalArgumentException) {
+          throw MdocPresentmentException("INVALID_NDEF", error.message ?: "Invalid static handover NDEF")
+        }
+        val deviceEngagement = try {
+          DeviceEngagement.fromDataItem(Cbor.decode(engagementBytes))
+        } catch (error: Exception) {
+          throw MdocPresentmentException("INVALID_NDEF", "Static handover NDEF is not valid DeviceEngagement CBOR")
+        }
+        val connectionMethod = deviceEngagement.connectionMethods
+          .filterIsInstance<MdocConnectionMethodNfc>()
+          .firstOrNull()
+          ?: MdocConnectionMethodNfc(
+            commandDataFieldMaxLength = 0xffffL,
+            responseDataFieldMaxLength = 0xffffL,
+          )
+        val handover = NfcStaticHandover.handoverDataItem(ndefMessage)
+        return attemptExchange(
+          engagementBytes = engagementBytes,
+          deviceEngagement = deviceEngagement,
+          connectionMethod = connectionMethod,
+          timeoutMs = remaining,
+          handover = handover,
+        )
+      } catch (error: MdocPresentmentException) {
+        if (error.code == "INVALID_QR" || error.code == "INVALID_NDEF") throw error
+        lastError = error
+        println("[host] tap attempt failed (${error.code}): ${error.message}. Waiting for another tap...")
+        delayBeforeRetry()
+      }
+    }
+    throw lastError
+      ?: MdocPresentmentException("NFC_TIMEOUT", "No successful tap within the arm window")
+  }
+
+  private suspend fun presentFromEngagementUri(engagementUri: String, timeoutMs: Long): MdocPresentmentResult {
     val engagementBytes = try {
       EngagementParser.parseEngagementUri(engagementUri)
     } catch (error: IllegalArgumentException) {
@@ -52,6 +119,42 @@ object MdocNfcReaderSession {
         responseDataFieldMaxLength = 0xffffL,
       )
 
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var lastError: MdocPresentmentException? = null
+    while (System.currentTimeMillis() < deadline) {
+      val remaining = deadline - System.currentTimeMillis()
+      try {
+        return attemptExchange(
+          engagementBytes = engagementBytes,
+          deviceEngagement = deviceEngagement,
+          connectionMethod = connectionMethod,
+          timeoutMs = remaining,
+        )
+      } catch (error: MdocPresentmentException) {
+        if (error.code == "INVALID_QR") throw error
+        lastError = error
+        println("[host] tap attempt failed (${error.code}): ${error.message}. Waiting for another tap...")
+        delayBeforeRetry()
+      }
+    }
+    throw lastError
+      ?: MdocPresentmentException("NFC_TIMEOUT", "No successful tap within the arm window")
+  }
+
+  private suspend fun delayBeforeRetry() {
+    try {
+      kotlinx.coroutines.delay(300)
+    } catch (_: Exception) {
+    }
+  }
+
+  private suspend fun attemptExchange(
+    engagementBytes: ByteArray,
+    deviceEngagement: DeviceEngagement,
+    connectionMethod: MdocConnectionMethodNfc,
+    timeoutMs: Long,
+    handover: DataItem = Simple.NULL,
+  ): MdocPresentmentResult {
     val tag = try {
       PcscNfcIsoTag.waitForCard(timeoutMs)
     } catch (error: Exception) {
@@ -80,7 +183,7 @@ object MdocNfcReaderSession {
     val sessionTranscript = buildCborArray {
       add(Tagged(Tagged.ENCODED_CBOR, Bstr(engagementBytes)))
       add(Tagged(Tagged.ENCODED_CBOR, Bstr(encodedCoseKey)))
-      add(Simple.NULL)
+      add(handover)
     }
     val encodedSessionTranscript = Cbor.encode(sessionTranscript)
 

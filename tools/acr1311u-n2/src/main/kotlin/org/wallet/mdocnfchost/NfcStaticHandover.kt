@@ -3,6 +3,10 @@ package org.wallet.mdocnfchost
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.decodeToString
 import kotlinx.io.bytestring.encodeToByteString
+import org.multipaz.cbor.Bstr
+import org.multipaz.cbor.DataItem
+import org.multipaz.cbor.Simple
+import org.multipaz.cbor.buildCborArray
 import org.multipaz.mdoc.connectionmethod.MdocConnectionMethodNfc
 import org.multipaz.mdoc.role.MdocRole
 import org.multipaz.nfc.HandoverSelectRecord
@@ -24,6 +28,12 @@ object NfcStaticHandover {
   fun encode(deviceEngagementCbor: ByteArray): ByteArray {
     return generateHandoverSelectMessage(deviceEngagementCbor).encode()
   }
+
+  fun handoverDataItem(ndefMessage: ByteArray): DataItem =
+    buildCborArray {
+      add(Bstr(ndefMessage))
+      add(Simple.NULL)
+    }
 
   fun decode(ndefMessage: ByteArray): ByteArray {
     if (ndefMessage.isEmpty()) {

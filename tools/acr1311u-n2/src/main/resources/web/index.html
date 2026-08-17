@@ -14,6 +14,7 @@
     textarea { width: 100%; min-height: 92px; box-sizing: border-box; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
     button { background: #12315a; color: #fff; border: 0; border-radius: 999px; padding: 10px 18px; font-weight: 700; cursor: pointer; }
     button:disabled { opacity: .55; cursor: default; }
+    button.secondary { background: #e8edf3; color: #12315a; }
     video { width: 100%; max-height: 240px; background: #000; border-radius: 8px; margin-top: 8px; }
     .muted { color: #556; font-size: .92rem; }
     .ok { color: #0b6b32; }
@@ -21,22 +22,30 @@
     dl { display: grid; grid-template-columns: 160px 1fr; gap: 6px 12px; }
     dt { font-weight: 600; }
     .banner { background: #fff7e6; border: 1px solid #f0d48a; padding: 10px 12px; border-radius: 8px; }
+    details { margin-top: 12px; }
+    summary { cursor: pointer; font-weight: 600; color: #12315a; }
   </style>
 </head>
 <body>
   <main>
     <h1>Offline mDL NFC host</h1>
-    <p class="muted">This page talks to the ACR1311 on this PC. A browser cannot be the ISO 18013-5 NFC endpoint. Scan or paste the wallet <strong>Waiting for tap</strong> QR (<code>mdoc:</code>), then hold the phone to the reader. This is not an OID4VCI/OID4VP Scan-tab QR.</p>
+    <p class="muted">This page talks to the ACR1311 on this PC. A browser cannot be the ISO 18013-5 NFC endpoint. Arm NFC on the wallet, click <strong>Wait for tap</strong>, then hold the phone to the reader. The holder does not show an engagement QR on the golden path. This is not an OID4VCI/OID4VP Scan-tab QR.</p>
 
     <section class="panel">
-      <label for="engagement">Device Engagement QR</label>
-      <textarea id="engagement" placeholder="mdoc:..."></textarea>
       <p>
-        <button type="button" id="scan">Scan with camera</button>
         <button type="button" id="present">Wait for tap</button>
       </p>
-      <video id="preview" hidden playsinline></video>
       <p id="status" class="muted">Idle.</p>
+
+      <details id="lab">
+        <summary>Lab: paste mdoc QR</summary>
+        <label for="engagement">Device Engagement QR</label>
+        <textarea id="engagement" placeholder="mdoc:..."></textarea>
+        <p>
+          <button type="button" id="scan" class="secondary">Scan with camera</button>
+        </p>
+        <video id="preview" hidden playsinline></video>
+      </details>
     </section>
 
     <section class="panel" id="result" hidden>
