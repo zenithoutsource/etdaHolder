@@ -1,5 +1,4 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import QRCode from 'react-native-qrcode-svg'
 import { Text, View } from 'react-native'
 
 import { AppButton } from '@/src/components/AppButton'
@@ -7,14 +6,14 @@ import { AppButton } from '@/src/components/AppButton'
 import { THEME } from '../../config/themeColors'
 
 type WaitingForTapPanelProps = {
-  deviceEngagementUri?: string | null
   preparing?: boolean
+  ceilingLabels?: string[]
   onCancel: () => void
 }
 
 export function WaitingForTapPanel({
-  deviceEngagementUri,
   preparing = false,
+  ceilingLabels = [],
   onCancel,
 }: WaitingForTapPanelProps) {
   return (
@@ -24,24 +23,16 @@ export function WaitingForTapPanel({
         <Text className="mt-4 text-center text-lg font-semibold text-ink">
           {preparing ? 'Preparing NFC…' : 'Waiting for Tap...'}
         </Text>
-        {preparing ? (
-          <Text className="mt-2 text-center text-sm text-slate">
-            Keep this screen on. The engagement QR appears after NFC is armed. Do not tap the reader yet.
+        <Text className="mt-2 text-center text-sm text-slate">
+          {preparing
+            ? 'Keep this screen on. Do not leave until NFC is ready.'
+            : 'Keep this screen on. Hold the phone still on the reader until Success. Do not tap and lift.'}
+        </Text>
+        {ceilingLabels.length > 0 && !preparing ? (
+          <Text className="mt-4 text-center text-sm text-slate">
+            This tap may share: {ceilingLabels.join(', ')}.
           </Text>
-        ) : deviceEngagementUri ? (
-          <>
-            <Text className="mt-2 text-center text-sm text-slate">
-              Let the reader scan this QR, then hold your phone near the reader
-            </Text>
-            <View className="mt-6 rounded-2xl bg-white p-4">
-              <QRCode value={deviceEngagementUri} size={200} />
-            </View>
-          </>
-        ) : (
-          <Text className="mt-2 text-center text-sm text-slate">
-            Hold your phone near the reader
-          </Text>
-        )}
+        ) : null}
       </View>
       <AppButton
         variant="outline-block"

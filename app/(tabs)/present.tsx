@@ -8,6 +8,7 @@ import { PresentationResultPanel } from '@/src/components/proximity/Presentation
 import { WaitingForTapPanel } from '@/src/components/proximity/WaitingForTapPanel'
 import { WalletHeader } from '@/src/components/WalletHeader'
 import { HCE_ARM_WINDOW_MS } from '@/src/config/dualFormatPolicy'
+import { getReaderProfileForDocumentType } from '@/src/config/readerProfiles'
 import { useAndroidBackNavigation } from '@/src/hooks/useAndroidBackNavigation'
 import { useReturnToWallet } from '@/src/hooks/useReturnToWallet'
 import { useStoredCredentials } from '@/src/hooks/useStoredCredentials'
@@ -39,8 +40,8 @@ export default function PresentScreen() {
     requiresHardwareReissue ||
     (credential ? !isCredentialPresentable(credential) : false)
   const status = useProximityStore((state) => state.status)
+  const sharingMode = useProximityStore((state) => state.sharingMode)
   const sharedFields = useProximityStore((state) => state.sharedFields)
-  const deviceEngagementUri = useProximityStore((state) => state.deviceEngagementUri)
   const error = useProximityStore((state) => state.error)
   const openPresentation = useProximityStore((state) => state.openPresentation)
   const reset = useProximityStore((state) => state.reset)
@@ -100,6 +101,14 @@ export default function PresentScreen() {
 
   const exitFlow = useAndroidBackNavigation(handleDone)
 
+  const readerProfile = credential
+    ? getReaderProfileForDocumentType(credential.type, sharingMode)
+    : undefined
+  const ceilingLabels =
+    readerProfile?.profileId === 'mdl-acr1311u-n2-mdoc-only'
+      ? ['family name', 'given name', 'date of birth']
+      : (readerProfile?.mdocFields.map((field) => field.identifier.replace(/_/g, ' ')) ?? [])
+
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
       <WalletHeader title="NFC" onBack={exitFlow} />
@@ -141,7 +150,7 @@ export default function PresentScreen() {
         ) : null}
 
         {status === 'hce-armed' || status === 'engaged' ? (
-          <WaitingForTapPanel deviceEngagementUri={deviceEngagementUri} onCancel={exitFlow} />
+          <WaitingForTapPanel ceilingLabels={ceilingLabels} onCancel={exitFlow} />
         ) : null}
 
         {status === 'complete' && sharedFields ? (
