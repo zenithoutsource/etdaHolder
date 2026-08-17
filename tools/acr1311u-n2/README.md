@@ -53,6 +53,8 @@ For debugging engagement parsing without NDEF:
 2. Paste it into the host engagement field, then click **Wait for tap**.
 3. Tap as above.
 
+**Not decrypt-compatible with the tap-only wallet.** The holder golden path builds the session transcript with the NFC static-handover CBOR read from Type 4 NDEF. This host paste-`mdoc:` path still supplies `Simple.NULL` for the handover slot, so DeviceResponse decryption will fail even when SELECT succeeds. Use this fallback only to exercise engagement parsing and early APDU flow; do not treat a decrypt failure here as a wallet regression. Golden path remains empty-engagement **Wait for tap**.
+
 This path is not the production holder golden path. See [`docs/superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md`](../../docs/superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md).
 
 ### Mapped errors

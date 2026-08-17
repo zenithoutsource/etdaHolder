@@ -27,6 +27,7 @@ export type ProximityArmConfig = {
   companionTransportPluginId?: string
   companionSdJwt?: string
   armWindowMs: number
+  responseDrainGraceMs?: number
 }
 
 type NativeProximityModule = {
@@ -39,6 +40,7 @@ type NativeProximityModule = {
   readMdoc: (credentialId: string) => Promise<Uint8Array>
   deleteMdoc: (credentialId: string) => Promise<void>
   armProximitySession: (config: ProximityArmConfig) => Promise<void>
+  extendProximityArm?: (armWindowMs: number) => void
   supplyCompanionPresentation: (presentation: string) => Promise<void>
   startProximityPresentation: (credentialId: string, deviceKeyId: string) => Promise<void>
   stopProximityPresentation: () => Promise<void>

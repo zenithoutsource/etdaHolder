@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ExpoMdocProximityModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -46,6 +47,10 @@ class ExpoMdocProximityModule : Module() {
 
     Function("getDeviceEngagementUri") {
       MdocProximityEngine.getDeviceEngagementUri()
+    }
+
+    Function("extendProximityArm") { armWindowMs: Double ->
+      CompanionSession.extendArm(armWindowMs.toLong())
     }
 
     AsyncFunction("installMdocDeviceKey") { seed: ByteArray, publicKey: ByteArray ->
@@ -101,62 +106,31 @@ class ExpoMdocProximityModule : Module() {
     }
 
     AsyncFunction("armProximitySession") { config: Map<String, Any?>, promise: Promise ->
-      try {
-        val credentialId = config["credentialId"] as? String
-          ?: throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "credentialId is required")
-        val sharingMode = config["sharingMode"] as? String
-          ?: throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "sharingMode is required")
-        val profileId = config["profileId"] as? String
-          ?: throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "profileId is required")
-        val approvedFields = readStringList(config["approvedMdocFields"])
-        if (approvedFields.isEmpty()) {
-          throw MdocProximityException(
-            MdocProximityErrors.INVALID_ARGUMENT,
-            "approvedMdocFields is required",
-          )
+      CoroutineScope(Dispatchers.Main.immediate).launch {
+        try {
+          val activity = appContext.currentActivity
+            ?: throw MdocProximityException(
+              MdocProximityErrors.PROXIMITY_NOT_READY,
+              "CurrentActivityUnavailable",
+            )
+          if (!HcePreferredService.claim(activity)) {
+            throw MdocProximityException(
+              MdocProximityErrors.PROXIMITY_NOT_READY,
+              "HcePreferredServiceUnavailable",
+            )
+          }
+
+          withContext(Dispatchers.Default) {
+            armProximitySessionBody(config)
+          }
+          promise.resolve(null)
+        } catch (error: MdocProximityException) {
+          CompanionSession.disarm()
+          promise.reject(error.code, error.message, error)
+        } catch (error: Exception) {
+          CompanionSession.disarm()
+          promise.reject(MdocProximityErrors.PROXIMITY_NOT_READY, error.message, error)
         }
-        val companionSdJwt = config["companionSdJwt"] as? String
-        val armWindowMs = (config["armWindowMs"] as? Number)?.toLong() ?: 60_000L
-
-        val context = requireContext()
-        if (!MdocProximityEngine.hasMdoc(context, credentialId)) {
-          throw MdocProximityException(
-            MdocProximityErrors.CREDENTIAL_NOT_FOUND,
-            "No mDOC is stored for this credential",
-          )
-        }
-
-        CompanionSession.arm(
-          ProximityArmState(
-            credentialId = credentialId,
-            sharingMode = sharingMode,
-            profileId = profileId,
-            approvedMdocFields = approvedFields,
-            companionSdJwt = companionSdJwt,
-            armedUntilMs = System.currentTimeMillis() + armWindowMs,
-          ),
-        )
-
-        CompanionSession.onCompanionSignRequested = { nonce ->
-          sendEvent(
-            "onCompanionSignRequested",
-            mapOf("nonceBase64Url" to android.util.Base64.encodeToString(nonce, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)),
-          )
-        }
-
-        MdocProximityEngine.preparePresentationEngine(context)
-        if (MultipazPresentmentSession.deviceEngagementUri() == null) {
-          throw MdocProximityException(
-            MdocProximityErrors.PROXIMITY_NOT_READY,
-            "Device engagement QR was not produced",
-          )
-        }
-
-        promise.resolve(null)
-      } catch (error: MdocProximityException) {
-        promise.reject(error.code, error.message, error)
-      } catch (error: Exception) {
-        promise.reject(MdocProximityErrors.PROXIMITY_NOT_READY, error.message, error)
       }
     }
 
@@ -210,6 +184,62 @@ class ExpoMdocProximityModule : Module() {
         MdocProximityErrors.PROXIMITY_NOT_READY,
         "Application context is unavailable",
       )
+
+  private fun armProximitySessionBody(config: Map<String, Any?>) {
+    val credentialId = config["credentialId"] as? String
+      ?: throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "credentialId is required")
+    val sharingMode = config["sharingMode"] as? String
+      ?: throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "sharingMode is required")
+    val profileId = config["profileId"] as? String
+      ?: throw MdocProximityException(MdocProximityErrors.INVALID_ARGUMENT, "profileId is required")
+    val approvedFields = readStringList(config["approvedMdocFields"])
+    if (approvedFields.isEmpty()) {
+      throw MdocProximityException(
+        MdocProximityErrors.INVALID_ARGUMENT,
+        "approvedMdocFields is required",
+      )
+    }
+    val companionSdJwt = config["companionSdJwt"] as? String
+    val armWindowMs = (config["armWindowMs"] as? Number)?.toLong() ?: 180_000L
+    val responseDrainGraceMs = (config["responseDrainGraceMs"] as? Number)?.toLong() ?: 5_000L
+
+    val context = requireContext()
+    if (!MdocProximityEngine.hasMdoc(context, credentialId)) {
+      throw MdocProximityException(
+        MdocProximityErrors.CREDENTIAL_NOT_FOUND,
+        "No mDOC is stored for this credential",
+      )
+    }
+
+    CompanionSession.arm(
+      ProximityArmState(
+        credentialId = credentialId,
+        sharingMode = sharingMode,
+        profileId = profileId,
+        approvedMdocFields = approvedFields,
+        companionSdJwt = companionSdJwt,
+        armedUntilMs = System.currentTimeMillis() + armWindowMs,
+        responseDrainGraceMs = responseDrainGraceMs,
+      ),
+    )
+
+    CompanionSession.onCompanionSignRequested = { nonce ->
+      sendEvent(
+        "onCompanionSignRequested",
+        mapOf("nonceBase64Url" to android.util.Base64.encodeToString(nonce, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)),
+      )
+    }
+
+    MdocProximityEngine.preparePresentationEngine(context)
+    if (MultipazPresentmentSession.deviceEngagementUri() == null) {
+      throw MdocProximityException(
+        MdocProximityErrors.PROXIMITY_NOT_READY,
+        "Device engagement QR was not produced",
+      )
+    }
+    // Start the arm clock when the QR exists so biometric/prepare time does not consume it.
+    CompanionSession.extendArm(armWindowMs)
+  }
 
   private fun readStringList(value: Any?): List<String> {
     val items = value as? List<*> ?: return emptyList()
