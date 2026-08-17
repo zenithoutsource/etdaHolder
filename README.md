@@ -8,11 +8,11 @@ Expo SDK 54 mobile Holder Wallet for **OID4VCI 1.0** credential issuance and **O
 
 | Area | Status |
 |------|--------|
-| **Crypto & storage** | Keychain-protected Ed25519 (`alg: EdDSA`); per-credential signing keys + wallet attestation key (ADR 0010); encrypted MMKV; biometric sign-time gate |
+| **Crypto & storage** | Hardware P-256 / ES256 `k_cred` default (ADR 0011); `k_attest` wallet attestation key; flag-off Keychain Ed25519; encrypted MMKV; one biometric prompt per action |
 | **OID4VCI** | Pre-Authorized Code flow, deferred issuance (§8.4), `dc+sd-jwt` / JWT VC / `mso_mdoc`, same-device deeplink intake, portal-driven ThaID entry, dual-format driving licence |
 | **OID4VP** | Verifier QR, JAR trust, DCQL `credential_sets`, `did:web` verifier trust, selective disclosure, dedicated callback screen, My QR broker path; optional `@openid4vc/openid4vp` adapter behind feature flag |
-| **Proximity** | Phase 1 NFC tag read (Android); companion HCE + Multipaz mDL module in progress — full E2E on A26 + ACR1311 pending |
-| **Lifecycle** | Wallet key renewal (P3), issuer suspension (P6), document expiry (P7), revoke/delete with biometric gate, history log |
+| **Proximity** | Companion HCE + Multipaz mDL on Android; A26 + ACR1311 DeviceResponse still ungated |
+| **Lifecycle** | Wallet key renewal (P3), issuer suspension (P6), document expiry (P7), revoke/delete with biometric gate, hardware-reissue-required for leftover Ed25519 cards, history log |
 | **Auth** | Email-first unified PIN (server + app lock), startup unlock, push notifications (renewal / VP request / expiry) |
 | **Release** | EAS preview builds supported; production golden-path walkthrough and NFC E2E still tracked in `docs/TASKS.md` |
 
@@ -49,7 +49,7 @@ Optional overrides: copy `.env.development.local.example` → `.env.development.
 | Path | Purpose |
 |------|---------|
 | `app/` | Expo Router screens (Wallet, My QR, Scan, History, credential detail, VP callback) |
-| `src/services/crypto/` | Ed25519 keys, Holder DID, PoP / KB-JWT signing, wallet key rotation |
+| `src/services/crypto/` | Hardware P-256 / ES256 `k_cred` (flag-off Ed25519), Holder DID, PoP / KB-JWT signing |
 | `src/services/vci/` | OID4VCI offer resolve, claim, deferred poll, backend sync |
 | `src/services/vp/` | OID4VP resolve, DCQL match, disclosure, direct_post, broker My QR |
 | `src/services/proximity/` | ISO 18013-5 companion transport and mdoc presentation |
