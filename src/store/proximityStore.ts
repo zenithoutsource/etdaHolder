@@ -99,15 +99,33 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
   openPresentation: (credentialId, sharingMode = 'mdoc-only') => {
     activeUnsubscribe?.()
     activeUnsubscribe = null
+    const record = readStoredCredentialById(credentialId)
+    const profile = record
+      ? getReaderProfileForDocumentType(record.type, sharingMode)
+      : undefined
+    const approvedMdocFields = profile ? listMdocFieldKeysFromProfile(profile) : []
+    if (approvedMdocFields.length === 0) {
+      set({
+        status: 'error',
+        selectedCredentialId: credentialId,
+        sharingMode,
+        approvedMdocFields: [],
+        sharedFields: null,
+        deviceEngagementUri: null,
+        error: 'No reader profile is configured for this document type.',
+      })
+      return
+    }
     set({
-      status: 'awaiting-consent',
+      status: 'approved',
       selectedCredentialId: credentialId,
       sharingMode,
-      approvedMdocFields: null,
+      approvedMdocFields,
       sharedFields: null,
       deviceEngagementUri: null,
       error: null,
     })
+    void get().approvePresentation(approvedMdocFields)
   },
 
   approvePresentation: async (approvedMdocFields) => {
