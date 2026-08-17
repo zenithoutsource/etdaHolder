@@ -1,16 +1,16 @@
-const mockArmProximityPresentation = jest.fn(async () => undefined)
+const mockArmProximityPresentation = jest.fn(async (_request?: unknown) => undefined)
 const mockDisarmProximityPresentation = jest.fn(async () => undefined)
 const mockDenyProximityPresentation = jest.fn(async () => undefined)
 const mockSubscribeToProximityEvents = jest.fn(() => () => undefined)
 const mockGetDeviceEngagementUri = jest.fn(() => null)
 
 jest.mock('@/src/services/proximity/proximityArmSession', () => ({
-  armProximityPresentation: (...args: unknown[]) => mockArmProximityPresentation(...args),
-  disarmProximityPresentation: (...args: unknown[]) => mockDisarmProximityPresentation(...args),
+  armProximityPresentation: (request: unknown) => mockArmProximityPresentation(request),
+  disarmProximityPresentation: () => mockDisarmProximityPresentation(),
 }))
 
 jest.mock('@/src/services/proximity/proximityPresentation', () => ({
-  denyProximityPresentation: (...args: unknown[]) => mockDenyProximityPresentation(...args),
+  denyProximityPresentation: () => mockDenyProximityPresentation(),
   ProximityPresentationError: class ProximityPresentationError extends Error {
     code: string
     constructor(code: string, message: string) {
@@ -21,7 +21,7 @@ jest.mock('@/src/services/proximity/proximityPresentation', () => ({
 }))
 
 jest.mock('@/src/services/proximity/nativeProximityModule', () => ({
-  subscribeToProximityEvents: (...args: unknown[]) => mockSubscribeToProximityEvents(...args),
+  subscribeToProximityEvents: () => mockSubscribeToProximityEvents(),
   requireNativeProximityModule: () => ({ getDeviceEngagementUri: mockGetDeviceEngagementUri }),
 }))
 
