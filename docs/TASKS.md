@@ -1,5 +1,125 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-17 (tap-only static NFC handover)
+
+- Holder golden path no longer shows DeviceEngagement QR or Add test mDL.
+- Physical gate: three tap-only runs on A26 + ACR1311 with an issued mDL.
+- Runbook: [`tools/acr1311u-n2/README.md`](../tools/acr1311u-n2/README.md). Spec: [`docs/superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md`](./superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md).
+
+#### Physical gate — tap-only static NFC handover
+
+**Status:** pending operator
+
+Operator checklist (three issued-mDL taps on Samsung Galaxy A26 + ACR1311U-N2):
+
+- [ ] Rebuild wallet: `npx expo run:android`. Restart host: `.\gradlew.bat run` from `tools/acr1311u-n2/`.
+- [ ] Run 1: host **Wait for tap** with **empty** engagement field; wallet Waiting for tap (**no** holder QR); hold on reader until three claims + wallet Success.
+- [ ] Run 2: same (empty host engagement; no holder QR).
+- [ ] Run 3: same.
+
+Rules: a second hold after NDEF→mdoc field drop is allowed; requiring a holder QR is not.
+
+| Field | Value |
+|---|---|
+| Credential source | Issued mDL (OID4VCI), not Add test mDL |
+| Host engagement field | Empty on all three runs |
+| Holder DeviceEngagement QR | Not used (must not be required for pass) |
+| Field drop retry | Second hold allowed after NDEF→mdoc drop |
+| **Overall** | **pending operator** |
+
+### Session 2026-08-17 (removed Development presentation sessions)
+
+- Deleted the `/dev/vp-session` and `/dev/vp-verify` VP relay, its OpenAPI tag,
+  and unused session/HTML/gateway helper modules. Wallet-initiated QR stays on
+  Broker `/broker/session`.
+- Development Swagger canonical paths remain `/wallet-api/dev/docs` and
+  `/wallet-api/dev/openapi.json` (`/dev/docs` is a local alias).
+- When development APIs are enabled, `/wallet-api/docs` merges lifecycle
+  simulation operations under `/wallet-api/dev/*`.
+- `ENABLE_DEVELOPMENT_APIS=true` keeps that surface mounted if the shared host
+  runs `NODE_ENV=production`. Leave it unset/false on a true production Wallet
+  Backend.
+
+### Session 2026-08-17 (P6 holder revoke PIN/biometric + ES256-only PoP)
+
+- P6 Holder-initiated step **7**: Revoke uses the same PIN verify/setup + optional
+  biometric security phase as Delete (`credential/[id].tsx`).
+- P6 Holder-initiated step **10**: holder revoke PoP is **ES256-only** via hardware
+  `k_cred` (ADR 0011). Credentials without a hardware P-256 key cannot revoke;
+  Wallet shows a blocking dialog before the nonce request.
+- Intentional two-auth-event exception for revoke: step 7 app PIN/biometric, then
+  the hardware sign-time gate on `signHolderStatusChangePop`.
+- DEV Issuer `verifyHolderRevokePop` accepts ES256 only (EdDSA PoP is rejected).
+
+### Session 2026-08-17 (PID-first presentation gate)
+
+- P1 Valid / P2 PID-first: without a usable `ThaiNationalID`, the wallet no longer
+  presents other documents. Issuance was already gated; presentation was not.
+- OID4VP resolve throws `PresentationPidRequired` when a driving licence or
+  transcript matches but no usable PID is stored. My QR, NFC Present, and
+  credential-detail My QR/NFC show the ThaID-first dialog instead of continuing.
+- `canPresentCredentialType` is the shared predicate (PID itself stays presentable).
+
+### Session 2026-08-17 (My QR engagement QR is document-agnostic)
+
+- My QR no longer pre-selects driving licence (or ThaID). Broker `POST /broker/session`
+  starts without a credential type; Verifier `docType` + DCQL choose the document
+  after scan. Hint copy is generic (`สแกน QR Code ของฉัน`).
+- Fixed double `create-session` on tab open: credentials refresh was flipping the
+  resolver and starting a second broker session. Session now starts once per focus.
+- Document-detail My QR navigates to the My QR tab instead of opening a
+  document-scoped modal.
+
+### Session 2026-08-17 (A26 + ACR1311 NFC presentment GOLDEN PATH PASSED)
+
+- End-to-end ISO 18013-5 NFC presentment verified on the physical Samsung Galaxy
+  A26 + ACR1311U-N2 pairing: wallet armed → engagement QR → tap → DeviceRequest →
+  silent consent (ceiling) → DeviceResponse → host page decrypted and displayed
+  all three mDL claims (family_name / given_name / birth_date); wallet showed
+  Success after the drain grace window. This was the release-gate scenario from
+  ADR 0003 / ADR 0006.
+- Fix stack that got here (all this date): arm window starts at QR + refresh;
+  keep-listening retry loop with stable eDeviceKey; MdocEngineProbe companion-
+  object reflection fix; host tap-window retry; Multipaz failTransport crash
+  shield (duplicate-SELECT guard); DeviceResponse drain grace before Success.
+- Remaining cosmetic item: host banner "TEST IACA did not match x5chain" — the
+  `testdata/test-iaca.pem` on disk is from a different generator run than the test
+  mDL stored in the wallet. Regenerate + reinstall the test mDL (or point
+  `MDOC_TEST_IACA_PEM` at the matching cert) to see the verified banner. Not a
+  wallet defect; production uses real issuer IACA trust anchors.
+
+### Session 2026-08-17 (wallet Success but host page empty)
+
+- Wallet showed "Success! Shared 3 fields" while the host web page showed nothing.
+  Root cause: `onSendingResponse` fires when the first response chunk is queued;
+  the reader drains the rest via ~249-byte GET RESPONSE rounds
+  (`PcscNfcIsoTag.maxTransceiveLength=256`). A mid-drain failure still looked like
+  success — the loop completed and the host retries hit a finished session.
+- Fix: after a DeviceResponse is sent the session now grace-listens
+  (`EXPO_PUBLIC_HCE_RESPONSE_DRAIN_GRACE_MS`, default 5000 ms, plumbed
+  JS→`ProximityArmConfig`→`ProximityArmState`) for a reader reconnect. Reconnect →
+  serve the same approved fields again (silent consent, signing session still
+  covers the arm window). No reconnect → drain succeeded →
+  `completePresentation` fires once (JS then disarms). Success on the wallet is
+  now delayed ~5 s but truthful. Rebuild (`npx expo run:android`).
+
+- App crashed after "device engaged": `IllegalStateException: failTransport called
+  without holding lock`. Multipaz 0.100 bug (still present on `main`): every
+  `processApdu` error path calls `failTransport()` outside `mutex.withLock`, and
+  its `check(mutex.isLocked)` escapes the fire-and-forget APDU coroutine, killing
+  the process. Trigger here was almost certainly a duplicate SELECT — host tap
+  retry with the phone still in the field hits `check(!applicationSelected)`.
+- Shield (native module, `npx expo run:android` required): `MultipazMdocAdapter`
+  mirrors `applicationSelected`; `MdocApduHandler.guardAgainstMultipazCrash`
+  answers dangerous APDUs locally (duplicate SELECT → recycle transport + `6F00`;
+  ENVELOPE/GET RESPONSE before SELECT → `6985`; non-mdoc SELECT → `6A82`; bad
+  ENVELOPE CLA → `6F00`; unsupported INS → `6D00`);
+  `MultipazPresentmentSession.isTransportListening()` returns `6A81` during the
+  re-advertise gap so the reader never stalls waiting on a response.
+- Residual unguarded Multipaz paths (low risk with the Multipaz reader on the host
+  side): non-last ENVELOPE with LE≠0, GET RESPONSE with no pending chunks, DO'53'
+  parse errors.
+
 ### Session 2026-08-17 (PR 11 review fixes)
 
 - Merged `master` into `dev` and rewrote README Current Status to ADR 0011
@@ -11,6 +131,47 @@
 - Same-device issuance continuation failures now `logWalletError` before Home.
 - VP disclosure UI test no longer identity-mocks `filterPresentableCredentials`.
 - CLAUDE.md / CONTEXT.md / AGENTS.md / ARCHITECTURE.md aligned with ADR 0011.
+
+### Session 2026-08-17 (mid-exchange NFC field drop)
+
+- After the probe fix, a tap connected then `NfcTransportMdoc.onDeactivated` fired
+  (`ClosedReceiveChannelException`); the reader logged "Failed while waiting for
+  message". Physical NFC coupling drop mid-exchange, not a wallet bug — the wallet
+  retry loop logged `listening again` and stayed armed.
+- Host `MdocNfcReaderSession.present` now retries within the tap window: one "Wait
+  for tap" tolerates re-taps until a full DeviceResponse or window expiry, matching
+  the wallet. `INVALID_QR` fails fast. Restart `gradlew run`.
+- Remaining is physical: place the A26 NFC antenna (upper-center back) flat on the
+  reader and hold still through the whole exchange; do not tap-and-lift.
+
+### Session 2026-08-17 (6A81 root cause: capability probe)
+
+- Logcat showed routing fine (`setPreferredService claimed=true`) but every armed
+  mdoc APDU logged `[hce] reject APDU adapter-unavailable`, so `MdocApduHandler`
+  returned `6A81` on every tap regardless of arm/QR state.
+- Root cause: `MdocEngineProbe` reflectively looked up `processCommandApdu` on the
+  outer `NfcTransportMdoc` class, but Multipaz declares it on the companion object
+  (not `@JvmStatic`), so the lookup always failed. The direct Kotlin call in
+  `MultipazMdocAdapter` was always fine.
+- Fix: probe gates on `NfcTransportMdoc` class presence only (compile-time dep of
+  the adapter), dropping the brittle signature reflection. Rebuild
+  (`npx expo run:android`).
+
+### Session 2026-08-17 (HCE 6A81 after a missed tap)
+
+- Host `6A81` with a live QR meant SELECT reached this app (armed) but native
+  presentment had stopped: a missed tap fails Multipaz NFC, and
+  `TimeoutCancellationException` (a `CancellationException`) aborted the session
+  job, whose `finally` cleared the engagement URI while JS still showed the QR.
+- Listen loop now retries until Cancel or DeviceResponse, keeps the same
+  `eDeviceKey` QR, deactivates-then-delays before re-advertising, and does not
+  clear the URI while still armed.
+
+### Session 2026-08-17 (HCE arm window starts at QR)
+
+- Arm clock now starts when the engagement QR is produced (default
+  `EXPO_PUBLIC_HCE_ARM_WINDOW_MS=180000`); Waiting for tap refreshes the window
+  while open. Unarmed SELECT logs `no-arm-state` vs `expired`. Host tap wait 180s.
 
 ### Session 2026-08-14 (hard hardware P-256 holder-signing cutover)
 
@@ -1393,10 +1554,10 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 ### Buildable now (wallet-side)
 
-[x] P6 Case 1 Issuer round-trip for holder revoke (v1 dev): `POST /wallet-api/dev/issuer/holder-revoke` + `holderRevokeService`; credential detail awaits Issuer `201` before `recordCredentialLifecycleAction('Revoke')`. Keeps credential record for history; no per-credential key destruction (ADR 0009). v1: no PoP JWT — Wallet PIN approve unchanged.
-[x] P6 Case 3 Single-Use credential self-cleanup (v1): `CredentialLifecycleAction` `'Used'` via `recordCredentialLifecycleAction`, parser whitelist, `credential-used` history event, inactive badge, dev `POST /wallet-api/dev/wallet/mark-used`. Presentation blocked through existing lifecycle filter. No per-credential key destruction (ADR 0009).
-[x] P6 Slice 1 auto single-use consumption: `MedicalCertificate` schema (`singleUse: true` in `cardSchemas.ts`); `maybeConsumeSingleUseCredential()` after OID4VP and My QR presentation success (`presentationHistory.ts`, `walletInitiatedPresentation.ts`). Transcript/ThaID/DL not auto-consumed. Spec: `docs/superpowers/specs/2026-07-13-p6-wallet-gap-closure-design.md`.
-[x] P6 Slice 2 holder revoke PoP: `POST /dev/issuer/holder-revoke/nonce` + `signHolderStatusChangePop` + DEV Issuer PoP verify; Revoke skips PIN (biometric sign gate only). `holderRevokeService.ts`, `server/src/services/holderRevokePopVerifier.ts`.
+[x] P6 Case 1 Issuer round-trip for holder revoke: `POST /wallet-api/dev/issuer/holder-revoke` + `holderRevokeService`; credential detail awaits Issuer `201` before `recordCredentialLifecycleAction('Revoke')`. Lifecycle revoke/delete/used calls `destroyIssuanceCredentialKey` (ADR 0010/0011). Holder revoke PoP is ES256-only; Revoke uses PIN/biometric (step 7) then hardware sign gate (step 10).
+[x] P6 Case 3 Single-Use credential self-cleanup: `CredentialLifecycleAction` `'Used'` via `recordCredentialLifecycleAction`, parser whitelist, `credential-used` history event, inactive badge, dev `POST /wallet-api/dev/wallet/mark-used`. Presentation blocked through existing lifecycle filter. `Used` destroys the per-credential key via `destroyIssuanceCredentialKey` (ADR 0010/0011).
+[x] P6 Slice 1 auto single-use consumption: `MedicalCertificate` schema (`singleUse: true` in `cardSchemas.ts`); `maybeConsumeSingleUseCredential()` after OID4VP and My QR presentation success (`presentationHistory.ts`, `Oid4VpDisclosureFlow.tsx`). Transcript/ThaID/DL not auto-consumed. Spec: `docs/superpowers/specs/2026-07-13-p6-wallet-gap-closure-design.md`.
+[x] P6 Slice 2 holder revoke PoP: `POST /dev/issuer/holder-revoke/nonce` + `signHolderStatusChangePop` (ES256 hardware `k_cred` only) + DEV Issuer ES256 PoP verify; Revoke uses PIN/biometric (step 7) + ES256 PoP (step 10). `holderRevokeService.ts`, `server/src/services/holderRevokePopVerifier.ts`.
 [x] OID4VP same-device link intake: `openid4vp` scheme in `app.json`, `readPendingPresentationRoute` + `vpGeneration` in `deeplinkStore`, Scan dismiss/remount parity, tests in `deeplinkStore.test.ts` and `ScanScreenDeeplink.test.tsx`. Manual: `adb shell am start -a android.intent.action.VIEW -d "openid4vp://authorize?..."` after `npx expo prebuild --platform android`.
 [x] ADR: single wallet-level Ed25519 key vs journey's per-credential `did:key` (P2 step 12) — accepted for v1 in `docs/adr/0009-wallet-level-holder-signing-key.md`: one Keychain Ed25519 seed; P3 rotation marks all credentials; P6 per-document key destruction deferred (lifecycle markers gate presentation instead).
 
@@ -1742,10 +1903,10 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 ### Session 2026-07-08 (User Journey gap sprint — slices 1–4)
 
-- **Slice 1:** ADR 0009 (`docs/adr/0009-wallet-level-holder-signing-key.md`) — single wallet Ed25519 key accepted for v1; per-document key destruction deferred.
+- **Slice 1:** ADR 0009 (`docs/adr/0009-wallet-level-holder-signing-key.md`) — single wallet Ed25519 key accepted for v1; per-document key destruction deferred. **Superseded:** ADR 0010/0011 + `destroyIssuanceCredentialKey` on lifecycle.
 - **Slice 2:** OID4VP same-device deeplink — `openid4vp` in `app.json`; `isPresentationRequestDeeplink`, `readPendingPresentationRoute`, `vpGeneration` in `deeplinkStore`; Scan dismiss/remount parity; tests pass.
 - **Slice 3:** P6 Case 3 Used — `CredentialLifecycleAction` `'Used'` through `recordCredentialLifecycleAction`; `credential-used` history kind; inactive badge; dev `POST /wallet-api/dev/wallet/mark-used`.
-- **Slice 4:** P6 Case 1 dev holder revoke — `POST /wallet-api/dev/issuer/holder-revoke`, `holderRevokeService`, credential detail `revokeSubmitting` phase; local revoke only after Issuer `201`; credential record retained (no key destruction). v1: no PoP — PIN flow unchanged.
+- **Slice 4:** P6 Case 1 dev holder revoke — `POST /wallet-api/dev/issuer/holder-revoke`, `holderRevokeService`, credential detail `revokeSubmitting` phase; local revoke only after Issuer `201`; credential record retained. **Superseded (2026-08-17):** PIN/biometric step 7 + ES256-only PoP step 10; key destroy on lifecycle.
 - Verification: `yarn test` on touched suites pass; root `yarn tsc --noEmit` still reports pre-existing `server/src/config.test.ts` `NODE_ENV` read-only assignment (unchanged by this sprint).
 
 ### Session 2026-07-17 (History Log issuer logos)

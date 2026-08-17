@@ -17,6 +17,8 @@ This spec narrows the production proximity backlog to a deliverable v1 slice. It
 
 **Explicit non-goal:** [mdoc-web-verifier](https://github.com/stelauconseil/mdoc-web-verifier) (BLE Web Bluetooth verifier). It is not part of the production or v1 validation path.
 
+**Superseded (holder engagement):** Holder DeviceEngagement QR for mDL NFC is superseded by [`2026-08-17-mdl-nfc-static-handover-tap-only-design.md`](./2026-08-17-mdl-nfc-static-handover-tap-only-design.md) (tap-only static NFC handover).
+
 ## 1. Summary
 
 Deliver the first end-to-end **mdoc-only** NFC presentation for **Driving Licence mDL** (`org.iso.18013.5.1.mDL`) on **Samsung Galaxy A26 + ACR1311U-N2**, with a **minimal interop field set** (three ISO 18013-5 data elements).

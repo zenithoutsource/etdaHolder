@@ -9,18 +9,17 @@ After the first Gradle download of Multipaz `0.100.0`, the host, generator, and 
 | QR / action | What it is | What it is not |
 |---|---|---|
 | Scan tab QR | OID4VCI offer or OID4VP request | Not NFC presentment |
-| **Waiting for tap** QR (`mdoc:` + base64url CBOR) | ISO 18013-5 DeviceEngagement for this host | Not a VC JWT |
-| Home **Add test mDL** (`__DEV__` only) | Injects a TEST issuer-signed mDL bound to this credential’s `k_cred` | Not production issuance |
+| **Lab fallback:** paste `mdoc:` engagement | ISO 18013-5 DeviceEngagement for this host (QR paste path only) | Not the holder golden path |
 | JVM `generate-mdl` without `--device-jwk` | Inspect / host fixtures only | **Do not** drop that file onto the phone |
 
-v1 is **QR then tap**. Skipping the engagement QR is not ISO-valid for this wallet.
+v1 golden path is **tap-only static NFC handover**: the reader reads DeviceEngagement from Type 4 NDEF (AID `D2760000850101`), then continues mdoc data retrieval on AID `A0000002480400`. The wallet Waiting for tap screen shows **no** holder QR.
 
 ## Prerequisites
 
 - JDK 17+
 - ACS CCID / PC/SC driver so the ACR1311U-N2 enumerates as a smart-card reader
 - USB **or** Bluetooth **to this PC** (the phone still only uses NFC/HCE)
-- Debug wallet on Samsung Galaxy A26 with a stored mDL (`hasStoredMdoc`)
+- Debug wallet on Samsung Galaxy A26 with an **OID4VCI-issued** driving licence (`hasStoredMdoc`)
 - Native rebuild after HCE / Multipaz changes (`npx expo prebuild` / `npx expo run:android`)
 
 Confirm the reader in Windows Device Manager → Smart card readers, or `pcsc_scan` on Linux/macOS.
@@ -37,20 +36,33 @@ Windows: `.\gradlew.bat run`
 
 Open `http://127.0.0.1:8787` (bound to localhost only).
 
-1. On the phone: Driving Licence → NFC → consent (`family_name`, `given_name`, `birth_date`) → arm. Keep the screen on. The arm window is 60 seconds (`EXPO_PUBLIC_HCE_ARM_WINDOW_MS`).
-2. Paste (primary) or scan the **Waiting for tap** QR into the page.
-3. Click **Wait for tap**.
-4. Hold the A26 to the ACR1311.
+### Golden path (tap-only)
 
-Pass = the page shows the three claims **and** the wallet shows Success, plus logcat `[hce] mdoc APDU` and `[multipaz-session] NFC transport connected`. **A reader beep alone is not pass.**
+1. Claim a Driving Licence from the Issuer (no Add test mDL).
+2. Host: click **Wait for tap** with the engagement field **empty**.
+3. Phone: Driving Licence → NFC → Waiting for tap (**no QR**) → hold the A26 flat on the ACR1311 (`EXPO_PUBLIC_HCE_ARM_WINDOW_MS`, default 180 s). If Samsung Wallet is the default NFC app, disable its NFC/payment service for this tap so AIDs `D2760000850101` and `A0000002480400` can reach this wallet.
+4. Pass = the page shows the three claims (`family_name`, `given_name`, `birth_date`) **and** the wallet shows Success, plus logcat `[hce] mdoc APDU` and `[multipaz-session] NFC transport connected`. **A reader beep alone is not pass.**
+
+A second hold after NDEF→mdoc field drop is acceptable. Requiring the holder to scan or paste a `mdoc:` QR is **not** pass for this path.
+
+### Lab fallback (paste `mdoc:` QR)
+
+For debugging engagement parsing without NDEF:
+
+1. On the phone, obtain a DeviceEngagement URI (legacy lab builds or exported engagement).
+2. Paste it into the host engagement field, then click **Wait for tap**.
+3. Tap as above.
+
+This path is not the production holder golden path. See [`docs/superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md`](../../docs/superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md).
 
 ### Mapped errors
 
 | SELECT / outcome | Page copy |
 |---|---|
 | `6A82` | Wallet is not armed |
-| `6985` | Presentation not approved (complete pre-tap consent, keep screen on) |
-| Timeout | Arm, paste QR, then tap within the arm window |
+| `6985` | Presentation not approved (keep screen on) |
+| `6300` | SELECT had no immediate `9000` (rebuild wallet HCE; do not Metro-reload) |
+| Timeout | Arm on phone, then tap within the arm window |
 | Field drop after DeviceResponse | Typical ACR1311 behavior; treat as success if claims already appeared |
 
 ## Optional TEST IACA
@@ -70,26 +82,12 @@ Without `--device-jwk`, Multipaz mints a software device key next to the mdoc. T
 
 With `--device-jwk` (public JWK from a debug helper), the CLI can mint an mdoc bound to that key. There is no production file-import path.
 
-## Wallet inject (`__DEV__`)
-
-On a **debug** Android build, Home → **Add test mDL**:
-
-1. Creates a new `credentialId` and hardware `k_cred` (same APIs as issuance). Flag-off: binds MSO to the existing Keychain Ed25519 holder public key.
-2. Native Multipaz builds IssuerSigned `org.iso.18013.5.1.mDL` with that public key as DeviceKey.
-3. Stores the mdoc and a `DLTDrivingLicence` card (`rawVc: mdoc:<base64url>`).
-4. Skips the PID gate **for this inject only**. Production `canRequestCredentialType('DLTDrivingLicence')` is unchanged.
-5. Fail-closed outside debug: JS `__DEV__` plus native `FLAG_DEBUGGABLE`. Release builds reject `generateTestMdl`.
-
-One biometric is allowed if `k_cred` create/sign-time gate fires. Do not add a second app-level prompt.
-
-Then use the same QR-then-tap loop against this host.
-
 ## Tests (no hardware)
 
 ```bash
 ./gradlew test
 ```
 
-Covers `mdoc:` / `mdoc://` engagement parsing, SELECT status-word copy, and `generate-mdl` (doctype, three namespace identifiers, DeviceKey matches supplied JWK).
+Covers `mdoc:` / `mdoc://` engagement parsing, static-handover NDEF encode/decode, SELECT status-word copy, and `generate-mdl` (doctype, three namespace identifiers, DeviceKey matches supplied JWK).
 
-Physical Part G remains a manual run after inject (or a real claim) + `gradlew run` + a rebuilt wallet. See [`docs/superpowers/plans/2026-07-13-a26-acr1311-hardware-validation.md`](../../docs/superpowers/plans/2026-07-13-a26-acr1311-hardware-validation.md).
+Physical validation remains manual: issued mDL claim → `gradlew run` → rebuilt debug wallet → three tap-only runs. See [`docs/superpowers/plans/2026-07-13-a26-acr1311-hardware-validation.md`](../../docs/superpowers/plans/2026-07-13-a26-acr1311-hardware-validation.md) and [`docs/TASKS.md`](../../docs/TASKS.md).

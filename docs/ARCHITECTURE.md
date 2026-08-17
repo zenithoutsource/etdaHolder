@@ -65,11 +65,11 @@ Use this table to choose the correct flow. **Scan and deep links are online path
 | Present to verifier (online) | Scan tab — `openid4vp://` QR | OID4VP | Send VP (SD-JWT) | Implemented |
 | Present to verifier (online) | Deep link `walletapp://callback` (VP) | OID4VP | Send VP | Implemented |
 | Present to verifier (online) | My QR tab | OID4VP (broker → `direct_post`) | Send VP | Implemented |
-| Present to reader (proximity) | Credential detail → NFC → engagement QR → tap | ISO 18013-5 mdoc (Android HCE, AID `A0000002480400`) | Send mdoc | In progress — see [`2026-07-27-mdl-mdoc-only-nfc-v1-design.md`](./superpowers/specs/2026-07-27-mdl-mdoc-only-nfc-v1-design.md) |
+| Present to reader (proximity) | Credential detail → NFC → hold | ISO 18013-5 static NFC handover + mdoc data retrieval | Send mdoc | Spec [`2026-08-17-mdl-nfc-static-handover-tap-only-design.md`](./superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md) |
 
 **Not in scope:** [mdoc-web-verifier](https://github.com/stelauconseil/mdoc-web-verifier) and other BLE browser verifiers — production proximity validation uses Samsung A26 + ACR1311U-N2 (NFC), not Web Bluetooth.
 
-The **engagement QR** on the NFC present screen is for the **reader** to obtain `DeviceEngagement` before tap. It is not the same as a Scan-tab OID4VP or issuance QR.
+The holder golden path uses **static NFC handover** (Type 4 NDEF on AID `D2760000850101`) so the reader obtains `DeviceEngagement` from the tap; the wallet Waiting for tap screen shows **no** holder QR. Host paste of a `mdoc:` engagement URI remains a **lab fallback** only. Proximity NFC is not the same as a Scan-tab OID4VP or issuance QR.
 
 ### Channel status (implementation)
 
