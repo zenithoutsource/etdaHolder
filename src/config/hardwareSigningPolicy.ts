@@ -33,5 +33,8 @@ export function readDefaultMaxSignatures(purpose: 'oid4vci' | 'oid4vp' | 'mdoc' 
 
 /** When true, production Android uses hardware P-256 signer instead of Keychain Ed25519. Default on; set `false` to use the Ed25519 path. */
 export function isHardwareP256SigningEnabled(): boolean {
-  return process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED !== 'false'
+  const raw = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED?.trim()
+  if (!raw) return true
+  const normalized = raw.toLowerCase()
+  return normalized === 'true' || normalized === '1'
 }

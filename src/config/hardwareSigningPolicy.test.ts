@@ -25,4 +25,11 @@ describe('isHardwareP256SigningEnabled', () => {
     process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'false'
     expect(isHardwareP256SigningEnabled()).toBe(false)
   })
+
+  test('treats FALSE and 0 as disabled', () => {
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'FALSE'
+    expect(isHardwareP256SigningEnabled()).toBe(false)
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = '0'
+    expect(isHardwareP256SigningEnabled()).toBe(false)
+  })
 })

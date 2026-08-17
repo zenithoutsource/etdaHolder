@@ -49,7 +49,13 @@ function resolveBackendForRuntime(): HardwareEcdsaBackend {
     throw new HardwareEcdsaUnavailableError('HardwareP256SigningRequiresAndroid')
   }
 
-  return readHardwareEcdsaBackendPreference()
+  const backend = readHardwareEcdsaBackendPreference()
+  if (!__DEV__ && backend !== 'custom') {
+    throw new HardwareEcdsaUnavailableError(
+      `HardwareEcdsaBackendNotAllowed: production allows only custom, got ${backend}`,
+    )
+  }
+  return backend
 }
 
 function loadBackendSigner(backend: HardwareEcdsaBackend): HardwareEcdsaSigner {

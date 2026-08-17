@@ -103,4 +103,36 @@ describe('hardwareEcdsaSigner resolver', () => {
     expect(getActiveHardwareEcdsaBackend()).toBe('custom')
     expect(getHardwareEcdsaSigner()).toBeDefined()
   })
+
+  test('refuses mock backend in production', () => {
+    env.NODE_ENV = 'production'
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    process.env.EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND = 'mock'
+    ;(global as typeof globalThis & { __DEV__?: boolean }).__DEV__ = false
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' })
+
+    expect(() => getHardwareEcdsaSigner()).toThrow(HardwareEcdsaUnavailableError)
+    expect(() => getActiveHardwareEcdsaBackend()).toThrow(/HardwareEcdsaBackendNotAllowed/)
+  })
+
+  test('refuses animo backend in production', () => {
+    env.NODE_ENV = 'production'
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    process.env.EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND = 'animo'
+    ;(global as typeof globalThis & { __DEV__?: boolean }).__DEV__ = false
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' })
+
+    expect(() => getHardwareEcdsaSigner()).toThrow(/HardwareEcdsaBackendNotAllowed/)
+  })
+
+  test('loads custom backend in production', () => {
+    env.NODE_ENV = 'production'
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    process.env.EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND = 'custom'
+    ;(global as typeof globalThis & { __DEV__?: boolean }).__DEV__ = false
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' })
+
+    expect(getActiveHardwareEcdsaBackend()).toBe('custom')
+    expect(getHardwareEcdsaSigner()).toBeDefined()
+  })
 })
