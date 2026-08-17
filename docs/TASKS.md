@@ -70,8 +70,11 @@ Rules: a second hold after NDEF→mdoc field drop is allowed; requiring a holder
 - Document-detail My QR navigates to the My QR tab instead of opening a
   document-scoped modal.
 
-### Session 2026-08-17 (A26 + ACR1311 NFC presentment GOLDEN PATH PASSED)
+### Session 2026-08-17 (historical — A26 + ACR1311 QR-then-tap NFC lab path PASSED; not tap-only gate)
 
+- **Not the tap-only static-handover gate.** This records the superseded holder
+  flow (engagement QR → tap). The current physical gate is the tap-only checklist
+  at the top of this file (**pending operator**).
 - End-to-end ISO 18013-5 NFC presentment verified on the physical Samsung Galaxy
   A26 + ACR1311U-N2 pairing: wallet armed → engagement QR → tap → DeviceRequest →
   silent consent (ceiling) → DeviceResponse → host page decrypted and displayed
