@@ -15,12 +15,18 @@ object NdefType4Reader {
       )
     }
 
-    tag.selectFile(CC_FILE_ID)
-    val cc = tag.readBinary(offset = 0, length = CC_READ_LENGTH)
-    val ndefFileId = parseNdefFileId(cc)
-    tag.selectFile(ndefFileId)
-    val nlen = readNdefLength(tag)
-    return tag.readBinary(offset = 2, length = nlen)
+    return try {
+      tag.selectFile(CC_FILE_ID)
+      val cc = tag.readBinary(offset = 0, length = CC_READ_LENGTH)
+      val ndefFileId = parseNdefFileId(cc)
+      tag.selectFile(ndefFileId)
+      val nlen = readNdefLength(tag)
+      tag.readBinary(offset = 2, length = nlen)
+    } catch (error: MdocPresentmentException) {
+      throw error
+    } catch (error: Exception) {
+      throw StatusWordMapper.fromTransportOpenFailure(error)
+    }
   }
 
   private const val CC_FILE_ID = 0xE103
