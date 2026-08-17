@@ -11,20 +11,39 @@ class CompanionHostApduService : HostApduService() {
     }
 
     return try {
+      if (isSelectAid(commandApdu, NdefType4Handler.NDEF_AID) ||
+        CompanionSession.readSelectedAid() == "ndef"
+      ) {
+        return NdefType4Handler.process(commandApdu)
+      }
+
       if (isSelectAid(commandApdu, ISO_MDOC_AID)) {
+        val rawArm = CompanionSession.peekArmState()
         if (CompanionSession.readArmState() == null) {
-          Log.w(TAG, "[hce] SELECT mdoc unarmed")
+          val reason = if (rawArm == null) "no-arm-state" else "expired"
+          Log.w(TAG, "[hce] SELECT mdoc unarmed reason=$reason pid=${android.os.Process.myPid()}")
           return sw(0x6A, 0x82)
         }
         if (!CompanionSession.isPresentationApproved()) {
-          Log.w(TAG, "[hce] SELECT mdoc not-approved")
+          Log.w(TAG, "[hce] SELECT mdoc not-approved pid=${android.os.Process.myPid()}")
           return sw(0x69, 0x85)
         }
-        val response = dispatchMdoc(commandApdu)
-        if (response == null) {
-          CompanionSession.selectMdoc()
+        Log.i(TAG, "[hce] SELECT mdoc armed pid=${android.os.Process.myPid()}")
+        // Samsung HCE answers 6300 if processCommandApdu returns null for SELECT.
+        // Multipaz processes SELECT on Dispatchers.Default; ACR1311 cannot wait.
+        // Return 9000 here and still feed SELECT to Multipaz (swallow sendResponseApdu).
+        val gated = MdocApduHandler.beginProcess(commandApdu) { response ->
+          val sw = if (response.size >= 2) {
+            ((response[response.size - 2].toInt() and 0xFF) shl 8) or
+              (response[response.size - 1].toInt() and 0xFF)
+          } else {
+            -1
+          }
+          Log.i(TAG, "[hce] swallowed deferred SELECT response sw=0x${sw.toString(16)}")
         }
-        return response
+        if (gated != null) return gated
+        CompanionSession.selectMdoc()
+        return sw(0x90, 0x00)
       }
 
       if (isSelectAid(commandApdu, COMPANION_AID)) {

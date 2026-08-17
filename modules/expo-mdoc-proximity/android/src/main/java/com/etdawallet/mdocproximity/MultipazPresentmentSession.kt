@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -41,6 +42,7 @@ import org.multipaz.securearea.software.SoftwareCreateKeySettings
 import org.multipaz.securearea.software.SoftwareSecureArea
 import org.multipaz.storage.ephemeral.EphemeralStorage
 import org.multipaz.util.toBase64Url
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
@@ -60,6 +62,7 @@ object MultipazPresentmentSession {
   private var sessionJob: Job? = null
   private val engagementUri = AtomicReference<String?>(null)
   private val sharedFields = AtomicReference<List<String>>(emptyList())
+  private val transportListening = AtomicBoolean(false)
 
   suspend fun start(state: ProximityArmState, mdocBytes: ByteArray) {
     resetTransport()
@@ -86,14 +89,14 @@ object MultipazPresentmentSession {
           error.code,
           error.message ?: "Presentation failed",
         )
-      } catch (error: Exception) {
+      } catch (error: Throwable) {
         Log.e(TAG, "[multipaz-session] presentation failed", error)
         ProximityEventDispatcher.sendError(
           MdocProximityErrors.PROXIMITY_NOT_READY,
           error.message ?: "Multipaz presentation failed",
         )
       } finally {
-        if (sessionJob === launchedJob) {
+        if (sessionJob === launchedJob && CompanionSession.peekArmState() == null) {
           engagementUri.set(null)
         }
       }
@@ -125,10 +128,14 @@ object MultipazPresentmentSession {
     sessionJob = null
     engagementUri.set(null)
     sharedFields.set(emptyList())
+    transportListening.set(false)
     MultipazMdocAdapter.resetSession()
   }
 
   fun deviceEngagementUri(): String? = engagementUri.get()
+
+  /** True while an advertised NfcTransportMdoc instance can accept APDUs. */
+  fun isTransportListening(): Boolean = transportListening.get()
 
   private suspend fun runSession(state: ProximityArmState, mdocBytes: ByteArray) {
     if (!DeviceAuthBridge.isReady()) {
@@ -272,49 +279,133 @@ object MultipazPresentmentSession {
       ),
     )
     val transportOptions = MdocTransportOptions(bleUseL2CAP = false)
-    val advertisedTransports = connectionMethods.advertise(
+    val advertisedForEngagement = connectionMethods.advertise(
       role = MdocRole.MDOC,
       transportFactory = MdocTransportFactory.Default,
       options = transportOptions,
     )
 
     val deviceEngagement = buildDeviceEngagement(eDeviceKey = eDeviceKey.publicKey) {
-      advertisedTransports.forEach { addConnectionMethod(it.connectionMethod) }
+      advertisedForEngagement.forEach { addConnectionMethod(it.connectionMethod) }
       addCapability(Capability.READER_AUTH_ALL_SUPPORT, true.toDataItem())
       addCapability(Capability.EXTENDED_REQUEST_SUPPORT, true.toDataItem())
     }.toDataItem()
+    advertisedForEngagement.forEach { transport ->
+      try {
+        transport.close()
+      } catch (_: Exception) {
+      }
+    }
 
     val encodedDeviceEngagement = ByteString(Cbor.encode(deviceEngagement))
     engagementUri.set("mdoc:" + encodedDeviceEngagement.toByteArray().toBase64Url())
+    CompanionSession.setNdefMessage(
+      NfcStaticHandover.encode(encodedDeviceEngagement.toByteArray()),
+    )
     Log.i(TAG, "[multipaz-session] engagement URI ready")
 
-    val transport = advertisedTransports.waitForConnection(eSenderKey = eDeviceKey.publicKey)
-    Log.i(TAG, "[multipaz-session] NFC transport connected")
+    // Keep the same DeviceEngagement (eDeviceKey) until Cancel or DeviceResponse.
+    // A missed tap fails the Multipaz transport; TimeoutCancellationException is a
+    // CancellationException and used to abort this job, which cleared the URI and
+    // made the next SELECT return 6A81 while JS still showed the QR.
+    //
+    // onSendingResponse only means the first response chunk was queued; the reader
+    // still drains the rest via GET RESPONSE and can fail mid-drain. So after a
+    // response is sent, keep listening for a grace window: if the reader reconnects
+    // (its receive failed and it retries), serve the same approved fields again;
+    // if no reconnect arrives, the reader is satisfied and we complete.
+    var responseSentAtMs: Long? = null
+    while (CompanionSession.readArmState() != null) {
+      // Clear any stale failed NfcTransportMdoc instance, then wait: Multipaz
+      // onDeactivated() removes instances in an async coroutine, and a new open()
+      // started before that runs would be torn down immediately.
+      MultipazMdocAdapter.onNfcDeactivated()
+      delay(150)
 
-    ProximityEventDispatcher.sendDeviceEngaged()
-
-    var deviceResponseSent = false
-    try {
-      Iso18013Presentment(
-        transport = transport,
-        eDeviceKey = eDeviceKey,
-        deviceEngagement = deviceEngagement,
-        handover = Simple.NULL,
-        source = presentmentSource,
-        keyAgreementPossible = listOf(EcCurve.P256),
-        onSendingResponse = {
-          deviceResponseSent = true
-          sharedFields.set(state.approvedMdocFields)
-        },
+      val advertisedTransports = connectionMethods.advertise(
+        role = MdocRole.MDOC,
+        transportFactory = MdocTransportFactory.Default,
+        options = transportOptions,
       )
-    } catch (error: Exception) {
-      if (!deviceResponseSent) {
-        throw error
+      transportListening.set(true)
+      var deviceResponseSent = false
+      try {
+        val transport = if (responseSentAtMs == null) {
+          advertisedTransports.waitForConnection(eSenderKey = eDeviceKey.publicKey)
+        } else {
+          val graceMs = CompanionSession.peekArmState()?.responseDrainGraceMs ?: 5_000L
+          val remainingMs = responseSentAtMs + graceMs - System.currentTimeMillis()
+          val reconnect = if (remainingMs > 0) {
+            try {
+              withTimeout(remainingMs) {
+                advertisedTransports.waitForConnection(eSenderKey = eDeviceKey.publicKey)
+              }
+            } catch (_: TimeoutCancellationException) {
+              null
+            }
+          } else {
+            null
+          }
+          if (reconnect == null) {
+            // No reader retry within the grace window: the drain succeeded.
+            break
+          }
+          Log.w(TAG, "[multipaz-session] reader reconnected within drain grace, serving again")
+          reconnect
+        }
+        Log.i(TAG, "[multipaz-session] NFC transport connected")
+        ProximityEventDispatcher.sendDeviceEngaged()
+
+        try {
+          Iso18013Presentment(
+            transport = transport,
+            eDeviceKey = eDeviceKey,
+            deviceEngagement = deviceEngagement,
+            handover = Simple.NULL,
+            source = presentmentSource,
+            keyAgreementPossible = listOf(EcCurve.P256),
+            timeout = null,
+            timeoutSubsequentRequests = null,
+            onSendingResponse = {
+              deviceResponseSent = true
+              sharedFields.set(state.approvedMdocFields)
+            },
+          )
+        } catch (error: Throwable) {
+          if (error is MdocProximityException) throw error
+          if (isFatalPresentmentCancellation(error)) throw error
+          Log.w(TAG, "[multipaz-session] presentment failed before DeviceResponse, listening again", error)
+        }
+
+        if (deviceResponseSent) {
+          responseSentAtMs = System.currentTimeMillis()
+          Log.i(TAG, "[multipaz-session] DeviceResponse sent, grace-listening for reader retry")
+        } else {
+          Log.w(TAG, "[multipaz-session] NFC tap missed, listening again")
+        }
+      } catch (error: Throwable) {
+        if (error is MdocProximityException) throw error
+        if (isFatalPresentmentCancellation(error)) throw error
+        Log.w(TAG, "[multipaz-session] NFC tap missed, listening again", error)
+      } finally {
+        transportListening.set(false)
+        advertisedTransports.forEach { transport ->
+          try {
+            transport.close()
+          } catch (_: Exception) {
+          }
+        }
       }
-      Log.i(TAG, "[multipaz-session] NFC session ended after DeviceResponse: ${error.message}")
     }
 
-    StoredMdocPresentationEngine.completePresentation(sharedFields.get())
+    if (responseSentAtMs != null) {
+      StoredMdocPresentationEngine.completePresentation(sharedFields.get())
+    }
+  }
+
+  private fun isFatalPresentmentCancellation(error: Throwable): Boolean {
+    if (error !is CancellationException) return false
+    return error !is TimeoutCancellationException
   }
 
   private suspend fun enforceConsentCeiling(
