@@ -14,7 +14,8 @@ jest.mock('../config/trustedVerifiers', () => ({ TRUSTED_VERIFIERS: [] }))
 jest.mock('../config/cardSchemas', () => jest.requireActual('../config/cardSchemas'))
 
 jest.mock('../services/credentials/credentialLifecycle', () => ({
-  filterPresentableCredentials: (records: unknown[]) => records,
+  filterPresentableCredentials: (records: { id?: string }[]) =>
+    records.filter((record) => !String(record.id ?? '').startsWith('legacy-')),
 }))
 
 jest.mock('../services/scan/scanFriendlyErrors', () => ({
@@ -355,6 +356,27 @@ describe('Oid4VpDisclosureFlow', () => {
 
     await flush()
     expect(screen.getByText('ผู้ตรวจสอบไม่ได้รับความเชื่อถือ')).toBeTruthy()
+  })
+
+  test('does not pass hardware-reissue credentials into presentation resolve', async () => {
+    mockResolve.mockRejectedValue(new Error('PresentationCredentialMissing'))
+    const legacyCredential = { ...credential, id: 'legacy-ed25519' }
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[legacyCredential]}
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    expect(mockResolve).toHaveBeenCalledWith(
+      'openid4vp://authorize?request_uri=http://verifier/r/1',
+      [],
+      expect.any(Object),
+    )
   })
 
   test('shows a friendly document-unavailable state without exposing the requested vct URL', async () => {
