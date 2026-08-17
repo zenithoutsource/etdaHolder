@@ -1,5 +1,17 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-17 (PR 11 review fixes)
+
+- Merged `master` into `dev` and rewrote README Current Status to ADR 0011
+  (hardware P-256 default; NFC DeviceResponse still ungated).
+- Production builds refuse `EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND=mock|animo`
+  (`HardwareEcdsaBackendNotAllowed`); only `custom` is allowed outside `__DEV__`.
+- Hardware flag treats `FALSE` / `0` as off (same true/1 enable pattern as other
+  opt-in booleans; unset still defaults on).
+- Same-device issuance continuation failures now `logWalletError` before Home.
+- VP disclosure UI test no longer identity-mocks `filterPresentableCredentials`.
+- CLAUDE.md / CONTEXT.md / AGENTS.md / ARCHITECTURE.md aligned with ADR 0011.
+
 ### Session 2026-08-14 (hard hardware P-256 holder-signing cutover)
 
 - When `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED` is on (production default), holder

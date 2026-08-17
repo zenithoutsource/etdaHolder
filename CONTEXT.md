@@ -44,15 +44,15 @@ One hardware P-256 key per wallet (`wallet.p256.attest`) used for Wallet Provide
 
 ## Credential Signing Key (`k_cred`)
 
-One Ed25519 keypair per issued credential (ADR 0010). Each credential's Holder `did:key` is derived from its public key. OID4VCI PoP JWTs, OID4VP presentation tokens, and SD-JWT KB-JWTs for that credential are signed with its key. Created at issuance without Wallet Provider WUA. Destroyed on P3 renewal or P6 lifecycle actions that remove the credential's cryptographic binding.
+One key per issued credential (ADR 0010 topology, ADR 0011 algorithm). Default on Android is hardware P-256 (`alg: ES256`, `did:key` multicodec `0x1200`). The flag-off path is a Keychain-protected Ed25519 seed (`alg: EdDSA`, multicodec `[0xed, 0x01]`). OID4VCI PoP JWTs, OID4VP presentation tokens, and SD-JWT KB-JWTs for that credential are signed with its key. Created at issuance without Wallet Provider WUA. Destroyed on P3 renewal or P6 lifecycle actions that remove the credential's cryptographic binding. Leftover Ed25519 cards while hardware signing is on must be freshly reissued.
 
 ## Holder DID
 
-The Holder's decentralized identifier for a credential, derived from that credential's Ed25519 public key using `did:key` with multicodec prefix `[0xed, 0x01]`. Self-contained; no server is required for resolution.
+The Holder's decentralized identifier for a credential, derived from that credential's public key using `did:key` (P-256 multicodec `0x1200` on the hardware path; Ed25519 `[0xed, 0x01]` when the hardware flag is off). Self-contained; no server is required for resolution.
 
 ## Proof of Possession (PoP)
 
-A JWT signed with the credential's Ed25519 key and sent to the Issuer during credential request. Uses `jwt` proof type per OID4VCI 1.0 with `alg: EdDSA`. Header contains `kid`, not `jwk`. Payload `iss`/`sub` is the credential's Holder DID. Biometric authentication fires on every sign operation (the single auth prompt for that action).
+A JWT signed with the credential's `k_cred` and sent to the Issuer during credential request. Uses `jwt` proof type per OID4VCI 1.0 with `alg: ES256` (hardware) or `alg: EdDSA` (flag-off). Payload `iss`/`sub` is the credential's Holder DID. Biometric authentication fires on every sign operation (the single auth prompt for that action).
 
 ## Verifiable Presentation (VP)
 
@@ -60,7 +60,7 @@ A Holder-approved presentation response sent to a Verifier. Depending on the Ver
 
 ## Key Binding JWT (KB-JWT)
 
-A JWT signed by the credential's Ed25519 key and appended to an SD-JWT VC presentation to prove cryptographic Holder Binding. It binds the presentation to the Verifier request using the request nonce, audience, and hash of the presented SD-JWT.
+A JWT signed by the credential's `k_cred` and appended to an SD-JWT VC presentation to prove cryptographic Holder Binding. It binds the presentation to the Verifier request using the request nonce, audience, and hash of the presented SD-JWT.
 
 ## Trusted Verifier
 
@@ -68,7 +68,7 @@ A Verifier allowed by local Wallet configuration. The current trust model requir
 
 ## Self-Sovereign Architecture
 
-The app runs OID4VCI and OID4VP protocol steps on-device. Ed25519 seeds are Keychain-protected and retrieved only at sign time under biometric/device authentication (ADR 0008 — software-protected, not hardware non-extractable). The company backend authenticates the Holder and stores wallet-side backend state, but the app claims credentials directly from Issuers and presents directly to Verifiers.
+The app runs OID4VCI and OID4VP protocol steps on-device. Production holder signing uses hardware-backed P-256 keys (ADR 0011); the flag-off Ed25519 seed is Keychain-protected and retrieved only at sign time under biometric/device authentication (ADR 0008). The company backend authenticates the Holder and stores wallet-side backend state, but the app claims credentials directly from Issuers and presents directly to Verifiers.
 
 ## Wallet Backend
 

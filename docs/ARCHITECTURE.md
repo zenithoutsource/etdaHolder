@@ -30,7 +30,7 @@ All OID4VCI issuance mechanics run on-device:
 2. Fetch Issuer metadata.
 3. Execute Pre-Authorized Code token exchange.
 4. Build a PoP JWT with `kid` header and Holder DID `iss`.
-5. Sign with the Keychain-protected Ed25519 Wallet Signing Key.
+5. Sign with the bound holder `k_cred` (hardware P-256 / ES256 by default; Keychain Ed25519 when the hardware flag is off).
 6. Submit credential request to the Issuer credential endpoint.
 7. Normalize compact JWT VC or compact SD-JWT VC into `VerifiableCredentialRecord`.
 8. Save locally in encrypted MMKV.
@@ -92,7 +92,7 @@ The first OID4VP slice is intentionally narrow and Verifier-driven:
 2. Validate `client_id` against the local Verifier allowlist and require the `response_uri` origin to be allowlisted.
 3. Accept Presentation Exchange requests only when the requested disclosure is the ThaiNationalID birth date, or the development Verifier API's DCQL IDCard request.
 4. Show native Holder consent before signing.
-5. Sign a JWT VP token with the Keychain-protected Ed25519 Wallet Signing Key under the same biometric sign-time gate.
+5. Sign a JWT VP token with the bound holder `k_cred` under the same one-prompt biometric gate.
 6. Send `vp_token`, `presentation_submission`, and optional `state` to the Verifier using `direct_post`.
 7. Record successful presentations locally after the Verifier returns a successful HTTP response.
 
@@ -211,6 +211,8 @@ No issuer-specific card components should be added. Extend schemas instead.
 | 0005 | Backend-only certificate pinning |
 | 0006 | ISO 18013-5 mdoc native module selection criteria |
 | 0007 | Android-first EdDSA Ed25519 production signing |
-| 0008 | Keychain-protected Ed25519 production signing |
+| 0008 | Keychain-protected Ed25519 production signing (superseded for default holder keys by 0011) |
+| 0010 | Per-credential signing keys |
+| 0011 | Hardware P-256 / ES256 holder keys |
 
 OID4VP 1.0 online presentation has an implemented first slice but still needs a full ADR before broader claim sets, Verifier onboarding, or registry-backed trust rules are expanded.

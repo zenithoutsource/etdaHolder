@@ -49,7 +49,7 @@ When planning any new system, feature, or integration:
 - OID4VCI protocol work must run on-device through `@openid4vc/openid4vci`; do not call backend `/exchange/*` endpoints.
 - Credentials are normalized into `VerifiableCredentialRecord` before encrypted MMKV storage.
 - Dynamic credential UI must use `src/config/cardSchemas.ts` and generic components, not issuer-specific card screens.
-- Production signing uses a Keychain-protected Ed25519 seed with `@noble/ed25519` EdDSA signing because target AndroidKeyStore hardware generated EC keys for Ed25519 requests. This satisfies protocol-level EdDSA but is not hardware non-extractable.
+- Production holder signing uses hardware P-256 / ES256 `k_cred` in AndroidKeyStore (ADR 0011) when `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED` is on (default). Flag-off Ed25519 remains a Keychain-protected software seed (ADR 0008).
 - One biometric prompt per user action: a single user-initiated action (approve a presentation, claim a credential, rotate a key) must trigger exactly one authentication event. If the action requires a cryptographic sign call, that sign-time Keychain gate is the only prompt — do not add a separate app-level biometric/consent check in front of it for the same action. Only add a second, independent prompt when the action does no signing at all (so the sign-time gate never fires) and still needs its own auth.
 
 ## Master Branch Hygiene

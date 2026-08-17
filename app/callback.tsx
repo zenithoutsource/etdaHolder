@@ -17,7 +17,7 @@ import {
   storePendingFromIssuanceCallbackUrl,
 } from '@/src/services/credentials/resolveIssuanceCallbackResult'
 import { hasWalletPin } from '@/src/services/auth/walletPin'
-import { logWalletStep } from '@/src/services/debug/walletLogger'
+import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 import { useAuthStore } from '@/src/store/authStore'
 import { useDeeplinkStore, tryQueueDeeplinkUri } from '@/src/store/deeplinkStore'
 import { isPortalReturnUrlIgnoredDuringCapture } from '@/src/services/credentials/portalReturnBridge'
@@ -123,8 +123,8 @@ export default function IssuanceCallbackRoute() {
               router.replace('/(tabs)/presentation-request')
               return
             }
-          } catch {
-            // fall through to home
+          } catch (error) {
+            logWalletError('deeplink', 'same-device-issuance-continuation-failed', error)
           }
           router.replace('/(tabs)')
         })()
