@@ -1,3 +1,10 @@
+/**
+ * Visual trust card (issuer image, labels, confirm).
+ * Journey: P1 via IssuanceTrustConfirmationPanel.
+ * Copy: props; accent via THEME.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import { Image, Text, View, type ImageSourcePropType } from 'react-native'
 
 import { AppButton } from './AppButton'

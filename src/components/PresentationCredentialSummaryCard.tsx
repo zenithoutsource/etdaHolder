@@ -1,3 +1,10 @@
+/**
+ * Matched-credential summary for the OID4VP info step.
+ * Journey: P4 PresentationInfoPanel.
+ * Copy: cardSchemas summaryFields; credentialDisplay.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Image, Text, View, type ImageSourcePropType } from 'react-native'
 

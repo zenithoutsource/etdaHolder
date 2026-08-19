@@ -1,3 +1,10 @@
+/**
+ * Reusable success checkmark panel (full-screen or card).
+ * Journey: P4 OID4VP and NFC result wrappers.
+ * Copy: props-driven title/message/button.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 

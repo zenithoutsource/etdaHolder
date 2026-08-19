@@ -1,3 +1,11 @@
+/**
+ * Claim disclosure consent (mandatory / toggleable) before present.
+ * Journey: P4 Oid4VpDisclosureFlow consent phase.
+ * Copy: cardSchemas labels; claimDisclosurePolicy.
+ * Layout: PresentationDisclosureList.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { ScrollView, Text, View } from 'react-native'
 

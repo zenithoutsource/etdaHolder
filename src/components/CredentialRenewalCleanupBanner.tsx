@@ -1,3 +1,10 @@
+/**
+ * Banner after renewal received — cleanup or dismiss CTAs.
+ * Journey: P3 (built; not imported by screens today).
+ * Copy: WALLET_HOME_COPY.
+ * Map: docs/CODEMAPS/frontend.md#wallet
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Pressable, Text, View } from 'react-native'
 

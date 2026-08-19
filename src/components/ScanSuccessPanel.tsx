@@ -1,3 +1,10 @@
+/**
+ * Post-claim “document received” confirmation.
+ * Journey: P1 CredentialOfferClaimScreen success phase.
+ * Copy: credentialDisplay summary.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 

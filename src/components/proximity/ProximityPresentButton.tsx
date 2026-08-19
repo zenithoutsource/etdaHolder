@@ -1,3 +1,5 @@
+/** NFC CTA button; null when proximity is unsupported. Not wired to screens. */
+
 import { AppButton } from '@/src/components/AppButton'
 import { isProximityPresentationSupported } from '@/src/services/proximity/proximityPresentation'
 

@@ -1,3 +1,5 @@
+/** Empty History list placeholder card. */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Text, View } from 'react-native';
 

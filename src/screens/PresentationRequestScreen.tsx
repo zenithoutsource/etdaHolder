@@ -1,3 +1,12 @@
+/**
+ * Hydrate OID4VP from deeplink store / Linking and host Oid4VpDisclosureFlow.
+ * Journey: P4 Verifier QR / deeplink VP.
+ * Copy: inline loading / missing strings.
+ * Layout: Oid4VpDisclosureFlow.
+ * Next: Wallet; after issuer PID VP may push credential-offer.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import * as Linking from 'expo-linking'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'

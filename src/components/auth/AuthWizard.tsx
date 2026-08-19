@@ -1,3 +1,12 @@
+/**
+ * Register/login wizard (email, name, PIN, login PIN).
+ * Journey: Auth (app/auth.tsx).
+ * Copy: authValidation; walletPinNavigation.
+ * Layout: PinEntryStep.
+ * Next: pin-setup or tabs; reads deeplinkStore for post-login route.
+ * Map: docs/CODEMAPS/frontend.md#auth-and-pin
+ */
+
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {

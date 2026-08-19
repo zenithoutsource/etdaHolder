@@ -1,3 +1,10 @@
+/**
+ * Pre-submit review — summary, device, PoP, requested items.
+ * Journey: P4 Oid4VpDisclosureFlow info phase.
+ * Layout: PresentationCredentialSummaryCard, ApprovalDeviceCard, PopCard, RequestedItemsCard.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import { ScrollView, View } from 'react-native'
 
 import { getWalletKeyRegisteredAt } from '../services/crypto/crypto'

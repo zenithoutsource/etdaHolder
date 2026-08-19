@@ -1,3 +1,5 @@
+/** Numeric PIN keypad (digits, backspace, optional fingerprint). */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Pressable, Text, View } from 'react-native'
 

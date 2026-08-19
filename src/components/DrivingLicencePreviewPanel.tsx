@@ -1,3 +1,10 @@
+/**
+ * Issuance accept preview for driving licence.
+ * Journey: P1 claim (CredentialOfferClaimScreen).
+ * Layout: DrivingLicenceDocumentCard.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import { ScrollView, View } from 'react-native'
 
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'

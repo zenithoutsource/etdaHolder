@@ -1,3 +1,11 @@
+/**
+ * Issuer/portal return handler (walletapp://callback).
+ * Journey: P1 same-device issuance; may hand off to OID4VP.
+ * Copy: none (spinner only).
+ * Next: credential-offer, presentation-request, pin-lock, or Wallet.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import * as Linking from 'expo-linking'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef } from 'react'

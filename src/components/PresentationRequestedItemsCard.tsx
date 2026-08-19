@@ -1,3 +1,10 @@
+/**
+ * Toggleable requested-claims list plus accept CTA on the info step.
+ * Journey: P4 PresentationInfoPanel.
+ * Layout: PresentationConsentPanel helpers, PresentationDisclosureList.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import { Text, View } from 'react-native'
 
 import type { PresentationDisclosure } from '../services/vp/presentationService'

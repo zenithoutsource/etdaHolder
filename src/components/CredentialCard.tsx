@@ -1,3 +1,10 @@
+/**
+ * Generic config-driven credential summary card.
+ * Journey: documented in ARCHITECTURE; tests only — home uses WalletCredentialSummaryCard.
+ * Layout: credentialDisplay / cardSchemas.
+ * Map: docs/CODEMAPS/frontend.md#wallet
+ */
+
 import { Text, View } from 'react-native'
 
 import { readCredentialDetailDisplay } from '../services/credentials/credentialDisplay'

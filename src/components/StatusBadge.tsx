@@ -1,3 +1,5 @@
+/** Small rounded status pill. */
+
 import { Text, View } from 'react-native'
 
 type StatusBadgeProps = {

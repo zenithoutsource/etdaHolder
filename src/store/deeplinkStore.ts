@@ -1,3 +1,10 @@
+/**
+ * Offer and VP deeplink intake — pending/active/dismissed URIs, generations, presentationIntakeError.
+ * Journey: Scan, callback, PresentationRequestScreen.
+ * Next: app/(tabs)/scan.tsx, credential-offer, presentation-request.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import { create } from 'zustand'
 import type { PlatformOSType } from 'react-native'
 

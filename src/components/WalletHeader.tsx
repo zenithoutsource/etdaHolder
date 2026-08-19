@@ -1,3 +1,5 @@
+/** Navy top chrome with optional back and centered title. */
+
 import { Text, View } from 'react-native'
 
 import { AppButton } from './AppButton'

@@ -1,3 +1,10 @@
+/**
+ * Camera QR viewfinder with scan-line, cancel, and loading.
+ * Journey: Scan tab (P1 / P4 intake).
+ * Layout: expo-camera CameraView.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import { CameraView } from 'expo-camera'
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, Text, View } from 'react-native'

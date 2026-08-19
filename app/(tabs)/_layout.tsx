@@ -1,3 +1,11 @@
+/**
+ * Bottom tabs plus hidden stack-like screens; global expiry and intake hosts.
+ * Journey: Wallet / My QR / Scan / History Log.
+ * Layout: WalletKeyExpiryHost, CredentialExpiryHost, PresentationIntakeErrorHost.
+ * Next: hidden present, credential-offer, presentation-request, credential/[id], history-event/[id].
+ * Map: docs/CODEMAPS/frontend.md#global-hosts
+ */
+
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Image, type ImageSourcePropType } from 'react-native';

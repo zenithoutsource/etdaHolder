@@ -1,3 +1,10 @@
+/**
+ * Pre-biometric face-scan tips before OID4VP consent.
+ * Journey: P4 (Oid4VpDisclosureFlow facePrepare).
+ * Copy: inline Thai tips.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import {
   Image,
   ScrollView,

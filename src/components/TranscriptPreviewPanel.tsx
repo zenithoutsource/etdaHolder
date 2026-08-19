@@ -1,3 +1,11 @@
+/**
+ * Transcript issuance preview plus accept.
+ * Journey: P1 claim preview phase.
+ * Copy: credentialDisplay / qrIssuanceFlow preview.
+ * Layout: DocumentCardLayout.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import {
   Image,
   ScrollView,

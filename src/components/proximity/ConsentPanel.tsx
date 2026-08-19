@@ -1,3 +1,10 @@
+/**
+ * Post-reader-request field consent (allow/deny) with selectable list.
+ * Journey: NFC older path — present screen now uses PreTapConsentPanel.
+ * Copy: mdocParser.formatMdocFieldLabel.
+ * Map: docs/CODEMAPS/frontend.md#present-and-nfc
+ */
+
 import { Text, View } from 'react-native'
 
 import { AppButton } from '@/src/components/AppButton'

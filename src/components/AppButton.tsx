@@ -1,3 +1,5 @@
+/** Shared primary/outline/block/icon button used by Wallet screens. */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ActivityIndicator, Image, Pressable, Text, type ImageSourcePropType } from 'react-native';
 

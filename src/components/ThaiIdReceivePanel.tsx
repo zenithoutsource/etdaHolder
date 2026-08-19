@@ -1,3 +1,11 @@
+/**
+ * PID receive preview card plus confirm.
+ * Journey: P1 claim preview phase.
+ * Copy: cardSchemas; credentialDisplay.
+ * Layout: DocumentCardLayout, CredentialFieldRow.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import { Image, ScrollView, Text, View, type ImageSourcePropType } from 'react-native'
 
 import { AppButton } from './AppButton'

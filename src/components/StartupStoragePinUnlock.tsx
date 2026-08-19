@@ -1,3 +1,5 @@
+/** Startup PIN unlock surface driven by readStartupStorageUnlockCopy. */
+
 import { PinUnlockPrompt } from './PinUnlockPrompt'
 import { readStartupStorageUnlockCopy } from '@/src/services/startup/startupState'
 

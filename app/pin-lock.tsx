@@ -1,3 +1,11 @@
+/**
+ * Resume unlock (PIN and/or biometric) after cold start or idle grace.
+ * Journey: Auth and PIN; then pending offer/VP.
+ * Layout: PinUnlockPrompt.
+ * Next: pending offer/VP replace, or /forgot-pin.
+ * Map: docs/CODEMAPS/frontend.md#auth-and-pin
+ */
+
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { Platform } from "react-native";

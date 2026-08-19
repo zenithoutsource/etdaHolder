@@ -120,6 +120,8 @@ yarn test
 - If new UI/behavior is reusable across screens (a panel shape, a gating flow, a card row), it must ship as a component/hook under `src/components/` or `src/hooks/`, not copy-pasted or reimplemented per screen.
 - When two pieces of code do the same job, they must be written the same way — same naming, same structure, same patterns — as if one person wrote the whole codebase. Diverging implementations of a shared concern (e.g. two slightly different biometric-gate call sites, two slightly different card-row renderers) are a defect: consolidate to one shared implementation instead of leaving near-duplicates that read as inconsistent.
 - When touching a feature area, check sibling files in the same directory for the established pattern first, and match it rather than inventing a new one.
+- New or touched files under `app/`, `src/screens/`, and `src/components/` must keep a file-top purpose comment (full header on screens/panels/cards: purpose, journey, copy/layout, next, map link; one-liner on primitives such as `AppButton`). English only. Do not add walkthrough comments next to obvious JSX or `setState`.
+- If a screen's files, copy home, or flow steps change, update [`docs/CODEMAPS/frontend.md`](docs/CODEMAPS/frontend.md) in the same change set.
 
 ## Skills and Routing Patterns
 
@@ -129,6 +131,7 @@ yarn test
 | `src/services/crypto/**` | Crypto and signing | Preserve EdDSA holder identity, Keychain seed protection, and biometric sign-time gate |
 | `src/services/storage/**` | Secure storage | Use encrypted MMKV and Keychain only |
 | `src/sdk/**` | Company backend SDK | Generated code only, plus the approved fetch adapter |
+| `docs/CODEMAPS/frontend.md`, `app/**`, `src/screens/**`, `src/components/**` | Frontend findability | Open the CODEMAP first; keep file-top headers in sync when screens, copy homes, or flow steps change |
 | `src/config/**`, `src/components/**`, `app/**` | UI and routing | Use config-driven card rendering and NativeWind patterns |
 | `src/store/**` | Zustand state | Keep slices thin and immutable |
 | `server/**` | Local development backend | Keep it separate from Issuer protocol execution |

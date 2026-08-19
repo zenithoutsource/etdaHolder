@@ -1,3 +1,5 @@
+/** Disclosure claim list (consent, review, selectable, and result variants). */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Pressable, Text, View } from 'react-native'
 

@@ -28,6 +28,7 @@ Session-by-session progress, verification runs, and next steps live in `docs/TAS
 - `CONTEXT.md` - domain glossary
 - Cursor Canvas P1–P6 journey sequences under `canvases/` (`p1-sequence-check`, `p2-sequence-check`, `p3-key-rotation-sequence-check`, `p4-vp-presentation-sequence-check`, `p5-vp-verification-audit`, `p6-revocation-status-sequence-check`) — mandatory before any new system/feature so specs stay aligned
 - `docs/ARCHITECTURE.md` - protocol, storage, and UI boundaries
+- `docs/CODEMAPS/frontend.md` - tab-first map of Wallet screens, panels, copy/layout homes, and flow steps
 - `docs/API.md` - generated SDK boundary and local backend URL adapter
 - `docs/SECURITY.md` - crypto, storage, biometric, network, and build rules (includes Section 6 "Current Security Findings")
 - `docs/TASKS.md` - active backlog and blockers
@@ -102,6 +103,8 @@ Session-by-session progress, verification runs, and next steps live in `docs/TAS
 - If new UI/behavior is reusable across screens (a panel shape, a gating flow, a card row), it must ship as a component/hook under `src/components/` or `src/hooks/`, not copy-pasted or reimplemented per screen.
 - When two pieces of code do the same job, they must be written the same way — same naming, same structure, same patterns — as if one person wrote the whole codebase. Diverging implementations of a shared concern (e.g. two slightly different biometric-gate call sites, two slightly different card-row renderers) are a defect: consolidate to one shared implementation instead of leaving near-duplicates that read as inconsistent.
 - When touching a feature area, check sibling files in the same directory for the established pattern first, and match it rather than inventing a new one.
+- New or touched files under `app/`, `src/screens/`, and `src/components/` must keep a file-top purpose comment (full header on screens/panels/cards: purpose, journey, copy/layout, next, map link; one-liner on primitives such as `AppButton`). English only. Do not add walkthrough comments next to obvious JSX or `setState`.
+- If a screen's files, copy home, or flow steps change, update [`docs/CODEMAPS/frontend.md`](docs/CODEMAPS/frontend.md) in the same change set. Start there when you cannot find a Wallet screen or Holder-facing string.
 
 ## Planning Philosophy
 

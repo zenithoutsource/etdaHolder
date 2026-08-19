@@ -1,3 +1,5 @@
+/** Global modal dialog provider and useAppDialog hook. */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { Modal, Pressable, Text, View } from 'react-native'

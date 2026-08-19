@@ -1,3 +1,5 @@
+/** OID4VP success wrapper around PresentationSuccessPanel. */
+
 import { PresentationSuccessPanel } from './PresentationSuccessPanel'
 
 type Props = {
@@ -10,7 +12,7 @@ export function PresentationResultPanel({ verifierName, onDone }: Props) {
     <PresentationSuccessPanel
       fullScreen
       title="ตรวจสอบสำเร็จ"
-      message={`ข้อมูลของคุณถูกส่งให้\n ${verifierName}เรียบร้อยแล้ว`}
+      message={`ข้อมูลของคุณถูกส่งให้\n ${verifierName} เรียบร้อยแล้ว`}
       buttonLabel="เสร็จสิ้น"
       onDone={onDone}
     />

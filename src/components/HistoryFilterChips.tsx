@@ -1,3 +1,5 @@
+/** Horizontal filter chip row for History Log. */
+
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import {

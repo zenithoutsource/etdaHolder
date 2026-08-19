@@ -1,3 +1,10 @@
+/**
+ * Dialog host for deeplinkStore.presentationIntakeError.
+ * Journey: global tab shell (consumed/replay VP).
+ * Copy: inline Thai dialog title.
+ * Map: docs/CODEMAPS/frontend.md#global-hosts
+ */
+
 import { useEffect, useRef } from 'react'
 
 import { useAppDialog } from '@/src/components/AppDialog'
