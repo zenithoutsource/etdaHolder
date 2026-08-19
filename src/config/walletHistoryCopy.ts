@@ -15,7 +15,7 @@ export const WALLET_HISTORY_COPY = {
   partyPlaceholderBackend: 'ระบบหลังบ้าน',
   partyPlaceholderNfc: 'เครื่องอ่าน NFC',
   channelNfc: 'ผ่าน NFC ระยะใกล้',
-  channelVpRelay: 'ผ่าน VP Relay (ทดสอบ)',
+  channelVpRelay: 'ผ่าน VP Relay',
   channelBackend: 'ซิงก์ระบบหลังบ้าน',
   channelInWallet: 'ดำเนินการใน Wallet',
   channelRenewal: 'ต่ออายุใน Wallet',
@@ -64,4 +64,5 @@ export const WALLET_HISTORY_PARTY_PLACEHOLDERS: Record<string, string> = {
   Verifier: WALLET_HISTORY_COPY.partyFallbackVerifier,
   'Wallet Backend': WALLET_HISTORY_COPY.partyPlaceholderBackend,
   'NFC Reader': WALLET_HISTORY_COPY.partyPlaceholderNfc,
+  ThaID: 'PID',
 }

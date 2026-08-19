@@ -172,6 +172,23 @@ describe('presentationHistory', () => {
     expect(readSuccessfullyPresentedCredentialIds()).toEqual(['transcript-1', 'thai-id-1'])
   })
 
+  test('includes nfc-presentation-success in the home verified badge ids', () => {
+    const nfc = walletPresentationEvent({
+      id: 'nfc-1',
+      kind: 'nfc-presentation-success',
+      credentialId: 'dl-1',
+      documentType: 'Driving Licence',
+      partyName: 'เครื่องอ่าน NFC',
+      channel: 'nfc',
+    })
+    mockStorage({
+      'wallet:history:index': JSON.stringify(['nfc-1']),
+      'wallet:history:event:nfc-1': JSON.stringify(nfc),
+    })
+
+    expect(readSuccessfullyPresentedCredentialIds()).toEqual(['dl-1'])
+  })
+
   test('clears the current successful presentation badge but shows it again after a later presentation', () => {
     const first = walletPresentationEvent()
     const storage = mockStorage({

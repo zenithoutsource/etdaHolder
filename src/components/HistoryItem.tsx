@@ -1,83 +1,68 @@
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+/**
+ * History list row — issuer logo, status badge, optional suspend CTA.
+ * Journey: History Log.
+ * Copy: cardSchemas issuer logos.
+ * Map: docs/CODEMAPS/frontend.md#history
+ */
+
 import {
-  Image,
   Pressable,
   Text,
   View,
   type ImageSourcePropType,
-} from "react-native";
+} from 'react-native'
 
-import { AppButton } from "./AppButton";
-import { StatusBadge } from "./StatusBadge";
-import { getCardSchemaForConfigurationId } from "../config/cardSchemas";
-import type { WalletHistoryRow } from "../services/history/walletHistory";
+import { AppButton } from './AppButton'
+import { HistoryIssuerLogo } from './HistoryIssuerLogo'
+import { StatusBadge } from './StatusBadge'
+import type { WalletHistoryRow } from '../services/history/walletHistory'
 
 import { THEME } from '../config/themeColors'
 
 const trashCanImage =
-  require("../../assets/images/trash_can.png") as ImageSourcePropType;
-
-const issuerLogoImages: Record<
-  NonNullable<ReturnType<typeof getCardSchemaForConfigurationId>["issuerLogoKey"]>,
-  ImageSourcePropType
-> = {
-  thaid: require("../../assets/images/thaid.png"),
-  dltt: require("../../assets/images/dltt.png"),
-  chulalongkorn: require("../../assets/images/chulalongkorn.png"),
-};
-
-type MaterialIconName = keyof typeof MaterialCommunityIcons.glyphMap;
+  require('../../assets/images/trash_can.png') as ImageSourcePropType
 
 function formatDateParts(value: string): { date: string; time: string } {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return { date: value, time: "" };
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return { date: value, time: '' }
 
   return {
-    date: new Intl.DateTimeFormat("th-TH-u-ca-buddhist", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
+    date: new Intl.DateTimeFormat('th-TH-u-ca-buddhist', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
     }).format(date),
-    time: new Intl.DateTimeFormat("th-TH", {
-      hour: "2-digit",
-      minute: "2-digit",
+    time: new Intl.DateTimeFormat('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit',
     }).format(date),
-  };
+  }
 }
 
-function readIssuerIcon(documentType: string): MaterialIconName {
-  if (/driving|licence|license/i.test(documentType))
-    return "card-account-details-outline";
-  if (/transcript|academic/i.test(documentType)) return "school-outline";
-  if (/id|national/i.test(documentType)) return "account-card-outline";
-  return "file-document-outline";
-}
-
-function readStatusConfig(status: WalletHistoryRow["status"]) {
+function readStatusConfig(status: WalletHistoryRow['status']) {
   switch (status) {
-    case "cancelled":
-      return { label: "ปฏิเสธแล้ว", color: THEME.slate, bg: THEME.gray200 };
-    case "failed":
-      return { label: "ไม่สำเร็จ", color: THEME.danger, bg: THEME.dangerTint };
-    case "revoked":
-      return { label: "ถูกระงับ", color: THEME.danger, bg: THEME.dangerTint };
-    case "deleted":
-      return { label: "ถูกลบ", color: THEME.danger, bg: THEME.dangerTint };
+    case 'cancelled':
+      return { label: 'ปฏิเสธแล้ว', color: THEME.slate, bg: THEME.gray200 }
+    case 'failed':
+      return { label: 'ไม่สำเร็จ', color: THEME.danger, bg: THEME.dangerTint }
+    case 'revoked':
+      return { label: 'ถูกระงับ', color: THEME.danger, bg: THEME.dangerTint }
+    case 'deleted':
+      return { label: 'ถูกลบ', color: THEME.danger, bg: THEME.dangerTint }
     default:
-      return { label: "สำเร็จ", color: THEME.successDeep, bg: THEME.successTint };
+      return { label: 'สำเร็จ', color: THEME.successDeep, bg: THEME.successTint }
   }
 }
 
 type HistoryItemProps = {
-  item: WalletHistoryRow;
-  onPress: () => void;
-  onSuspendAccess?: () => void;
-};
+  item: WalletHistoryRow
+  onPress: () => void
+  onSuspendAccess?: () => void
+}
 
 export function HistoryItem({ item, onPress, onSuspendAccess }: HistoryItemProps) {
-  const dateParts = formatDateParts(item.occurredAt);
-  const statusConfig = readStatusConfig(item.status);
-  const issuerLogoKey = getCardSchemaForConfigurationId(item.documentType).issuerLogoKey;
+  const dateParts = formatDateParts(item.occurredAt)
+  const statusConfig = readStatusConfig(item.status)
 
   return (
     <Pressable
@@ -95,25 +80,11 @@ export function HistoryItem({ item, onPress, onSuspendAccess }: HistoryItemProps
         <View className="w-1.5 bg-wallet-navy" />
         <View className="min-w-0 flex-1 px-3.5 py-3.5">
           <View className="flex-row items-start gap-3">
-            <View className="h-11 w-11 items-center justify-center rounded-full bg-blue-tint">
-              {issuerLogoKey ? (
-                <Image
-                  testID="history-item-issuer-logo"
-                  source={issuerLogoImages[issuerLogoKey]}
-                  className="h-10 w-10"
-                  resizeMode="contain"
-                  accessibilityLabel={`${item.partyName} โลโก้`}
-                />
-              ) : (
-                <View testID="history-item-issuer-icon">
-                  <MaterialCommunityIcons
-                    name={readIssuerIcon(item.documentType)}
-                    size={24}
-                    color={THEME.navy}
-                  />
-                </View>
-              )}
-            </View>
+            <HistoryIssuerLogo
+              credentialType={item.credentialType}
+              documentType={item.documentType}
+              partyName={item.partyName}
+            />
             <View className="min-w-0 flex-1">
               <Text
                 className="text-[13px] font-semibold text-navy"
@@ -171,5 +142,5 @@ export function HistoryItem({ item, onPress, onSuspendAccess }: HistoryItemProps
         </View>
       </View>
     </Pressable>
-  );
+  )
 }

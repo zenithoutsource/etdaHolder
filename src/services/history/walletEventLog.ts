@@ -252,7 +252,7 @@ export function ensureWalletHistoryBackfill(): void {
 export function readSuccessfullyPresentedCredentialIds(): string[] {
   const latestByCredential = new Map<string, WalletHistoryEvent>()
   for (const event of readWalletHistoryEvents()) {
-    if (event.kind !== 'presentation-success') continue
+    if (event.kind !== 'presentation-success' && event.kind !== 'nfc-presentation-success') continue
     if (!latestByCredential.has(event.credentialId)) {
       latestByCredential.set(event.credentialId, event)
     }

@@ -23,10 +23,10 @@ const baseItem: WalletHistoryRow = {
   showSuspendAccessButton: false,
 }
 
-function renderHistoryItem(documentType: string) {
+function renderHistoryItem(documentType: string, credentialType?: string) {
   return render(
     <HistoryItem
-      item={{ ...baseItem, documentType }}
+      item={{ ...baseItem, documentType, credentialType }}
       onPress={() => undefined}
     />,
   )
@@ -34,13 +34,25 @@ function renderHistoryItem(documentType: string) {
 
 describe('HistoryItem issuer logos', () => {
   test.each([
-    ['Thai National ID', require('../../assets/images/thaid.png')],
-    ['Driving Licence', require('../../assets/images/dltt.png')],
-    ['Academic Transcript', require('../../assets/images/chulalongkorn.png')],
-  ])('renders the configured logo for %s', (documentType, asset) => {
-    renderHistoryItem(documentType)
+    ['บัตรประชาชน', 'ThaiNationalID', require('../../assets/images/thaid.png')],
+    ['ใบอนุญาตขับขี่', 'DLTDrivingLicence', require('../../assets/images/dltt.png')],
+    [
+      'ใบแสดงผลการเรียน',
+      'ChulalongkornUniversityTranscript',
+      require('../../assets/images/chulalongkorn.png'),
+    ],
+  ])('renders the agency logo for %s', (documentType, credentialType, asset) => {
+    renderHistoryItem(documentType, credentialType)
 
     expect(screen.getByTestId('history-item-issuer-logo').props.source).toEqual(asset)
+  })
+
+  test('infers ThaID logo from the Thai document label when credentialType is omitted', () => {
+    renderHistoryItem('บัตรประชาชน')
+
+    expect(screen.getByTestId('history-item-issuer-logo').props.source).toEqual(
+      require('../../assets/images/thaid.png'),
+    )
   })
 
   test('keeps the generic icon for an unknown document type', () => {

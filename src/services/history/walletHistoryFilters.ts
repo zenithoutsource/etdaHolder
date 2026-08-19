@@ -36,3 +36,23 @@ export function matchesWalletHistoryFilter(
   }
   return LIFECYCLE_KINDS.has(event.kind)
 }
+
+const WALLET_HISTORY_FILTERS = new Set<WalletHistoryFilter>(
+  WALLET_HISTORY_FILTER_OPTIONS.map((option) => option.id),
+)
+
+export function parseWalletHistoryFilter(value: unknown): WalletHistoryFilter | undefined {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (typeof raw !== 'string') return undefined
+  return WALLET_HISTORY_FILTERS.has(raw as WalletHistoryFilter)
+    ? (raw as WalletHistoryFilter)
+    : undefined
+}
+
+export function readWalletHistoryFilterForEventKind(
+  kind: WalletHistoryEventKind,
+): WalletHistoryFilter {
+  if (PRESENTATION_KINDS.has(kind)) return 'presentation'
+  if (kind === 'credential-received' || kind === 'credential-verify-failed') return 'issuance'
+  return 'lifecycle'
+}

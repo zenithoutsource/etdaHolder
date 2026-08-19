@@ -12,6 +12,7 @@ import {
 } from './walletHistoryFilters'
 import {
   inferCredentialTypeFromDocumentType,
+  projectHistoryDisclosedClaims,
   projectHistoryDocumentType,
   projectHistoryInfoBoxValue,
   projectHistoryPartyName,
@@ -36,6 +37,7 @@ export type WalletHistoryRow = {
   infoBoxValue: string
   partyRoleLabel: string
   showSuspendAccessButton: boolean
+  credentialType?: string
   relatedEventId?: string
   reasonCode?: WalletHistoryFailureReason
 }
@@ -88,7 +90,11 @@ export function projectWalletHistoryRow(
   const isPresentation = event.kind.startsWith('presentation-') || event.kind.startsWith('nfc-')
   const credentialType =
     event.credentialType ?? inferCredentialTypeFromDocumentType(event.documentType)
-  const claimsText = event.disclosedClaims.join(', ')
+  const disclosedClaims = projectHistoryDisclosedClaims({
+    disclosedClaims: event.disclosedClaims,
+    credentialType,
+  })
+  const claimsText = disclosedClaims.join(', ')
   const documentType = projectHistoryDocumentType({
     documentType: event.documentType,
     credentialType,
@@ -112,19 +118,20 @@ export function projectWalletHistoryRow(
     status: event.status,
     kind: event.kind,
     channel: event.channel,
-    disclosedClaims: event.disclosedClaims,
+    disclosedClaims,
     channelCaption: readChannelCaption(event),
     infoBoxLabel: isPresentation
       ? WALLET_HISTORY_COPY.infoBoxLabelPresentation
       : WALLET_HISTORY_COPY.infoBoxLabelDocument,
     infoBoxValue: projectHistoryInfoBoxValue({
       kind: event.kind,
-      disclosedClaims: event.disclosedClaims,
+      disclosedClaims,
       documentType: event.documentType,
       credentialType,
     }),
     partyRoleLabel: readPartyRoleLabel(event),
     showSuspendAccessButton: readShowSuspendAccessButton(event, suspendedRelatedIds),
+    ...(credentialType ? { credentialType } : {}),
     relatedEventId: event.relatedEventId,
     reasonCode: event.reasonCode,
   }

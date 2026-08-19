@@ -1,4 +1,4 @@
-import { getCardSchema } from './cardSchemas'
+import { getCardSchema, getCardSchemaForConfigurationId, resolvePresentationDisclosureLabel } from './cardSchemas'
 import {
   readPresentationAccessLabel,
   readPresentationVerifierDisplayName,
@@ -37,8 +37,9 @@ export function isGenericDocumentTitle(name?: string, credentialType?: string): 
     const schema = getCardSchema(credentialType)
     if (schema.type !== '__fallback__' && schema.title === trimmed) return true
   }
+  if (trimmed.toLowerCase() === 'org.iso.18013.5.1.mdl') return true
   const knownTitles = new Set(
-    ['Credential', 'Thai National ID', 'Driving Licence', 'Academic Transcript', 'Medical Certificate'].map(
+    ['Credential', 'Thai National ID', 'ThaID', 'PID', 'Driving Licence', 'Driver License', 'Academic Transcript', 'Medical Certificate'].map(
       (title) => title.toLowerCase(),
     ),
   )
@@ -121,6 +122,17 @@ export function projectHistoryPartyName(input: {
   return input.partyName
 }
 
+export function projectHistoryDisclosedClaims(input: {
+  disclosedClaims: string[]
+  credentialType?: string
+}): string[] {
+  const credentialType = input.credentialType
+  if (!credentialType) return input.disclosedClaims
+  return input.disclosedClaims.map((claim) =>
+    resolvePresentationDisclosureLabel(credentialType, claim),
+  )
+}
+
 export function projectHistoryDocumentType(input: {
   documentType: string
   credentialType?: string
@@ -174,5 +186,10 @@ export function inferCredentialTypeFromDocumentType(documentType: string): strin
       return type
     }
   }
+  const normalized = documentType.trim().toLowerCase()
+  if (normalized === 'thaid' || normalized === 'pid') return 'ThaiNationalID'
+
+  const fromConfiguration = getCardSchemaForConfigurationId(documentType)
+  if (fromConfiguration.type !== '__fallback__') return fromConfiguration.type
   return undefined
 }

@@ -74,7 +74,7 @@ describe('walletHistory projection', () => {
       channel: 'wallet',
     })
 
-    expect(row.channelCaption).toBe('ผ่าน VP Relay (ทดสอบ)')
+    expect(row.channelCaption).toBe('ผ่าน VP Relay')
     expect(row.partyName).toBe('VP Relay (dev)')
   })
 
@@ -130,6 +130,25 @@ describe('walletHistory projection', () => {
     })
 
     expect(row.channelCaption).toBe('ผ่าน QR Issuer')
+    expect(row.partyName).toBe('PID')
+  })
+
+  test('projectWalletHistoryRow maps stored ThaID document type to the PID card label', () => {
+    const row = projectWalletHistoryRow({
+      id: 'e6b',
+      kind: 'credential-received',
+      status: 'completed',
+      occurredAt: '2026-06-06T00:00:00.000Z',
+      credentialId: 'c1',
+      documentType: 'ThaID',
+      partyName: 'ThaID',
+      disclosedClaims: [],
+      channel: 'oid4vci',
+      deliveryPath: 'qr',
+    })
+
+    expect(row.documentType).toBe('บัตรประชาชน')
+    expect(row.partyName).toBe('PID')
   })
 
   test('projectWalletHistoryRow maps deep-link oid4vp failure channel caption', () => {
@@ -171,5 +190,44 @@ describe('walletHistory projection', () => {
     expect(row.partyName).toBe('ร้านอาหาร')
     expect(row.documentType).toBe('บัตรประชาชน')
     expect(row.infoBoxValue).toBe('วันเดือนปีเกิด')
+  })
+
+  test('projectWalletHistoryRow maps namespaced mDL claims to Thai labels', () => {
+    const row = projectWalletHistoryRow({
+      id: 'e9',
+      kind: 'nfc-presentation-success',
+      status: 'completed',
+      occurredAt: '2026-06-09T00:00:00.000Z',
+      credentialId: 'c1',
+      documentType: 'org.iso.18013.5.1.mDL',
+      partyName: 'เครื่องอ่าน NFC',
+      disclosedClaims: [
+        'org.iso.18013.5.1.given_name',
+        'org.iso.18013.5.1.family_name',
+        'org.iso.18013.5.1.birth_date',
+        'org.iso.18013.5.1.driving_privileges',
+        'org.iso.18013.5.1.issue_date',
+        'org.iso.18013.5.1.expiry_date',
+      ],
+      channel: 'nfc',
+      credentialType: 'DLTDrivingLicence',
+    })
+
+    expect(row.documentType).toBe('ใบอนุญาตขับขี่')
+    expect(row.credentialType).toBe('DLTDrivingLicence')
+    expect(row.disclosedClaims).toEqual([
+      'ชื่อ',
+      'นามสกุล',
+      'วันเดือนปีเกิด',
+      'ประเภทใบอนุญาต',
+      'วันที่ออกใบอนุญาต',
+      'วันหมดอายุ',
+    ])
+    expect(row.infoBoxValue).toBe(
+      'ชื่อ, นามสกุล, วันเดือนปีเกิด, ประเภทใบอนุญาต, วันที่ออกใบอนุญาต, วันหมดอายุ',
+    )
+    expect(row.subtitle).toBe(
+      'ข้อมูลที่เปิดเผย: ชื่อ, นามสกุล, วันเดือนปีเกิด, ประเภทใบอนุญาต, วันที่ออกใบอนุญาต, วันหมดอายุ',
+    )
   })
 })
