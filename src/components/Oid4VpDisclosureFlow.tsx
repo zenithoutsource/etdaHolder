@@ -1,3 +1,12 @@
+/**
+ * OID4VP orchestrator — resolve, face/consent/issuer-PID, info, submit, success/fail.
+ * Journey: P4 (PresentationRequestScreen and My QR).
+ * Copy: presentationFailureUi, issuerPidPresentationCopy, cardSchemas labels.
+ * Layout: FacePreparePanel, consent/info/issuer-PID panels, result/failure.
+ * Next: Wallet on done/cancel.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import * as Linking from 'expo-linking'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Text } from 'react-native'
@@ -5,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 
 import { FacePreparePanel } from './FacePreparePanel'
+import { IssuerPidPresentationPanel } from './IssuerPidPresentationPanel'
 import { PresentationFailurePanel } from './PresentationFailurePanel'
 import { PresentationConsentPanel, readInitialSelectedClaimKeys, readSelectedDisclosureLabels } from './PresentationConsentPanel'
 import { PresentationInfoPanel } from './PresentationInfoPanel'
@@ -33,6 +43,7 @@ import {
 } from '../services/vp/presentationService'
 import { resolvePresentationRequestCached } from '../services/vp/presentationResolveCache'
 import { resolvePresentationFailureUi, type PresentationFailureUi } from '../services/vp/presentationFailureUi'
+import { isIssuerPidPresentation } from '../services/vp/isIssuerPidPresentation'
 import type { IssuerPortalCredentialType } from '../config/issuerPortalUrls'
 
 const RESOLVE_TIMEOUT_MS = 20_000
@@ -50,6 +61,7 @@ type FlowPhase =
   | { tag: 'resolving' }
   | { tag: 'failure'; details: PresentationFailureUi }
   | { tag: 'facePrepare'; request: ResolvedPresentationRequest }
+  | { tag: 'issuerPidConsent'; request: ResolvedPresentationRequest }
   | { tag: 'consent'; request: ResolvedPresentationRequest }
   | { tag: 'info'; request: ResolvedPresentationRequest }
   | { tag: 'success'; verifierName: string }
@@ -118,7 +130,8 @@ export function Oid4VpDisclosureFlow({
 
     void (async () => {
       try {
-        const presentableCredentials = filterPresentableCredentials(credentialsRef.current)
+        const walletCredentials = credentialsRef.current
+        const presentableCredentials = filterPresentableCredentials(walletCredentials)
         logWalletStep(logScope, 'presentation-credentials-loaded', {
           presentableCount: presentableCredentials.length,
         })
@@ -130,6 +143,7 @@ export function Oid4VpDisclosureFlow({
             {
               trustedVerifiers: TRUSTED_VERIFIERS,
               presentationFlowOrigin,
+              walletCredentials,
             },
           ),
           RESOLVE_TIMEOUT_MS,
@@ -138,6 +152,11 @@ export function Oid4VpDisclosureFlow({
         logWalletStep(logScope, 'presentation-resolved', describePresentationForLog(request))
         if (generationRef.current !== gen) return
         flowLockedRef.current = true
+        if (isIssuerPidPresentation(request)) {
+          setSelectedClaimKeys(readInitialSelectedClaimKeys(request.disclosures))
+          setPhase({ tag: 'issuerPidConsent', request })
+          return
+        }
         setPhase({ tag: 'facePrepare', request })
       } catch (err) {
         if (generationRef.current !== gen) return
@@ -312,6 +331,22 @@ export function Oid4VpDisclosureFlow({
     return (
       <PresentationStepScaffold onBack={onCancel}>
         <FacePreparePanel onScan={() => confirmFacePrepare(phase.request)} />
+      </PresentationStepScaffold>
+    )
+  }
+
+  if (phase.tag === 'issuerPidConsent') {
+    return (
+      <PresentationStepScaffold onBack={onCancel}>
+        <IssuerPidPresentationPanel
+          record={phase.request.matchedCredential}
+          submitting={isSubmitting}
+          onConfirm={() => {
+            logWalletStep(logScope, 'presentation-user-accepted', describePresentationForLog(phase.request))
+            void approvePresentation(phase.request, selectedClaimKeys)
+          }}
+          onDecline={() => declinePresentation(phase.request)}
+        />
       </PresentationStepScaffold>
     )
   }

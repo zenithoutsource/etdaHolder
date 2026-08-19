@@ -1,12 +1,15 @@
 import { render, screen } from '@testing-library/react-native'
 
 import { VpQrModal } from './VpQrModal'
+import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 
 const mockPush = jest.fn()
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
 }))
+
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => () => null)
 
 jest.mock('react-native-qrcode-svg', () => {
   return function MockQRCode() {
@@ -59,6 +62,7 @@ describe('VpQrModal', () => {
     render(<VpQrModal visible credential={credential} onClose={jest.fn()} />)
 
     expect(screen.getByText('QR หมดอายุ')).toBeTruthy()
+    expect(screen.getByText(WALLET_HOME_COPY.myQrExpiredMessage)).toBeTruthy()
     expect(screen.queryByText(/หมดอายุใน/)).toBeNull()
   })
 
@@ -94,8 +98,28 @@ describe('VpQrModal', () => {
       pathname: '/(tabs)/qr',
       params: {
         brokerSessionId: 's1',
-        credentialId: 'cred-1',
       },
     })
+  })
+
+  test('does not activate a broker session or show QR retry when the document is expired', () => {
+    mockUseSession.mockReturnValue(sessionState({ phase: 'expired', qrUrl: null }))
+    const expiredCredential = {
+      id: 'cred-1',
+      type: 'ThaiNationalID',
+      rawVc: 'issuer.jwt~disclosure~',
+      claims: {},
+      expiresAt: '2020-01-01T00:00:00.000Z',
+    } as never
+
+    render(<VpQrModal visible credential={expiredCredential} onClose={jest.fn()} />)
+
+    expect(mockUseSession).toHaveBeenCalledWith(expect.objectContaining({ active: false }))
+    expect(screen.queryByText(/หมดอายุใน/)).toBeNull()
+    expect(screen.queryByText('QR หมดอายุ')).toBeNull()
+    expect(screen.queryByTestId('wallet-initiated-vp-qr-expired')).toBeNull()
+    expect(screen.queryByTestId('wallet-initiated-vp-qr-expired-retry')).toBeNull()
+    expect(screen.queryByText(WALLET_HOME_COPY.myQrExpiredAction)).toBeNull()
+    expect(screen.getByText('ยกเลิก')).toBeTruthy()
   })
 })
