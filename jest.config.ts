@@ -16,6 +16,7 @@ const config: Config = {
     '^react-native-keychain$': '<rootDir>/src/__mocks__/react-native-keychain.ts',
     '^msw$': '<rootDir>/node_modules/msw/lib/core/index.js',
     '^msw/node$': '<rootDir>/node_modules/msw/lib/node/index.js',
+    '^cbor-x$': '<rootDir>/node_modules/cbor-x/dist/node.cjs',
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
@@ -37,7 +38,7 @@ const config: Config = {
     '^.+\\.mjs$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|sentry-expo|native-base|@openid4vc/openid4vp|@openid4vc/openid4vci|@openid4vc/oauth2|@openid4vc/utils|@craftzdog/.*|@noble/.*|uuid|msw|@mswjs|rettime|until-async|strict-event-emitter|outvariant|headers-polyfill)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|sentry-expo|native-base|@openid4vc/openid4vp|@openid4vc/openid4vci|@openid4vc/oauth2|@openid4vc/utils|@craftzdog/.*|@noble/.*|uuid|msw|@mswjs|rettime|until-async|strict-event-emitter|outvariant|headers-polyfill|cbor-x)',
   ],
 }
 

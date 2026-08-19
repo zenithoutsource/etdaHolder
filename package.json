@@ -19,6 +19,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "proof:generate": "node scripts/generate-oid4vci-pop-jwt.mjs",
+    "jwt:fetch": "node scripts/fetch-document-jwt.mjs",
     "probe:strongbox": "node scripts/probe-strongbox-keymint.mjs"
   },
   "dependencies": {
@@ -34,6 +35,7 @@
     "@react-navigation/native": "^7.1.8",
     "@tanstack/react-query": "^5.100.14",
     "@testing-library/jest-native": "^5.4.3",
+    "cbor-x": "^1.6.5",
     "@testing-library/react-native": "^13.3.3",
     "expo": "~54.0.36",
     "expo-build-properties": "~1.0.10",
