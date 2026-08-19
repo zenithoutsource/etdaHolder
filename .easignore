@@ -69,6 +69,15 @@ app-example
 modules/**/android/build/
 modules/**/android/.gradle/
 modules/**/.cxx/
+
+# Local tool Gradle caches lock EAS archive copy on Windows (EBUSY).
+tools/**/.gradle/
+**/.gradle/
+
+# Do not upload local archives/logs; they bloat the EAS tarball.
+server.rar
+*.rar
+debug-*.log
 google-services.json
 etda-wallet-firebase-adminsdk-fbsvc-5c08da928e.json
 .cursor/plans/
