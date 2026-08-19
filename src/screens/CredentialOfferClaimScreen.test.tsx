@@ -10,8 +10,13 @@ import {
   finalizeDualFormatCredential,
 } from '../services/credentials/dualFormatIssuance'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
+import { readPidGateStatus } from '../services/credentials/credentialGuard'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
 import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
+import {
+  pairRenewalReplacementForSavedCredential,
+  readRenewalIntakePendingKeyForOffer,
+} from '../services/credentials/renewalIssuerIntake'
 
 jest.mock('../components/AppDialog', () => ({
   useAppDialog: () => ({ showDialog: jest.fn() }),
@@ -77,6 +82,11 @@ jest.mock('../services/credentials/credentialGuard', () => {
   }
 })
 
+jest.mock('../services/credentials/renewalIssuerIntake', () => ({
+  readRenewalIntakePendingKeyForOffer: jest.fn(() => undefined),
+  pairRenewalReplacementForSavedCredential: jest.fn(() => false),
+}))
+
 jest.mock('../services/credentials/credentialKeyRenewal', () => ({
   readCredentialRenewalStatuses: jest.fn(() => ({})),
 }))
@@ -107,7 +117,16 @@ const acquireCredentialRecordMock = acquireCredentialRecord as jest.Mock
 const acquireDualFormatForPreviewMock = acquireDualFormatForPreview as jest.Mock
 const finalizeDualFormatCredentialMock = finalizeDualFormatCredential as jest.Mock
 const readStoredCredentialsMock = readStoredCredentials as jest.Mock
+const readPidGateStatusMock = readPidGateStatus as jest.MockedFunction<typeof readPidGateStatus>
 const saveScannedCredentialMock = saveScannedCredential as jest.Mock
+const readRenewalIntakePendingKeyForOfferMock =
+  readRenewalIntakePendingKeyForOffer as jest.MockedFunction<
+    typeof readRenewalIntakePendingKeyForOffer
+  >
+const pairRenewalReplacementForSavedCredentialMock =
+  pairRenewalReplacementForSavedCredential as jest.MockedFunction<
+    typeof pairRenewalReplacementForSavedCredential
+  >
 const linkingMock = jest.requireMock('expo-linking') as {
   getInitialURL: jest.Mock<Promise<string | null>, []>
   useURL: jest.Mock<string | null, []>
@@ -122,6 +141,9 @@ describe('CredentialOfferClaimScreen', () => {
     useUrlMock.mockReturnValue(null)
     useDeeplinkStore.setState({ pendingUri: null, activeUri: null, dismissedUri: null, offerGeneration: 0, vpGeneration: 0 })
     readStoredCredentialsMock.mockReturnValue([])
+    readPidGateStatusMock.mockReturnValue('ready')
+    readRenewalIntakePendingKeyForOfferMock.mockReturnValue(undefined)
+    pairRenewalReplacementForSavedCredentialMock.mockReturnValue(false)
     acquireDualFormatForPreviewMock.mockReset()
     finalizeDualFormatCredentialMock.mockReset()
   })
@@ -458,6 +480,38 @@ describe('CredentialOfferClaimScreen', () => {
     }
   })
 
+  it('blocks a transcript offer with PID-suspended copy before the hardware cutover gate', async () => {
+    const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    readPidGateStatusMock.mockReturnValue('suspended')
+    const offerUri =
+      'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Ftranscript-suspended'
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [
+        { id: 'TranscriptCredential_dc+sd-jwt', format: 'dc+sd-jwt', rawConfiguration: {} },
+      ],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+
+    try {
+      render(<CredentialOfferClaimScreen />)
+
+      await waitFor(() => {
+        expect(screen.getByText(WALLET_HOME_COPY.pidSuspendedMessage)).toBeTruthy()
+      })
+      expect(screen.queryByText(WALLET_HOME_COPY.hardwarePidReissueRequiredMessage)).toBeNull()
+      expect(acquireCredentialRecordMock).not.toHaveBeenCalled()
+    } finally {
+      if (originalHardwareFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+      } else {
+        process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
+      }
+    }
+  })
+
   it('shows the DOPA confirmation before acquiring a ThaiNationalID credential', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-before-acquire'
     useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
@@ -496,7 +550,47 @@ describe('CredentialOfferClaimScreen', () => {
       expect(saveScannedCredentialMock).toHaveBeenCalledTimes(1)
       expect(screen.getByText('รับเอกสารสำเร็จ')).toBeTruthy()
     })
+    expect(pairRenewalReplacementForSavedCredentialMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'id-card-before-acquire',
+        type: 'ThaiNationalID',
+      }),
+    )
     expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+  })
+
+  it('reuses a pending P3 k_cred when acquiring a same-type renewal offer', async () => {
+    const offerUri =
+      'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-renewal'
+    readRenewalIntakePendingKeyForOfferMock.mockReturnValue('pending-p3-key')
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+      txCode: undefined,
+    })
+    acquireCredentialRecordMock.mockResolvedValue({
+      id: 'id-card-renewal',
+      type: 'ThaiNationalID',
+      rawVc: 'vc',
+      claims: {},
+      issuedAt: '2026-08-19T00:00:00.000Z',
+    })
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+
+    fireEvent.press(screen.getByText('ยืนยัน'))
+    await waitFor(() => {
+      expect(acquireCredentialRecordMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ pendingCredentialKeyId: 'pending-p3-key' }),
+      )
+    })
   })
 
   it('shows the issuer confirmation after DL preview and before saving', async () => {

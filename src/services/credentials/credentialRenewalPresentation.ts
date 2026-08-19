@@ -34,7 +34,9 @@ export function shouldShowCredentialRenewalRibbon(
     inactiveState.kind === 'old-revoked' ||
     inactiveState.kind === 'cleanup-pending' ||
     inactiveState.kind === 'document-expired' ||
-    inactiveState.kind === 'hardware-reissue-required'
+    inactiveState.kind === 'hardware-reissue-required' ||
+    inactiveState.kind === 'issuer-suspended' ||
+    inactiveState.kind === 'revoked'
   )
 }
 
@@ -43,18 +45,13 @@ type CredentialActionMenuContext = {
   renewalState?: CredentialRenewalState
 }
 
-/** Hide revoke/delete while renewal ribbon is shown or rotation flow is in progress. */
+/** Hide revoke/delete while the status ribbon is shown or rotation is in progress. */
 export function shouldHideCredentialActionMenu(
   renewalStatus?: CredentialRenewalRecord,
   context?: CredentialActionMenuContext,
 ): boolean {
   void renewalStatus
   if (readWalletKeyRotationRecord()) return true
-  if (
-    context &&
-    shouldShowCredentialRenewalRibbon(context.inactiveState, context.renewalState)
-  ) {
-    return true
-  }
-  return false
+  if (!context) return false
+  return shouldShowCredentialRenewalRibbon(context.inactiveState, context.renewalState)
 }

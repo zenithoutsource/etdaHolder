@@ -1,5 +1,12 @@
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
 import { getHolderDid, getPreviousHolderDid } from '../crypto/crypto'
-import { destroyCredentialKey } from '../crypto/credentialSigningKey'
+import {
+  createPendingHardwareCredentialKey,
+  discardPendingHardwareCredentialKey,
+  hasHardwareCredentialKey,
+  resolveHardwareCredentialHolderDid,
+} from '../crypto/hardwareCredentialSigningKey'
+import { destroyIssuanceCredentialKey } from '../crypto/perCredentialSigning'
 import {
   clearCredentialRenewal,
   readCredentialRenewal,
@@ -10,13 +17,13 @@ import {
 import { notifyCredentialsChanged, readStoredCredentials, removeStoredCredential } from './storedCredentials'
 import { readCredentialHolderDid } from './credentialHolderBinding'
 import {
-  claimCredential,
   resolveOffer,
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from '../vci/exchangeService'
+import { claimCredentialWithDualFormatSupport } from './dualFormatIssuance'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
-import { recordCredentialRenewalCompleted } from '../history/walletHistoryRecording'
+import { pairRenewalReplacement } from './renewalIssuerIntake'
 import { clearWalletKeyRotationRecord } from '../crypto/walletKeyRotation'
 import { clearRenewalCleanupBannerDismissal, isRenewalAwaitingHolderCleanup } from './renewalCleanupNotification'
 import { clearCredentialLifecycleStatus } from './credentialLifecycle'
@@ -47,16 +54,27 @@ type RenewalStatusPayload = {
   }[]
 }
 
+type RenewalClaimOptions = {
+  pendingCredentialKeyId?: string
+}
+
 type RenewalServiceDependencies = {
   fetchImpl: typeof fetch
   resolveOffer: (offerUri: string) => Promise<ResolvedCredentialOffer>
   claimCredential: (
     resolvedOffer: ResolvedCredentialOffer,
+    options?: RenewalClaimOptions,
   ) => Promise<VerifiableCredentialRecord>
   getHolderDid: () => string
   syncPushTokenRegistration: (holderDid: string) => Promise<boolean>
   presentOldCredentialForRenewal: typeof presentOldCredentialForRenewal
   silentOid4VpDependencies?: Partial<SilentRenewalOid4VpDependencies>
+  isHardwareEnabled?: () => boolean
+  hasHardwareCredentialKey?: (credentialId: string) => boolean
+  createPendingHardwareCredentialKey?: () => Promise<string>
+  readPendingHardwareHolderDid?: (pendingId: string) => string
+  discardPendingHardwareCredentialKey?: (pendingId: string) => Promise<void>
+  destroyIssuanceCredentialKey?: (credentialId: string) => Promise<void>
 }
 
 function resolveDependencies(
@@ -65,12 +83,29 @@ function resolveDependencies(
   return {
     fetchImpl: fetch,
     resolveOffer,
-    claimCredential,
+    claimCredential: (offer, options) =>
+      claimCredentialWithDualFormatSupport(offer, options ?? {}),
     getHolderDid,
     syncPushTokenRegistration,
     presentOldCredentialForRenewal,
+    isHardwareEnabled: isHardwareP256SigningEnabled,
+    hasHardwareCredentialKey,
+    createPendingHardwareCredentialKey,
+    readPendingHardwareHolderDid: resolveHardwareCredentialHolderDid,
+    discardPendingHardwareCredentialKey,
+    destroyIssuanceCredentialKey,
     ...dependencies,
   }
+}
+
+async function discardPendingRenewalKey(
+  pendingId: string | undefined,
+  discardPending: (pendingId: string) => Promise<void>,
+): Promise<void> {
+  if (!pendingId) return
+  await discardPending(pendingId).catch((error) => {
+    logWalletError('renewal', 'discard-pending-key-failed', error, { pendingId })
+  })
 }
 
 function assertRenewalSubmittable(credentialId: string): void {
@@ -156,21 +191,36 @@ export async function submitRenewalRequest(
 
   assertRenewalSubmittable(credentialId)
 
-  // Renewal presents the old VC with a PoP signed by the key it was bound to,
-  // read from the single retained previous Keychain slot. If the wallet key was
-  // rotated again after this credential's rotation, that slot no longer holds
-  // the binding key and the PoP would fail deep in signing with a cryptic
-  // HolderBindingMismatch. Fail fast here with a clear, actionable error.
-  if (oldHolderDid !== getPreviousHolderDid()) {
+  const resolvedDependencies = resolveDependencies(dependencies)
+  const hardwarePath =
+    Boolean(resolvedDependencies.isHardwareEnabled?.()) &&
+    Boolean(resolvedDependencies.hasHardwareCredentialKey?.(credentialId))
+
+  if (!hardwarePath && oldHolderDid !== getPreviousHolderDid()) {
     throw new Error(
       `CredentialRenewalPreviousKeyUnavailable: ${credentialId} is bound to a wallet key that is no longer retained; request a new document from the issuer`,
     )
   }
 
-  const resolvedDependencies = resolveDependencies(dependencies)
-  const newHolderDid = resolvedDependencies.getHolderDid()
+  const existingPendingId = readCredentialRenewal(credentialId)?.pendingCredentialKeyId
+  await discardPendingRenewalKey(
+    existingPendingId,
+    resolvedDependencies.discardPendingHardwareCredentialKey ?? (async () => undefined),
+  )
+
+  let pendingCredentialKeyId: string | undefined
+  let newHolderDid = resolvedDependencies.getHolderDid()
 
   try {
+    if (hardwarePath) {
+      pendingCredentialKeyId = await resolvedDependencies.createPendingHardwareCredentialKey?.()
+      if (!pendingCredentialKeyId) {
+        throw new Error('CredentialRenewalPendingKeyMissing')
+      }
+      newHolderDid =
+        resolvedDependencies.readPendingHardwareHolderDid?.(pendingCredentialKeyId) ?? newHolderDid
+    }
+
     try {
       await resolvedDependencies.syncPushTokenRegistration(newHolderDid)
     } catch (error) {
@@ -180,6 +230,7 @@ export async function submitRenewalRequest(
     logWalletStep('renewal', 'request-start', {
       credentialId,
       credentialType: currentCredential.type,
+      hardwarePath,
     })
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), RENEWAL_REQUEST_TIMEOUT_MS)
@@ -237,13 +288,18 @@ export async function submitRenewalRequest(
       {
         previousHolderDid: oldHolderDid,
         readyOfferUri: undefined,
+        pendingCredentialKeyId,
         state: 'renewal-processing',
       },
       new Date(),
     )
 
-    logWalletStep('renewal', 'request-submitted', { credentialId })
+    logWalletStep('renewal', 'request-submitted', { credentialId, pendingCredentialKeyId })
   } catch (error) {
+    await discardPendingRenewalKey(
+      pendingCredentialKeyId,
+      resolvedDependencies.discardPendingHardwareCredentialKey ?? (async () => undefined),
+    )
     logWalletError('renewal', 'request-failed', error, { credentialId })
     throw error
   }
@@ -263,49 +319,30 @@ async function completeRenewalClaim(
   try {
     logWalletStep('renewal', 'claim-start', { credentialId })
     const offer = await dependencies.resolveOffer(offerUri)
-    const replacement = await dependencies.claimCredential(offer)
+    const replacement = await dependencies.claimCredential(offer, {
+      pendingCredentialKeyId: current.pendingCredentialKeyId,
+    })
 
     const latest = readCredentialRenewal(credentialId)
     if (!latest || latest.state !== 'renewal-processing') {
       return
     }
 
-    writeCredentialRenewal({
-      credentialId,
-      previousHolderDid: current.previousHolderDid,
-      replacementCredentialId: replacement.id,
-      renewedAt: now.toISOString(),
-      state: 'cleanup-pending',
-      updatedAt: now.toISOString(),
-    })
-
-    upsertCredentialRenewal(
-      replacement.id,
-      {
-        previousHolderDid: current.previousHolderDid,
-        renewedAt: now.toISOString(),
-        state: 'renewed-active',
-      },
-      now,
-    )
-
-    logWalletStep('renewal', 'claim-complete', {
-      credentialId,
-      replacementCredentialId: replacement.id,
-    })
-    await destroyCredentialKey(credentialId).catch((error) => {
-      logWalletError('renewal', 'destroy-old-credential-key-failed', error, { credentialId })
-    })
-    recordCredentialRenewalCompleted(replacement)
+    pairRenewalReplacement(credentialId, replacement, now)
   } catch (error) {
     logWalletError('renewal', 'claim-failed', error, { credentialId })
     const latest = readCredentialRenewal(credentialId)
     if (latest?.state === 'renewal-processing') {
+      await discardPendingRenewalKey(
+        latest.pendingCredentialKeyId,
+        dependencies.discardPendingHardwareCredentialKey ?? (async () => undefined),
+      )
       upsertCredentialRenewal(
         credentialId,
         {
           previousHolderDid: latest.previousHolderDid,
           readyOfferUri: undefined,
+          pendingCredentialKeyId: undefined,
           state: 'renewal-required',
         },
         new Date(),
@@ -315,7 +352,10 @@ async function completeRenewalClaim(
   }
 }
 
-function recoverOrphanedRenewalProcessing(serverCredentialIds: Set<string>): void {
+async function recoverOrphanedRenewalProcessing(
+  serverCredentialIds: Set<string>,
+  discardPending: (pendingId: string) => Promise<void>,
+): Promise<void> {
   if (!__DEV__) return
 
   for (const credential of readStoredCredentials()) {
@@ -326,11 +366,13 @@ function recoverOrphanedRenewalProcessing(serverCredentialIds: Set<string>): voi
     // renewal-required on a transient empty/mismatched server list.
     if (renewal.readyOfferUri?.trim()) continue
 
+    await discardPendingRenewalKey(renewal.pendingCredentialKeyId, discardPending)
     upsertCredentialRenewal(
       credential.id,
       {
         previousHolderDid: renewal.previousHolderDid,
         readyOfferUri: undefined,
+        pendingCredentialKeyId: undefined,
         state: 'renewal-required',
       },
       new Date(),
@@ -404,7 +446,10 @@ export async function refreshAndCompleteRenewals(
     // Only orphan after a successful status payload. A failed poll used to pass
     // an empty id set through finally and wipe every ready Receive CTA.
     if (statusPollSucceeded) {
-      recoverOrphanedRenewalProcessing(serverCredentialIds)
+      await recoverOrphanedRenewalProcessing(
+        serverCredentialIds,
+        resolvedDependencies.discardPendingHardwareCredentialKey ?? (async () => undefined),
+      )
     }
     repairInconsistentRenewalPairs()
   }
@@ -520,7 +565,7 @@ export async function confirmOldCredentialCleanup(credentialId: string): Promise
   clearRenewalCleanupBannerDismissal(credentialId)
   clearCredentialLifecycleStatus(credentialId)
   removeStoredCredential(credentialId)
-  await destroyCredentialKey(credentialId).catch((error) => {
+  await destroyIssuanceCredentialKey(credentialId).catch((error) => {
     logWalletError('credentials', 'destroy-old-credential-key-failed', error, { credentialId })
   })
 

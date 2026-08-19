@@ -1,3 +1,12 @@
+/**
+ * OID4VCI claim pipeline — resolve, optional auth/tx_code, preview, save.
+ * Journey: P1 issuance (Scan QR or same-device callback); P3 same-type pairing after save.
+ * Copy: WALLET_HOME_COPY; cardSchemas issuance confirmation; THEME.
+ * Layout: ThaiID / DL / transcript panels, IssuanceTrustConfirmationPanel, ScanSuccessPanel.
+ * Next: Wallet; may open issuer portal via WebBrowser.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import * as Linking from 'expo-linking'
 import * as WebBrowser from 'expo-web-browser'
 import { useRouter } from 'expo-router'
@@ -33,6 +42,7 @@ import {
 } from '../services/credentials/credentialGuard'
 import { assertHardwareCutoverReissueAllowedForOffer } from '../services/crypto/cutoverMigrationPolicy'
 import { readCredentialRenewalStatuses } from '../services/credentials/credentialKeyRenewal'
+import { readPidGateUserCopy } from '../services/credentials/pidGateDialog'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import {
   deleteExpiredCredentialAfterReissue,
@@ -45,6 +55,10 @@ import {
   selectOfferForSingleFormatAcquire,
   type PendingMdocCredential,
 } from '../services/credentials/dualFormatIssuance'
+import {
+  pairRenewalReplacementForSavedCredential,
+  readRenewalIntakePendingKeyForOffer,
+} from '../services/credentials/renewalIssuerIntake'
 import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
 import { discardIssuanceCredentialArtifacts, commitIssuanceCredentialKeyReplacement } from '../services/crypto/perCredentialSigning'
@@ -182,6 +196,10 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       ...describeOfferForLog(offer),
       txCodeProvided: Boolean(code),
     })
+    const renewalPendingKeyId = readRenewalIntakePendingKeyForOffer(offer)
+    const renewalPendingKeyOptions = renewalPendingKeyId
+      ? { pendingCredentialKeyId: renewalPendingKeyId }
+      : {}
     try {
       if (isDualFormatOffer(offer.credentialConfigurations)) {
         logWalletStep('deeplink', 'credential-acquire-dual-format', describeOfferForLog(offer))
@@ -189,6 +207,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
           acquireDualFormatForPreview(offer, {
             tx_code: code,
             signal: acquireAbortController.signal,
+            ...renewalPendingKeyOptions,
             ...(authorizationCodeExchangeRef.current
               ? { authorizationCodeExchange: authorizationCodeExchangeRef.current }
               : {}),
@@ -239,6 +258,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         acquireCredentialRecord(offerToAcquire, {
           tx_code: code,
           signal: acquireAbortController.signal,
+          ...renewalPendingKeyOptions,
           ...(authorizationCodeExchangeRef.current
             ? { authorizationCodeExchange: authorizationCodeExchangeRef.current }
             : {}),
@@ -277,16 +297,6 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       pidGateStatus,
       authorizationCodeFlow: Boolean(authorizationCodeExchangeRef.current),
     })
-    try {
-      assertHardwareCutoverReissueAllowedForOffer(offer)
-    } catch (error) {
-      logWalletError('deeplink', 'offer-cutover-blocked', error, describeOfferForLog(offer))
-      if (generationRef.current === gen) {
-        const raw = error instanceof Error ? error.message : String(error)
-        setPhase({ tag: 'error', message: toFriendlyError(raw) })
-      }
-      return
-    }
     if (!isPidOffer && pidGateStatus !== 'ready') {
       logWalletError(
         'deeplink',
@@ -297,11 +307,18 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       if (generationRef.current === gen) {
         setPhase({
           tag: 'error',
-          message:
-            pidGateStatus === 'missing'
-              ? WALLET_HOME_COPY.pidRequiredMessage
-              : WALLET_HOME_COPY.renewThaIdRequiredMessage,
+          message: readPidGateUserCopy(pidGateStatus, 'request').message,
         })
+      }
+      return
+    }
+    try {
+      assertHardwareCutoverReissueAllowedForOffer(offer)
+    } catch (error) {
+      logWalletError('deeplink', 'offer-cutover-blocked', error, describeOfferForLog(offer))
+      if (generationRef.current === gen) {
+        const raw = error instanceof Error ? error.message : String(error)
+        setPhase({ tag: 'error', message: toFriendlyError(raw) })
       }
       return
     }
@@ -332,7 +349,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       if (generationRef.current === gen) {
         setPhase({
           tag: 'error',
-          message: WALLET_HOME_COPY.renewThaIdRequiredMessage,
+          message: readPidGateUserCopy(pidGateStatus, 'request').message,
         })
       }
       return
@@ -630,6 +647,11 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         saveScannedCredential(record, { refreshCredentials })
       }
       await commitIssuanceCredentialKeyReplacement(record.id)
+      try {
+        pairRenewalReplacementForSavedCredential(record)
+      } catch (pairingError) {
+        logWalletError('deeplink', 'renewal-pair-failed', pairingError, describeCredentialForLog(record))
+      }
       logWalletStep('deeplink', 'credential-save-complete', describeCredentialForLog(record))
       setPhase({ tag: 'success', record })
     } catch (err) {

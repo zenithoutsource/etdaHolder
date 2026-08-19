@@ -1,21 +1,46 @@
+/**
+ * Opens the Issuer portal for a credential type and routes the Holder to claim or VP.
+ * Journey: P1 Home ขอเอกสาร / P3 Inactive ขอเอกสาร intake / expired ขอเอกสารใหม่.
+ */
 import type { Router } from 'expo-router'
 
 import type { AppDialogOptions } from '../../components/AppDialog'
 import { isIssuerPortalCredentialType } from '../../config/issuerPortalUrls'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../../store/deeplinkStore'
+import { logWalletError } from '../debug/walletLogger'
+import { readPidGateStatus, type PidGateStatus } from './credentialGuard'
+import { readCredentialRenewalStatuses } from './credentialKeyRenewal'
 import { consumeLastPortalReturn } from './lastPortalReturn'
 import { openCredentialRequestPortal } from './openCredentialRequestPortal'
+import { shouldShowHomePidGateDialog, showPidGateDialog } from './pidGateDialog'
 import {
   buildPortalEmptyOfferDialogFromReturn,
   showPortalEmptyOfferDialog,
 } from './portalEmptyOfferDialog'
+import { readStoredCredentials } from './storedCredentials'
 import { WALLET_HOME_COPY } from './walletHomeCopy'
+
+function readPortalPidGateStatus(): PidGateStatus {
+  try {
+    const credentials = readStoredCredentials()
+    return readPidGateStatus(credentials, readCredentialRenewalStatuses(credentials))
+  } catch (error) {
+    logWalletError('portal', 'pid-gate-lookup-failed', error)
+    return 'missing'
+  }
+}
+
+export type PortalFlowOutcome =
+  | 'opened-claim'
+  | 'opened-presentation'
+  | 'abandoned'
+  | 'blocked'
 
 export async function requestCredentialViaPortalFlow(input: {
   credentialType: string | undefined
   router: Pick<Router, 'push'>
   showDialog: (options: AppDialogOptions) => void
-}): Promise<void> {
+}): Promise<PortalFlowOutcome> {
   const { credentialType, router, showDialog } = input
 
   if (!isIssuerPortalCredentialType(credentialType)) {
@@ -25,22 +50,39 @@ export async function requestCredentialViaPortalFlow(input: {
       icon: 'danger',
       actions: [{ label: WALLET_HOME_COPY.cancel, variant: 'secondary' }],
     })
-    return
+    return 'abandoned'
+  }
+
+  const pidGateStatus = readPortalPidGateStatus()
+  if (shouldShowHomePidGateDialog(credentialType, pidGateStatus)) {
+    showPidGateDialog(
+      showDialog,
+      pidGateStatus,
+      () => {
+        void requestCredentialViaPortalFlow({
+          credentialType: 'ThaiNationalID',
+          router,
+          showDialog,
+        })
+      },
+      'request',
+    )
+    return 'blocked'
   }
 
   const offerGenerationAtStart = useDeeplinkStore.getState().offerGeneration
   const result = await openCredentialRequestPortal(credentialType)
   if (result.status === 'claimed' || result.status === 'auth_code_claim_ready') {
     router.push('/(tabs)/credential-offer')
-    return
+    return 'opened-claim'
   }
   if (result.status === 'auth_code_awaiting_pid_vp') {
     router.push('/(tabs)/presentation-request')
-    return
+    return 'opened-presentation'
   }
   if (result.status === 'presentation_request') {
     router.push('/(tabs)/presentation-request')
-    return
+    return 'opened-presentation'
   }
   if (result.status === 'misconfigured') {
     showDialog({
@@ -49,7 +91,7 @@ export async function requestCredentialViaPortalFlow(input: {
       icon: 'danger',
       actions: [{ label: WALLET_HOME_COPY.cancel, variant: 'secondary' }],
     })
-    return
+    return 'abandoned'
   }
   if (result.status === 'error') {
     showDialog({
@@ -58,7 +100,7 @@ export async function requestCredentialViaPortalFlow(input: {
       icon: 'danger',
       actions: [{ label: WALLET_HOME_COPY.cancel, variant: 'secondary' }],
     })
-    return
+    return 'abandoned'
   }
   if (result.status === 'empty_offer') {
     showPortalEmptyOfferDialog(showDialog, {
@@ -67,18 +109,18 @@ export async function requestCredentialViaPortalFlow(input: {
         void requestCredentialViaPortalFlow({ credentialType, router, showDialog })
       },
     })
-    return
+    return 'abandoned'
   }
   // A newer "ขอเอกสาร" replaced this wait — silent exit so a stale empty dialog
   // cannot appear after the retry already succeeded.
   if (result.status === 'superseded') {
-    return
+    return 'abandoned'
   }
   const { offerGeneration, pendingUri } = useDeeplinkStore.getState()
   const pendingOffer = offerGeneration > offerGenerationAtStart ? pendingUri : null
   if (pendingOffer && isCredentialOfferDeeplink(pendingOffer)) {
     router.push('/(tabs)/credential-offer')
-    return
+    return 'opened-claim'
   }
   const lastReturn = consumeLastPortalReturn()
   if (lastReturn?.outcome === 'empty-callback' || lastReturn?.outcome === 'unrecognized') {
@@ -93,4 +135,5 @@ export async function requestCredentialViaPortalFlow(input: {
       },
     }))
   }
+  return 'abandoned'
 }

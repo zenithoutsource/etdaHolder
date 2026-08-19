@@ -46,13 +46,45 @@ jest.mock('./renewalOid4VpPresentation', () => ({
   presentOldCredentialForRenewal: jest.fn().mockResolvedValue(undefined),
 }))
 
-jest.mock('../crypto/credentialSigningKey', () => ({
-  destroyCredentialKey: jest.fn(async () => undefined),
+jest.mock('./dualFormatIssuance', () => ({
+  claimCredentialWithDualFormatSupport: jest.fn(),
 }))
 
-import { destroyCredentialKey } from '../crypto/credentialSigningKey'
+jest.mock('../crypto/hardwareCredentialSigningKey', () => ({
+  createPendingHardwareCredentialKey: jest.fn(),
+  discardPendingHardwareCredentialKey: jest.fn(async () => undefined),
+  hasHardwareCredentialKey: jest.fn(() => false),
+  resolveHardwareCredentialHolderDid: jest.fn(),
+}))
 
-const destroyCredentialKeyMock = destroyCredentialKey as jest.MockedFunction<typeof destroyCredentialKey>
+jest.mock('../crypto/perCredentialSigning', () => ({
+  destroyIssuanceCredentialKey: jest.fn(async () => undefined),
+}))
+
+import { destroyIssuanceCredentialKey } from '../crypto/perCredentialSigning'
+import {
+  createPendingHardwareCredentialKey,
+  discardPendingHardwareCredentialKey,
+  hasHardwareCredentialKey,
+  resolveHardwareCredentialHolderDid,
+} from '../crypto/hardwareCredentialSigningKey'
+
+const destroyIssuanceCredentialKeyMock = destroyIssuanceCredentialKey as jest.MockedFunction<
+  typeof destroyIssuanceCredentialKey
+>
+const createPendingHardwareCredentialKeyMock =
+  createPendingHardwareCredentialKey as jest.MockedFunction<typeof createPendingHardwareCredentialKey>
+const discardPendingHardwareCredentialKeyMock =
+  discardPendingHardwareCredentialKey as jest.MockedFunction<
+    typeof discardPendingHardwareCredentialKey
+  >
+const hasHardwareCredentialKeyMock = hasHardwareCredentialKey as jest.MockedFunction<
+  typeof hasHardwareCredentialKey
+>
+const resolveHardwareCredentialHolderDidMock =
+  resolveHardwareCredentialHolderDid as jest.MockedFunction<
+    typeof resolveHardwareCredentialHolderDid
+  >
 
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
 
@@ -92,6 +124,9 @@ describe('submitRenewalRequest', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     presentOldCredentialForRenewalMock.mockResolvedValue(undefined)
+    hasHardwareCredentialKeyMock.mockReturnValue(false)
+    discardPendingHardwareCredentialKeyMock.mockResolvedValue(undefined)
+    ;(getPreviousHolderDid as jest.Mock).mockReturnValue('did:key:old')
   })
 
   test('sets renewal-processing on HTTP 201 and does not claim', async () => {
@@ -257,6 +292,100 @@ describe('submitRenewalRequest', () => {
     expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-required')
   })
 
+  test('mints pending k_cred and sends that DID as newHolderDid on hardware P3', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      state: 'renewal-required',
+      updatedAt: new Date().toISOString(),
+    })
+
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        accepted: true,
+        authorizationRequest: 'openid4vp://authorize?nonce=1',
+      }),
+    })
+
+    await submitRenewalRequest(mockCredential.id, {
+      fetchImpl: fetchMock,
+      isHardwareEnabled: () => true,
+      hasHardwareCredentialKey: () => true,
+      createPendingHardwareCredentialKey: async () => 'pending-hw-1',
+      readPendingHardwareHolderDid: () => 'did:key:pending-new',
+    })
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual(
+      expect.objectContaining({
+        oldHolderDid: 'did:key:old',
+        newHolderDid: 'did:key:pending-new',
+      }),
+    )
+    expect(readCredentialRenewal(mockCredential.id)?.pendingCredentialKeyId).toBe('pending-hw-1')
+    expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-processing')
+  })
+
+  test('discards pending k_cred when hardware renewal submit fails', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      state: 'renewal-required',
+      updatedAt: new Date().toISOString(),
+    })
+
+    await expect(
+      submitRenewalRequest(mockCredential.id, {
+        fetchImpl: jest.fn().mockResolvedValue({ ok: false, status: 502 }),
+        isHardwareEnabled: () => true,
+        hasHardwareCredentialKey: () => true,
+        createPendingHardwareCredentialKey: async () => 'pending-hw-fail',
+        readPendingHardwareHolderDid: () => 'did:key:pending-new',
+        discardPendingHardwareCredentialKey: discardPendingHardwareCredentialKeyMock,
+      }),
+    ).rejects.toThrow('CredentialRenewalRequestFailed')
+
+    expect(discardPendingHardwareCredentialKeyMock).toHaveBeenCalledWith('pending-hw-fail')
+    expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-required')
+  })
+
+  test('does not require the wallet-wide previous DID on hardware k_cred renewal', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      state: 'renewal-required',
+      updatedAt: new Date().toISOString(),
+    })
+    ;(getPreviousHolderDid as jest.Mock).mockReturnValueOnce('did:key:unrelated')
+
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        accepted: true,
+        authorizationRequest: 'openid4vp://authorize?nonce=1',
+      }),
+    })
+
+    await submitRenewalRequest(mockCredential.id, {
+      fetchImpl: fetchMock,
+      isHardwareEnabled: () => true,
+      hasHardwareCredentialKey: () => true,
+      createPendingHardwareCredentialKey: async () => 'pending-hw-2',
+      readPendingHardwareHolderDid: () => 'did:key:pending-new',
+    })
+
+    expect(fetchMock).toHaveBeenCalled()
+    expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-processing')
+  })
+
   test('throws when already submitted', async () => {
     const { values } = mockStorage()
     seedCredential(values, mockCredential)
@@ -276,6 +405,7 @@ describe('submitRenewalRequest', () => {
 describe('refreshAndCompleteRenewals', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    ;(getPreviousHolderDid as jest.Mock).mockReturnValue('did:key:old')
   })
 
   test('does not resolve or claim an offer-ready renewal during passive refresh', async () => {
@@ -470,13 +600,56 @@ describe('refreshAndCompleteRenewals', () => {
     })
 
     expect(resolveOfferMock).toHaveBeenCalledWith('openid-credential-offer://test')
-    expect(claimMock).toHaveBeenCalledWith({ offer: 'resolved' })
+    expect(claimMock).toHaveBeenCalledWith({ offer: 'resolved' }, {})
     expect(readCredentialRenewal(mockCredential.id)?.state).toBe('cleanup-pending')
     expect(readCredentialRenewal(mockCredential.id)?.replacementCredentialId).toBe(replacement.id)
     const replacementRecord = readCredentialRenewal(replacement.id)
     expect(replacementRecord?.state).toBe('renewed-active')
     expect(replacementRecord?.replacementCredentialId).toBeUndefined()
-    expect(destroyCredentialKeyMock).toHaveBeenCalledWith(mockCredential.id)
+    expect(destroyIssuanceCredentialKeyMock).not.toHaveBeenCalled()
+  })
+
+  test('reuses the stored pending k_cred when claiming the renewal offer', async () => {
+    const { values } = mockStorage()
+    seedCredential(values, mockCredential)
+    writeCredentialRenewal({
+      credentialId: mockCredential.id,
+      previousHolderDid: 'did:key:old',
+      pendingCredentialKeyId: 'pending-hw-1',
+      state: 'renewal-processing',
+      updatedAt: new Date().toISOString(),
+    })
+
+    const replacement: VerifiableCredentialRecord = {
+      id: 'urn:uuid:new',
+      type: 'ThaiNationalID',
+      rawVc: 'eyJ.new',
+      claims: {},
+      issuedAt: '2026-06-26T00:00:00.000Z',
+    }
+    const claimMock = jest.fn().mockResolvedValue(replacement)
+
+    await claimReadyRenewal(mockCredential.id, {
+      fetchImpl: jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          renewals: [
+            {
+              credentialId: mockCredential.id,
+              state: 'offer-ready',
+              offerUri: 'openid-credential-offer://test',
+            },
+          ],
+        }),
+      }),
+      resolveOffer: jest.fn().mockResolvedValue({ offer: 'resolved' }),
+      claimCredential: claimMock,
+    })
+
+    expect(claimMock).toHaveBeenCalledWith(
+      { offer: 'resolved' },
+      { pendingCredentialKeyId: 'pending-hw-1' },
+    )
   })
 
   test('clears stale readiness after a failed claim before a resubmission becomes ready', async () => {
@@ -485,6 +658,7 @@ describe('refreshAndCompleteRenewals', () => {
     writeCredentialRenewal({
       credentialId: mockCredential.id,
       previousHolderDid: 'did:key:old',
+      pendingCredentialKeyId: 'pending-hw-fail-claim',
       readyOfferUri: 'openid-credential-offer://stale',
       state: 'renewal-processing',
       updatedAt: new Date().toISOString(),
@@ -506,11 +680,14 @@ describe('refreshAndCompleteRenewals', () => {
       }),
       resolveOffer: jest.fn().mockResolvedValue({ offer: 'resolved' }),
       claimCredential: jest.fn().mockRejectedValue(new Error('E_CRYPTO_FAILED')),
+      discardPendingHardwareCredentialKey: discardPendingHardwareCredentialKeyMock,
       }),
     ).rejects.toThrow('E_CRYPTO_FAILED')
 
+    expect(discardPendingHardwareCredentialKeyMock).toHaveBeenCalledWith('pending-hw-fail-claim')
     expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-required')
     expect(readCredentialRenewal(mockCredential.id)?.readyOfferUri).toBeUndefined()
+    expect(readCredentialRenewal(mockCredential.id)?.pendingCredentialKeyId).toBeUndefined()
 
     await submitRenewalRequest(mockCredential.id, {
       fetchImpl: jest.fn().mockResolvedValue({
@@ -521,6 +698,10 @@ describe('refreshAndCompleteRenewals', () => {
           authorizationRequest: 'openid4vp://authorize?nonce=resubmit',
         }),
       }),
+      isHardwareEnabled: () => true,
+      hasHardwareCredentialKey: () => true,
+      createPendingHardwareCredentialKey: async () => 'pending-hw-resubmit',
+      readPendingHardwareHolderDid: () => 'did:key:pending-new',
     })
 
     expect(readCredentialRenewal(mockCredential.id)?.state).toBe('renewal-processing')
@@ -812,6 +993,6 @@ describe('confirmOldCredentialCleanup', () => {
     expect(readCredentialRenewal(oldCredential.id)).toBeUndefined()
     expect(readCredentialRenewal(newCredential.id)).toBeUndefined()
     expect(findCleanupPendingForCredentialType('ThaiNationalID')).toBeUndefined()
-    expect(destroyCredentialKeyMock).toHaveBeenCalledWith(oldCredential.id)
+    expect(destroyIssuanceCredentialKeyMock).toHaveBeenCalledWith(oldCredential.id)
   })
 })
