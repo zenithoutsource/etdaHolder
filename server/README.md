@@ -23,7 +23,7 @@ mDOC / OID4VCI issuance for proximity work uses the customer Issuer (e.g. `http:
 | Surface | Guide | Swagger UI | OpenAPI JSON | Production |
 |---|---|---|---|---|
 | Wallet Backend | `docs/wallet-backend-api.md` | `/wallet-api/docs` | `/wallet-api/openapi.json` | Yes |
-| Development APIs | `docs/development-api.md` | `/dev/docs` | `/dev/openapi.json` | No |
+| Development APIs | `docs/development-api.md` | `/wallet-api/dev/docs` | `/wallet-api/dev/openapi.json` | Only with `ENABLE_DEVELOPMENT_APIS=true` |
 
 Verifier-owned OID4VP (`openid4vc/*` on the external Verifier host) and Wallet Broker
 (`/broker/session` on the shared wallet host) are documented on those services'
@@ -32,13 +32,23 @@ Swagger UIs — not in this Node wallet backend.
 Local examples:
 
 - Wallet Swagger UI: `http://localhost:4000/wallet-api/docs`
-- Development Swagger UI: `http://localhost:4000/dev/docs` (non-production only)
+- Development Swagger UI: `http://localhost:4000/wallet-api/dev/docs` (also `/dev/docs`)
 
-On a shared HTTPS host, substitute your operator-configured Wallet API origin for `http://localhost:4000`.
+On a shared HTTPS host that reverse-proxies only `/wallet-api/*`, use:
 
-`/dev/*` and `/wallet-api/dev/*` return `404` when `NODE_ENV === "production"`. Development Swagger (`/dev/docs`, `/dev/openapi.json`) is mounted under the same gate.
+- `https://<host>/wallet-api/docs`
+- `https://<host>/wallet-api/dev/docs`
 
-The Wallet Backend documentation covers normal `/wallet-api/auth/*`, `/wallet-api/wallet/*`, push-token registration, and the development-only Wallet attestation mock at `/wallet-api/wallet-attestations` and `/wallet-api/wallet-attestations/challenge` (unsigned `alg: none`, no Android attestation root/revocation/app-identity verify — never a production Wallet Provider). Use Swagger **Authorize** with a Wallet login JWT for Bearer-protected Wallet operations.
+`/dev/docs` is a local Swagger alias and is not forwarded by that proxy.
+
+Development APIs (`/wallet-api/dev/*`, `/dev/*`, and Development Swagger) are
+mounted when `NODE_ENV !== "production"`, or when `ENABLE_DEVELOPMENT_APIS=true`
+even if `NODE_ENV` is `production`. They return `404` when production is on and
+the override is unset/false. The shared staging host should set
+`ENABLE_DEVELOPMENT_APIS=true` if it runs with `NODE_ENV=production`. Do not set
+that flag on a true production Wallet Backend.
+
+The Wallet Backend documentation covers normal `/wallet-api/auth/*`, `/wallet-api/wallet/*`, push-token registration, and the development-only Wallet attestation mock at `/wallet-api/wallet-attestations` and `/wallet-api/wallet-attestations/challenge` (unsigned `alg: none`, no Android attestation root/revocation/app-identity verify — never a production Wallet Provider). When development APIs are enabled, `/wallet-api/docs` also includes `/wallet-api/dev/*` simulation operations. Use Swagger **Authorize** with a Wallet login JWT for Bearer-protected Wallet operations.
 
 The reverse proxy must preserve complete `/wallet-api/*` paths when forwarding to the Node process on port `4000`. Examples use synthetic data only.
 

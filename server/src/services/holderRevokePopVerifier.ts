@@ -1,27 +1,14 @@
 import { createPublicKey, verify as cryptoVerify } from 'node:crypto'
 
-import type { Ed25519PublicJwk, P256PublicJwk } from '../config'
+import type { P256PublicJwk } from '../config'
 
-import { decodeBase64UrlJson, didKeyToEd25519PublicJwk, didKeyToP256PublicJwk } from './resolveVpIssuerKey'
+import { decodeBase64UrlJson, didKeyToP256PublicJwk } from './resolveVpIssuerKey'
 
 export type HolderRevokePopExpectation = {
   holderDid: string
   credentialId: string
   nonce: string
   audience: string
-}
-
-function verifyEdDSA(jwt: string, publicJwk: Ed25519PublicJwk): boolean {
-  const [headerB64, payloadB64, sigB64] = jwt.split('.')
-  if (!headerB64 || !payloadB64 || !sigB64) return false
-
-  const key = createPublicKey({ key: publicJwk, format: 'jwk' })
-  return cryptoVerify(
-    null,
-    Buffer.from(`${headerB64}.${payloadB64}`),
-    key,
-    Buffer.from(sigB64, 'base64url'),
-  )
 }
 
 function verifyES256(jwt: string, publicJwk: P256PublicJwk): boolean {
@@ -63,7 +50,7 @@ export function verifyHolderRevokePop(
   }
 
   const alg = readString(header.alg)
-  if (alg !== 'EdDSA' && alg !== 'ES256') {
+  if (alg !== 'ES256') {
     return { ok: false, reason: 'invalid-alg' }
   }
 
@@ -92,16 +79,9 @@ export function verifyHolderRevokePop(
   }
 
   try {
-    if (alg === 'ES256') {
-      const holderPublicJwk = didKeyToP256PublicJwk(expected.holderDid)
-      if (!verifyES256(popJwt, holderPublicJwk)) {
-        return { ok: false, reason: 'signature-invalid' }
-      }
-    } else {
-      const holderPublicJwk = didKeyToEd25519PublicJwk(expected.holderDid)
-      if (!verifyEdDSA(popJwt, holderPublicJwk)) {
-        return { ok: false, reason: 'signature-invalid' }
-      }
+    const holderPublicJwk = didKeyToP256PublicJwk(expected.holderDid)
+    if (!verifyES256(popJwt, holderPublicJwk)) {
+      return { ok: false, reason: 'signature-invalid' }
     }
   } catch {
     return { ok: false, reason: 'unsupported-holder-did' }

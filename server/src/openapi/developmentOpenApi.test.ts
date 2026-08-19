@@ -1,10 +1,6 @@
 import { developmentOpenApiDocument } from './developmentOpenApi'
 
 const expectedOperations = [
-  'POST /dev/vp-session',
-  'PUT /dev/vp-session/{sessionId}',
-  'GET /dev/vp-session/{sessionId}/status',
-  'GET /dev/vp-verify',
   'GET /wallet-api/dev/wallet/suspension-status',
   'GET /wallet-api/dev/wallet/renewal-status',
   'POST /wallet-api/dev/presentation/suspend-access',

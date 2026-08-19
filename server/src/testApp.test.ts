@@ -99,6 +99,7 @@ function useSyntheticProductionEnv(): void {
     PUBLIC_BASE_URL: 'https://wallet.example.invalid',
     VERIFIER_PRESENTATION_BASE_URL: 'https://verifier.example.invalid',
   }
+  delete process.env.ENABLE_DEVELOPMENT_APIS
 }
 
 describe('test app security middleware', () => {
@@ -203,7 +204,7 @@ describe('test app security middleware', () => {
     expect(status.body).toEqual({ used: true, credentialId: 'transcript-1' })
   })
 
-  test('confirms development holder revoke requests with PoP', async () => {
+  test('rejects development holder revoke requests with EdDSA PoP', async () => {
     const app = createTestApp()
     const holderKeys = generateKeyPairSync('ed25519')
     const holderPublicJwk = holderKeys.publicKey.export({ format: 'jwk' }) as {
@@ -237,14 +238,9 @@ describe('test app security middleware', () => {
       holderDid,
       popJwt,
     })
-    const status = await request(app).get('/wallet-api/dev/wallet/revoke-status?credentialId=transcript-1')
 
-    expect(created.status).toBe(201)
-    expect(created.body.status).toBe('revoked')
-    expect(created.body.credentialId).toBe('transcript-1')
-    expect(typeof created.body.confirmedAt).toBe('string')
-    expect(status.status).toBe(200)
-    expect(status.body.status).toBe('revoked')
+    expect(created.status).toBe(400)
+    expect(created.body.message).toContain('invalid-alg')
   })
 
   test('confirms development holder revoke requests with ES256 PoP', async () => {
@@ -287,6 +283,11 @@ describe('test app security middleware', () => {
     expect(created.status).toBe(201)
     expect(created.body.status).toBe('revoked')
     expect(created.body.credentialId).toBe('urn:uuid:hardware-pid')
+    const status = await request(app).get(
+      '/wallet-api/dev/wallet/revoke-status?credentialId=urn:uuid:hardware-pid',
+    )
+    expect(status.status).toBe(200)
+    expect(status.body.status).toBe('revoked')
   })
 
   test('rejects holder revoke without PoP', async () => {

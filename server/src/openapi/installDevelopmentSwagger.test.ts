@@ -20,13 +20,10 @@ function useSyntheticProductionEnv(): void {
     PUBLIC_BASE_URL: 'https://wallet.example.invalid',
     VERIFIER_PRESENTATION_BASE_URL: 'https://verifier.example.invalid',
   }
+  delete process.env.ENABLE_DEVELOPMENT_APIS
 }
 
 const expectedDevOperations = [
-  'POST /dev/vp-session',
-  'PUT /dev/vp-session/{sessionId}',
-  'GET /dev/vp-session/{sessionId}/status',
-  'GET /dev/vp-verify',
   'GET /wallet-api/dev/wallet/suspension-status',
   'GET /wallet-api/dev/wallet/renewal-status',
   'POST /wallet-api/dev/presentation/suspend-access',
@@ -63,14 +60,22 @@ describe('Development Swagger routes', () => {
   })
 
   test('serves Swagger UI and OpenAPI JSON in non-production', async () => {
-    const html = await request(createTestApp()).get('/dev/docs/')
+    const html = await request(createTestApp()).get('/wallet-api/dev/docs/')
     expect(html.status).toBe(200)
     expect(html.type).toBe('text/html')
     expect(html.text).toContain('<title>Development API</title>')
 
-    const json = await request(createTestApp()).get('/dev/openapi.json')
+    const localAlias = await request(createTestApp()).get('/dev/docs/')
+    expect(localAlias.status).toBe(200)
+    expect(localAlias.text).toContain('<title>Development API</title>')
+
+    const json = await request(createTestApp()).get('/wallet-api/dev/openapi.json')
     expect(json.status).toBe(200)
     expect(collectDocumentOperations(json.body)).toEqual([...expectedDevOperations].sort())
+
+    const localJson = await request(createTestApp()).get('/dev/openapi.json')
+    expect(localJson.status).toBe(200)
+    expect(collectDocumentOperations(localJson.body)).toEqual([...expectedDevOperations].sort())
 
     const documentedPaths = Object.keys(json.body.paths as Record<string, unknown>)
     expect(documentedPaths.some((path) => path.startsWith('/v1/'))).toBe(false)
@@ -88,13 +93,32 @@ describe('Development Swagger routes', () => {
     const app = createTestApp()
 
     const devDocs = await request(app).get('/dev/docs/')
+    const proxiedDevDocs = await request(app).get('/wallet-api/dev/docs/')
     const devOpenApi = await request(app).get('/dev/openapi.json')
+    const proxiedDevOpenApi = await request(app).get('/wallet-api/dev/openapi.json')
     const walletOpenApi = await request(app).get('/wallet-api/openapi.json')
     const removedGateway = await request(app).get('/v1/openapi.json')
 
     expect(devDocs.status).toBe(404)
+    expect(proxiedDevDocs.status).toBe(404)
     expect(devOpenApi.status).toBe(404)
+    expect(proxiedDevOpenApi.status).toBe(404)
     expect(walletOpenApi.status).toBe(200)
     expect(removedGateway.status).toBe(404)
+  })
+
+  test('serves Development documentation in production when ENABLE_DEVELOPMENT_APIS=true', async () => {
+    useSyntheticProductionEnv()
+    process.env.ENABLE_DEVELOPMENT_APIS = 'true'
+    const app = createTestApp()
+
+    const proxiedDevDocs = await request(app).get('/wallet-api/dev/docs/')
+    const proxiedDevOpenApi = await request(app).get('/wallet-api/dev/openapi.json')
+
+    expect(proxiedDevDocs.status).toBe(200)
+    expect(proxiedDevOpenApi.status).toBe(200)
+    expect(collectDocumentOperations(proxiedDevOpenApi.body)).toEqual(
+      [...expectedDevOperations].sort(),
+    )
   })
 })

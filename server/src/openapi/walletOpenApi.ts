@@ -16,9 +16,9 @@ export const walletOpenApiDocument = {
   openapi: '3.0.3',
   info: {
     title: 'Wallet Backend API',
-    version: '1.0.0',
+    version: '0.1.0',
     description:
-      'Normal Wallet account, session, wallet, credential import, and push-token operations.',
+      'Normal Wallet account, session, wallet, credential import, and push-token operations. Development simulation APIs live under /wallet-api/dev/* and are documented at /wallet-api/dev/docs when enabled.',
   },
   servers: [{ url: '/' }],
   tags: [

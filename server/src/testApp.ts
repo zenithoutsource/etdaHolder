@@ -9,7 +9,6 @@ import { installWalletSwagger } from './openapi/installWalletSwagger'
 import { authRouter } from './routes/auth'
 import { credentialsRouter } from './routes/credentials'
 import { devWalletRouter } from './routes/devWallet'
-import { vpSessionRouter } from './routes/vpSession'
 import { walletProviderAttestRouter } from './routes/walletProviderAttest'
 import { pushTokensRouter } from './routes/pushTokens'
 import { walletsRouter } from './routes/wallets'
@@ -106,9 +105,6 @@ export function createTestApp(): express.Express {
   }
   app.use(createCorsMiddleware())
 
-  if (developmentApisEnabled) {
-    app.use('/dev', express.json({ limit: '1mb' }), vpSessionRouter)
-  }
   app.use('/wallet-api', express.json({ limit: '1mb' }), walletProviderAttestRouter)
 
   app.use(express.json({ limit: '1mb' }))

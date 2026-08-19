@@ -13,6 +13,7 @@ Interactive documentation:
 
 - Swagger UI: `/wallet-api/docs`
 - OpenAPI JSON: `/wallet-api/openapi.json`
+- Development simulation APIs (when enabled): `/wallet-api/dev/docs`
 
 ## Authentication workflow
 

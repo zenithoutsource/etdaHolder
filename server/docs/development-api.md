@@ -1,21 +1,25 @@
 # Development API
 
-> Development APIs are mounted only when `NODE_ENV !== "production"`.
-> They simulate Issuer, Verifier, lifecycle, and notification behavior and
-> must never be treated as production services.
+> Development APIs are mounted when `NODE_ENV !== "production"`, or when
+> `ENABLE_DEVELOPMENT_APIS=true`. They simulate Issuer, Verifier, lifecycle, and
+> notification behavior and must never be treated as production services.
 
-Interactive documentation (non-production only):
+Interactive documentation:
 
-- Swagger UI: `/dev/docs`
-- OpenAPI JSON: `/dev/openapi.json`
+- Swagger UI: `/wallet-api/dev/docs` (local alias `/dev/docs`)
+- OpenAPI JSON: `/wallet-api/dev/openapi.json` (local alias `/dev/openapi.json`)
 
-`/dev/*` and `/wallet-api/dev/*` routes return `404` when `NODE_ENV === "production"`.
+When development APIs are enabled, `/wallet-api/docs` also lists these operations.
+
+`/wallet-api/dev/*` and `/dev/*` return `404` when `NODE_ENV === "production"` and
+`ENABLE_DEVELOPMENT_APIS` is not `true`/`1`. Shared HTTPS hosts that only forward
+`/wallet-api/*` must use the `/wallet-api/dev/...` paths.
 
 **Never paste production VC, VP, JWT, token, DID, key, or PII values into development examples or Swagger.**
 
-## 1. Verifier sessions and issuer-key diagnostics
+## 1. Issuer-key diagnostics
 
-Issuer `did:key` public keys for dev VP verify are resolved through the customer
+Issuer `did:key` public keys for SD-JWT verification helpers are resolved through the customer
 Issuer API `GET /resolveDID?didKey=...` (see Issuer Swagger). Configure
 `ISSUER_BASE_URL` on the wallet server, or pass `--issuer` to the CLI below.
 
@@ -26,15 +30,6 @@ curl -sS "https://issuer.zenithcomp.co.th:455/resolveDID?didKey=did:key:zSynthet
 # Local helper: derive VP_ISSUER_PUBLIC_KEY_JWK from a raw VC JWT header kid
 cd server && yarn resolve-vp-issuer-key --raw-vc "synthetic.jwt.vc" --issuer https://issuer.zenithcomp.co.th:455
 ```
-
-### Development presentation sessions
-
-Mirror the local VP relay flow under `/dev/vp-session` and `/dev/vp-verify`:
-
-1. `POST /dev/vp-session` — create session (`sessionId`, `nonce`, `expiresAt`).
-2. `PUT /dev/vp-session/{sessionId}` — upload VP (any `credentialType`).
-3. `GET /dev/vp-session/{sessionId}/status` — poll status.
-4. `GET /dev/vp-verify?s={sessionId}` — browser HTML verify with `Retry-After: 2` on pending.
 
 ## 2. Suspension and single-use state
 
@@ -79,4 +74,4 @@ Renewal `state` values: `requested`, `offer-ready`, `revoked`. After VP acceptan
 
 ## Field reference
 
-See `/dev/openapi.json` for the complete sixteen-operation inventory and request schemas.
+See `/wallet-api/dev/openapi.json` for the complete operation inventory and request schemas.

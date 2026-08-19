@@ -8,8 +8,6 @@ export type SwaggerDocumentOptions = {
   title: string
 }
 
-const swaggerUiServe = swaggerUi.serve as unknown as RequestHandler[]
-
 export function installSwaggerDocument(
   app: Express,
   options: SwaggerDocumentOptions,
@@ -22,5 +20,6 @@ export function installSwaggerDocument(
     customSiteTitle: options.title,
   }) as unknown as RequestHandler
 
+  const swaggerUiServe = swaggerUi.serveFiles(options.document) as unknown as RequestHandler[]
   app.use(options.docsPath, ...swaggerUiServe, page)
 }
