@@ -3,7 +3,7 @@ import {
   getReaderProfileForDocumentType,
   readerProfileUsesCompanion,
 } from '@/src/config/readerProfiles'
-import { HCE_ARM_WINDOW_MS } from '@/src/config/dualFormatPolicy'
+import { HCE_ARM_WINDOW_MS, HCE_RESPONSE_DRAIN_GRACE_MS } from '@/src/config/dualFormatPolicy'
 import { logWalletError } from '@/src/services/debug/walletLogger'
 import { readStoredCredentialById } from '@/src/services/credentials/storedCredentials'
 
@@ -86,6 +86,7 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
         ? { companionSdJwt: record.rawVc }
         : {}),
       armWindowMs: HCE_ARM_WINDOW_MS,
+      responseDrainGraceMs: HCE_RESPONSE_DRAIN_GRACE_MS,
     })
 
     await approveProximityPresentation(input.approvedMdocFields)

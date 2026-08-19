@@ -63,7 +63,11 @@ object MultipazPresentmentSession {
   private val sharedFields = AtomicReference<List<String>>(emptyList())
   private val transportListening = AtomicBoolean(false)
 
-  suspend fun start(state: ProximityArmState, mdocBytes: ByteArray) {
+  suspend fun start(
+    state: ProximityArmState,
+    mdocBytes: ByteArray,
+    storedDocType: String? = null,
+  ) {
     resetTransport()
     // Multipaz onDeactivated() launches an async coroutine that removes NFC
     // instances. Wait so a new open() is not immediately torn down.
@@ -73,7 +77,7 @@ object MultipazPresentmentSession {
     sessionJob = scope.launch {
       val launchedJob = coroutineContext[Job]
       try {
-        runSession(state, mdocBytes)
+        runSession(state, mdocBytes, storedDocType)
       } catch (error: CancellationException) {
         throw error
       } catch (error: MdocProximityException) {
@@ -136,7 +140,11 @@ object MultipazPresentmentSession {
   /** True while an advertised NfcTransportMdoc instance can accept APDUs. */
   fun isTransportListening(): Boolean = transportListening.get()
 
-  private suspend fun runSession(state: ProximityArmState, mdocBytes: ByteArray) {
+  private suspend fun runSession(
+    state: ProximityArmState,
+    mdocBytes: ByteArray,
+    storedDocType: String?,
+  ) {
     if (!DeviceAuthBridge.isReady()) {
       throw MdocProximityException(
         MdocProximityErrors.PROXIMITY_NOT_READY,
@@ -144,7 +152,15 @@ object MultipazPresentmentSession {
       )
     }
 
-    val (docType, issuerSignedBytes) = extractIssuerSigned(mdocBytes)
+    val (docType, issuerSignedBytes) = try {
+      MdocIssuerSignedExtractor.extract(mdocBytes, storedDocType)
+    } catch (error: IllegalArgumentException) {
+      throw MdocProximityException(
+        MdocProximityErrors.PROXIMITY_NOT_READY,
+        error.message ?: "Stored mDOC is not a usable issuer-signed document",
+      )
+    }
+    Log.i(TAG, "[multipaz-session] issuerSigned extracted docType=$docType")
     val hardwareHandle = DeviceAuthBridge.hardwareHandle()
     if (hardwareHandle != null) {
       runHardwareSession(state, docType, issuerSignedBytes, hardwareHandle)
@@ -187,7 +203,7 @@ object MultipazPresentmentSession {
       docType = docType,
       existingKeyAlias = keyInfo.alias,
     )
-    credential.certify(ByteString(issuerSignedBytes))
+    certifyIssuerSigned(credential, issuerSignedBytes)
 
     presentArmedDocument(
       state = state,
@@ -237,7 +253,7 @@ object MultipazPresentmentSession {
       docType = docType,
       existingKeyAlias = keyInfo.alias,
     )
-    credential.certify(ByteString(issuerSignedBytes))
+    certifyIssuerSigned(credential, issuerSignedBytes)
 
     presentArmedDocument(
       state = state,
@@ -313,14 +329,12 @@ object MultipazPresentmentSession {
     // Keep the same DeviceEngagement (eDeviceKey) until Cancel or DeviceResponse.
     // A missed tap fails the Multipaz transport; TimeoutCancellationException is a
     // CancellationException and used to abort this job, which cleared the URI and
-    // made the next SELECT return 6A81 while JS still showed the QR.
+    // made the next SELECT return 6A81 while JS still showed Waiting for tap.
     //
-    // onSendingResponse only means the first response chunk was queued; the reader
-    // still drains the rest via GET RESPONSE and can fail mid-drain. So after a
-    // response is sent, keep listening for a grace window: if the reader reconnects
-    // (its receive failed and it retries), serve the same approved fields again;
-    // if no reconnect arrives, the reader is satisfied and we complete.
-    var responseSentAtMs: Long? = null
+    // Notify JS from onSendingResponse. Iso18013Presentment does not return until
+    // the NFC field drops, so waiting for it leaves Waiting for tap while the
+    // host already has claims. Keep HCE up until presentment returns so GET
+    // RESPONSE can finish.
     while (CompanionSession.readArmState() != null) {
       // Clear any stale failed NfcTransportMdoc instance, then wait: Multipaz
       // onDeactivated() removes instances in an async coroutine, and a new open()
@@ -336,29 +350,7 @@ object MultipazPresentmentSession {
       transportListening.set(true)
       var deviceResponseSent = false
       try {
-        val transport = if (responseSentAtMs == null) {
-          advertisedTransports.waitForConnection(eSenderKey = eDeviceKey.publicKey)
-        } else {
-          val graceMs = CompanionSession.peekArmState()?.responseDrainGraceMs ?: 5_000L
-          val remainingMs = responseSentAtMs + graceMs - System.currentTimeMillis()
-          val reconnect = if (remainingMs > 0) {
-            try {
-              withTimeout(remainingMs) {
-                advertisedTransports.waitForConnection(eSenderKey = eDeviceKey.publicKey)
-              }
-            } catch (_: TimeoutCancellationException) {
-              null
-            }
-          } else {
-            null
-          }
-          if (reconnect == null) {
-            // No reader retry within the grace window: the drain succeeded.
-            break
-          }
-          Log.w(TAG, "[multipaz-session] reader reconnected within drain grace, serving again")
-          reconnect
-        }
+        val transport = advertisedTransports.waitForConnection(eSenderKey = eDeviceKey.publicKey)
         Log.i(TAG, "[multipaz-session] NFC transport connected")
         ProximityEventDispatcher.sendDeviceEngaged()
 
@@ -375,20 +367,26 @@ object MultipazPresentmentSession {
             onSendingResponse = {
               deviceResponseSent = true
               sharedFields.set(state.approvedMdocFields)
+              Log.i(TAG, "[multipaz-session] DeviceResponse sending, notifying JS complete")
+              StoredMdocPresentationEngine.notifyPresentationComplete(sharedFields.get())
             },
           )
         } catch (error: Throwable) {
           if (error is MdocProximityException) throw error
           if (isFatalPresentmentCancellation(error)) throw error
-          Log.w(TAG, "[multipaz-session] presentment failed before DeviceResponse, listening again", error)
+          if (deviceResponseSent) {
+            Log.i(TAG, "[multipaz-session] presentment ended after DeviceResponse")
+          } else {
+            Log.w(TAG, "[multipaz-session] presentment failed before DeviceResponse, listening again", error)
+          }
         }
 
         if (deviceResponseSent) {
-          responseSentAtMs = System.currentTimeMillis()
-          Log.i(TAG, "[multipaz-session] DeviceResponse sent, grace-listening for reader retry")
-        } else {
-          Log.w(TAG, "[multipaz-session] NFC tap missed, listening again")
+          Log.i(TAG, "[multipaz-session] presentment returned after DeviceResponse, stopping HCE")
+          StoredMdocPresentationEngine.finishSessionAfterPresentment()
+          break
         }
+        Log.w(TAG, "[multipaz-session] NFC tap missed, listening again")
       } catch (error: Throwable) {
         if (error is MdocProximityException) throw error
         if (isFatalPresentmentCancellation(error)) throw error
@@ -403,9 +401,33 @@ object MultipazPresentmentSession {
         }
       }
     }
+  }
 
-    if (responseSentAtMs != null) {
-      StoredMdocPresentationEngine.completePresentation(sharedFields.get())
+  private suspend fun certifyIssuerSigned(
+    credential: MdocCredential,
+    issuerSignedBytes: ByteArray,
+  ) {
+    try {
+      val stampedOriginal = MdocIssuerAuthCertifySupport.certify(credential, issuerSignedBytes)
+      if (stampedOriginal) {
+        Log.w(
+          TAG,
+          "[multipaz-session] stamped original issuerSigned after Multipaz MSO parse failed ${MdocIssuerAuthCertifySupport.describeMso(issuerSignedBytes)}",
+        )
+      }
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: MdocProximityException) {
+      throw error
+    } catch (error: Exception) {
+      Log.e(
+        TAG,
+        "[multipaz-session] certify failed ${MdocIssuerAuthCertifySupport.describeMso(issuerSignedBytes)}",
+        error,
+      )
+      val detail = error.message?.takeIf { it.isNotBlank() && it != "Failed requirement." }
+        ?: "Stored mDOC could not be certified for proximity"
+      throw MdocProximityException(MdocProximityErrors.PROXIMITY_NOT_READY, detail)
     }
   }
 
@@ -443,12 +465,5 @@ object MultipazPresentmentSession {
     }
 
     return selection
-  }
-
-  private fun extractIssuerSigned(mdocBytes: ByteArray): Pair<String, ByteArray> {
-    val root = Cbor.decode(mdocBytes)
-    val docType = root["docType"].asTstr
-    val issuerSigned = root["issuerSigned"]
-    return docType to Cbor.encode(issuerSigned)
   }
 }

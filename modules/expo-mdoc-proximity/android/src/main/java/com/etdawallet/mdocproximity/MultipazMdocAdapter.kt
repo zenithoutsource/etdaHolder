@@ -13,6 +13,21 @@ import org.multipaz.mdoc.transport.NfcTransportMdoc
 object MultipazMdocAdapter {
   private const val TAG = "MultipazMdocAdapter"
 
+  // Mirrors NfcTransportMdoc's private applicationSelected. Multipaz 0.100 crashes
+  // the whole app on a duplicate SELECT: check(!applicationSelected) throws, the
+  // catch calls failTransport() without holding its mutex, and failTransport's own
+  // check() escapes a fire-and-forget coroutine ("failTransport called without
+  // holding lock"). The HCE layer must therefore know whether the current transport
+  // instance already consumed a SELECT and never forward a second one.
+  @Volatile
+  private var applicationSelected = false
+
+  fun isApplicationSelected(): Boolean = applicationSelected
+
+  fun markApplicationSelected() {
+    applicationSelected = true
+  }
+
   fun isAvailable(): Boolean = MdocEngineProbe.checkCapabilities().hasNfcDataTransfer
 
   fun deviceEngagementUri(): String? = MultipazPresentmentSession.deviceEngagementUri()
@@ -33,6 +48,7 @@ object MultipazMdocAdapter {
   }
 
   fun onNfcDeactivated() {
+    applicationSelected = false
     try {
       NfcTransportMdoc.onDeactivated()
     } catch (error: Exception) {
