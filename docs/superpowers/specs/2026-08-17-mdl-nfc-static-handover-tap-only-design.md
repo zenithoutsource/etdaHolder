@@ -26,9 +26,10 @@ Holder golden path, no wallet QR and no test mDL:
 1. Open the app.  
 2. Open Driving Licence (OID4VCI-issued `mso_mdoc`, already claimed).  
 3. Press **NFC**.  
-4. Hold the phone on the ACR1311U-N2 (Waiting for tap, **no engagement QR**).  
-5. Wallet completes ISO 18013-5 presentment.  
-6. Verifier (ACR1311 host) receives encrypted `DeviceResponse` and shows the requested mDL claims.
+4. Review **NFC Presentment Consent** (reader-profile ceiling) and Accept. HCE does not arm before Accept.  
+5. Hold the phone on the ACR1311U-N2 (Waiting for tap, **no engagement QR**, no field list).  
+6. Wallet completes ISO 18013-5 presentment (sign-time biometric once).  
+7. Verifier (ACR1311 host) receives encrypted `DeviceResponse` and shows the requested mDL claims.
 
 Engagement is **ISO 18013-5 static NFC handover**: the reader reads `DeviceEngagement` from a Type 4 NDEF HCE application, then continues **NFC data retrieval** on the existing mdoc AID. Disclosure is the **intersection** of the Verifier `DeviceRequest` and the mDL field ceiling. Remove the debug **Add test mDL** path.
 
@@ -37,12 +38,12 @@ Engagement is **ISO 18013-5 static NFC handover**: the reader reads `DeviceEngag
 ### In scope
 
 - Remove wallet test-mDL inject: Home button, `injectTestMdl` service/tests, native `generateTestMdl` / `TestMdlGenerator.kt` in `expo-mdoc-proximity`.
-- Tap-first UX: NFC press arms HCE and opens Waiting for tap; no `PreTapConsentPanel` before the hold.
+- Tap-first UX: NFC press opens NFC Presentment Consent; Accept arms HCE and opens Waiting for tap. No consent after `DeviceRequest`.
 - Static NFC handover HCE (AID `D2760000850101`) plus existing mdoc data AID `A0000002480400`.
 - `Iso18013Presentment` session transcript uses the **NFC handover** structure, not `Simple.NULL`.
-- Host default: wait for card, read NDEF static handover, then mdoc retrieval (no QR paste on the golden path).
+- Host default: wait for card, read NDEF static handover, then mdoc retrieval (no QR paste on the golden path). Requested fields: `family_name`, `given_name`, `birth_date`, `driving_privileges`, `issue_date`, `expiry_date`. The host page shows over-18 derived from `birth_date` (this issued mDL has no `age_over_18` element; requesting it aborted the session). Licence class is the first `vehicle_category_code` mapped to Thai.
 - Keep host `generate-mdl` CLI and QR/`mdoc:` paste as **lab fallback** only.
-- Disclosure: DeviceRequest ∩ ceiling (`family_name`, `given_name`, `birth_date` on `org.iso.18013.5.1`). Extra fields fail closed.
+- Disclosure: DeviceRequest ∩ ceiling (`family_name`, `given_name`, `birth_date`, `driving_privileges`, `issue_date`, `expiry_date` on `org.iso.18013.5.1`). Extra fields fail closed.
 - Physical validation on Samsung Galaxy A26 + ACR1311U-N2.
 
 ### Out of scope
@@ -51,7 +52,7 @@ Engagement is **ISO 18013-5 static NFC handover**: the reader reads `DeviceEngag
 - BLE data transfer / BLE static handover flags.
 - Dual-format companion on the same tap.
 - Auto-purge of leftover TEST cards (`issuerName` `Wallet TEST IACA`); holder deletes them in the existing credential UX.
-- Changing the three-field ceiling to the full mDL namespace.
+- Changing the three-field ceiling to the full ISO 18013-5 mandatory mDL set. A DeviceRequest for missing items (for example `portrait`) made Multipaz terminate the session with status 20 and no DeviceResponse on issued mDLs.
 - Online OID4VP, Trust Registry, DID Resolver.
 - iOS.
 - NFC NDEF **issuance** (offer URI on a tag).
@@ -62,15 +63,17 @@ Engagement is **ISO 18013-5 static NFC handover**: the reader reads `DeviceEngag
 Home
   → Driving Licence detail
   → NFC
-  → present.tsx Waiting for tap (instruction + ceiling copy + Cancel; no QR)
+  → present.tsx NFC Presentment Consent (ceiling fields; Accept / Decline)
+  → Accept arms HCE
+  → Waiting for tap (hold instruction + Cancel; no QR; no field list)
   → hold on ACR1311
   → sign-time biometric once (the only auth prompt for this NFC action)
   → PresentationResultPanel (fields actually sent)
 ```
 
-Pressing NFC **is** the presentment act. There is no second consent screen after `DeviceRequest` (the phone is on the reader). Cancel on Waiting for tap disarms both AIDs.
+**NFC Presentment Consent** is the presentment act: Holder Accept of the reader-profile ceiling **before** the hold. There is no second consent screen after `DeviceRequest` (the phone is on the reader). Decline records a declined NFC history event and returns to Driving Licence. Cancel on Waiting for tap disarms both AIDs.
 
-Waiting for tap shows non-blocking copy of the **maximum** this tap may share (family name, given name, date of birth). Fields actually sent appear on Success.
+Waiting for tap is hold instruction only. Fields actually sent appear on Success.
 
 Prerequisite: `hasStoredMdoc(credentialId)` from a real OID4VCI claim. If missing, fail closed with a presentment error; do not mint a TEST mDL.
 
@@ -101,7 +104,7 @@ QR v1 used `handover = Simple.NULL`. Static NFC handover **must** use the ISO 18
 ### Host (`tools/acr1311u-n2`)
 
 - Default `/api/present` (or equivalent wait-for-tap): **no engagement body required**. Wait for PC/SC card → SELECT NDEF AID → parse static Handover Select / DeviceEngagement → SELECT mdoc AID → DeviceRequest / wait DeviceResponse.
-- Requested fields stay the three mDL identifiers unless a future host option narrows them (intersection still applies).
+- Requested fields stay `family_name`, `given_name`, `birth_date`, `driving_privileges`, `issue_date`, `expiry_date`. The page displays ชื่อ, นามสกุล, อายุเกิน 18 (from `birth_date`), ประเภทใบอนุญาต (first privilege, Thai), วันที่ออกใบอนุญาต, วันหมดอายุ. Do not request `age_over_18` or `portrait` unless the issued mDL contains them.
 - Retain QR/`mdoc:` POST as a **dev fallback** so the 2026-08-17 QR golden path remains a lab tool.
 - Retain `generate-mdl` and `testdata/test-iaca.pem` for optional IACA banner checks. Production trust is real issuer IACA, not this PEM.
 
@@ -109,7 +112,7 @@ QR v1 used `handover = Simple.NULL`. Static NFC handover **must** use the ISO 18
 
 Two lists:
 
-1. **Ceiling** — reader profile `mdl-acr1311u-n2-mdoc-only`: `family_name`, `given_name`, `birth_date`.
+1. **Ceiling** — reader profile `mdl-acr1311u-n2-mdoc-only`: `family_name`, `given_name`, `birth_date`, `driving_privileges`, `issue_date`, `expiry_date`.
 2. **DeviceRequest** — what the Verifier asked during the tap.
 
 Send the intersection. If DeviceRequest contains any identifier outside the ceiling, fail closed (`DISCLOSURE_CEILING_EXCEEDED`); UI copy remains `Presentation failed — try again`. Do not send fields the Verifier did not ask for.
@@ -137,6 +140,7 @@ Already-injected TEST cards stay on device until the holder deletes them. No sta
 | Unarmed / NDEF AID routed elsewhere | Stay on Waiting for tap | NDEF SELECT `6A82` / empty NDEF; armed/routing copy |
 | Field drop between NDEF and mdoc SELECT | Stay armed | Retry inside tap window |
 | DeviceRequest above ceiling | `Presentation failed — try again` | No claims |
+| Session status 20 / no DeviceResponse | Stay on Waiting for tap | `EMPTY_RESPONSE`; retry. Caused by DeviceRequest items missing on the issued mDL |
 | Mid-drain after first response chunk | Drain grace; possible re-serve | Retry until full response or window |
 | Cancel / leave screen | Disarm both AIDs | Timeout |
 | Sign/session failure | Generic presentment error | — |
@@ -162,7 +166,7 @@ Multipaz samples often use two taps (engagement, then data). If A26 + ACR1311 dr
 
 1. Test mDL button and native generator are gone from the wallet.  
 2. Holder golden path is static NFC handover + NFC data retrieval; Waiting for tap has no engagement QR.  
-3. Disclosure remains DeviceRequest ∩ three-field ceiling.  
+3. Disclosure remains DeviceRequest ∩ `family_name` / `given_name` / `birth_date` / `driving_privileges` / `issue_date` / `expiry_date`.  
 4. Host default is wait-for-card + NDEF; QR paste is lab-only.  
 5. Physical tap-only PASS on A26 + ACR1311 with an issued mDL.
 
