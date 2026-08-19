@@ -1,3 +1,11 @@
+/**
+ * Full credential detail card (PID/transcript/generic) with DL branch and renewal overlay.
+ * Journey: Wallet detail; also Issuer PID presentation.
+ * Copy: credentialDisplay; inactive/renewal services.
+ * Layout: DrivingLicenceDocumentCard, DocumentCardLayout, DocumentCardDetailValue, CredentialRenewalOverlay.
+ * Map: docs/CODEMAPS/frontend.md#wallet
+ */
+
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import type { ReactNode } from "react";
 import {
@@ -15,8 +23,11 @@ import type {
 } from "../services/credentials/credentialDisplay";
 import type { CredentialRenewalState } from "../services/credentials/credentialKeyRenewal";
 import type { CredentialInactiveState } from "../services/credentials/credentialInactiveState";
+import { shouldShowCredentialRenewalRibbon } from "../services/credentials/credentialRenewalPresentation";
+import { shouldBlockCredentialDetailPresentment } from "../services/credentials/credentialHomeNavigation";
 import type { VerifiableCredentialRecord } from "../services/vci/exchangeService";
 import { CredentialRenewalOverlay } from "./CredentialRenewalOverlay";
+import { DocumentCardDetailValue } from "./DocumentCardDetailValue";
 import { DrivingLicenceDocumentCard } from "./DrivingLicenceDocumentCard";
 import { DocumentCardLayout } from "./DocumentCardLayout";
 
@@ -34,6 +45,19 @@ const credentialImages: Record<
 const qrCodeIcon =
   require("../../assets/images/qr_code.png") as ImageSourcePropType;
 
+const INACTIVE_RIBBON_COLUMNS_CLASS_NAME = "flex-row px-4 pt-4 pb-12";
+
+function readRibbonColumnsClassName(
+  inactiveState?: CredentialInactiveState,
+  renewalState?: CredentialRenewalState,
+): string | undefined {
+  if (!inactiveState) return undefined;
+  if (!shouldShowCredentialRenewalRibbon(inactiveState, renewalState)) {
+    return undefined;
+  }
+  return INACTIVE_RIBBON_COLUMNS_CLASS_NAME;
+}
+
 type Props = {
   display: CredentialDetailDisplay;
   record?: VerifiableCredentialRecord;
@@ -43,6 +67,7 @@ type Props = {
   inactiveState?: CredentialInactiveState;
   renewalBadgeLabel?: string;
   renewalState?: CredentialRenewalState;
+  bannerAction?: ReactNode;
 };
 
 function DocumentCardShell({
@@ -50,11 +75,13 @@ function DocumentCardShell({
   inactiveState,
   renewalBadgeLabel,
   renewalState,
+  record,
 }: {
   children: ReactNode;
   inactiveState?: CredentialInactiveState;
   renewalBadgeLabel?: string;
   renewalState?: CredentialRenewalState;
+  record?: VerifiableCredentialRecord;
 }) {
   return (
     <View className="relative">
@@ -64,6 +91,7 @@ function DocumentCardShell({
           inactiveState={inactiveState}
           badgeLabel={renewalBadgeLabel}
           renewalState={renewalState}
+          credential={record}
         />
       ) : null}
     </View>
@@ -224,64 +252,16 @@ function DetailValue({ row }: { row: CredentialDisplayRow }) {
   );
 }
 
-function TranscriptValue({
-  label,
-  value,
-  isCritical = false,
-}: {
-  label: string;
-  value?: string;
-  isCritical?: boolean;
-}) {
-  return (
-    <View className="mb-4">
-      <Text
-        className={`text-[12px] font-semibold leading-[16px] ${isCritical ? "text-danger-bright" : "text-gray-cool"}`}
-      >
-        {label}
-      </Text>
-      <Text
-        className={`mt-1 text-[13px] font-extrabold leading-[18px] ${isCritical ? "text-danger-bright" : "text-navy-mid"}`}
-      >
-        {value || EMPTY_VALUE}
-      </Text>
-    </View>
-  );
-}
-
-function IdCardValue({
-  label,
-  value,
-  isCritical = false,
-}: {
-  label: string;
-  value?: string;
-  isCritical?: boolean;
-}) {
-  return (
-    <View className="mb-4">
-      <Text
-        className={`text-[12px] font-semibold leading-[16px] ${isCritical ? "text-danger-bright" : "text-gray-cool"}`}
-      >
-        {label}
-      </Text>
-      <Text
-        className={`mt-1 text-[13px] font-extrabold leading-[18px] ${isCritical ? "text-danger-bright" : "text-navy-mid"}`}
-      >
-        {value || EMPTY_VALUE}
-      </Text>
-    </View>
-  );
-}
-
 function TranscriptDocumentDetailCard({
   display,
+  record,
   onOpenQr,
   onPresentViaNfc,
   holderProfile,
   inactiveState,
   renewalBadgeLabel,
   renewalState,
+  bannerAction,
 }: Props) {
   const rows = [...display.primaryRows, ...display.extraRows];
   const birthDate = findRow(
@@ -339,84 +319,81 @@ function TranscriptDocumentDetailCard({
         inactiveState={inactiveState}
         renewalBadgeLabel={renewalBadgeLabel}
         renewalState={renewalState}
+        record={record}
       >
         <View testID="document-detail-card">
           <DocumentCardLayout
             primaryColor={THEME.pink}
+            bannerAction={bannerAction}
+            columnsClassName={readRibbonColumnsClassName(
+              inactiveState,
+              renewalState,
+            )}
             banner={
               <Text
                 testID="document-detail-band"
-                className="text-[20px] font-extrabold leading-7 text-white"
+                className="text-[15px] font-extrabold tracking-[1.5px] text-white"
               >
                 TRANSCRIPT
               </Text>
             }
             hero={
-              <View
-                testID="document-detail-hero"
-                className="min-h-[245px] flex-row px-4 py-6"
-              >
-                <View
-                  testID="document-detail-photo"
-                  className="h-[190px] w-[150px] shrink-0 items-center justify-end overflow-hidden bg-white"
-                >
+              <View testID="document-detail-hero" className="flex-row">
+                <View testID="document-detail-photo">
                   <Image
                     testID="document-detail-image"
                     source={credentialImages.transcript}
-                    className="h-full w-full"
+                    className="h-[112px] w-[88px] rounded-lg"
                     resizeMode="cover"
-                    style={{ height: "100%", width: "100%" }}
                     accessibilityLabel={display.title}
                   />
                 </View>
-                <View className="min-w-0 flex-1 justify-center pl-8">
-                  <Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">
+                <View className="ml-4 min-w-0 flex-1 justify-center gap-0.5">
+                  <Text className="text-[10px] leading-[14px] text-blue-gray">
                     ชื่อ - นามสกุล / Name
                   </Text>
                   <Text
                     testID="document-detail-name"
-                    className="mt-2 text-[14px] font-extrabold leading-5 text-navy-mid"
+                    className="text-[14px] font-bold leading-5 text-wallet-navy"
                   >
                     {primaryName || EMPTY_VALUE}
                   </Text>
                   <Text
                     testID="document-detail-name-en"
-                    className="mt-1 text-[10px] font-semibold leading-[14px] text-slate-muted"
+                    className="text-[12px] leading-4 font-semibold text-wallet-navy"
                   >
                     {secondaryName || EMPTY_VALUE}
                   </Text>
-                  <View className="mt-8">
-                    <Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">
-                      วันเกิด / Date of Birth
-                    </Text>
-                    <Text className="mt-2 text-[13px] font-extrabold leading-[18px] text-navy-mid">
-                      {formatThaiDate(birthDateValue) || EMPTY_VALUE}
-                    </Text>
-                  </View>
+                  <Text className="mt-2 text-[10px] leading-[14px] text-blue-gray">
+                    วันเกิด / Date of Birth
+                  </Text>
+                  <Text className="text-[13px] font-bold leading-[18px] text-wallet-navy">
+                    {formatThaiDate(birthDateValue) || EMPTY_VALUE}
+                  </Text>
                 </View>
               </View>
             }
             leftColumn={
-              <View testID="document-detail-left-column">
-                <TranscriptValue
+              <View testID="document-detail-left-column" className="gap-3">
+                <DocumentCardDetailValue
                   label="เลขประจำตัวนิสิต"
                   value={studentId?.value}
                 />
-                <TranscriptValue label="คณะ" value={faculty?.value} />
-                <TranscriptValue label="สาขาวิชา" value={major?.value} />
+                <DocumentCardDetailValue label="คณะ" value={faculty?.value} />
+                <DocumentCardDetailValue label="สาขาวิชา" value={major?.value} />
               </View>
             }
             rightColumn={
-              <View testID="document-detail-right-column">
-                <TranscriptValue label="Cumulative GPA" value={gpa?.value} />
-                <TranscriptValue
+              <View testID="document-detail-right-column" className="gap-3">
+                <DocumentCardDetailValue label="Cumulative GPA" value={gpa?.value} />
+                <DocumentCardDetailValue
                   label="Graduation Year"
                   value={graduationYear?.value}
                 />
-                <TranscriptValue
+                <DocumentCardDetailValue
                   label="วันหมดอายุ / Expiry Date"
                   value={expiryValue}
-                  isCritical
+                  expiry
                 />
               </View>
             }
@@ -426,6 +403,7 @@ function TranscriptDocumentDetailCard({
       <DocumentActionRow
         onOpenQr={onOpenQr}
         onPresentViaNfc={onPresentViaNfc}
+        className="mt-[10px] justify-end"
       />
     </View>
   );
@@ -433,12 +411,14 @@ function TranscriptDocumentDetailCard({
 
 function IdCardDocumentDetailCard({
   display,
+  record,
   onOpenQr,
   onPresentViaNfc,
   holderProfile,
   inactiveState,
   renewalBadgeLabel,
   renewalState,
+  bannerAction,
 }: Props) {
   const rows = [...display.primaryRows, ...display.extraRows];
   const idNumber = findRow(
@@ -479,43 +459,42 @@ function IdCardDocumentDetailCard({
         inactiveState={inactiveState}
         renewalBadgeLabel={renewalBadgeLabel}
         renewalState={renewalState}
+        record={record}
       >
         <View testID="document-detail-card">
           <DocumentCardLayout
             primaryColor={display.primaryColor || THEME.navyRoyal}
+            bannerAction={bannerAction}
+            columnsClassName={readRibbonColumnsClassName(
+              inactiveState,
+              renewalState,
+            )}
             banner={
               <Text
                 testID="document-detail-band"
-                className="text-[20px] font-extrabold leading-7 text-white"
+                className="text-[15px] font-extrabold tracking-[1.5px] text-white"
               >
                 ID CARD
               </Text>
             }
             hero={
-              <View
-                testID="document-detail-hero"
-                className="min-h-[225px] flex-row px-4 py-5"
-              >
-                <View
-                  testID="document-detail-photo"
-                  className="h-[168px] w-[148px] shrink-0 items-center justify-end overflow-hidden bg-white"
-                >
+              <View testID="document-detail-hero" className="flex-row">
+                <View testID="document-detail-photo">
                   <Image
                     testID="document-detail-image"
                     source={credentialImages.id}
-                    className="h-full w-full"
+                    className="h-[112px] w-[88px] rounded-lg"
                     resizeMode="cover"
-                    style={{ height: "100%", width: "100%" }}
                     accessibilityLabel={display.title}
                   />
                 </View>
-                <View className="min-w-0 flex-1 justify-center pl-8">
-                  <Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">
+                <View className="ml-4 min-w-0 flex-1 justify-center gap-0.5">
+                  <Text className="text-[10px] leading-[14px] text-blue-gray">
                     ชื่อ - นามสกุล
                   </Text>
                   <Text
                     testID="document-detail-name"
-                    className="mt-2 text-[14px] font-extrabold leading-5 text-navy-mid"
+                    className="text-[14px] font-bold leading-5 text-wallet-navy"
                   >
                     {thaiName && thaiName !== display.title
                       ? thaiName
@@ -523,50 +502,48 @@ function IdCardDocumentDetailCard({
                   </Text>
                   <Text
                     testID="document-detail-name-en"
-                    className="mt-1 text-[12px] font-semibold leading-[16px] text-navy-mid"
+                    className="text-[12px] leading-4 font-semibold text-wallet-navy"
                   >
                     {englishName || EMPTY_VALUE}
                   </Text>
-                  <View className="mt-7">
-                    <Text className="text-[12px] font-semibold leading-[16px] text-gray-cool">
-                      เลขบัตรประจำตัวประชาชน
-                    </Text>
-                    <Text
-                      testID="document-detail-primary-id"
-                      className="mt-2 text-[12px] font-extrabold leading-5 text-navy-mid"
-                    >
-                      {idNumber?.value || EMPTY_VALUE}
-                    </Text>
-                  </View>
+                  <Text className="mt-2 text-[10px] leading-[14px] text-blue-gray">
+                    เลขบัตรประจำตัวประชาชน
+                  </Text>
+                  <Text
+                    testID="document-detail-primary-id"
+                    className="text-[13px] font-bold leading-[18px] text-wallet-navy"
+                  >
+                    {idNumber?.value || EMPTY_VALUE}
+                  </Text>
                 </View>
               </View>
             }
             leftColumn={
-              <View testID="document-detail-left-column">
-                <IdCardValue
+              <View testID="document-detail-left-column" className="gap-3">
+                <DocumentCardDetailValue
                   label="วันเดือนปีเกิด"
                   value={formatThaiDate(birthDateValue)}
                 />
-                <IdCardValue
+                <DocumentCardDetailValue
                   label="ที่อยู่ตามทะเบียนบ้าน"
                   value={address?.value || MOCK_ID_CARD_ADDRESS}
                 />
               </View>
             }
             rightColumn={
-              <View testID="document-detail-right-column">
-                <IdCardValue
+              <View testID="document-detail-right-column" className="gap-3">
+                <DocumentCardDetailValue
                   label="ศาสนา"
                   value={religion?.value || MOCK_ID_CARD_RELIGION}
                 />
-                <IdCardValue
+                <DocumentCardDetailValue
                   label="วันอนุญาต / Issue Date"
                   value={formatThaiDate(issueDate?.value)}
                 />
-                <IdCardValue
+                <DocumentCardDetailValue
                   label="วันหมดอายุ / Expiry Date"
                   value={expiryValue}
-                  isCritical
+                  expiry
                 />
               </View>
             }
@@ -576,6 +553,7 @@ function IdCardDocumentDetailCard({
       <DocumentActionRow
         onOpenQr={onOpenQr}
         onPresentViaNfc={onPresentViaNfc}
+        className="mt-[10px] justify-end"
       />
     </View>
   );
@@ -588,6 +566,7 @@ function DrivingLicenceDocumentDetailCard({
   inactiveState,
   renewalBadgeLabel,
   renewalState,
+  bannerAction,
 }: Props) {
   if (!record) return null;
 
@@ -597,8 +576,9 @@ function DrivingLicenceDocumentDetailCard({
         inactiveState={inactiveState}
         renewalBadgeLabel={renewalBadgeLabel}
         renewalState={renewalState}
+        record={record}
       >
-        <DrivingLicenceDocumentCard record={record} />
+        <DrivingLicenceDocumentCard record={record} bannerAction={bannerAction} />
       </DocumentCardShell>
 
       <DocumentActionRow
@@ -619,17 +599,27 @@ export function CredentialDocumentDetailCard({
   inactiveState,
   renewalBadgeLabel,
   renewalState,
+  bannerAction,
 }: Props) {
+  const presentmentBlocked = shouldBlockCredentialDetailPresentment(
+    inactiveState ?? { kind: "active" },
+    record,
+  );
+  const openQr = presentmentBlocked ? undefined : onOpenQr;
+  const presentNfc = presentmentBlocked ? undefined : onPresentViaNfc;
+
   if (display.imageKey === "transcript") {
     return (
       <TranscriptDocumentDetailCard
         display={display}
-        onOpenQr={onOpenQr}
-        onPresentViaNfc={onPresentViaNfc}
+        record={record}
+        onOpenQr={openQr}
+        onPresentViaNfc={presentNfc}
         holderProfile={holderProfile}
         inactiveState={inactiveState}
         renewalBadgeLabel={renewalBadgeLabel}
         renewalState={renewalState}
+        bannerAction={bannerAction}
       />
     );
   }
@@ -637,12 +627,14 @@ export function CredentialDocumentDetailCard({
     return (
       <IdCardDocumentDetailCard
         display={display}
-        onOpenQr={onOpenQr}
-        onPresentViaNfc={onPresentViaNfc}
+        record={record}
+        onOpenQr={openQr}
+        onPresentViaNfc={presentNfc}
         holderProfile={holderProfile}
         inactiveState={inactiveState}
         renewalBadgeLabel={renewalBadgeLabel}
         renewalState={renewalState}
+        bannerAction={bannerAction}
       />
     );
   }
@@ -651,12 +643,13 @@ export function CredentialDocumentDetailCard({
       <DrivingLicenceDocumentDetailCard
         display={display}
         record={record}
-        onOpenQr={onOpenQr}
-        onPresentViaNfc={onPresentViaNfc}
+        onOpenQr={openQr}
+        onPresentViaNfc={presentNfc}
         holderProfile={holderProfile}
         inactiveState={inactiveState}
         renewalBadgeLabel={renewalBadgeLabel}
         renewalState={renewalState}
+        bannerAction={bannerAction}
       />
     );
   }
@@ -678,10 +671,11 @@ export function CredentialDocumentDetailCard({
         inactiveState={inactiveState}
         renewalBadgeLabel={renewalBadgeLabel}
         renewalState={renewalState}
+        record={record}
       >
         <View
           testID="document-detail-card"
-          className="overflow-hidden rounded-2xl bg-white"
+          className="rounded-2xl bg-white"
           style={{
             elevation: 4,
             shadowColor: THEME.navyShadow,
@@ -692,22 +686,24 @@ export function CredentialDocumentDetailCard({
         >
           <View
             testID="document-detail-band-wrap"
-            className="min-h-[48px] w-full justify-center overflow-hidden px-4 py-[11px]"
+            className="min-h-[48px] w-full flex-row items-center px-4 py-[11px]"
             style={{
               alignSelf: "stretch",
               backgroundColor: display.primaryColor || THEME.navyRoyal,
               minHeight: 48,
-              overflow: "hidden",
               width: "100%",
             }}
           >
             <Text
               testID="document-detail-band"
-              className="text-[15px] font-extrabold leading-6 tracking-[1.5px] text-white"
+              className="min-w-0 flex-1 text-[15px] font-extrabold leading-6 tracking-[1.5px] text-white"
               style={{ lineHeight: 24 }}
             >
               {display.documentTitle}
             </Text>
+            {bannerAction ? (
+              <View className="ml-2 shrink-0">{bannerAction}</View>
+            ) : null}
           </View>
 
           <View
@@ -781,8 +777,8 @@ export function CredentialDocumentDetailCard({
       </DocumentCardShell>
 
       <DocumentActionRow
-        onOpenQr={onOpenQr}
-        onPresentViaNfc={onPresentViaNfc}
+        onOpenQr={openQr}
+        onPresentViaNfc={presentNfc}
         className="mt-[10px] justify-end"
       />
     </View>
