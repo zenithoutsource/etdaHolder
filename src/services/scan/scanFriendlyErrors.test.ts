@@ -105,7 +105,7 @@ describe('toFriendlyError', () => {
     )
   })
 
-  test('maps PID-first cutover blocks to the hardware ThaID reissue message', () => {
+  test('maps PID-first cutover blocks to the hardware PID reissue message', () => {
     expect(
       toFriendlyError('Reissue your national ID (PID) on hardware P-256 before reissuing other credentials.'),
     ).toBe(WALLET_HOME_COPY.hardwarePidReissueRequiredMessage)

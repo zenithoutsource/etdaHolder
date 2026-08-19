@@ -34,6 +34,12 @@ jest.mock('../components/WalletHeader', () => ({
   WalletHeader: () => mockReact.createElement(mockText, null, 'Scan Header'),
 }))
 
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
+  return function MockMaterialCommunityIcons() {
+    return null
+  }
+})
+
 jest.mock('../hooks/useScreenCaptureGuard', () => ({
   useScreenCaptureGuard: jest.fn(),
 }))
@@ -94,6 +100,15 @@ describe('ScanScreen deeplink handling', () => {
     expect(useDeeplinkStore.getState().pendingOfferFlowOrigin).toBe('scan')
     expect(mockRouterPush).toHaveBeenCalledWith('/(tabs)/credential-offer')
     expect(screen.queryByText('Scan Success')).toBeNull()
+  })
+
+  it('shows the camera permission panel when access is not granted', () => {
+    cameraMock.useCameraPermissions.mockReturnValue([{ granted: false, canAskAgain: true }, jest.fn()])
+
+    render(<ScanScreen />)
+
+    expect(screen.getByTestId('scan-camera-permission-panel')).toBeTruthy()
+    expect(screen.getByText('อนุญาตให้ใช้กล้อง')).toBeTruthy()
   })
 
   it('hands off scanned OID4VP QR to presentation-request route', async () => {

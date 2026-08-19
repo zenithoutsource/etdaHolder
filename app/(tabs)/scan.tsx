@@ -1,3 +1,12 @@
+/**
+ * Scan tab — camera QR for OID4VCI offers and OID4VP requests; optional renew shortcut.
+ * Journey: P1 issuance intake; P4 Verifier QR.
+ * Copy: ScanCameraPermissionPanel Thai gate copy; inline English scan errors.
+ * Layout: ScanCameraPermissionPanel, then ScanCaptureSurface.
+ * Next: credential-offer or presentation-request.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import { useCameraPermissions } from 'expo-camera'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useRef, useState } from 'react'
@@ -5,6 +14,7 @@ import { Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
+import { ScanCameraPermissionPanel } from '../../src/components/ScanCameraPermissionPanel'
 import { ScanCaptureSurface } from '../../src/components/ScanCaptureSurface'
 import { WalletHeader } from '../../src/components/WalletHeader'
 import { useScreenCaptureGuard } from '../../src/hooks/useScreenCaptureGuard'
@@ -26,6 +36,7 @@ type ScanPhase =
 export default function ScanScreen() {
   useScreenCaptureGuard()
   const [permission, requestPermission] = useCameraPermissions()
+  const [requestingPermission, setRequestingPermission] = useState(false)
   const [phase, setPhase] = useState<ScanPhase>({ tag: 'scanning' })
   const processingRef = useRef(false)
   const generationRef = useRef(0)
@@ -138,17 +149,38 @@ export default function ScanScreen() {
     processingRef.current = false
   }
 
+  async function handleAllowCamera() {
+    setRequestingPermission(true)
+    logWalletStep('scan', 'camera-permission-request')
+    try {
+      await requestPermission()
+    } catch (error) {
+      logWalletError('scan', 'camera-permission-request-failed', error)
+    } finally {
+      setRequestingPermission(false)
+    }
+  }
+
   if (!permission) {
-    return <View className="flex-1" />
+    return (
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
+        <WalletHeader />
+        <View className="flex-1 bg-wallet-bg" />
+      </SafeAreaView>
+    )
   }
 
   if (!permission.granted) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
-        <Text className="mb-5 text-center text-[15px] text-gray700">
-          Camera access is required to scan QR codes.
-        </Text>
-        <AppButton variant="solid-block" label="Allow Camera" onPress={requestPermission} className="rounded-xl px-[18px] py-[14px]" textClassName="text-[15px] font-semibold" />
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
+        <WalletHeader />
+        <ScanCameraPermissionPanel
+          canAskAgain={permission.canAskAgain !== false}
+          onAllow={() => {
+            void handleAllowCamera()
+          }}
+          requesting={requestingPermission}
+        />
       </SafeAreaView>
     )
   }

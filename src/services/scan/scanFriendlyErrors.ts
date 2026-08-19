@@ -112,7 +112,13 @@ export function toFriendlyError(raw: string): string {
 
   if (raw.includes('PresentationCredentialMissing:issuer-pid')) {
 
-    return 'Store Thai National ID (ThaID) before presenting to the Issuer.'
+    return 'Store Thai National ID (PID) before presenting to the Issuer.'
+
+  }
+
+  if (raw.includes('PresentationPidRequired')) {
+
+    return 'Store Thai National ID (PID) before presenting other documents.'
 
   }
 
