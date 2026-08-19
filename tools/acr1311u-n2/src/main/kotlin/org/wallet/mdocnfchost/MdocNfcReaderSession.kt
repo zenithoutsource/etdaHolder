@@ -10,7 +10,6 @@ import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcCurve
 import org.multipaz.mdoc.connectionmethod.MdocConnectionMethodNfc
 import org.multipaz.mdoc.engagement.DeviceEngagement
-import org.multipaz.mdoc.issuersigned.IssuerNamespaces
 import org.multipaz.mdoc.request.buildDeviceRequest
 import org.multipaz.mdoc.role.MdocRole
 import org.multipaz.mdoc.sessionencryption.SessionEncryption
@@ -143,7 +142,7 @@ object MdocNfcReaderSession {
 
   private suspend fun delayBeforeRetry() {
     try {
-      kotlinx.coroutines.delay(300)
+      kotlinx.coroutines.delay(1_500)
     } catch (_: Exception) {
     }
   }
@@ -221,7 +220,7 @@ object MdocNfcReaderSession {
           "Reader received a session message with no DeviceResponse (status=$status)",
         )
       }
-      val extracted = extractClaims(plaintext)
+      val extracted = MdocResponseClaims.extract(plaintext)
       val iacaPem = IssuerAttestation.loadOptionalPem()
       val verified = if (iacaPem.isNullOrBlank()) {
         false
@@ -257,43 +256,4 @@ object MdocNfcReaderSession {
     }
   }
 
-  private data class ExtractedClaims(
-    val claims: Map<String, String>,
-    val issuerAuth: org.multipaz.cbor.DataItem,
-  )
-
-  private fun extractClaims(deviceResponseCbor: ByteArray): ExtractedClaims {
-    val root = Cbor.decode(deviceResponseCbor)
-    val documents = root["documents"].asArray
-    if (documents.isEmpty()) {
-      throw MdocPresentmentException("EMPTY_RESPONSE", "DeviceResponse contains no documents")
-    }
-    val issuerSigned = documents[0]["issuerSigned"]
-    val nameSpaces = IssuerNamespaces.fromDataItem(issuerSigned["nameSpaces"])
-    val mdl = nameSpaces.data[MDL_NAMESPACE].orEmpty()
-    val claims = linkedMapOf<String, String>()
-    for (identifier in MDL_REQUEST_FIELDS) {
-      val item = mdl[identifier] ?: continue
-      claims[identifier] = formatElementValue(item.dataElementValue)
-    }
-    if (claims.isEmpty()) {
-      throw MdocPresentmentException("EMPTY_RESPONSE", "DeviceResponse did not include the three mDL fields")
-    }
-    return ExtractedClaims(claims, issuerSigned["issuerAuth"])
-  }
-
-  private fun formatElementValue(value: org.multipaz.cbor.DataItem): String {
-    value.asTstrOrNull()?.let { return it }
-    return try {
-      value.asDateString.toString()
-    } catch (_: Exception) {
-      value.toString()
-    }
-  }
-}
-
-private fun org.multipaz.cbor.DataItem.asTstrOrNull(): String? = try {
-  asTstr
-} catch (_: Exception) {
-  null
 }

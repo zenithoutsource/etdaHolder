@@ -71,7 +71,7 @@ class PcscNfcIsoTag(
         preferred.waitForCardPresent((deadline - System.currentTimeMillis()).coerceAtMost(500L).coerceAtLeast(50L))
       }
       throw IllegalStateException(
-        "Timed out waiting for NFC. Arm the wallet, scan the Waiting for tap QR, then hold the phone to the reader within 60 seconds.",
+        "Timed out waiting for NFC. Arm the wallet, scan the Waiting for tap QR, then hold the phone to the reader while that screen is still open.",
       )
     }
 

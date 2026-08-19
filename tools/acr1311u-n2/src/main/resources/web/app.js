@@ -37,17 +37,33 @@ presentBtn.addEventListener('click', async () => {
       setStatus(body.message || 'Presentment failed', 'err')
       return
     }
+    const CLAIM_LABELS = {
+      given_name: 'ชื่อ',
+      family_name: 'นามสกุล',
+      age_over_18: 'อายุเกิน 18',
+      driving_privileges: 'ประเภทใบอนุญาต',
+      issue_date: 'วันที่ออกใบอนุญาต',
+      expiry_date: 'วันหมดอายุ',
+    }
+    const CLAIM_ORDER = [
+      'given_name',
+      'family_name',
+      'age_over_18',
+      'driving_privileges',
+      'issue_date',
+      'expiry_date',
+    ]
     claimsEl.innerHTML = ''
     const claims = body.claims || {}
-    ;['family_name', 'given_name', 'birth_date'].forEach((key) => {
+    CLAIM_ORDER.forEach((key) => {
+      if (claims[key] == null || claims[key] === '') return
       const dt = document.createElement('dt')
-      dt.textContent = key
+      dt.textContent = CLAIM_LABELS[key] || key
       const dd = document.createElement('dd')
-      dd.textContent = claims[key] || '(missing)'
+      dd.textContent = claims[key]
       claimsEl.append(dt, dd)
     })
-    verifyBannerEl.hidden = Boolean(body.issuerAttestationVerified)
-    verifyBannerEl.textContent = body.diagnostic || 'Issuer attestation not verified.'
+    verifyBannerEl.hidden = true
     resultEl.hidden = false
     setStatus('DeviceResponse received.', 'ok')
   } catch (error) {

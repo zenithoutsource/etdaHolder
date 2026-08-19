@@ -44,6 +44,8 @@ class StatusWordMapperTest {
     assertTrue(StatusWordMapper.messageForStatus(0x6985).contains("not approved"))
     assertEquals("6A82", StatusWordMapper.codeForStatus(0x6A82))
     assertEquals("6985", StatusWordMapper.codeForStatus(0x6985))
+    assertTrue(StatusWordMapper.messageForStatus(0x6300).contains("6300"))
+    assertTrue(StatusWordMapper.messageForStatus(0x6A81).contains("not listening"))
   }
 
   @Test

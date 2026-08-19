@@ -41,7 +41,7 @@ Open `http://127.0.0.1:8787` (bound to localhost only).
 1. Claim a Driving Licence from the Issuer (no Add test mDL).
 2. Host: click **Wait for tap** with the engagement field **empty**.
 3. Phone: Driving Licence → NFC → Waiting for tap (**no QR**) → hold the A26 flat on the ACR1311 (`EXPO_PUBLIC_HCE_ARM_WINDOW_MS`, default 180 s). If Samsung Wallet is the default NFC app, disable its NFC/payment service for this tap so AIDs `D2760000850101` and `A0000002480400` can reach this wallet.
-4. Pass = the page shows the three claims (`family_name`, `given_name`, `birth_date`) **and** the wallet shows Success, plus logcat `[hce] mdoc APDU` and `[multipaz-session] NFC transport connected`. **A reader beep alone is not pass.**
+4. Pass = the page shows the decrypted mDL claims from the DeviceResponse **and** the wallet shows Success, plus logcat `[hce] mdoc APDU` and `[multipaz-session] NFC transport connected`. **A reader beep alone is not pass.**
 
 A second hold after NDEF→mdoc field drop is acceptable. Requiring the holder to scan or paste a `mdoc:` QR is **not** pass for this path.
 

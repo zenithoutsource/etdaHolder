@@ -27,7 +27,14 @@ class TestMdlGeneratorTest {
     val nameSpaces = IssuerNamespaces.fromDataItem(root["issuerSigned"]["nameSpaces"])
     val mdl = nameSpaces.data[MDL_NAMESPACE]
     assertNotNull(mdl)
-    for (identifier in MDL_REQUEST_FIELDS) {
+    for (identifier in listOf(
+      "family_name",
+      "given_name",
+      "birth_date",
+      "driving_privileges",
+      "issue_date",
+      "expiry_date",
+    )) {
       assertTrue(mdl.containsKey(identifier), "missing $identifier")
     }
 

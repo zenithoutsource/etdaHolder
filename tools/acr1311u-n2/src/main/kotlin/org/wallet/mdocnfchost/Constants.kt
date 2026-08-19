@@ -8,4 +8,12 @@ const val DEFAULT_HOST = "127.0.0.1"
 const val DEFAULT_PORT = 8787
 const val DEFAULT_TAP_TIMEOUT_MS = 180_000L
 
-val MDL_REQUEST_FIELDS = listOf("family_name", "given_name", "birth_date")
+/** Names, DOB (host derives over-18), licence class, issue and expiry. Missing ISO items abort as session status 20. */
+val MDL_REQUEST_FIELDS = listOf(
+  "family_name",
+  "given_name",
+  "birth_date",
+  "driving_privileges",
+  "issue_date",
+  "expiry_date",
+)

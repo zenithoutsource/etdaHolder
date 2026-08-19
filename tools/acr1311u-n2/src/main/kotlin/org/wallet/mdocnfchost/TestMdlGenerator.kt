@@ -101,6 +101,23 @@ object TestMdlGenerator {
         addDataElement("issuing_country", Tstr("TH"))
         addDataElement("issue_date", LocalDate.parse("2024-01-01").toDataItemFullDate())
         addDataElement("expiry_date", LocalDate.parse("2034-01-01").toDataItemFullDate())
+        addDataElement(
+          "driving_privileges",
+          org.multipaz.cbor.buildCborArray {
+            add(
+              buildCborMap {
+                put("vehicle_category_code", Tstr("B"))
+                put("issue_date", LocalDate.parse("2024-01-01").toDataItemFullDate())
+                put("expiry_date", LocalDate.parse("2034-01-01").toDataItemFullDate())
+              },
+            )
+            add(
+              buildCborMap {
+                put("vehicle_category_code", Tstr("A"))
+              },
+            )
+          },
+        )
       }
     }
 
