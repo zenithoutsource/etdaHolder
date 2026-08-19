@@ -1,3 +1,5 @@
+import { HCE_ARM_WINDOW_MS } from './dualFormatPolicy'
+
 /** Action-scoped signing session TTL (ms). Align with Android auth validity window. */
 export function readHardwareSigningSessionTtlMs(): number {
   return Number(process.env.EXPO_PUBLIC_HARDWARE_SIGNING_SESSION_TTL_MS) || 30_000
@@ -12,8 +14,7 @@ export function readHardwareSigningSessionTtlMsForPurpose(
 ): number {
   const sessionTtlMs = readHardwareSigningSessionTtlMs()
   if (purpose !== 'mdoc') return sessionTtlMs
-  const armWindowMs = Number(process.env.EXPO_PUBLIC_HCE_ARM_WINDOW_MS) || 60_000
-  return Math.max(sessionTtlMs, armWindowMs)
+  return Math.max(sessionTtlMs, HCE_ARM_WINDOW_MS)
 }
 
 /** Default max signatures per purpose when caller does not override. */

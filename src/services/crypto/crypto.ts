@@ -24,7 +24,10 @@ import {
 } from './credentialSigningKey'
 import { getCredentialKeyRecord, readEarliestCredentialKeyCreatedAt } from './credentialKeyRegistry'
 import { usesPerCredentialSigning } from './perCredentialSigning'
-import { readFirstEncryptedCredentialHolderDid } from './encryptedCredentialKeyRegistry'
+import {
+  readEarliestEncryptedCredentialKeyCreatedAt,
+  readFirstEncryptedCredentialHolderDid,
+} from './encryptedCredentialKeyRegistry'
 import {
   createHardwarePendingCredentialKeySession,
   hasHardwareCredentialKey,
@@ -447,7 +450,8 @@ export function ensureWalletKeyRegisteredAtBackfill(now = new Date()): boolean {
     return seedInitialWalletKeyRegisteredAt(now.toISOString())
   }
 
-  const earliestCredentialBind = readEarliestCredentialKeyCreatedAt()
+  const earliestCredentialBind =
+    readEarliestCredentialKeyCreatedAt() ?? readEarliestEncryptedCredentialKeyCreatedAt()
   if (earliestCredentialBind) {
     return seedInitialWalletKeyRegisteredAt(earliestCredentialBind)
   }
@@ -459,7 +463,8 @@ export function ensureWalletKeyRegisteredAtBackfill(now = new Date()): boolean {
 export function refreshWalletKeyRegisteredAt(now = new Date()): void {
   if (
     !metaStorage.getString(ED25519_PUBLIC_KEY_STORAGE) &&
-    !readEarliestCredentialKeyCreatedAt()
+    !readEarliestCredentialKeyCreatedAt() &&
+    !readEarliestEncryptedCredentialKeyCreatedAt()
   ) {
     return
   }
@@ -973,81 +978,39 @@ export type HolderStatusChangePopInput = {
 
 /**
  * Signs Holder-initiated status-change PoP (P6 holder revoke).
+ * ES256 hardware k_cred only — no Ed25519 fallback.
  * Biometric fires here on every call (sign-time gate).
  */
 export async function signHolderStatusChangePop(
   input: HolderStatusChangePopInput,
 ): Promise<string> {
-  if (isHardwareP256SigningEnabled()) {
-    assertHardwareHolderSigningAllowed(input.credentialId)
-  }
-  if (shouldUseHardwareCredentialKey(input.credentialId)) {
-    const did = resolveHardwareCredentialHolderDid(input.credentialId)
-    const kid = `${did}#${did.slice('did:key:'.length)}`
-    const hardwareSession = await openHardwareCredentialSigningSession(input.credentialId, 'oid4vci')
-
-    logWalletStep('crypto', 'sign-holder-status-change-pop-hardware-start', {
-      credentialId: input.credentialId,
-      audience: input.audience,
-      noncePresent: Boolean(input.nonce),
-    })
-
-    try {
-      return await signHardwareHolderStatusChangePop({
-        nonce: input.nonce,
-        audience: input.audience,
-        credentialId: input.credentialId,
-        holderDid: did,
-        kid,
-        action: input.action,
-        sign: (message) => hardwareSession.sign(message),
-      })
-    } finally {
-      await hardwareSession.close()
-    }
+  if (!shouldUseHardwareCredentialKey(input.credentialId)) {
+    throw new Error(input.credentialId ? 'LegacyHolderSigningUnsupported' : 'HardwareCredentialKeyRequired')
   }
 
-  if (getCredentialKeyRecord(input.credentialId)) {
-    const did = await getCredentialSigningHolderDid(input.credentialId)
-    const kid = `${did}#${did.slice('did:key:'.length)}`
-    const header = { alg: 'EdDSA', typ: 'holder-status-change+jwt', kid }
-    const payload = {
-      iss: did,
-      sub: did,
-      aud: input.audience,
-      iat: Math.floor(Date.now() / 1000),
-      nonce: input.nonce,
-      credential_id: input.credentialId,
-      action: input.action ?? 'revoke',
-    }
-
-    logWalletStep('crypto', 'sign-holder-status-change-pop-credential-start', {
-      credentialId: input.credentialId,
-      audience: input.audience,
-      noncePresent: Boolean(input.nonce),
-    })
-    return signJwtLikeObject(header, payload, 'holder-status-change-pop', 'active', input.credentialId)
-  }
-
-  const did = getHolderDid()
+  const did = resolveHardwareCredentialHolderDid(input.credentialId)
   const kid = `${did}#${did.slice('did:key:'.length)}`
-  const header = { alg: 'EdDSA', typ: 'holder-status-change+jwt', kid }
-  const payload = {
-    iss: did,
-    sub: did,
-    aud: input.audience,
-    iat: Math.floor(Date.now() / 1000),
-    nonce: input.nonce,
-    credential_id: input.credentialId,
-    action: input.action ?? 'revoke',
-  }
+  const hardwareSession = await openHardwareCredentialSigningSession(input.credentialId, 'oid4vci')
 
-  logWalletStep('crypto', 'sign-holder-status-change-pop-start', {
+  logWalletStep('crypto', 'sign-holder-status-change-pop-hardware-start', {
     credentialId: input.credentialId,
     audience: input.audience,
     noncePresent: Boolean(input.nonce),
   })
-  return signJwtLikeObject(header, payload, 'holder-status-change-pop')
+
+  try {
+    return await signHardwareHolderStatusChangePop({
+      nonce: input.nonce,
+      audience: input.audience,
+      credentialId: input.credentialId,
+      holderDid: did,
+      kid,
+      action: input.action,
+      sign: (message) => hardwareSession.sign(message),
+    })
+  } finally {
+    await hardwareSession.close()
+  }
 }
 
 export type PresentationVpTokenInput = {

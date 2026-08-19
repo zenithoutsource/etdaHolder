@@ -10,6 +10,7 @@ import {
   getEncryptedCredentialKeyRecord,
   type EncryptedCredentialKeyRecord,
 } from './encryptedCredentialKeyRegistry'
+import { seedInitialWalletKeyRegisteredAt } from './walletKeyRegistration'
 import { getHardwareEcdsaSigner } from './hardwareEcdsaSigner'
 import type {
   EcP256Jwk,
@@ -345,6 +346,7 @@ export async function bindPendingHardwareKeyToCredential(
     securityLevelHint: meta.securityLevel,
     createdAt: now.toISOString(),
   })
+  seedInitialWalletKeyRegisteredAt(record.createdAt)
 
   removePendingHardwareKeyMeta(pendingId)
   logWalletStep('hardware-ecdsa', 'hardware-credential-key-bound', { credentialId, credentialType })

@@ -219,6 +219,26 @@ describe('rotateWalletKey re-rotation guard', () => {
     expect(getWalletKeyRegisteredAt()).not.toBe(beforeRotate)
   })
 
+  test('skips wallet-wide rotation when hardware P-256 is on', async () => {
+    const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    try {
+      jest.mocked(randomBytes).mockImplementationOnce(() => seedBytes(17))
+      await generateWalletKeyIfNeeded()
+
+      const result = await rotateWalletKey(new Date('2026-06-29T00:00:00.000Z'))
+
+      expect(result.affectedCredentialIds).toEqual([])
+      expect(readWalletKeyRotationRecord()).toBeUndefined()
+    } finally {
+      if (originalHardwareFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+      } else {
+        process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
+      }
+    }
+  })
+
   test('isWalletKeyExpired respects registeredAt even when v2 crypto is enabled', async () => {
     isWalletCryptoV2EnabledMock.mockReturnValue(true)
     jest.mocked(randomBytes).mockImplementationOnce(() => seedBytes(8))

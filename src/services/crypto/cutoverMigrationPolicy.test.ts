@@ -351,13 +351,28 @@ describe('cutoverMigrationPolicy', () => {
 
   test('assertHardwareCutoverLegacyRenewalBlocked is a no-op when hardware P-256 is off', () => {
     expect(() =>
-      assertHardwareCutoverLegacyRenewalBlocked({ isHardwareEnabled: () => false }),
+      assertHardwareCutoverLegacyRenewalBlocked('vc-ed25519', {
+        isHardwareEnabled: () => false,
+        hasHardwareKey: () => false,
+      }),
     ).not.toThrow()
   })
 
-  test('assertHardwareCutoverLegacyRenewalBlocked rejects old-key renewal when hardware P-256 is on', () => {
+  test('assertHardwareCutoverLegacyRenewalBlocked allows old-VC proof when the credential has hardware k_cred', () => {
     expect(() =>
-      assertHardwareCutoverLegacyRenewalBlocked({ isHardwareEnabled: () => true }),
+      assertHardwareCutoverLegacyRenewalBlocked('vc-hw-pid', {
+        isHardwareEnabled: () => true,
+        hasHardwareKey: (id) => id === 'vc-hw-pid',
+      }),
+    ).not.toThrow()
+  })
+
+  test('assertHardwareCutoverLegacyRenewalBlocked rejects leftover Ed25519 old-key renewal when hardware P-256 is on', () => {
+    expect(() =>
+      assertHardwareCutoverLegacyRenewalBlocked('vc-ed25519', {
+        isHardwareEnabled: () => true,
+        hasHardwareKey: () => false,
+      }),
     ).toThrow('Legacy key renewal presentation is unsupported')
   })
 })

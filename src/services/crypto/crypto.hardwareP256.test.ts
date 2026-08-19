@@ -60,7 +60,6 @@ function decodeJwtPart(part: string): Record<string, unknown> {
 
 describe('crypto hardware P-256 router', () => {
   const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
-  const originalV2Flag = process.env.EXPO_PUBLIC_WALLET_CRYPTO_V2_ENABLED
 
   beforeEach(() => {
     getMetaStorage().clearAll()
@@ -68,7 +67,6 @@ describe('crypto hardware P-256 router', () => {
     ;(Keychain as unknown as { __resetStore: () => void }).__resetStore()
     __resetHardwareEcdsaSignerCacheForTests()
     process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
-    delete process.env.EXPO_PUBLIC_WALLET_CRYPTO_V2_ENABLED
   })
 
   afterEach(() => {
@@ -76,11 +74,6 @@ describe('crypto hardware P-256 router', () => {
       delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
     } else {
       process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
-    }
-    if (originalV2Flag === undefined) {
-      delete process.env.EXPO_PUBLIC_WALLET_CRYPTO_V2_ENABLED
-    } else {
-      process.env.EXPO_PUBLIC_WALLET_CRYPTO_V2_ENABLED = originalV2Flag
     }
     __resetHardwareEcdsaSignerCacheForTests()
   })
@@ -174,6 +167,18 @@ describe('crypto hardware P-256 router', () => {
         nonce: 'revoke-nonce',
         audience: 'https://issuer.example.com',
         credentialId: 'legacy-ed25519',
+      }),
+    ).rejects.toThrow('LegacyHolderSigningUnsupported')
+  })
+
+  test('signHolderStatusChangePop throws when hardware signing is disabled', async () => {
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'false'
+
+    await expect(
+      signHolderStatusChangePop({
+        nonce: 'revoke-nonce',
+        audience: 'https://issuer.example.com',
+        credentialId: 'cred-revoke-flag-off',
       }),
     ).rejects.toThrow('LegacyHolderSigningUnsupported')
   })

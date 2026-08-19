@@ -392,7 +392,8 @@ export function formatSliceBChecklistReport(result: SliceBChecklistResult): stri
 
 /**
  * __DEV__ Slice B A26 checklist runner.
- * Logs `[hardware-ecdsa] slice-b-checklist-*` without key material or attestation bytes.
+ * Logs `[wallet:hardware-ecdsa] slice-b-checklist-*` (wallet logger). Claiming a
+ * credential does not run this; use the __DEV__ Home panel.
  */
 export async function runHardwareEcdsaSliceBChecklist(
   options: RunSliceBChecklistOptions = {},

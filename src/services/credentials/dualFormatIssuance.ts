@@ -41,6 +41,7 @@ import {
   readIssuerLogicalCredentialId,
   readMdocDocType,
 } from './logicalCredentialGrouping'
+import { overlayDrivingLicenceMdocClaims } from './mdocWalletClaims'
 import { saveLogicalCredential } from './logicalCredentialStorage'
 import type { CredentialFormatRecord, LogicalCredential } from './logicalCredentialTypes'
 import {
@@ -316,6 +317,7 @@ export async function acquireDrivingLicenceMdocOnlyForPreview(
       credentialId: deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId),
       documentType: 'DLTDrivingLicence',
       docType: pendingMdoc.docType,
+      rawBase64: pendingMdoc.rawBase64,
     })
 
     if (credentialKeyId) {
@@ -497,11 +499,15 @@ export async function acquireDualFormatForPreview(
       throwDualFormatTotalFailure(sdJwtError, mdocError)
     }
 
-    const primaryRecord = sdJwtRecord ?? createMdocPlaceholderRecord({
-      credentialId: deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId),
-      documentType: readDocumentTypeFromOffer(resolvedOffer),
-      docType: pendingMdoc?.docType ?? 'unknown',
-    })
+    const primaryRecord = overlayDrivingLicenceMdocClaims(
+      sdJwtRecord ?? createMdocPlaceholderRecord({
+        credentialId: deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId),
+        documentType: readDocumentTypeFromOffer(resolvedOffer),
+        docType: pendingMdoc?.docType ?? 'unknown',
+        rawBase64: pendingMdoc?.rawBase64,
+      }),
+      pendingMdoc?.rawBase64 ?? '',
+    )
     retainPendingKey = Boolean(credentialKeyId && sdJwtRecord && pendingMdoc && !missingFormat)
 
     return {
@@ -666,14 +672,15 @@ export async function finalizeDualFormatCredential(
       base64UrlToBytes(pendingMdoc.rawBase64),
     )
     mdocWriteCompleted = true
-    saveRecord(record)
+    const saveableRecord = overlayDrivingLicenceMdocClaims(record, pendingMdoc.rawBase64)
+    saveRecord(saveableRecord)
     if (pendingMdoc.pendingCredentialKeyId) {
       await bindPendingCredentialKey(pendingMdoc.pendingCredentialKeyId, record.id, record.type)
       credentialKeyBound = true
     }
     saveLogical(logicalCredential, storage)
     markCredentialAsNew(record.id)
-    appendCredentialReceivedHistory(record)
+    appendCredentialReceivedHistory(saveableRecord)
     await commitReplacement(record.id)
     options.refreshCredentials?.()
 
@@ -732,7 +739,7 @@ export async function finalizeDualFormatCredential(
 }
 
 function isMdocOnlyPlaceholderRecord(record: VerifiableCredentialRecord): boolean {
-  return record.rawVc.length === 0
+  return record.rawVc.length === 0 || record.rawVc.startsWith('mdoc:')
 }
 
 async function finalizeMdocOnlyCredential(
@@ -779,14 +786,15 @@ async function finalizeMdocOnlyCredential(
       base64UrlToBytes(pendingMdoc.rawBase64),
     )
     mdocWriteCompleted = true
-    saveRecord(record)
+    const saveableRecord = overlayDrivingLicenceMdocClaims(record, pendingMdoc.rawBase64)
+    saveRecord(saveableRecord)
     if (pendingMdoc.pendingCredentialKeyId) {
       await bindPendingCredentialKey(pendingMdoc.pendingCredentialKeyId, record.id, record.type)
       credentialKeyBound = true
     }
     saveLogical(logicalCredential, storage)
     markCredentialAsNew(record.id)
-    appendCredentialReceivedHistory(record)
+    appendCredentialReceivedHistory(saveableRecord)
     await commitReplacement(record.id)
     options.refreshCredentials?.()
 
@@ -1075,6 +1083,7 @@ export async function claimDualFormatCredential(
     let sdJwtRecord: VerifiableCredentialRecord | undefined
     let mdocBytes: Uint8Array | undefined
     let mdocDocType: string | undefined
+    let pendingMdocRawBase64: string | undefined
     let mdocStored = false
     let missingFormat: DualFormatClaimResult['missingFormat']
     let sdJwtError: unknown
@@ -1159,6 +1168,7 @@ export async function claimDualFormatCredential(
       )
       throwIfDualFormatAcquisitionAborted(options.signal)
       mdocDocType = pendingMdoc.docType
+      pendingMdocRawBase64 = pendingMdoc.rawBase64
       const acquiredMdocBytes = base64UrlToBytes(pendingMdoc.rawBase64)
 
       const credentialId = sdJwtRecord?.id ?? deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId)
@@ -1216,11 +1226,18 @@ export async function claimDualFormatCredential(
       throwDualFormatTotalFailure(sdJwtError, mdocError)
     }
 
-    const primaryRecord = sdJwtRecord ?? createMdocPlaceholderRecord({
-      credentialId: deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId),
-      documentType: readDocumentTypeFromOffer(resolvedOffer),
-      docType: mdocDocType ?? 'unknown',
-    })
+    const primaryRecord = overlayDrivingLicenceMdocClaims(
+      sdJwtRecord ?? createMdocPlaceholderRecord({
+        credentialId: deriveFallbackMdocCredentialId(resolvedOffer, group.mdoc.configurationId),
+        documentType: readDocumentTypeFromOffer(resolvedOffer),
+        docType: mdocDocType ?? 'unknown',
+        rawBase64: pendingMdocRawBase64,
+      }),
+      pendingMdocRawBase64 ?? '',
+    )
+    if (sdJwtRecord && savedSdJwtCredentialId && primaryRecord.claims !== sdJwtRecord.claims) {
+      saveCredentialRecord(primaryRecord, { getCredentialStorage: dependencies.getCredentialStorage })
+    }
 
     const sdJwtFormat: CredentialFormatRecord | undefined = sdJwtRecord
       ? {
@@ -1531,12 +1548,16 @@ function createMdocPlaceholderRecord(input: {
   credentialId: string
   documentType: string
   docType: string
+  rawBase64?: string
 }): VerifiableCredentialRecord {
-  return {
+  const record: VerifiableCredentialRecord = {
     id: input.credentialId,
     type: input.documentType,
-    rawVc: '',
+    rawVc: input.rawBase64 ? `mdoc:${input.rawBase64}` : '',
     claims: { docType: input.docType },
     issuedAt: new Date().toISOString(),
   }
+  return input.rawBase64
+    ? overlayDrivingLicenceMdocClaims(record, input.rawBase64)
+    : record
 }

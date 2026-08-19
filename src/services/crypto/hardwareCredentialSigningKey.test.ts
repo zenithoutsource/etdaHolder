@@ -19,6 +19,8 @@ import {
   resolveHardwareCredentialHolderDid,
 } from './hardwareCredentialSigningKey'
 import { getEncryptedCredentialKeyRecord } from './encryptedCredentialKeyRegistry'
+import { getWalletKeyRegisteredAt } from './crypto'
+import { isWalletKeyExpired } from './walletKeyRotation'
 import {
   bindPendingKeyToCredential,
   createPendingCredentialKey,
@@ -76,8 +78,21 @@ describe('hardwareCredentialSigningKey', () => {
     expect(record.credentialType).toBe('ThaiNationalID')
     expect(record.holderDid).toMatch(/^did:key:z/)
     expect(getEncryptedCredentialKeyRecord('cred-hw-1')).toEqual(record)
+    expect(getWalletKeyRegisteredAt()).toBe(record.createdAt)
     expect(readHardwareCredentialHolderDid('cred-hw-1')).toBe(record.holderDid)
     expect(() => resolveHardwareCredentialHolderDid(pendingId)).toThrow('HardwareCredentialKeyNotFound')
+  })
+
+  test('isWalletKeyExpired backfills from hardware k_cred when Ed25519 wallet key is absent', async () => {
+    const pendingId = await createPendingHardwareCredentialKey()
+    const record = await bindPendingHardwareKeyToCredential(pendingId, 'cred-hw-ttl', 'ThaiNationalID')
+    getMetaStorage().remove('wallet.key_registered_at')
+
+    expect(getWalletKeyRegisteredAt()).toBeUndefined()
+    expect(isWalletKeyExpired(new Date(new Date(record.createdAt).getTime() + 6 * 60 * 1000))).toBe(
+      true,
+    )
+    expect(getWalletKeyRegisteredAt()).toBe(record.createdAt)
   })
 
   test('bindPendingHardwareKeyToCredential deletes same-type Ed25519 keys and keeps other types', async () => {

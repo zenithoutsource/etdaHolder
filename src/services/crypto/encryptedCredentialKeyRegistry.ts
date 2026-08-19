@@ -76,6 +76,19 @@ export function readFirstEncryptedCredentialHolderDid(): string | undefined {
   return records[0]?.holderDid
 }
 
+/** Oldest hardware k_cred bind time — wallet key TTL anchor when Ed25519 is deferred. */
+export function readEarliestEncryptedCredentialKeyCreatedAt(): string | undefined {
+  try {
+    const records = listEncryptedCredentialKeyRecords()
+    if (records.length === 0) return undefined
+    records.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    return records[0]?.createdAt
+  } catch (error) {
+    if (error instanceof Error && error.message === 'StorageNotInitialized') return undefined
+    throw error
+  }
+}
+
 export function findEncryptedCredentialKeyByType(
   credentialType: string,
 ): EncryptedCredentialKeyRecord | undefined {

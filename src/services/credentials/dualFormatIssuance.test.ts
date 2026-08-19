@@ -17,6 +17,8 @@ import { discardPendingCredentialKey } from '../crypto/credentialSigningKey'
 import * as credentialKeyRegistry from '../crypto/credentialKeyRegistry'
 import * as hardwareCredentialSigningKey from '../crypto/hardwareCredentialSigningKey'
 import * as storedCredentials from './storedCredentials'
+import { encode as encodeCbor } from 'cbor-x'
+import { base64UrlEncodeBytes } from '@/src/utils/base64Url'
 
 jest.mock('../notifications/documentExpiryNotificationService', () => ({
   cancelDocumentExpiryNotifications: jest.fn(async () => undefined),
@@ -165,7 +167,7 @@ test('acquireDrivingLicenceMdocOnlyForPreview acquires mDOC only and returns a p
 
   expect(acquireCalls).toEqual(['mso_mdoc'])
   expect(result.primaryRecord.type).toBe('DLTDrivingLicence')
-  expect(result.primaryRecord.rawVc).toBe('')
+  expect(result.primaryRecord.rawVc).toBe('mdoc:AQIDBA')
   expect(result.pendingMdoc).toEqual({
     docType: 'org.iso.18013.5.1.mDL',
     configurationId: 'org.iso.18013.5.1.mDL',
@@ -175,6 +177,86 @@ test('acquireDrivingLicenceMdocOnlyForPreview acquires mDOC only and returns a p
     rawBase64: 'AQIDBA',
     pendingCredentialKeyId: expect.any(String),
   })
+})
+
+function encodeDrivingLicenceMdoc(claims: Record<string, unknown>): string {
+  const items = Object.entries(claims).map(([identifier, value], digestID) =>
+    new Map<unknown, unknown>([
+      ['digestID', digestID],
+      ['random', new Uint8Array([digestID + 1])],
+      ['elementIdentifier', identifier],
+      ['elementValue', value],
+    ]),
+  )
+  return base64UrlEncodeBytes(
+    encodeCbor(
+      new Map<unknown, unknown>([
+        ['docType', 'org.iso.18013.5.1.mDL'],
+        [
+          'issuerSigned',
+          new Map<unknown, unknown>([
+            ['nameSpaces', new Map<unknown, unknown>([['org.iso.18013.5.1', items]])],
+          ]),
+        ],
+      ]),
+    ),
+  )
+}
+
+test('acquireDualFormatForPreview overlays mdoc driving-licence claims over SD-JWT', async () => {
+  const mdocRaw = encodeDrivingLicenceMdoc({
+    given_name: 'สมชาย',
+    family_name: 'ใจดี',
+    document_number: '123456789',
+    driving_privileges: [
+      { vehicle_category_code: 'B' },
+      { vehicle_category_code: 'A' },
+    ],
+  })
+  const sdJwtDrivingLicence: VerifiableCredentialRecord = {
+    id: 'vc-dl',
+    type: 'DLTDrivingLicence',
+    rawVc: 'header.payload.signature',
+    claims: {
+      givenName: 'FromSdJwt',
+      licenceNumber: 'SD-JWT-LIC',
+    },
+    issuedAt: '2026-01-01T00:00:00.000Z',
+  }
+
+  const result = await acquireDualFormatForPreview(makeDrivingLicenceDualOffer(), {
+    dependencies: {
+      acquireAccessToken: async () => ({
+        accessToken: 'shared-token',
+        cNonce: 'nonce-1',
+      }),
+      acquireCredentialRecord: async (sliced) => {
+        const format = sliced.credentialConfigurations[0]?.format
+        if (format === 'mso_mdoc') {
+          return {
+            id: 'mdoc-hash',
+            type: 'DLTDrivingLicence',
+            rawVc: `mdoc:${mdocRaw}`,
+            claims: { doctype: 'org.iso.18013.5.1.mDL' },
+            issuedAt: '2026-01-01T00:00:00.000Z',
+          }
+        }
+        return sdJwtDrivingLicence
+      },
+      signProof: async () => 'proof',
+      requestCredential: async () => 'unused',
+      getCredentialStorage: () => ({
+        getString: () => undefined,
+        set: () => undefined,
+      }),
+    },
+  })
+
+  expect(result.primaryRecord.claims.givenName).toBe('สมชาย')
+  expect(result.primaryRecord.claims.familyName).toBe('ใจดี')
+  expect(result.primaryRecord.claims.licenceNumber).toBe('123456789')
+  expect(result.primaryRecord.claims.licenceClass).toBe('B')
+  expect(result.primaryRecord.rawVc).toBe(sdJwtDrivingLicence.rawVc)
 })
 
 test('acquireDrivingLicenceMdocOnlyForPreview propagates mDOC failure without attempting SD-JWT', async () => {

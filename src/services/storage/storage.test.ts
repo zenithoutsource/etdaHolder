@@ -14,6 +14,7 @@ import {
   persistWalletPinMeta,
   provisionStoragePinFallback,
   resetStorage,
+  syncWalletPinRecordFromMeta,
 } from './storage'
 
 jest.mock('expo-local-authentication', () => ({
@@ -284,6 +285,22 @@ describe('credential storage keychain policy', () => {
     provisionStoragePinFallback('123456')
     await resetStorage({ keepPinFallback: true })
     expect(canVerifyStoragePinUnlock()).toBe(true)
+  })
+
+  test('copies wallet PIN meta into credential storage after init', async () => {
+    await initStorage()
+    getCredentialStorage().set(
+      'wallet:pin:v1',
+      JSON.stringify({ salt: 'old-salt', hash: 'old-hash' }),
+    )
+    persistWalletPinMeta({ salt: 'new-salt', hash: hashWalletPinForTest('654321', 'new-salt') })
+
+    syncWalletPinRecordFromMeta()
+
+    expect(JSON.parse(getCredentialStorage().getString('wallet:pin:v1') ?? '')).toEqual({
+      salt: 'new-salt',
+      hash: hashWalletPinForTest('654321', 'new-salt'),
+    })
   })
 
   test('reports when storage PIN fallback migration is required', async () => {

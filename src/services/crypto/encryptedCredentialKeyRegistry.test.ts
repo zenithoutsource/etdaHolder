@@ -5,6 +5,7 @@ import {
   findEncryptedCredentialKeyByType,
   getEncryptedCredentialKeyRecord,
   listEncryptedCredentialKeyRecords,
+  readEarliestEncryptedCredentialKeyCreatedAt,
   registerEncryptedCredentialKey,
   removeEncryptedCredentialKeyRecord,
   retryEncryptedCredentialKeyRegistryCleanup,
@@ -59,6 +60,17 @@ describe('encryptedCredentialKeyRegistry', () => {
     mockStorage()
     registerEncryptedCredentialKey(SAMPLE)
     expect(getEncryptedCredentialKeyRecord('cred-1')).toEqual(SAMPLE)
+  })
+
+  test('readEarliestEncryptedCredentialKeyCreatedAt returns the oldest bind time', () => {
+    mockStorage()
+    registerEncryptedCredentialKey({
+      ...SAMPLE,
+      credentialId: 'cred-newer',
+      createdAt: '2026-08-05T00:00:00.000Z',
+    })
+    registerEncryptedCredentialKey(SAMPLE)
+    expect(readEarliestEncryptedCredentialKeyCreatedAt()).toBe('2026-08-04T00:00:00.000Z')
   })
 
   test('bindPendingCredentialAlias writes alias without renaming it', () => {

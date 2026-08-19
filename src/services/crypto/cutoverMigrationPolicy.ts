@@ -66,7 +66,7 @@ export function assertCutoverReissueAllowed(input: CutoverReissueGateInput): voi
   }
 }
 
-/** P3 old-key renewal presentation is unsupported during hardware P-256 cutover. */
+/** P3 old-key renewal presentation is unsupported for leftover Ed25519 while hardware P-256 is on. */
 export function rejectLegacyKeyRenewalPresentation(): never {
   throw new CutoverMigrationBlockedError(
     'legacy_key_renewal_unsupported',
@@ -201,13 +201,16 @@ export function assertHardwareCutoverReissueAllowedForOffer(
 }
 
 export function assertHardwareCutoverLegacyRenewalBlocked(
-  readers: Pick<CutoverWalletStateReaders, 'isHardwareEnabled'> = {},
+  credentialId: string,
+  readers: Pick<CutoverWalletStateReaders, 'isHardwareEnabled' | 'hasHardwareKey'> = {},
 ): void {
   if (!resolveHardwareEnabled(readers)) return
+  const hasHardwareKey = readers.hasHardwareKey ?? hasHardwareCredentialKey
+  if (hasHardwareKey(credentialId)) return
   try {
     rejectLegacyKeyRenewalPresentation()
   } catch (error) {
-    logWalletError('crypto', 'cutover-legacy-renewal-blocked', error)
+    logWalletError('crypto', 'cutover-legacy-renewal-blocked', error, { credentialId })
     throw error
   }
 }
