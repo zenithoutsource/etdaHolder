@@ -108,6 +108,24 @@ describe('wallet API certificate pinning', () => {
     expect(fallbackFetch).not.toHaveBeenCalled()
   })
 
+  test('sends an empty body for POST without one so OkHttp does not crash', async () => {
+    process.env.EXPO_PUBLIC_WALLET_API_PINNED_CERTS = 'sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4='
+    const pinnedFetch = createPinnedFetch(jest.fn(), 'https://wallet.example.com')
+
+    await pinnedFetch('https://wallet.example.com/wallet-api/auth/logout', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token' },
+    })
+
+    expect(sslPinningFetchMock).toHaveBeenCalledWith('https://wallet.example.com/wallet-api/auth/logout', {
+      method: 'POST',
+      headers: { authorization: 'Bearer token' },
+      body: '',
+      pkPinning: true,
+      sslPinning: { certs: ['sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4='] },
+    })
+  })
+
   test('always sets pkPinning even for legacy-looking cert resource names', async () => {
     process.env.EXPO_PUBLIC_WALLET_API_PINNED_CERTS = 'wallet-api'
     const fallbackFetch = jest.fn()
@@ -133,5 +151,56 @@ describe('wallet API certificate pinning', () => {
 
     expect(fallbackFetch).toHaveBeenCalled()
     expect(sslPinningFetchMock).not.toHaveBeenCalled()
+  })
+
+  test('returns HTTP 4xx from ssl-pinning as a Response instead of throwing', async () => {
+    process.env.EXPO_PUBLIC_WALLET_API_PINNED_CERTS = 'sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4='
+    sslPinningFetchMock.mockRejectedValue({
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+      bodyString: '{"message":"Invalid or expired OTP"}',
+      text: async () => '{"message":"Invalid or expired OTP"}',
+    })
+    const fallbackFetch = jest.fn()
+    const pinnedFetch = createPinnedFetch(fallbackFetch, 'https://wallet.example.com')
+
+    const response = await pinnedFetch(
+      'https://wallet.example.com/wallet-api/auth/pin-reset/verify',
+      { method: 'POST', body: '{}' },
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.text()).toBe('{"message":"Invalid or expired OTP"}')
+    expect(fallbackFetch).not.toHaveBeenCalled()
+  })
+
+  test('returns HTTP 4xx even when ssl-pinning throws an Error with status', async () => {
+    process.env.EXPO_PUBLIC_WALLET_API_PINNED_CERTS = 'sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4='
+    sslPinningFetchMock.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 400'), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+        bodyString: '{"message":"Invalid or expired OTP"}',
+      }),
+    )
+    const pinnedFetch = createPinnedFetch(jest.fn(), 'https://wallet.example.com')
+
+    const response = await pinnedFetch('https://wallet.example.com/wallet-api/auth/pin-reset/verify', {
+      method: 'POST',
+      body: '{}',
+    })
+
+    expect(response.status).toBe(400)
+    expect(await response.text()).toBe('{"message":"Invalid or expired OTP"}')
+  })
+
+  test('rethrows ssl-pinning transport failures that are not HTTP responses', async () => {
+    process.env.EXPO_PUBLIC_WALLET_API_PINNED_CERTS = 'sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4='
+    sslPinningFetchMock.mockRejectedValue(new Error('SSL pinning failed'))
+    const pinnedFetch = createPinnedFetch(jest.fn(), 'https://wallet.example.com')
+
+    await expect(
+      pinnedFetch('https://wallet.example.com/wallet-api/auth/login', { method: 'POST', body: '{}' }),
+    ).rejects.toThrow('SSL pinning failed')
   })
 })
