@@ -2,14 +2,25 @@ import * as Keychain from 'react-native-keychain'
 
 import {
   checkEmailStatus as checkEmailStatusApi,
+  confirmPinReset as confirmPinResetApi,
   getWallets,
   loginUser,
   logoutUser,
   registerUser,
   requestPinReset as requestPinResetApi,
+  verifyPinResetOtp as verifyPinResetOtpApi,
 } from '../../sdk/walletApi'
-import { getCredentialStorage } from '../storage/storage'
-import { checkEmailStatus, loadSession, login, logout, register, requestPinReset as requestPinResetService } from './authService'
+import { getCredentialStorage, isCredentialStorageReady } from '../storage/storage'
+import {
+  checkEmailStatus,
+  loadSession,
+  login,
+  logout,
+  register,
+  requestPinReset as requestPinResetService,
+  confirmPinReset as confirmPinResetService,
+  verifyPinResetOtp,
+} from './authService'
 
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: {
@@ -28,10 +39,12 @@ jest.mock('../../sdk/walletApi', () => ({
   logoutUser: jest.fn(),
   registerUser: jest.fn(),
   requestPinReset: jest.fn(),
+  verifyPinResetOtp: jest.fn(),
 }))
 
 jest.mock('../storage/storage', () => ({
   getCredentialStorage: jest.fn(),
+  isCredentialStorageReady: jest.fn(() => true),
 }))
 
 jest.mock('./walletPin', () => ({
@@ -48,12 +61,15 @@ const loginUserMock = loginUser as jest.Mock
 const registerUserMock = registerUser as jest.Mock
 const checkEmailStatusMock = checkEmailStatusApi as jest.Mock
 const requestPinResetMock = requestPinResetApi as jest.Mock
+const confirmPinResetMock = confirmPinResetApi as jest.Mock
+const verifyPinResetOtpMock = verifyPinResetOtpApi as jest.Mock
 const logoutUserMock = logoutUser as jest.Mock
 const getWalletsMock = getWallets as jest.Mock
 const getGenericPasswordMock = Keychain.getGenericPassword as jest.Mock
 const setGenericPasswordMock = Keychain.setGenericPassword as jest.Mock
 const resetGenericPasswordMock = Keychain.resetGenericPassword as jest.Mock
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
+const isCredentialStorageReadyMock = isCredentialStorageReady as jest.Mock
 const { setWalletPin: setWalletPinMock } = jest.requireMock('./walletPin') as { setWalletPin: jest.Mock }
 
 const VALID_PIN = '482910'
@@ -77,6 +93,7 @@ function mockCredentialStorage(initialValues: Record<string, string> = {}) {
 describe('authService', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    isCredentialStorageReadyMock.mockReturnValue(true)
     mockCredentialStorage()
   })
 
@@ -112,6 +129,30 @@ describe('authService', () => {
     expect(loginUserMock).toHaveBeenCalledWith({ type: 'email', email: 'TEST@Example.COM', pin: VALID_PIN })
     expect(setGenericPasswordMock).toHaveBeenCalled()
     expect(setWalletPinMock).toHaveBeenCalledWith(VALID_PIN)
+  })
+
+  test('login stores session without credential storage when it is not initialized', async () => {
+    isCredentialStorageReadyMock.mockReturnValue(false)
+    getCredentialStorageMock.mockImplementation(() => {
+      throw new Error('StorageNotInitialized')
+    })
+    loginUserMock.mockResolvedValueOnce({
+      status: 200,
+      data: { id: 'account-1', token: 'session-token' },
+      headers: new Headers(),
+    })
+    getWalletsMock.mockResolvedValueOnce({
+      status: 200,
+      data: { account: 'account-1', wallets: [{ id: 'wallet-1' }] },
+      headers: new Headers(),
+    })
+
+    const session = await login('test@example.com', VALID_PIN)
+
+    expect(session.accountId).toBe('account-1')
+    expect(setGenericPasswordMock).toHaveBeenCalled()
+    expect(setWalletPinMock).toHaveBeenCalledWith(VALID_PIN)
+    expect(getCredentialStorageMock).not.toHaveBeenCalled()
   })
 
   test('login surfaces backend error message', async () => {
@@ -153,6 +194,85 @@ describe('authService', () => {
     requestPinResetMock.mockResolvedValueOnce({ status: 204, data: {}, headers: new Headers() })
 
     await expect(requestPinResetService('test@example.com')).resolves.toBeUndefined()
+  })
+
+  test('confirmPinReset persists the new local wallet PIN after 204', async () => {
+    confirmPinResetMock.mockResolvedValueOnce({ status: 204, data: {}, headers: new Headers() })
+    isCredentialStorageReadyMock.mockReturnValueOnce(true)
+
+    await confirmPinResetService('test@example.com', '482910', VALID_PIN)
+
+    expect(confirmPinResetMock).toHaveBeenCalledWith({
+      email: 'test@example.com',
+      otp: '482910',
+      pin: VALID_PIN,
+    })
+    expect(setWalletPinMock).toHaveBeenCalledWith(VALID_PIN)
+  })
+
+  test('confirmPinReset still persists PIN when credential storage is not ready', async () => {
+    confirmPinResetMock.mockResolvedValueOnce({ status: 204, data: {}, headers: new Headers() })
+    isCredentialStorageReadyMock.mockReturnValueOnce(false)
+
+    await expect(
+      confirmPinResetService('test@example.com', '482910', VALID_PIN),
+    ).resolves.toBeUndefined()
+    expect(setWalletPinMock).toHaveBeenCalledWith(VALID_PIN)
+  })
+
+  test('confirmPinReset still succeeds if setWalletPin throws StorageNotInitialized', async () => {
+    confirmPinResetMock.mockResolvedValueOnce({ status: 204, data: {}, headers: new Headers() })
+    isCredentialStorageReadyMock.mockReturnValueOnce(true)
+    setWalletPinMock.mockImplementationOnce(() => {
+      throw new Error('StorageNotInitialized')
+    })
+
+    await expect(
+      confirmPinResetService('test@example.com', '482910', VALID_PIN),
+    ).resolves.toBeUndefined()
+  })
+
+  test('confirmPinReset does not persist a local PIN when confirm fails', async () => {
+    confirmPinResetMock.mockResolvedValueOnce({
+      status: 400,
+      data: { message: 'Invalid or expired OTP' },
+      headers: new Headers(),
+    })
+
+    await expect(
+      confirmPinResetService('test@example.com', '000000', VALID_PIN),
+    ).rejects.toThrow('Invalid or expired OTP')
+    expect(setWalletPinMock).not.toHaveBeenCalled()
+  })
+
+  test('verifyPinResetOtp treats 400 as a rejected OTP without console.error', async () => {
+    verifyPinResetOtpMock.mockResolvedValueOnce({
+      status: 400,
+      data: { message: 'Invalid or expired OTP' },
+      headers: new Headers(),
+    })
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      await expect(verifyPinResetOtp('test@example.com', '000000')).rejects.toThrow(
+        'Invalid or expired OTP',
+      )
+      expect(errorSpy).not.toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  test('verifyPinResetOtp still logs unexpected transport failures', async () => {
+    verifyPinResetOtpMock.mockRejectedValueOnce(new Error('network down'))
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      await expect(verifyPinResetOtp('test@example.com', '000000')).rejects.toThrow('network down')
+      expect(errorSpy).toHaveBeenCalled()
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 
   test('logout sends bearer token and clears local session', async () => {

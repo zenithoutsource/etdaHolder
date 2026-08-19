@@ -1,3 +1,5 @@
+/** Composed PIN entry chrome: lock icon, title, boxes, keypad. */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
@@ -15,6 +17,8 @@ type PinEntrySurfaceProps = {
   error?: string | null
   status?: string | null
   showFingerprint?: boolean
+  showLock?: boolean
+  showKeypad?: boolean
   allowPaste?: boolean
   pinLength?: number
   inputDisabled?: boolean
@@ -31,6 +35,8 @@ export function PinEntrySurface({
   error,
   status,
   showFingerprint = false,
+  showLock = true,
+  showKeypad,
   allowPaste = false,
   pinLength = PIN_ENTRY_LENGTH,
   inputDisabled = false,
@@ -39,10 +45,14 @@ export function PinEntrySurface({
   onFingerprint = () => {},
   onFill,
 }: PinEntrySurfaceProps) {
+  const keypadVisible = showKeypad ?? !allowPaste
+
   return (
     <View className="w-full items-center">
-      <MaterialCommunityIcons name="lock" size={48} color={THEME.gold} />
-      <Text className="mt-3 text-2xl font-semibold text-ink">{title}</Text>
+      {showLock ? (
+        <MaterialCommunityIcons name="lock" size={48} color={THEME.gold} />
+      ) : null}
+      <Text className={`${showLock ? 'mt-3' : ''} text-2xl font-semibold text-ink`}>{title}</Text>
       <Text className="mt-2 text-center text-xs text-blue-gray">{subtitle}</Text>
 
       {allowPaste ? (
@@ -73,7 +83,7 @@ export function PinEntrySurface({
         <Text className="mt-4 text-sm text-slate">{status}</Text>
       ) : null}
 
-      {!allowPaste ? (
+      {!allowPaste && keypadVisible ? (
         <PinKeypad
           onDigit={onDigit}
           onBackspace={onBackspace}

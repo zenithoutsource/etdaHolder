@@ -12,7 +12,7 @@ import {
   verifyPinResetOtp as verifyPinResetOtpApi,
 } from '../../sdk/walletApi'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
-import { getCredentialStorage } from '../storage/storage'
+import { getCredentialStorage, isCredentialStorageReady } from '../storage/storage'
 import { setWalletPin } from './walletPin'
 
 const KEYCHAIN_SERVICE = 'etda.wallet.session'
@@ -77,6 +77,18 @@ function persistLocalWalletPin(pin: string): void {
   }
 }
 
+function persistLocalWalletPinAfterPinReset(pin: string): void {
+  try {
+    persistLocalWalletPin(pin)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'StorageNotInitialized') {
+      logWalletStep('sdk', 'pin-reset-confirm-local-pin-skipped')
+      return
+    }
+    throw error
+  }
+}
+
 async function completeLogin(email: string, pin: string): Promise<SessionData> {
   logWalletStep('sdk', 'login-start', { userIdentifierProvided: email.length > 0, authFactorProvided: pin.length > 0 })
   const loginRes = await loginUser({ type: 'email', email, pin })
@@ -106,7 +118,11 @@ async function completeLogin(email: string, pin: string): Promise<SessionData> {
   const walletId = wallets[0].id
   const session: SessionData = { token, walletId, accountId }
 
-  resetCredentialRecordsForAccount(accountId)
+  if (isCredentialStorageReady()) {
+    resetCredentialRecordsForAccount(accountId)
+  } else {
+    logWalletStep('sdk', 'login-credential-owner-skipped')
+  }
 
   await Keychain.setGenericPassword(KEYCHAIN_USERNAME, JSON.stringify(session), {
     service: KEYCHAIN_SERVICE,
@@ -167,48 +183,50 @@ export async function register(name: string, email: string, pin: string): Promis
 }
 
 export async function requestPinReset(email: string): Promise<void> {
-  logWalletStep('sdk', 'pin-reset-request-start', { userIdentifierProvided: email.length > 0 })
-  try {
-    const res = await requestPinResetApi({ email })
-    logWalletStep('sdk', 'pin-reset-request-response', { status: res.status })
-
-    if (res.status !== 204) {
-      throw new Error(readResponseMessage(res.data) ?? `PinResetRequestFailed: HTTP ${res.status}`)
-    }
-  } catch (error) {
-    logWalletError('sdk', 'pin-reset-request-failed', error, { userIdentifierProvided: email.length > 0 })
-    throw error
-  }
+  await completePinResetCall('pin-reset-request', email, () => requestPinResetApi({ email }))
 }
 
 export async function verifyPinResetOtp(email: string, otp: string): Promise<void> {
-  logWalletStep('sdk', 'pin-reset-verify-start', { userIdentifierProvided: email.length > 0 })
-  try {
-    const res = await verifyPinResetOtpApi({ email, otp })
-    logWalletStep('sdk', 'pin-reset-verify-response', { status: res.status })
-
-    if (res.status !== 204) {
-      throw new Error(readResponseMessage(res.data) ?? `PinResetVerifyFailed: HTTP ${res.status}`)
-    }
-  } catch (error) {
-    logWalletError('sdk', 'pin-reset-verify-failed', error, { userIdentifierProvided: email.length > 0 })
-    throw error
-  }
+  await completePinResetCall('pin-reset-verify', email, () => verifyPinResetOtpApi({ email, otp }))
 }
 
 export async function confirmPinReset(email: string, otp: string, pin: string): Promise<void> {
-  logWalletStep('sdk', 'pin-reset-confirm-start', { userIdentifierProvided: email.length > 0 })
-  try {
-    const res = await confirmPinResetApi({ email, otp, pin })
-    logWalletStep('sdk', 'pin-reset-confirm-response', { status: res.status })
+  await completePinResetCall('pin-reset-confirm', email, () => confirmPinResetApi({ email, otp, pin }))
+  persistLocalWalletPinAfterPinReset(pin)
+}
 
-    if (res.status !== 204) {
-      throw new Error(readResponseMessage(res.data) ?? `PinResetConfirmFailed: HTTP ${res.status}`)
-    }
+type PinResetEvent = 'pin-reset-request' | 'pin-reset-verify' | 'pin-reset-confirm'
+
+const PIN_RESET_FAILURE_FALLBACK: Record<PinResetEvent, string> = {
+  'pin-reset-request': 'PinResetRequestFailed',
+  'pin-reset-verify': 'PinResetVerifyFailed',
+  'pin-reset-confirm': 'PinResetConfirmFailed',
+}
+
+async function completePinResetCall(
+  event: PinResetEvent,
+  email: string,
+  run: () => Promise<{ status: number; data: unknown }>,
+): Promise<void> {
+  logWalletStep('sdk', `${event}-start`, { userIdentifierProvided: email.length > 0 })
+  let res: { status: number; data: unknown }
+  try {
+    res = await run()
   } catch (error) {
-    logWalletError('sdk', 'pin-reset-confirm-failed', error, { userIdentifierProvided: email.length > 0 })
+    logWalletError('sdk', `${event}-failed`, error, { userIdentifierProvided: email.length > 0 })
     throw error
   }
+
+  logWalletStep('sdk', `${event}-response`, { status: res.status })
+  if (res.status === 204) return
+
+  const message = readResponseMessage(res.data) ?? `${PIN_RESET_FAILURE_FALLBACK[event]}: HTTP ${res.status}`
+  if (res.status === 400 || res.status === 429) {
+    logWalletStep('sdk', `${event}-rejected`, { status: res.status })
+  } else {
+    logWalletError('sdk', `${event}-failed`, new Error(message), { userIdentifierProvided: email.length > 0 })
+  }
+  throw new Error(message)
 }
 
 export async function logout(): Promise<void> {

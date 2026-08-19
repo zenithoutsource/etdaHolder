@@ -1,3 +1,11 @@
+/**
+ * Root layout — startup, PIN/storage unlock, deeplink intake, access redirect, Stack.
+ * Journey: Auth/PIN gates before tabs; pending offer/VP routed after unlock.
+ * Copy: StartupLoadingPanel; inline startup errors via toUserMessage.
+ * Next: (tabs), auth, pin-setup, pin-lock, callback.
+ * Map: docs/CODEMAPS/frontend.md#global-hosts
+ */
+
 import '@/src/sdk/fetchIndirection';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -7,7 +15,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Platform, Text, View } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import '../global.css';
 import '@/src/styles/nativewindInterop';
 import 'react-native-reanimated';
@@ -16,6 +24,7 @@ import { useColorScheme } from '@/src/hooks/use-color-scheme';
 import { AppDialogProvider } from '@/src/components/AppDialog';
 import { StoragePinMigrationStep } from '@/src/components/auth/StoragePinMigrationStep';
 import { ForgotPinFlow } from '@/src/components/auth/ForgotPinFlow';
+import { StartupLoadingPanel } from '@/src/components/StartupLoadingPanel';
 import { StartupStoragePinUnlock } from '@/src/components/StartupStoragePinUnlock';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
 import { hasWalletPin, setWalletPin } from '@/src/services/auth/walletPin';
@@ -38,7 +47,8 @@ import {
   shouldOfferStoragePinRecovery,
   type RootStartupState,
 } from '@/src/services/startup/startupState';
-import { useAuthStore } from '@/src/store/authStore';
+import { completeForgotPinRecovery } from '@/src/services/startup/completeForgotPinRecovery';
+import { useAuthStore } from '@/src/store/authStore'
 import {
   isPresentationRequestDeeplink,
   isSupportedWalletDeeplink,
@@ -56,8 +66,6 @@ import {
 } from '@/src/services/vp/presentationRequestReplay';
 import { notifyPresentationIntakeRejection } from '@/src/services/vp/presentationIntakeRejection';
 import { useNotificationRouteStore } from '@/src/store/notificationRouteStore';
-
-import { THEME } from '../src/config/themeColors'
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -450,11 +458,11 @@ export default function RootLayout() {
   }, []);
 
   const handleStartupForgotPinComplete = useCallback(async () => {
-    const { resetStorage } = await import('@/src/services/storage/storage');
-    await resetStorage();
-    await logout();
-    setStartupState({ status: 'ready' });
-    router.replace('/auth');
+    await completeForgotPinRecovery({
+      logout,
+      markStartupReady: () => setStartupState({ status: 'ready' }),
+      replaceAuth: () => router.replace('/auth'),
+    });
   }, [logout, router]);
 
   useEffect(() => {
@@ -755,19 +763,13 @@ export default function RootLayout() {
             />
           )
         ) : (
-          <View className="absolute inset-0 flex-1 items-center justify-center gap-3 bg-white p-6">
-            {startupState.status === 'loading' ? (
-              <>
-                <ActivityIndicator color={THEME.navy} />
-                <Text className="text-sm text-gray500">Starting wallet...</Text>
-              </>
-            ) : (
-              <>
-                <Text className="text-center text-lg font-semibold">Wallet startup failed</Text>
-                <Text className="text-center text-gray500">{startupState.message}</Text>
-              </>
-            )}
-          </View>
+          <StartupLoadingPanel
+            status={startupState.status === 'error' ? 'error' : 'loading'}
+            message={startupState.status === 'error' ? startupState.message : undefined}
+            onReady={() => {
+              void SplashScreen.hideAsync().catch(() => undefined);
+            }}
+          />
         )}
       </ThemeProvider>
     );
