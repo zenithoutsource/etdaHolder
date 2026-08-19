@@ -120,15 +120,6 @@ export function readCredentialInactiveState({
     }
   }
 
-  if (renewalStatus?.state === 'renewal-required') {
-    return {
-      kind: 'renewal-required',
-      badgeLabel: 'Inactive',
-      badgeClassName: 'bg-gray-badge',
-      panelMessage: 'เอกสารผูกกับกุญแจ Wallet ที่หมดอายุแล้ว กรุณาขอเอกสารใหม่',
-    }
-  }
-
   if (renewalStatus?.state === 'cleanup-pending') {
     // Keep cleanup-pending above document-expired so the Holder still sees the
     // P3-6 cleanup CTA instead of a competing "ขอเอกสารใหม่" → issuer portal path.
@@ -155,6 +146,15 @@ export function readCredentialInactiveState({
       badgeLabel: WALLET_HOME_COPY.documentExpiredBadge,
       badgeClassName: 'bg-gray-badge',
       panelMessage: WALLET_HOME_COPY.documentExpiredMessage,
+    }
+  }
+
+  if (renewalStatus?.state === 'renewal-required') {
+    return {
+      kind: 'renewal-required',
+      badgeLabel: WALLET_HOME_COPY.documentExpiredBadge,
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่',
     }
   }
 

@@ -49,11 +49,19 @@ jest.mock('../crypto/hardwareCredentialSigningKey', () => ({
   credentialRequiresHardwareReissue: jest.fn(() => false),
 }))
 
-import { destroyIssuanceCredentialKey } from '../crypto/perCredentialSigning'
+jest.mock('./credentialKeyExpiry', () => ({
+  isStoredCredentialKeyTtlExpired: jest.fn(() => false),
+}))
+
 import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
+import { destroyIssuanceCredentialKey } from '../crypto/perCredentialSigning'
+import { isStoredCredentialKeyTtlExpired } from './credentialKeyExpiry'
 
 const credentialRequiresHardwareReissueMock = credentialRequiresHardwareReissue as jest.MockedFunction<
   typeof credentialRequiresHardwareReissue
+>
+const isStoredCredentialKeyTtlExpiredMock = isStoredCredentialKeyTtlExpired as jest.MockedFunction<
+  typeof isStoredCredentialKeyTtlExpired
 >
 
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
@@ -86,6 +94,7 @@ describe('credentialLifecycle', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     credentialRequiresHardwareReissueMock.mockReturnValue(false)
+    isStoredCredentialKeyTtlExpiredMock.mockReturnValue(false)
     mockStorage()
     readStoredCredentialByIdMock.mockReturnValue(undefined)
     isCredentialDocumentExpiredMock.mockImplementation(
@@ -293,5 +302,54 @@ describe('credentialLifecycle', () => {
     expect(filterPresentableCredentials([transcriptRecord, hardwareTranscript])).toEqual([
       hardwareTranscript,
     ])
+  })
+
+  test('excludes renewed-active credentials when k_cred TTL has elapsed', () => {
+    mockStorage({
+      'credential:renewal:transcript-1': JSON.stringify({
+        credentialId: 'transcript-1',
+        state: 'renewed-active',
+        previousHolderDid: 'did:key:old',
+        updatedAt: '2026-08-19T10:00:00.000Z',
+      }),
+    })
+    isStoredCredentialKeyTtlExpiredMock.mockImplementation(
+      (record) => record.id === transcriptRecord.id,
+    )
+
+    expect(filterPresentableCredentials([transcriptRecord])).toEqual([])
+  })
+
+  test('keeps renewed-active credentials presentable when k_cred TTL has not elapsed', () => {
+    mockStorage({
+      'credential:renewal:transcript-1': JSON.stringify({
+        credentialId: 'transcript-1',
+        state: 'renewed-active',
+        previousHolderDid: 'did:key:old',
+        updatedAt: '2026-08-19T10:00:00.000Z',
+      }),
+    })
+
+    expect(filterPresentableCredentials([transcriptRecord])).toEqual([transcriptRecord])
+  })
+
+  test('still excludes cleanup-pending credentials from presentation candidates', () => {
+    mockStorage({
+      'credential:renewal:transcript-1': JSON.stringify({
+        credentialId: 'transcript-1',
+        state: 'cleanup-pending',
+        previousHolderDid: 'did:key:old',
+        updatedAt: '2026-08-19T10:00:00.000Z',
+      }),
+    })
+
+    expect(filterPresentableCredentials([transcriptRecord])).toEqual([])
+  })
+
+  test('does not treat leftover Ed25519 cards as k_cred TTL expired', () => {
+    isStoredCredentialKeyTtlExpiredMock.mockReturnValue(false)
+    credentialRequiresHardwareReissueMock.mockReturnValue(false)
+
+    expect(filterPresentableCredentials([transcriptRecord])).toEqual([transcriptRecord])
   })
 })

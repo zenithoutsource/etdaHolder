@@ -24,7 +24,12 @@ type ResolvedOfferLike = {
   credentialConfigurations: { id: string }[]
 }
 
-export type PidGateStatus = 'missing' | 'renewal-required' | 'ready'
+export type PidGateStatus =
+  | 'missing'
+  | 'renewal-required'
+  | 'suspended'
+  | 'document-expired'
+  | 'ready'
 
 function readRenewalState(
   credentialId: string,
@@ -34,7 +39,12 @@ function readRenewalState(
     return renewalStatuses[credentialId]?.state
   }
 
-  return readCredentialRenewal(credentialId)?.state
+  try {
+    return readCredentialRenewal(credentialId)?.state
+  } catch (error) {
+    if (isStorageNotInitialized(error)) return undefined
+    throw error
+  }
 }
 
 export function hasPidCredential(credentials: VerifiableCredentialRecord[]): boolean {
@@ -48,10 +58,19 @@ export function isPidCredentialOffer(offer: ResolvedOfferLike): boolean {
   })
 }
 
+function isStorageNotInitialized(error: unknown): boolean {
+  return error instanceof Error && error.message === 'StorageNotInitialized'
+}
+
 export function isCredentialWithdrawnFromUse(credentialId: string): boolean {
-  const lifecycle = readCredentialLifecycleStatus(credentialId)
-  if (lifecycle?.status === 'revoked' || lifecycle?.status === 'deleted') return true
-  return Boolean(readIssuerSuspension(credentialId))
+  try {
+    const lifecycle = readCredentialLifecycleStatus(credentialId)
+    if (lifecycle?.status === 'revoked' || lifecycle?.status === 'deleted') return true
+    return Boolean(readIssuerSuspension(credentialId))
+  } catch (error) {
+    if (isStorageNotInitialized(error)) return false
+    throw error
+  }
 }
 
 function isCredentialPreferredOnHome(
@@ -97,6 +116,16 @@ export function readPidGateStatus(
 ): PidGateStatus {
   if (!hasPidCredential(credentials)) return 'missing'
   if (hasUsablePidCredential(credentials, renewalStatuses)) return 'ready'
+  const pidWithdrawn = credentials.some(
+    (credential) =>
+      credential.type === PID_CREDENTIAL_TYPE && isCredentialWithdrawnFromUse(credential.id),
+  )
+  if (pidWithdrawn) return 'suspended'
+  const pidExpired = credentials.some(
+    (credential) =>
+      credential.type === PID_CREDENTIAL_TYPE && isCredentialDocumentExpired(credential),
+  )
+  if (pidExpired) return 'document-expired'
   return 'renewal-required'
 }
 
@@ -110,10 +139,12 @@ export function canSubmitCredentialRenewal(
 
   const credential = credentials.find((entry) => entry.id === credentialId)
   if (!credential) return false
+  if (isCredentialDocumentExpired(credential)) return false
 
+  const pidGateStatus = readPidGateStatus(credentials, renewalStatuses)
   if (
     credential.type !== PID_CREDENTIAL_TYPE &&
-    !hasUsablePidCredential(credentials, renewalStatuses)
+    (pidGateStatus === 'missing' || pidGateStatus === 'suspended')
   ) {
     return false
   }
@@ -170,6 +201,16 @@ export function pickPreferredHomeCredential(
   if (cleanupPending) return cleanupPending
 
   return rankedCandidates[0]
+}
+
+export function canPresentCredentialType(
+  credentialType: string | undefined,
+  credentials: VerifiableCredentialRecord[],
+  renewalStatuses?: Record<string, CredentialRenewalRecord>,
+): boolean {
+  if (!credentialType) return false
+  if (credentialType === PID_CREDENTIAL_TYPE) return true
+  return hasUsablePidCredential(credentials, renewalStatuses)
 }
 
 export function canRequestCredentialType(

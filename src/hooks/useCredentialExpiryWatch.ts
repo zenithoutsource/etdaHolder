@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { AppState, type AppStateStatus } from 'react-native'
 
 import { readNearestCredentialExpiryBoundaryMs } from '@/src/services/credentials/credentialDocumentExpiry'
+import {
+  readNearestCredentialKeyExpiryBoundaryMs,
+  syncCredentialKeyTtlRenewals,
+} from '@/src/services/credentials/credentialKeyExpiry'
 import { scheduleDocumentExpiryNotifications } from '@/src/services/notifications/documentExpiryNotificationService'
 import {
   notifyCredentialsChanged,
@@ -41,8 +45,16 @@ export function useCredentialExpiryWatch(): UseCredentialExpiryWatchResult {
 
       const credentials = readStoredCredentials()
       void scheduleDocumentExpiryNotifications(credentials)
+      syncCredentialKeyTtlRenewals()
 
-      const delayMs = readNearestCredentialExpiryBoundaryMs(credentials)
+      const documentDelayMs = readNearestCredentialExpiryBoundaryMs(credentials)
+      const keyDelayMs = readNearestCredentialKeyExpiryBoundaryMs()
+      const delayMs = [documentDelayMs, keyDelayMs]
+        .filter((value): value is number => typeof value === 'number')
+        .reduce<number | undefined>(
+          (nearest, value) => (nearest === undefined || value < nearest ? value : nearest),
+          undefined,
+        )
       if (delayMs === undefined || delayMs <= 0) {
         return
       }

@@ -9,6 +9,7 @@ import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
+import { isStoredCredentialKeyTtlExpired } from './credentialKeyExpiry'
 import { blocksCredentialPresentation, readCredentialRenewalStatuses } from './credentialKeyRenewal'
 import { readIssuerSuspensionStatuses } from './issuerSuspension'
 import { readCredentialIssuerName } from './credentialIssuer'
@@ -139,6 +140,7 @@ export function filterPresentableCredentials(
       !suspensionStatuses[record.id] &&
       !blocksCredentialPresentation(renewalStatuses[record.id]) &&
       !isCredentialDocumentExpired(record) &&
+      !isStoredCredentialKeyTtlExpired(record) &&
       !credentialRequiresHardwareReissue(record.id),
   )
 }

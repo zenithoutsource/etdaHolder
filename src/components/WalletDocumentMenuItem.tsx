@@ -1,3 +1,10 @@
+/**
+ * Expandable home document row (request, renew, reissue, key-expired).
+ * Journey: P1 home; P3 / P6 inactive CTAs.
+ * Copy: props plus badges; embeds WalletKeyExpiredActionPanel.
+ * Map: docs/CODEMAPS/frontend.md#wallet
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Image, Pressable, Text, View, type ImageSourcePropType } from 'react-native'
 
@@ -6,6 +13,7 @@ import { StatusBadge } from './StatusBadge'
 import { WalletKeyExpiredActionPanel } from './WalletKeyExpiredActionPanel'
 
 import { THEME } from '../config/themeColors'
+import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 
 type WalletDocumentMenuItemProps = {
   label: string
@@ -16,6 +24,7 @@ type WalletDocumentMenuItemProps = {
   badge?: { label: string; className: string }
   requestLabel: string
   onPress: () => void
+  onToggleExpand?: () => void
   oldCredentialLabel?: string
   onViewOldCredential?: () => void
   inactivePanelMessage?: string
@@ -43,6 +52,7 @@ export function WalletDocumentMenuItem({
   badge,
   requestLabel,
   onPress,
+  onToggleExpand,
   oldCredentialLabel,
   onViewOldCredential,
   inactivePanelMessage,
@@ -76,21 +86,43 @@ export function WalletDocumentMenuItem({
           <StatusBadge label={badge.label} className={`${badge.className} px-3 py-1`} />
         </View>
       ) : null}
-      <Pressable className="flex-row items-center gap-3.5 pb-3 pr-4 pt-3" onPress={onPress}>
-        <View className="h-11 w-11 items-center justify-center">
-          <Image source={icon} style={iconStyle} resizeMode="contain" />
-        </View>
-        <Text className="min-w-0 flex-1 text-base font-medium text-ink">
-          {label}
-        </Text>
-        {hasCredential && !isExpanded ? (
-          <MaterialCommunityIcons name="chevron-right" size={24} color={THEME.slate} />
-        ) : !hasCredential ? (
-          <View className="rounded-full bg-wallet-navy px-3.5 py-1.5">
-            <Text className="text-[13px] font-medium text-white">{requestLabel}</Text>
+      <View className="flex-row items-center pb-3 pt-3">
+        <Pressable
+          className="min-w-0 flex-1 flex-row items-center gap-3.5 pr-2"
+          onPress={onPress}
+          accessibilityRole="button"
+        >
+          <View className="h-11 w-11 items-center justify-center">
+            <Image source={icon} style={iconStyle} resizeMode="contain" />
           </View>
+          <Text className="min-w-0 flex-1 text-base font-medium text-ink">
+            {label}
+          </Text>
+          {hasCredential && !isExpanded && !onToggleExpand ? (
+            <MaterialCommunityIcons name="chevron-right" size={24} color={THEME.slate} />
+          ) : !hasCredential ? (
+            <View className="rounded-full bg-wallet-navy px-3.5 py-1.5">
+              <Text className="text-[13px] font-medium text-white">{requestLabel}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+        {onToggleExpand ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              isExpanded ? WALLET_HOME_COPY.collapseDocument : WALLET_HOME_COPY.expandDocument
+            }
+            onPress={onToggleExpand}
+            className="h-11 w-11 items-center justify-center"
+          >
+            <MaterialCommunityIcons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={24}
+              color={THEME.slate}
+            />
+          </Pressable>
         ) : null}
-      </Pressable>
+      </View>
 
       {onViewOldCredential && oldCredentialLabel ? (
         <View className="pt-2">

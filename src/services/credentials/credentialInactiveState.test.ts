@@ -128,9 +128,9 @@ describe('credentialInactiveState', () => {
       }),
     ).toEqual({
       kind: 'renewal-required',
-      badgeLabel: 'Inactive',
+      badgeLabel: 'หมดอายุ',
       badgeClassName: 'bg-gray-badge',
-      panelMessage: 'เอกสารผูกกับกุญแจ Wallet ที่หมดอายุแล้ว กรุณาขอเอกสารใหม่',
+      panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่',
     })
   })
 
@@ -311,7 +311,7 @@ describe('credentialInactiveState', () => {
     })
   })
 
-  test('P3 renewal-required takes precedence over document-expired', () => {
+  test('document-expired beats leftover P3 renewal-required so Fresh reissue owns the CTA', () => {
     expect(
       readCredentialInactiveState({
         renewalStatus: {
@@ -330,10 +330,36 @@ describe('credentialInactiveState', () => {
         },
       }),
     ).toEqual({
-      kind: 'renewal-required',
+      kind: 'document-expired',
+      badgeLabel: 'หมดอายุ',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+    })
+  })
+
+  test('keeps in-flight P3 processing above document-expired', () => {
+    expect(
+      readCredentialInactiveState({
+        renewalStatus: {
+          credentialId: 'credential-1',
+          state: 'renewal-processing',
+          previousHolderDid: 'did:key:old',
+          updatedAt: '2026-06-25T10:00:00.000Z',
+        },
+        credential: {
+          id: 'credential-1',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2020-01-01T00:00:00.000Z',
+          expiresAt: '2020-06-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'renewal-processing',
       badgeLabel: 'Inactive',
       badgeClassName: 'bg-gray-badge',
-      panelMessage: 'เอกสารผูกกับกุญแจ Wallet ที่หมดอายุแล้ว กรุณาขอเอกสารใหม่',
+      panelMessage: 'ส่งคำขอต่ออายุเอกสารแล้ว กำลังรอผู้ออกเอกสารตรวจสอบ',
     })
   })
 
@@ -342,6 +368,33 @@ describe('credentialInactiveState', () => {
 
     expect(
       readCredentialInactiveState({
+        credential: {
+          id: 'credential-1',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2026-01-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'hardware-reissue-required',
+      badgeLabel: 'ต้องขอใหม่',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารนี้ยังผูกกับกุญแจเก่า กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+    })
+  })
+
+  test('hardware leftover Ed25519 beats leftover P3 renewal-required so Fresh reissue owns the CTA', () => {
+    credentialRequiresHardwareReissueMock.mockReturnValue(true)
+
+    expect(
+      readCredentialInactiveState({
+        renewalStatus: {
+          credentialId: 'credential-1',
+          state: 'renewal-required',
+          previousHolderDid: 'did:key:old',
+          updatedAt: '2026-06-25T10:00:00.000Z',
+        },
         credential: {
           id: 'credential-1',
           type: 'ThaiNationalID',
