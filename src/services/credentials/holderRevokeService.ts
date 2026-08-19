@@ -31,6 +31,13 @@ export class HolderRevokeSigningCancelledError extends Error {
   }
 }
 
+export class HolderRevokeHardwareKeyRequiredError extends Error {
+  constructor(message = 'HolderRevokeHardwareKeyRequired') {
+    super(message)
+    this.name = 'HolderRevokeHardwareKeyRequiredError'
+  }
+}
+
 type HolderRevokeResponse = {
   status?: string
   credentialId?: string
@@ -63,6 +70,11 @@ function resolveDependencies(
 function isSigningCancellation(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return message === 'WalletKeySigningCancelled'
+}
+
+function isHardwareKeyRequiredError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message === 'LegacyHolderSigningUnsupported' || message === 'HardwareCredentialKeyRequired'
 }
 
 function resolveHolderDid(credentialId: string): string {
@@ -131,6 +143,17 @@ export async function submitHolderRevokeRequest(
 ): Promise<{ status: 'revoked'; confirmedAt: string }> {
   const { fetchImpl, getHolderDid: readHolderDid, signHolderStatusChangePop: signPop } =
     resolveDependencies(dependencies)
+
+  if (!hasHardwareCredentialKey(credentialId)) {
+    logWalletError(
+      'holder-revoke',
+      'hardware-key-required',
+      new Error('HolderRevokeHardwareKeyRequired'),
+      { credentialId },
+    )
+    throw new HolderRevokeHardwareKeyRequiredError()
+  }
+
   const holderDid = readHolderDid(credentialId)
 
   const { nonce, audience } = await requestHolderRevokeNonce(credentialId, holderDid, fetchImpl)
@@ -142,6 +165,10 @@ export async function submitHolderRevokeRequest(
     if (isSigningCancellation(error)) {
       logWalletError('holder-revoke', 'signing-cancelled', error, { credentialId })
       throw new HolderRevokeSigningCancelledError()
+    }
+    if (isHardwareKeyRequiredError(error)) {
+      logWalletError('holder-revoke', 'hardware-key-required', error, { credentialId })
+      throw new HolderRevokeHardwareKeyRequiredError()
     }
     logWalletError('holder-revoke', 'signing-failed', error, { credentialId })
     throw new HolderRevokeRejectedError('HolderRevokeSigningFailed')

@@ -4,6 +4,7 @@ import {
   readHardwareCredentialHolderDid,
 } from '../crypto/hardwareCredentialSigningKey'
 import {
+  HolderRevokeHardwareKeyRequiredError,
   HolderRevokeNetworkError,
   HolderRevokeRejectedError,
   HolderRevokeSigningCancelledError,
@@ -33,8 +34,22 @@ jest.mock('../crypto/crypto', () => ({
 describe('holderRevokeService', () => {
   beforeEach(() => {
     jest.mocked(isHardwareP256SigningEnabled).mockReturnValue(false)
-    jest.mocked(hasHardwareCredentialKey).mockReturnValue(false)
+    jest.mocked(hasHardwareCredentialKey).mockReturnValue(true)
     jest.mocked(readHardwareCredentialHolderDid).mockReset()
+  })
+
+  test('submitHolderRevokeRequest throws when the credential has no hardware P-256 key', async () => {
+    jest.mocked(hasHardwareCredentialKey).mockReturnValue(false)
+    const fetchMock = jest.fn()
+
+    await expect(
+      submitHolderRevokeRequest('transcript-1', {
+        fetchImpl: fetchMock,
+        getHolderDid: (_credentialId: string) => 'did:key:z6Mkholder',
+        signHolderStatusChangePop: jest.fn(),
+      }),
+    ).rejects.toBeInstanceOf(HolderRevokeHardwareKeyRequiredError)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test('submitHolderRevokeRequest fetches nonce, signs PoP, and posts revoke', async () => {
@@ -138,6 +153,27 @@ describe('holderRevokeService', () => {
         signHolderStatusChangePop: jest.fn(),
       }),
     ).rejects.toBeInstanceOf(HolderRevokeNetworkError)
+  })
+
+  test('submitHolderRevokeRequest maps legacy signing errors to hardware-key required', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        nonce: 'nonce-abc',
+        audience: 'urn:wallet:dev:issuer:holder-revoke',
+      }),
+    })
+
+    await expect(
+      submitHolderRevokeRequest('transcript-1', {
+        fetchImpl: fetchMock,
+        getHolderDid: (_credentialId: string) => 'did:key:z6Mkholder',
+        signHolderStatusChangePop: jest
+          .fn()
+          .mockRejectedValue(new Error('LegacyHolderSigningUnsupported')),
+      }),
+    ).rejects.toBeInstanceOf(HolderRevokeHardwareKeyRequiredError)
   })
 
   test('submitHolderRevokeRequest throws when signing is cancelled', async () => {

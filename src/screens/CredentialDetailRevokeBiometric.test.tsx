@@ -7,8 +7,8 @@ import CredentialDetailScreen from '../../app/(tabs)/credential/[id]'
 const mockReact = React
 const mockRefresh = jest.fn()
 const mockPush = jest.fn()
-const mockConfirmCredentialDeletionBiometric = jest.fn()
-const mockIsCredentialDeletionBiometricCancellation = jest.fn()
+const mockConfirmCredentialRevokeBiometric = jest.fn()
+const mockIsCredentialRevokeBiometricCancellation = jest.fn()
 const mockHasWalletPin = jest.fn(() => true)
 const mockSetWalletPin = jest.fn()
 const mockVerifyWalletPin = jest.fn()
@@ -60,9 +60,9 @@ jest.mock('../../src/components/CredentialDocumentDetailCard', () => ({
 }))
 
 jest.mock('../../src/components/CredentialActionMenu', () => ({
-  CredentialActionMenu: ({ onDelete }: { onDelete: () => void }) => (
-    <MockPressable testID="credential-delete-action" onPress={onDelete}>
-      <MockText>Delete</MockText>
+  CredentialActionMenu: ({ onRevoke }: { onRevoke: () => void }) => (
+    <MockPressable testID="credential-revoke-action" onPress={onRevoke}>
+      <MockText>Revoke</MockText>
     </MockPressable>
   ),
 }))
@@ -88,9 +88,14 @@ jest.mock('../../src/config/runtimeFlags', () => ({
 }))
 
 jest.mock('../../src/services/credentials/credentialDeletionBiometric', () => ({
-  confirmCredentialDeletionBiometric: () => mockConfirmCredentialDeletionBiometric(),
-  isCredentialDeletionBiometricCancellation: (error: unknown) =>
-    mockIsCredentialDeletionBiometricCancellation(error),
+  confirmCredentialDeletionBiometric: jest.fn(),
+  isCredentialDeletionBiometricCancellation: jest.fn(() => false),
+}))
+
+jest.mock('../../src/services/credentials/credentialRevokeBiometric', () => ({
+  confirmCredentialRevokeBiometric: () => mockConfirmCredentialRevokeBiometric(),
+  isCredentialRevokeBiometricCancellation: (error: unknown) =>
+    mockIsCredentialRevokeBiometricCancellation(error),
 }))
 
 jest.mock('../../src/services/crypto/crypto', () => ({
@@ -133,7 +138,6 @@ jest.mock('../../src/services/credentials/holderRevokeService', () => ({
 
 jest.mock('../../src/services/credentials/credentialGuard', () => ({
   canSubmitCredentialRenewal: () => false,
-  readPidGateStatus: () => 'ready',
 }))
 
 jest.mock('../../src/services/credentials/credentialDocumentExpiry', () => ({
@@ -241,35 +245,34 @@ jest.mock('../../src/config/themeColors', () => ({
   THEME: { navy: '#000', danger: '#f00', gold: '#fc0' },
 }))
 
-function renderDeleteSecurityScreen() {
+function renderRevokeSecurityScreen() {
   render(<CredentialDetailScreen />)
   fireEvent.press(screen.getByLabelText('Open credential actions'))
-  fireEvent.press(screen.getByTestId('credential-delete-action'))
+  fireEvent.press(screen.getByTestId('credential-revoke-action'))
 }
 
-describe('CredentialDetailScreen delete biometric', () => {
+describe('CredentialDetailScreen revoke biometric', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockHasWalletPin.mockReturnValue(true)
-    mockConfirmCredentialDeletionBiometric.mockResolvedValue(undefined)
-    mockIsCredentialDeletionBiometricCancellation.mockImplementation(
+    mockConfirmCredentialRevokeBiometric.mockResolvedValue(undefined)
+    mockIsCredentialRevokeBiometricCancellation.mockImplementation(
       (error: unknown) =>
-        error instanceof Error && error.message === 'CredentialDeletionBiometricCancelled',
+        error instanceof Error && error.message === 'CredentialRevokeBiometricCancelled',
     )
   })
 
-  test('offers biometric authentication while verifying Delete', () => {
-    render(<CredentialDetailScreen />)
-    fireEvent.press(screen.getByLabelText('Open credential actions'))
-    fireEvent.press(screen.getByTestId('credential-delete-action'))
+  test('enters PIN/biometric security before revoke approval', () => {
+    renderRevokeSecurityScreen()
 
     expect(screen.getByTestId('pin-key-fingerprint')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
   })
 
-  test('moves to deletion approval after biometric success', async () => {
-    mockConfirmCredentialDeletionBiometric.mockResolvedValueOnce(undefined)
+  test('moves to revoke approval after biometric success', async () => {
+    mockConfirmCredentialRevokeBiometric.mockResolvedValueOnce(undefined)
 
-    renderDeleteSecurityScreen()
+    renderRevokeSecurityScreen()
     fireEvent.press(screen.getByTestId('pin-key-fingerprint'))
 
     await waitFor(() => {
@@ -278,12 +281,12 @@ describe('CredentialDetailScreen delete biometric', () => {
   })
 
   test('keeps PIN available without an error after biometric cancellation', async () => {
-    mockConfirmCredentialDeletionBiometric.mockRejectedValueOnce(
-      new Error('CredentialDeletionBiometricCancelled'),
+    mockConfirmCredentialRevokeBiometric.mockRejectedValueOnce(
+      new Error('CredentialRevokeBiometricCancelled'),
     )
-    mockIsCredentialDeletionBiometricCancellation.mockReturnValueOnce(true)
+    mockIsCredentialRevokeBiometricCancellation.mockReturnValueOnce(true)
 
-    renderDeleteSecurityScreen()
+    renderRevokeSecurityScreen()
     fireEvent.press(screen.getByTestId('pin-key-fingerprint'))
 
     await waitFor(() => {
@@ -293,12 +296,12 @@ describe('CredentialDetailScreen delete biometric', () => {
   })
 
   test('keeps PIN available with a friendly message after biometric failure', async () => {
-    mockConfirmCredentialDeletionBiometric.mockRejectedValueOnce(
-      new Error('CredentialDeletionBiometricFailed'),
+    mockConfirmCredentialRevokeBiometric.mockRejectedValueOnce(
+      new Error('CredentialRevokeBiometricFailed'),
     )
-    mockIsCredentialDeletionBiometricCancellation.mockReturnValueOnce(false)
+    mockIsCredentialRevokeBiometricCancellation.mockReturnValueOnce(false)
 
-    renderDeleteSecurityScreen()
+    renderRevokeSecurityScreen()
     fireEvent.press(screen.getByTestId('pin-key-fingerprint'))
 
     expect(
@@ -310,7 +313,7 @@ describe('CredentialDetailScreen delete biometric', () => {
   test('hides biometric control during PIN setup and confirmation', () => {
     mockHasWalletPin.mockReturnValue(false)
 
-    renderDeleteSecurityScreen()
+    renderRevokeSecurityScreen()
 
     expect(screen.queryByTestId('pin-key-fingerprint')).toBeNull()
 
@@ -327,10 +330,10 @@ describe('CredentialDetailScreen delete biometric', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
   })
 
-  test('opens History on the lifecycle filter after delete approval', async () => {
-    mockConfirmCredentialDeletionBiometric.mockResolvedValueOnce(undefined)
+  test('opens History on the lifecycle filter after revoke approval', async () => {
+    mockConfirmCredentialRevokeBiometric.mockResolvedValueOnce(undefined)
 
-    renderDeleteSecurityScreen()
+    renderRevokeSecurityScreen()
     fireEvent.press(screen.getByTestId('pin-key-fingerprint'))
 
     await waitFor(() => {
@@ -338,9 +341,11 @@ describe('CredentialDetailScreen delete biometric', () => {
     })
     fireEvent.press(screen.getByRole('button', { name: 'Approve' }))
 
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/(tabs)/history',
-      params: { filter: 'lifecycle' },
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/(tabs)/history',
+        params: { filter: 'lifecycle' },
+      })
     })
   })
 })
