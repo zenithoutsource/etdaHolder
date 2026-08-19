@@ -1,4 +1,4 @@
-import { resolveDrivingLicenceVehicleType } from './drivingLicenceVehicleCategories'
+import { resolveDrivingLicenceVehicleType, formatDrivingLicenceVehicleTypeDisplay } from './drivingLicenceVehicleCategories'
 
 describe('resolveDrivingLicenceVehicleType', () => {
   test('maps ISO category B to Thai and English vehicle type names', () => {
@@ -41,5 +41,25 @@ describe('resolveDrivingLicenceVehicleType', () => {
     expect(resolveDrivingLicenceVehicleType('A, B')).toBeUndefined()
     expect(resolveDrivingLicenceVehicleType('Z')).toBeUndefined()
     expect(resolveDrivingLicenceVehicleType(undefined)).toBeUndefined()
+  })
+})
+
+describe('formatDrivingLicenceVehicleTypeDisplay', () => {
+  test('maps ISO category B to the Thai vehicle type', () => {
+    expect(formatDrivingLicenceVehicleTypeDisplay('B')).toBe('รถยนต์ส่วนบุคคล')
+  })
+
+  test('maps ISO category A to the Thai motorcycle label', () => {
+    expect(formatDrivingLicenceVehicleTypeDisplay('A')).toBe('รถจักรยานยนต์')
+  })
+
+  test('maps joined ISO categories to Thai names', () => {
+    expect(formatDrivingLicenceVehicleTypeDisplay('A, B')).toBe('รถจักรยานยนต์, รถยนต์ส่วนบุคคล')
+  })
+
+  test('leaves unknown and English issuer text unchanged', () => {
+    expect(formatDrivingLicenceVehicleTypeDisplay('Z')).toBe('Z')
+    expect(formatDrivingLicenceVehicleTypeDisplay('Private Car')).toBe('Private Car')
+    expect(formatDrivingLicenceVehicleTypeDisplay(undefined)).toBeUndefined()
   })
 })

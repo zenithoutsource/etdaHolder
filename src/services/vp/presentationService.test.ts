@@ -873,7 +873,7 @@ describe('presentationService', () => {
     expect(request.matchedCredential.id).toBe('driving-licence-iso-1')
     expect(request.disclosures).toEqual([
       disclosure({ key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' }),
-      disclosure({ key: 'license_type', label: 'ประเภทใบอนุญาต', value: 'B' }),
+      disclosure({ key: 'license_type', label: 'ประเภทใบอนุญาต', value: 'รถยนต์ส่วนบุคคล' }),
       disclosure({ key: 'photo', label: 'รูปถ่าย', value: 'portrait-bytes' }),
     ])
   })

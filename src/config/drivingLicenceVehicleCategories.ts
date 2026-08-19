@@ -23,3 +23,21 @@ export function resolveDrivingLicenceVehicleType(
 
   return Object.values(DRIVING_LICENCE_VEHICLE_TYPES).find((entry) => entry.thai === trimmed)
 }
+
+/** Holder-facing Thai vehicle type; unknown or non-ISO text is left unchanged. */
+export function formatDrivingLicenceVehicleTypeDisplay(value?: string): string | undefined {
+  if (!value) return undefined
+
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  const tokens = trimmed.split(',').map((part) => part.trim()).filter(Boolean)
+  if (tokens.length === 0) return undefined
+
+  const mapped = tokens.map((token) => resolveDrivingLicenceVehicleType(token)?.thai)
+  if (mapped.every((name): name is string => Boolean(name))) {
+    return mapped.join(', ')
+  }
+
+  return trimmed
+}

@@ -2,6 +2,7 @@ import { readCredentialHolderProfile, readPresentationFieldValue } from '../cred
 import { hasAnyClaimValue, readClaimText } from '../credentials/claimFormatting'
 import { isIssuerOid4VpClientId, isIssuerOid4VpResponseUri } from '../../config/trustedVerifiers'
 import { getCardSchema, findDisplayFieldForClaimKey, collectDisplayFieldMatchKeys, resolvePresentationDisclosureLabel } from '../../config/cardSchemas'
+import { formatDrivingLicenceVehicleTypeDisplay } from '../../config/drivingLicenceVehicleCategories'
 import {
   isSdJwtKbDisabledForTesting,
   readVerifierDcqlVpTokenShape,
@@ -1096,9 +1097,13 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
       ? collectDisplayFieldMatchKeys(field)
       : [normalizedClaimKeys.get(normalizedRequestedKey) ?? requestedKey]
 
-    const value = field
+    const rawValue = field
       ? readPresentationFieldValue(claims, field)
       : readClaimText(claims, lookupKeys)
+    const value =
+      record.type === 'DLTDrivingLicence' && field?.key === 'licenceClass'
+        ? formatDrivingLicenceVehicleTypeDisplay(rawValue) ?? rawValue
+        : rawValue
     const present = value !== undefined || hasAnyClaimValue(claims, lookupKeys)
     if (!present) continue
 
