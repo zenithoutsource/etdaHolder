@@ -101,7 +101,7 @@ Hidden route: [app/(tabs)/presentation-request.tsx](../../app/(tabs)/presentatio
 
 **Panels:** [FacePreparePanel](../../src/components/FacePreparePanel.tsx), [IssuerPidPresentationPanel](../../src/components/IssuerPidPresentationPanel.tsx), [PresentationConsentPanel](../../src/components/PresentationConsentPanel.tsx), [PresentationInfoPanel](../../src/components/PresentationInfoPanel.tsx) (summary + device + PoP + requested items), [PresentationFailurePanel](../../src/components/PresentationFailurePanel.tsx), [PresentationResultPanel](../../src/components/PresentationResultPanel.tsx) → [PresentationSuccessPanel](../../src/components/PresentationSuccessPanel.tsx). Chrome: [PresentationStepScaffold](../../src/components/PresentationStepScaffold.tsx).
 
-**Copy:** `issuerPidPresentationCopy`; disclosure labels in `cardSchemas`; failure kinds in [presentationFailureUi.ts](../../src/services/vp/presentationFailureUi.ts).
+**Copy:** `issuerPidPresentationCopy`; disclosure labels in `cardSchemas`; consent party + transcript white Chula hero (other types use icons) in [presentationVerifierMocks.ts](../../src/config/presentationVerifierMocks.ts); failure kinds in [presentationFailureUi.ts](../../src/services/vp/presentationFailureUi.ts).
 
 **Steps** (`FlowPhase` tags)
 
@@ -125,7 +125,7 @@ Hidden route: [app/(tabs)/present.tsx](../../app/(tabs)/present.tsx). Opened fro
 
 **Panels:** [PreTapConsentPanel](../../src/components/proximity/PreTapConsentPanel.tsx) → [WaitingForTapPanel](../../src/components/proximity/WaitingForTapPanel.tsx) → [proximity/PresentationResultPanel](../../src/components/proximity/PresentationResultPanel.tsx). Older unused: [proximity/ConsentPanel](../../src/components/proximity/ConsentPanel.tsx), [ProximityPresentButton](../../src/components/proximity/ProximityPresentButton.tsx).
 
-**Copy / layout:** reader profile fields; `cardSchemas` disclosure labels; **waiting copy is inline Thai** in `WaitingForTapPanel`. Result wrapper uses `WALLET_HISTORY_COPY`.
+**Copy / layout:** reader profile fields; `cardSchemas` disclosure labels; consent hero icon from `presentationVerifierMocks` by `documentType`; **waiting copy is inline Thai** in `WaitingForTapPanel`. Result wrapper uses `WALLET_HISTORY_COPY`.
 
 **Steps** (`proximityStore.status`)
 

@@ -1,17 +1,21 @@
 /**
  * Pre-tap fixed disclosure consent from the reader profile (no toggles).
  * Journey: P4 NFC Present (app/(tabs)/present.tsx).
- * Copy: readerProfiles; cardSchemas disclosure labels.
+ * Copy: readerProfiles; cardSchemas disclosure labels; presentationVerifierMocks hero icon.
  * Layout: PresentationDisclosureList.
  * Map: docs/CODEMAPS/frontend.md#present-and-nfc
  */
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import { Text, View } from 'react-native'
+import { Image, Text, View } from 'react-native'
 
 import { AppButton } from '@/src/components/AppButton'
 import { PresentationDisclosureList } from '@/src/components/PresentationDisclosureList'
 import { resolvePresentationDisclosureLabel } from '@/src/config/cardSchemas'
+import {
+  readPresentationConsentHeroIcon,
+  readPresentationVerifierLogoSource,
+} from '@/src/config/presentationVerifierMocks'
 import type { ReaderProfile } from '@/src/config/readerProfiles'
 import { THEME } from '@/src/config/themeColors'
 
@@ -34,12 +38,24 @@ export function PreTapConsentPanel({
     selected: true,
     toggleable: false as const,
   }))
+  const logoSource = readPresentationVerifierLogoSource(profile.documentType)
+  const heroIcon = readPresentationConsentHeroIcon(profile.documentType)
 
   return (
     <View className="rounded-[12px] bg-white px-6 py-8">
       <View className="items-center">
         <View className="h-[72px] w-[72px] items-center justify-center rounded-2xl bg-navy-muted">
-          <MaterialCommunityIcons name="car" size={36} color={THEME.white} />
+          {logoSource ? (
+            <Image
+              testID="presentation-consent-verifier-logo"
+              source={logoSource}
+              className="h-12 w-12"
+              resizeMode="contain"
+              accessibilityLabel="โลโก้หน่วยงาน"
+            />
+          ) : heroIcon ? (
+            <MaterialCommunityIcons name={heroIcon} size={36} color={THEME.white} />
+          ) : null}
         </View>
 
         <Text className="mt-5 text-center text-[18px] font-extrabold text-navy-deep">

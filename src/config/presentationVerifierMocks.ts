@@ -5,6 +5,10 @@
  * Resolution order: protocol / config name (when not generic) → mock → ผู้ตรวจสอบ.
  */
 
+import type { ImageSourcePropType } from 'react-native'
+
+export type PresentationConsentHeroIcon = 'glass-cocktail' | 'car' | 'medical-bag'
+
 export type PresentationVerifierMock = {
   /** Party name in History Log, consent, and success screen */
   verifierName: string
@@ -12,6 +16,14 @@ export type PresentationVerifierMock = {
   consentPartyLabel: string
   /** History detail/list "ประเภทข้อมูลที่เข้าถึง" when no disclosed claims */
   accessLabel: string
+}
+
+const TRANSCRIPT_CONSENT_LOGO = require('../../assets/images/chulalongkorn-white.png') as ImageSourcePropType
+
+const PRESENTATION_CONSENT_HERO_ICONS: Record<string, PresentationConsentHeroIcon> = {
+  ThaiNationalID: 'glass-cocktail',
+  DLTDrivingLicence: 'car',
+  MedicalCertificate: 'medical-bag',
 }
 
 const PRESENTATION_VERIFIER_MOCKS: Record<string, PresentationVerifierMock> = {
@@ -83,4 +95,19 @@ export function readPresentationConsentPartyLabel(
 
 export function readPresentationAccessLabel(credentialType: string): string | undefined {
   return readPresentationVerifierMock(credentialType)?.accessLabel
+}
+
+/** Consent-screen hero PNG — transcript only (white Chula logo). */
+export function readPresentationVerifierLogoSource(
+  credentialType: string,
+): ImageSourcePropType | undefined {
+  if (credentialType !== 'ChulalongkornUniversityTranscript') return undefined
+  return TRANSCRIPT_CONSENT_LOGO
+}
+
+/** Consent-screen hero icon when there is no transcript PNG. */
+export function readPresentationConsentHeroIcon(
+  credentialType: string,
+): PresentationConsentHeroIcon | undefined {
+  return PRESENTATION_CONSENT_HERO_ICONS[credentialType]
 }

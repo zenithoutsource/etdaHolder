@@ -48,7 +48,29 @@ describe('PresentationConsentPanel', () => {
       <PresentationConsentPanel request={request} onAccept={jest.fn()} onReject={jest.fn()} />,
     )
 
-    expect(screen.getByText('ข้อมูลที่ร้านอาหารต้องการ')).toBeTruthy()
+    expect(screen.getByText('ข้อมูลที่ร้านบาร์ต้องการ')).toBeTruthy()
+    expect(screen.queryByTestId('presentation-consent-verifier-logo')).toBeNull()
+  })
+
+  test('renders the white Chula PNG on transcript consent', () => {
+    render(
+      <PresentationConsentPanel
+        request={{
+          ...request,
+          matchedCredential: {
+            ...request.matchedCredential,
+            type: 'ChulalongkornUniversityTranscript',
+          },
+        }}
+        onAccept={jest.fn()}
+        onReject={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('presentation-consent-verifier-logo').props.source).toEqual(
+      require('../../assets/images/chulalongkorn-white.png'),
+    )
+    expect(screen.getByTestId('presentation-consent-verifier-logo').props.className).toContain('h-12')
   })
 
   test('renders all disclosure rows as locked consent items', () => {

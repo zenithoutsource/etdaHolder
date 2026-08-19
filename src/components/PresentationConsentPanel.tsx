@@ -1,17 +1,21 @@
 /**
  * Claim disclosure consent (mandatory / toggleable) before present.
  * Journey: P4 Oid4VpDisclosureFlow consent phase.
- * Copy: cardSchemas labels; claimDisclosurePolicy.
+ * Copy: cardSchemas labels; claimDisclosurePolicy; presentationVerifierMocks (party + transcript hero).
  * Layout: PresentationDisclosureList.
  * Map: docs/CODEMAPS/frontend.md#oid4vp-request
  */
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import { ScrollView, Text, View } from 'react-native'
+import { Image, ScrollView, Text, View } from 'react-native'
 
 import type { PresentationDisclosure, ResolvedPresentationRequest } from '../services/vp/presentationService'
 import { resolvePresentationDisclosureLabel } from '../config/cardSchemas'
-import { readPresentationConsentPartyLabel } from '../config/presentationVerifierMocks'
+import {
+  readPresentationConsentHeroIcon,
+  readPresentationConsentPartyLabel,
+  readPresentationVerifierLogoSource,
+} from '../config/presentationVerifierMocks'
 import { resolveDisclosedClaimLabels, resolveEffectiveDisclosureKeys } from '../services/vp/claimDisclosurePolicy'
 import { AppButton } from './AppButton'
 import { PresentationDisclosureList } from './PresentationDisclosureList'
@@ -85,12 +89,24 @@ export function PresentationConsentPanel({
     request.matchedCredential.type,
     request.verifier.name,
   )
+  const logoSource = readPresentationVerifierLogoSource(request.matchedCredential.type)
+  const heroIcon = readPresentationConsentHeroIcon(request.matchedCredential.type)
 
   return (
     <View className="flex-1 bg-white px-6 pt-8">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-8 items-center">
         <View className="h-[72px] w-[72px] items-center justify-center rounded-2xl bg-navy-muted">
-          <MaterialCommunityIcons name="glass-cocktail" size={36} color={THEME.white} />
+          {logoSource ? (
+            <Image
+              testID="presentation-consent-verifier-logo"
+              source={logoSource}
+              className="h-12 w-12"
+              resizeMode="contain"
+              accessibilityLabel={`${consentPartyLabel} โลโก้`}
+            />
+          ) : heroIcon ? (
+            <MaterialCommunityIcons name={heroIcon} size={36} color={THEME.white} />
+          ) : null}
         </View>
 
         <Text className="mt-5 text-center text-[18px] font-extrabold text-navy-deep">

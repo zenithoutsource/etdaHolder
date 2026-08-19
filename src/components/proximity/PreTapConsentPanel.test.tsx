@@ -30,6 +30,7 @@ describe('PreTapConsentPanel', () => {
     expect(screen.getByText(/เมื่อแตะเครื่องอ่าน/)).toBeTruthy()
     expect(screen.queryByText(/Vendor:/)).toBeNull()
     expect(screen.queryByText(/Mode:/)).toBeNull()
+    expect(screen.queryByTestId('presentation-consent-verifier-logo')).toBeNull()
   })
 
   test('Accept and Decline fire without a field list for waiting copy', () => {

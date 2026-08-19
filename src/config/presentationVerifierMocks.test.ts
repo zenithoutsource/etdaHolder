@@ -1,8 +1,10 @@
 import {
   isGenericVerifierName,
   readPresentationAccessLabel,
+  readPresentationConsentHeroIcon,
   readPresentationConsentPartyLabel,
   readPresentationVerifierDisplayName,
+  readPresentationVerifierLogoSource,
 } from './presentationVerifierMocks'
 import {
   isGenericDocumentTitle,
@@ -20,14 +22,32 @@ describe('presentationVerifierMocks', () => {
   })
 
   test('falls back to ThaiNationalID mock when verifier name is generic', () => {
-    expect(readPresentationVerifierDisplayName('ThaiNationalID', 'Verifier API')).toBe('ร้านอาหาร')
-    expect(readPresentationConsentPartyLabel('ThaiNationalID', 'Verifier API')).toBe('ร้านอาหาร')
+    expect(readPresentationVerifierDisplayName('ThaiNationalID', 'Verifier API')).toBe('ร้านบาร์')
+    expect(readPresentationConsentPartyLabel('ThaiNationalID', 'Verifier API')).toBe('ร้านบาร์')
     expect(readPresentationAccessLabel('ThaiNationalID')).toBe('การตรวจสอบอายุ')
   })
 
-  test('maps DLTDrivingLicence to Central mock labels', () => {
-    expect(readPresentationVerifierDisplayName('DLTDrivingLicence')).toBe('Central')
+  test('maps DLTDrivingLicence to police mock labels', () => {
+    expect(readPresentationVerifierDisplayName('DLTDrivingLicence')).toBe('สำนักงานตำรวจแห่งชาติ')
     expect(readPresentationAccessLabel('DLTDrivingLicence')).toBe('ใบขับขี่ดิจิทัล')
+  })
+
+  test('uses the white Chula PNG only for transcript consent', () => {
+    expect(readPresentationVerifierLogoSource('ChulalongkornUniversityTranscript')).toEqual(
+      require('../../assets/images/chulalongkorn-white.png'),
+    )
+    expect(readPresentationVerifierLogoSource('ThaiNationalID')).toBeUndefined()
+    expect(readPresentationVerifierLogoSource('DLTDrivingLicence')).toBeUndefined()
+    expect(readPresentationVerifierLogoSource('MedicalCertificate')).toBeUndefined()
+    expect(readPresentationVerifierLogoSource('UnknownType')).toBeUndefined()
+  })
+
+  test('maps non-transcript types to consent hero icons', () => {
+    expect(readPresentationConsentHeroIcon('ThaiNationalID')).toBe('glass-cocktail')
+    expect(readPresentationConsentHeroIcon('DLTDrivingLicence')).toBe('car')
+    expect(readPresentationConsentHeroIcon('MedicalCertificate')).toBe('medical-bag')
+    expect(readPresentationConsentHeroIcon('ChulalongkornUniversityTranscript')).toBeUndefined()
+    expect(readPresentationConsentHeroIcon('UnknownType')).toBeUndefined()
   })
 
   test('falls back to protocol verifier name for unknown credential types', () => {
@@ -118,6 +138,6 @@ describe('historyDisplayNames', () => {
         channel: 'oid4vp',
         credentialType: 'ThaiNationalID',
       }),
-    ).toBe('ร้านอาหาร')
+    ).toBe('ร้านบาร์')
   })
 })
