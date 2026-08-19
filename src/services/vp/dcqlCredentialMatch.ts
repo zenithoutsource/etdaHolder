@@ -1,8 +1,9 @@
-import { getCardSchema, findDisplayFieldForClaimKey } from '../../config/cardSchemas'
-import { readDisplayValue } from '../credentials/credentialDisplay'
-import { readClaimText } from '../credentials/claimFormatting'
+import { getCardSchema, findDisplayFieldForClaimKey, collectDisplayFieldMatchKeys } from '../../config/cardSchemas'
+import { readComposedPersonName } from '../credentials/credentialDisplay'
+import { hasAnyClaimValue } from '../credentials/claimFormatting'
 import { readCredentialClaimMap } from '../vci/exchangeService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { isCompactJwtVc, isCompactSdJwt, readCredentialVct } from './credentialFormatUtils'
 import { isExactDualFormatPair, isSdJwtDcqlFormat } from './dualFormatQuery'
 import type { DcqlClaimsQuery, DcqlCredentialQuery, DcqlQuery } from './presentationService'
@@ -112,12 +113,13 @@ function findUnsatisfiedDcqlClaimKeys(
     if (!requestedKey) return false
 
     const field = findDisplayFieldForClaimKey(schema.displayFields, requestedKey)
-    const lookupKeys = field
-      ? [field.key, ...(field.aliases ?? [])]
-      : [requestedKey]
+    const lookupKeys = field ? collectDisplayFieldMatchKeys(field) : [requestedKey]
 
-    const value = field ? readDisplayValue(claimMap, field) : readClaimText(claimMap, lookupKeys)
-    return value !== undefined
+    if (hasAnyClaimValue(claimMap, lookupKeys)) return true
+    if (field && normalizeClaimKey(field.key) === 'fullname') {
+      return Boolean(readComposedPersonName(claimMap))
+    }
+    return false
   }
 
   const claimKey = (claimQuery: DcqlClaimsQuery): string => claimQuery.path[0] ?? '(empty path)'

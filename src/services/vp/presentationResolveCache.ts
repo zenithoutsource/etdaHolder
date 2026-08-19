@@ -22,6 +22,7 @@ export function resolvePresentationRequestCached(
   options: {
     trustedVerifiers: TrustedVerifier[]
     presentationFlowOrigin: PresentationFlowOrigin
+    walletCredentials?: VerifiableCredentialRecord[]
   },
 ): Promise<ResolvedPresentationRequest> {
   const cacheKey = buildPresentationResolveCacheKey(authorizationRequestUri, presentableCredentialKey)

@@ -11,6 +11,8 @@ import {
   submitPresentationResponse,
 } from './presentationService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { writeIssuerSuspension } from '../credentials/issuerSuspension'
+import * as storageModule from '../storage/storage'
 import {
   configurePresentationReplayStorage,
   markPresentationRequestConsumed,
@@ -124,7 +126,7 @@ function compactSdJwt(): string {
 
 function authorizationRequestUri(overrides: Record<string, string> = {}): string {
   const params = new URLSearchParams({
-    client_id: 'did:web:verifier.example.com',
+    client_id: 'decentralized_identifier:did:web:verifier.example.com',
     response_uri: 'https://verifier.example.com/oid4vp/direct-post',
     response_mode: 'direct_post',
     nonce: 'nonce-123',
@@ -198,7 +200,7 @@ describe('presentationService', () => {
         presentationFlowOrigin: 'scan',
         trustedVerifiers: [
           {
-            clientId: 'did:web:verifier.example.com',
+            clientId: 'decentralized_identifier:did:web:verifier.example.com',
             name: 'Entertainment Venue',
             allowedOrigins: ['https://verifier.example.com'],
           },
@@ -218,7 +220,7 @@ describe('presentationService', () => {
       presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
-          clientId: 'did:web:verifier.example.com',
+          clientId: 'decentralized_identifier:did:web:verifier.example.com',
           name: 'Entertainment Venue',
           allowedOrigins: ['https://verifier.example.com'],
         },
@@ -241,7 +243,7 @@ describe('presentationService', () => {
     })
 
     const params = new URLSearchParams({
-      client_id: 'did:web:verifier.example.com',
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
       response_uri: 'https://verifier.example.com/oid4vp/direct-post',
       response_mode: 'direct_post',
       nonce: 'nonce-123',
@@ -254,7 +256,7 @@ describe('presentationService', () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
         {
-          clientId: 'did:web:verifier.example.com',
+          clientId: 'decentralized_identifier:did:web:verifier.example.com',
           name: 'Entertainment Venue',
           allowedOrigins: ['https://verifier.example.com'],
         },
@@ -271,7 +273,7 @@ describe('presentationService', () => {
 
   test('rejects presentation_definition combined with dcql_query', async () => {
     const params = new URLSearchParams({
-      client_id: 'did:web:verifier.example.com',
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
       response_uri: 'https://verifier.example.com/oid4vp/direct-post',
       response_mode: 'direct_post',
       nonce: 'nonce-123',
@@ -286,7 +288,7 @@ describe('presentationService', () => {
         presentationFlowOrigin: 'scan',
         trustedVerifiers: [
           {
-            clientId: 'did:web:verifier.example.com',
+            clientId: 'decentralized_identifier:did:web:verifier.example.com',
             name: 'Entertainment Venue',
             allowedOrigins: ['https://verifier.example.com'],
           },
@@ -297,7 +299,7 @@ describe('presentationService', () => {
 
   test('rejects presentation_definition_uri combined with dcql_query', async () => {
     const params = new URLSearchParams({
-      client_id: 'did:web:verifier.example.com',
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
       response_uri: 'https://verifier.example.com/oid4vp/direct-post',
       response_mode: 'direct_post',
       nonce: 'nonce-123',
@@ -312,7 +314,7 @@ describe('presentationService', () => {
         presentationFlowOrigin: 'scan',
         trustedVerifiers: [
           {
-            clientId: 'did:web:verifier.example.com',
+            clientId: 'decentralized_identifier:did:web:verifier.example.com',
             name: 'Entertainment Venue',
             allowedOrigins: ['https://verifier.example.com'],
           },
@@ -571,7 +573,10 @@ describe('presentationService', () => {
         ),
     )
 
-    const request = await resolvePresentationRequest(verifierRequestUri(), [transcriptWithVerifierClaims], {
+    const request = await resolvePresentationRequest(
+      verifierRequestUri(),
+      [thaiIdRecord, transcriptWithVerifierClaims],
+      {
       presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
@@ -620,7 +625,7 @@ describe('presentationService', () => {
         ),
     )
 
-    const request = await resolvePresentationRequest(verifierRequestUri(), [transcriptRecord], {
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, transcriptRecord], {
       presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
@@ -633,8 +638,115 @@ describe('presentationService', () => {
     })
 
     expect(request.disclosures).toEqual([
-      { key: 'studentId', label: 'รหัสนักศึกษา', value: '6512345678', mandatory: true, selective: false },
+      { key: 'student_id', label: 'รหัสนักศึกษา', value: '6512345678', mandatory: true, selective: false },
     ])
+  })
+
+  test('rejects non-PID presentation when wallet has no usable ThaiNationalID', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'driving_licence_credential',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['DrivingLicenceCredential'] },
+                  claims: [{ path: ['licence_number'] }],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    await expect(
+      resolvePresentationRequest(verifierRequestUri(), [drivingLicenceRecord], {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      }),
+    ).rejects.toThrow('PresentationPidRequired')
+  })
+
+  test('rejects non-PID presentation when ThaiNationalID is issuer-suspended', async () => {
+    const values = new Map<string, string>()
+    const storage = {
+      getString: (key: string) => values.get(key),
+      set: (key: string, value: string) => {
+        values.set(key, value)
+      },
+      remove: (key: string) => {
+        values.delete(key)
+      },
+    }
+    const storageSpy = jest
+      .spyOn(storageModule, 'getCredentialStorage')
+      .mockReturnValue(storage as never)
+
+    writeIssuerSuspension({
+      credentialId: thaiIdRecord.id,
+      suspendedAt: '2026-07-01T00:00:00.000Z',
+      updatedAt: '2026-07-01T00:00:00.000Z',
+    })
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'driving_licence_credential',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['DrivingLicenceCredential'] },
+                  claims: [{ path: ['licence_number'] }],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    try {
+      await expect(
+        resolvePresentationRequest(verifierRequestUri(), [drivingLicenceRecord], {
+          presentationFlowOrigin: 'scan',
+          fetchImpl: fetchMock as unknown as typeof fetch,
+          trustedVerifiers: [
+            {
+              clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+              name: 'Verifier API',
+              allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+            },
+          ],
+          walletCredentials: [thaiIdRecord, drivingLicenceRecord],
+        }),
+      ).rejects.toThrow('PresentationPidRequired')
+    } finally {
+      storageSpy.mockRestore()
+    }
   })
 
   test('uses schema presentation labels for DCQL DLTDrivingLicence requested claim paths', async () => {
@@ -671,7 +783,7 @@ describe('presentationService', () => {
         ),
     )
 
-    const request = await resolvePresentationRequest(verifierRequestUri(), [drivingLicenceRecord], {
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord, drivingLicenceRecord], {
       presentationFlowOrigin: 'scan',
       fetchImpl: fetchMock as unknown as typeof fetch,
       trustedVerifiers: [
@@ -692,6 +804,77 @@ describe('presentationService', () => {
       disclosure({ key: 'issue_date', label: 'วันที่ออกใบอนุญาต', value: '2026-01-01' }),
       disclosure({ key: 'expiry_date', label: 'วันหมดอายุ', value: '2031-01-01' }),
       disclosure({ key: 'photo', label: 'รูปถ่าย', value: 'photo-uri' }),
+    ])
+  })
+
+  test('maps ISO driving-licence claims onto verifier full_name, license_type, and photo paths', async () => {
+    const isoDrivingLicenceRecord: VerifiableCredentialRecord = {
+      ...drivingLicenceRecord,
+      id: 'driving-licence-iso-1',
+      claims: {
+        given_name: 'สมชาย',
+        family_name: 'ใจดี',
+        givenName: 'สมชาย',
+        familyName: 'ใจดี',
+        birth_date: '2001-05-15',
+        document_number: 'DLT-123456',
+        issue_date: '2026-01-01',
+        expiry_date: '2031-01-01',
+        driving_privileges: 'B',
+        licenceClass: 'B',
+        portrait: 'portrait-bytes',
+      },
+    }
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'driving_licence_credential',
+                  format: 'jwt_vc_json',
+                  meta: { type_values: ['DrivingLicenceCredential'] },
+                  claims: [
+                    { path: ['full_name'] },
+                    { path: ['license_type'] },
+                    { path: ['photo'] },
+                  ],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const request = await resolvePresentationRequest(
+      verifierRequestUri(),
+      [thaiIdRecord, isoDrivingLicenceRecord],
+      {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      },
+    )
+
+    expect(request.matchedCredential.id).toBe('driving-licence-iso-1')
+    expect(request.disclosures).toEqual([
+      disclosure({ key: 'full_name', label: 'ชื่อ-นามสกุล', value: 'สมชาย ใจดี' }),
+      disclosure({ key: 'license_type', label: 'ประเภทใบอนุญาต', value: 'B' }),
+      disclosure({ key: 'photo', label: 'รูปถ่าย', value: 'portrait-bytes' }),
     ])
   })
 
@@ -1009,7 +1192,7 @@ describe('presentationService', () => {
       presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
-          clientId: 'did:web:verifier.example.com',
+          clientId: 'decentralized_identifier:did:web:verifier.example.com',
           name: 'Entertainment Venue',
           allowedOrigins: ['https://verifier.example.com'],
         },
@@ -1042,7 +1225,7 @@ describe('presentationService', () => {
           presentationFlowOrigin: 'scan',
           trustedVerifiers: [
             {
-              clientId: 'did:web:verifier.example.com',
+              clientId: 'decentralized_identifier:did:web:verifier.example.com',
               name: 'Entertainment Venue',
               allowedOrigins: ['https://verifier.example.com'],
             },
@@ -1057,7 +1240,7 @@ describe('presentationService', () => {
       presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
-          clientId: 'did:web:verifier.example.com',
+          clientId: 'decentralized_identifier:did:web:verifier.example.com',
           name: 'Entertainment Venue',
           allowedOrigins: ['https://verifier.example.com'],
         },
@@ -1089,7 +1272,7 @@ describe('presentationService', () => {
       presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
-          clientId: 'did:web:verifier.example.com',
+          clientId: 'decentralized_identifier:did:web:verifier.example.com',
           name: 'Entertainment Venue',
           allowedOrigins: ['https://verifier.example.com'],
         },
@@ -1458,7 +1641,7 @@ describe('presentationService', () => {
       presentationFlowOrigin: 'scan',
       trustedVerifiers: [
         {
-          clientId: 'did:web:verifier.example.com',
+          clientId: 'decentralized_identifier:did:web:verifier.example.com',
           name: 'Entertainment Venue',
           allowedOrigins: ['https://verifier.example.com'],
         },
@@ -1667,7 +1850,7 @@ describe('presentationService', () => {
         presentationFlowOrigin: 'scan',
         trustedVerifiers: [
           {
-            clientId: 'did:web:verifier.example.com',
+            clientId: 'decentralized_identifier:did:web:verifier.example.com',
             name: 'Entertainment Venue',
             allowedOrigins: ['https://verifier.example.com'],
           },

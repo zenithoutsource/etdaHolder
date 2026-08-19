@@ -210,6 +210,48 @@ describe('assertIssuerDidWebCredentialSignature', () => {
     )
   })
 
+  test('verifies Issuer EdDSA signature from Ed25519VerificationKey2020 publicKeyMultibase', async () => {
+    const publicKey = getPublicKey(privateKey)
+    const multicodecBytes = new Uint8Array(34)
+    multicodecBytes[0] = 0xed
+    multicodecBytes[1] = 0x01
+    multicodecBytes.set(publicKey, 2)
+    const iss = 'did:web:issuer.zenithcomp.co.th%3A455'
+    const kid = `${iss}#key-1`
+    const jwt = await signIssuerJwt({
+      privateKey,
+      kid,
+      payload: { iss, jti: 'cred-multibase' },
+    })
+
+    const fetchMock = jest.fn(async () =>
+      Response.json({
+        id: iss,
+        verificationMethod: [
+          {
+            id: kid,
+            type: 'Ed25519VerificationKey2020',
+            controller: iss,
+            publicKeyMultibase: `z${base58btcEncode(multicodecBytes)}`,
+          },
+        ],
+        assertionMethod: [kid],
+      }),
+    )
+
+    await expect(
+      assertIssuerDidWebCredentialSignature(`${jwt}~`, {
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://issuer.zenithcomp.co.th:455/.well-known/did.json',
+      expect.objectContaining({
+        headers: { Accept: 'application/did+json, application/json' },
+      }),
+    )
+  })
+
   test('rejects invalid Issuer signature for did:web iss', async () => {
     const iss = 'did:web:issuer.example.com'
     const kid = `${iss}#key-1`

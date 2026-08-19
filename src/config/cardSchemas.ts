@@ -1,9 +1,21 @@
+/**
+ * Credential UI schema registry — titles, colors, display/summary fields, issuance confirm, disclosure labels.
+ * Journey: every document card, issuance panel, and presentation disclosure list.
+ * Copy: field labels and presentationLabel (Thai) live here.
+ * Map: docs/CODEMAPS/frontend.md#copy-and-layout
+ */
+
 import { THEME } from './themeColors'
 export type DisplayField = {
   key: string;
   label: string;
   presentationLabel?: string;
   aliases?: string[];
+  /**
+   * Extra keys that satisfy this field for OID4VP matching / SD-JWT selection.
+   * Not used for credential-card rows (so given/family stay separate from fullName).
+   */
+  matchAliases?: string[];
   staticValue?: string;
   /** OID4VP Holder disclosure policy fallback when Issuer metadata is unavailable. */
   presentationDisclosure?: {
@@ -134,7 +146,7 @@ const SCHEMAS: CardSchemaConfig[] = [
       },
     ],
     issuanceVerification: {
-      providerLabel: "ThaID",
+      providerLabel: "PID",
       imageKey: "thaid",
     },
     issuanceConfirmation: {
@@ -146,7 +158,7 @@ const SCHEMAS: CardSchemaConfig[] = [
   },
   {
     type: "DLTDrivingLicence",
-    title: "Driving Licence",
+    title: "Driver License",
     documentTitle: "DRIVING LICENSE",
     issuerName: "Department of Land Transport",
     primaryColor: THEME.navyRoyal,
@@ -156,11 +168,13 @@ const SCHEMAS: CardSchemaConfig[] = [
       {
         key: "givenName",
         label: "Given Name",
+        presentationLabel: "ชื่อ",
         aliases: ["given_name"],
       },
       {
         key: "familyName",
         label: "Family Name",
+        presentationLabel: "นามสกุล",
         aliases: ["family_name"],
       },
       {
@@ -168,6 +182,16 @@ const SCHEMAS: CardSchemaConfig[] = [
         label: "Full Name",
         presentationLabel: "ชื่อ-นามสกุล",
         aliases: ["full_name", "name"],
+        matchAliases: [
+          "givenName",
+          "familyName",
+          "given_name",
+          "family_name",
+          "firstName",
+          "first_name",
+          "lastName",
+          "last_name",
+        ],
       },
       {
         key: "birthDate",
@@ -197,12 +221,28 @@ const SCHEMAS: CardSchemaConfig[] = [
         key: "licenceClass",
         label: "Class",
         presentationLabel: "ประเภทใบอนุญาต",
-        aliases: ["licence_class", "licenseClass", "license_class"],
+        aliases: [
+          "licence_class",
+          "licenseClass",
+          "license_class",
+          "license_type",
+          "licence_type",
+          "licenseType",
+          "licenceType",
+          "driving_privileges",
+        ],
       },
       {
         key: "issuingCountry",
         label: "Issuing Country",
+        presentationLabel: "ประเทศผู้ออก",
         aliases: ["issuing_country"],
+      },
+      {
+        key: "issuingAuthority",
+        label: "Issuing Authority",
+        presentationLabel: "หน่วยงานผู้ออก",
+        aliases: ["issuing_authority"],
       },
       {
         key: "issuanceDate",
@@ -221,6 +261,63 @@ const SCHEMAS: CardSchemaConfig[] = [
         label: "Photo",
         presentationLabel: "รูปถ่าย",
         aliases: ["portrait", "image"],
+      },
+      {
+        key: "unDistinguishingSign",
+        label: "UN Distinguishing Sign",
+        presentationLabel: "รหัสประเทศ",
+        aliases: ["un_distinguishing_sign"],
+      },
+      {
+        key: "ageOver18",
+        label: "Over 18",
+        presentationLabel: "อายุเกิน 18 ปี",
+        aliases: ["age_over_18"],
+      },
+      {
+        key: "sex",
+        label: "Sex",
+        presentationLabel: "เพศ",
+        aliases: ["gender"],
+      },
+      {
+        key: "nationality",
+        label: "Nationality",
+        presentationLabel: "สัญชาติ",
+      },
+      {
+        key: "residentAddress",
+        label: "Resident Address",
+        presentationLabel: "ที่อยู่",
+        aliases: ["resident_address"],
+      },
+      {
+        key: "birthPlace",
+        label: "Place of Birth",
+        presentationLabel: "สถานที่เกิด",
+        aliases: ["birth_place"],
+      },
+      {
+        key: "height",
+        label: "Height",
+        presentationLabel: "ส่วนสูง",
+      },
+      {
+        key: "weight",
+        label: "Weight",
+        presentationLabel: "น้ำหนัก",
+      },
+      {
+        key: "eyeColour",
+        label: "Eye Colour",
+        presentationLabel: "สีตา",
+        aliases: ["eye_colour", "eye_color"],
+      },
+      {
+        key: "hairColour",
+        label: "Hair Colour",
+        presentationLabel: "สีผม",
+        aliases: ["hair_colour", "hair_color"],
       },
     ],
     summaryFields: [
@@ -451,11 +548,14 @@ const SCHEMA_MAP = new Map<string, CardSchemaConfig>(
   SCHEMAS.map((s) => [s.type, s]),
 );
 
-import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization';
+import {
+  normalizeClaimKey,
+  readMdocElementIdentifier,
+} from '@/src/utils/claimKeyNormalization';
 
 export { normalizeClaimKey as normalizeClaimLabelKey };
 
-export function findDisplayFieldForClaimKey(
+function matchDisplayField(
   fields: DisplayField[],
   claimKey: string,
 ): DisplayField | undefined {
@@ -467,6 +567,20 @@ export function findDisplayFieldForClaimKey(
         (alias) => normalizeClaimKey(alias) === normalizedKey,
       ),
   );
+}
+
+export function findDisplayFieldForClaimKey(
+  fields: DisplayField[],
+  claimKey: string,
+): DisplayField | undefined {
+  return (
+    matchDisplayField(fields, claimKey) ??
+    matchDisplayField(fields, readMdocElementIdentifier(claimKey))
+  );
+}
+
+export function collectDisplayFieldMatchKeys(field: DisplayField): string[] {
+  return [field.key, ...(field.aliases ?? []), ...(field.matchAliases ?? [])];
 }
 
 export function resolvePresentationDisclosureLabel(

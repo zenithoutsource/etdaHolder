@@ -430,6 +430,36 @@ describe('per-credential', () => {
       expect(credentialSigningKey.bindPendingKeyToCredential).not.toHaveBeenCalled()
     })
 
+    test('claimCredential reuses a supplied pending hardware key instead of minting another', async () => {
+      const resolved = resolvedOffer()
+      const rawVc = unsignedJwt({
+        jti: 'vc-hw-reuse',
+        vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+        iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+      })
+
+      await claimCredential(resolved, {
+        tx_code: '123456',
+        pendingCredentialKeyId: 'pending-reuse-1',
+        dependencies: {
+          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+          signProof: async () => 'proof.jwt',
+          requestCredential: async () => rawVc,
+          getCredentialStorage: () => ({
+            getString: () => undefined,
+            set: () => undefined,
+          }),
+        },
+      })
+
+      expect(hardwareCredentialSigningKey.createPendingHardwareCredentialKey).not.toHaveBeenCalled()
+      expect(hardwareCredentialSigningKey.bindPendingHardwareKeyToCredential).toHaveBeenCalledWith(
+        'pending-reuse-1',
+        'vc-hw-reuse',
+        'ThaiNationalID',
+      )
+    })
+
     test('claimCredential destroys the hardware key when MMKV save fails after bind', async () => {
       jest.spyOn(hardwareCredentialSigningKey, 'discardHardwareCredentialKeyReplacement').mockResolvedValue(false)
       jest.spyOn(hardwareCredentialSigningKey, 'hasHardwareCredentialKey').mockImplementation(

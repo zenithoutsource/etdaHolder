@@ -1,7 +1,7 @@
-import { readCredentialHolderProfile, readDisplayValue } from '../credentials/credentialDisplay'
-import { readClaimText } from '../credentials/claimFormatting'
+import { readCredentialHolderProfile, readPresentationFieldValue } from '../credentials/credentialDisplay'
+import { hasAnyClaimValue, readClaimText } from '../credentials/claimFormatting'
 import { isIssuerOid4VpClientId, isIssuerOid4VpResponseUri } from '../../config/trustedVerifiers'
-import { getCardSchema, findDisplayFieldForClaimKey, resolvePresentationDisclosureLabel } from '../../config/cardSchemas'
+import { getCardSchema, findDisplayFieldForClaimKey, collectDisplayFieldMatchKeys, resolvePresentationDisclosureLabel } from '../../config/cardSchemas'
 import {
   isSdJwtKbDisabledForTesting,
   readVerifierDcqlVpTokenShape,
@@ -39,6 +39,7 @@ import {
 } from './presentationCredentialMatch'
 import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
+import { hasUsablePidCredential } from '../credentials/credentialGuard'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
 import { PresentationCredentialUnavailableError, type PresentationMatchFailureKind } from './presentationUnavailable'
 import { isPresentationNonceConsumed } from './presentationRequestReplay'
@@ -141,6 +142,7 @@ export type ResolvePresentationRequestOptions = {
   trustedVerifiers: TrustedVerifier[]
   fetchImpl?: typeof fetch
   fetchIssuerMetadata?: FetchIssuerMetadata
+  walletCredentials?: VerifiableCredentialRecord[]
 }
 
 export type SubmitPresentationResponseOptions = {
@@ -170,6 +172,13 @@ const TRANSCRIPT_TYPE = 'ChulalongkornUniversityTranscript'
 const DRIVING_LICENCE_TYPE = 'DLTDrivingLicence'
 const BIRTH_DATE_PATHS = new Set(['$.birthDate', '$.birthdate', '$.birth_date', '$.dateOfBirth', '$.date_of_birth', '$.dob'])
 const BIRTH_DATE_KEYS = ['birthDate', 'birthdate', 'birth_date', 'dateOfBirth', 'date_of_birth', 'dob']
+
+function hasPidPresentationAnchor(
+  presentableCredentials: VerifiableCredentialRecord[],
+  walletCredentials?: VerifiableCredentialRecord[],
+): boolean {
+  return hasUsablePidCredential(walletCredentials ?? presentableCredentials)
+}
 
 export function isOid4VpAuthorizationRequest(raw: string): boolean {
   if (!raw.trim()) return false
@@ -357,6 +366,13 @@ export async function resolvePresentationRequest(
       primaryMatchFailure,
       noPresentableCredentials: credentials.length === 0,
     })
+  }
+
+  if (
+    !hasPidPresentationAnchor(credentials, options.walletCredentials) &&
+    matchedCredential.type !== THAI_ID_TYPE
+  ) {
+    throw new Error('PresentationPidRequired')
   }
 
   if (effectiveDcqlQuery && isDualFormatDcqlRequest(effectiveDcqlQuery)) {
@@ -1005,7 +1021,7 @@ function readCredentialDisclosure(record: VerifiableCredentialRecord): Presentat
   const credentialLabelByType: Record<string, string> = {
     [THAI_ID_TYPE]: 'Thai National ID',
     [TRANSCRIPT_TYPE]: 'Academic Transcript',
-    [DRIVING_LICENCE_TYPE]: 'Driving Licence',
+    [DRIVING_LICENCE_TYPE]: 'Driver License',
   }
 
   return {
@@ -1077,21 +1093,19 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
     const field = findDisplayFieldForClaimKey(schema.displayFields, requestedKey)
 
     const lookupKeys = field
-      ? [field.key, ...(field.aliases ?? [])]
+      ? collectDisplayFieldMatchKeys(field)
       : [normalizedClaimKeys.get(normalizedRequestedKey) ?? requestedKey]
 
-    const value = field ? readDisplayValue(claims, field) : readClaimText(claims, lookupKeys)
-    if (value === undefined) continue
-
-    const matchedKey =
-      lookupKeys.find((key) => readClaimText(claims, [key]) !== undefined) ??
-      normalizedClaimKeys.get(normalizedRequestedKey) ??
-      requestedKey
+    const value = field
+      ? readPresentationFieldValue(claims, field)
+      : readClaimText(claims, lookupKeys)
+    const present = value !== undefined || hasAnyClaimValue(claims, lookupKeys)
+    if (!present) continue
 
     disclosures.push({
-      key: matchedKey,
-      label: resolvePresentationDisclosureLabel(record.type, matchedKey),
-      value,
+      key: requestedKey,
+      label: resolvePresentationDisclosureLabel(record.type, requestedKey),
+      value: value ?? '',
     })
   }
 

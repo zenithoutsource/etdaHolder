@@ -16,13 +16,13 @@ export type PresentationVerifierMock = {
 
 const PRESENTATION_VERIFIER_MOCKS: Record<string, PresentationVerifierMock> = {
   ThaiNationalID: {
-    verifierName: 'ร้านอาหาร',
-    consentPartyLabel: 'ร้านอาหาร',
+    verifierName: 'ร้านบาร์',
+    consentPartyLabel: 'ร้านบาร์',
     accessLabel: 'การตรวจสอบอายุ',
   },
   DLTDrivingLicence: {
-    verifierName: 'Central',
-    consentPartyLabel: 'Central',
+    verifierName: 'สำนักงานตำรวจแห่งชาติ',
+    consentPartyLabel: 'สำนักงานตำรวจแห่งชาติ',
     accessLabel: 'ใบขับขี่ดิจิทัล',
   },
   ChulalongkornUniversityTranscript: {

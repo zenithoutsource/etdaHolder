@@ -61,6 +61,23 @@ describe('selectSdJwtDisclosures', () => {
     ).toEqual(expect.arrayContaining(['graduationYear', 'graduation_date']))
   })
 
+  test('expandClaimKeysForSdJwtMatch maps driving-licence verifier keys to ISO/wallet claims', () => {
+    expect(
+      expandClaimKeysForSdJwtMatch(['full_name', 'license_type', 'photo'], 'DLTDrivingLicence'),
+    ).toEqual(
+      expect.arrayContaining([
+        'full_name',
+        'given_name',
+        'family_name',
+        'license_type',
+        'licenceClass',
+        'driving_privileges',
+        'photo',
+        'portrait',
+      ]),
+    )
+  })
+
   test('countSdJwtDisclosureSegments ignores KB-looking segments', () => {
     expect(countSdJwtDisclosureSegments(`${issuerJwt}~${nameDisclosure}~aaa.bbb.ccc`)).toBe(1)
   })

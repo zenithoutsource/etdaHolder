@@ -18,7 +18,7 @@ describe('resolvePresentationFailureUi', () => {
       expect.objectContaining({
         kind: 'claims-incomplete',
         title: 'เอกสารไม่ครบข้อมูลที่ผู้ตรวจสอบต้องการ',
-        documentLabel: 'Thai National ID',
+        documentLabel: 'บัตรประชาชน',
         missingClaimLabels: ['รูปถ่าย'],
         showRequestButton: false,
         requestCredentialType: 'ThaiNationalID',
@@ -39,7 +39,7 @@ describe('resolvePresentationFailureUi', () => {
       expect.objectContaining({
         kind: 'document-not-stored',
         title: 'ไม่พบเอกสารที่ใช้ยืนยัน',
-        documentLabel: 'Academic Transcript',
+        documentLabel: 'ใบแสดงผลการเรียน',
         showRequestButton: true,
         requestCredentialType: 'ChulalongkornUniversityTranscript',
       }),
@@ -59,7 +59,7 @@ describe('resolvePresentationFailureUi', () => {
       expect.objectContaining({
         kind: 'metadata-mismatch',
         title: 'เอกสารไม่ตรงกับที่ผู้ตรวจสอบขอ',
-        documentLabel: 'Academic Transcript',
+        documentLabel: 'ใบแสดงผลการเรียน',
       }),
     )
   })
@@ -90,6 +90,20 @@ describe('resolvePresentationFailureUi', () => {
     expect(ui.body).not.toContain('Presentation debug')
     expect(ui.body).not.toContain('invalid_request')
     expect(ui.body).not.toContain('ES256')
+  })
+
+  test('maps PresentationPidRequired to the PID-first presentation screen', () => {
+    expect(resolvePresentationFailureUi(new Error('PresentationPidRequired'))).toEqual(
+      expect.objectContaining({
+        kind: 'pid-required',
+        title: 'ต้องมี PID ก่อน',
+        body: 'กรุณาขอ PID ก่อนแสดงเอกสารอื่น',
+        hint: 'ขอและเก็บบัตรประชาชน (PID) ใน Wallet แล้วลองใหม่อีกครั้ง',
+        showRequestButton: true,
+        requestCredentialType: 'ThaiNationalID',
+        documentLabel: 'บัตรประชาชน',
+      }),
+    )
   })
 
   test('maps format mismatch technical errors', () => {
@@ -151,6 +165,90 @@ describe('resolvePresentationFailureUi', () => {
       expect.objectContaining({
         kind: 'not-presentable',
         showRequestButton: false,
+      }),
+    )
+  })
+
+  test('maps driving-licence document-not-stored to a Thai document label', () => {
+    const error = new PresentationCredentialUnavailableError({
+      message: 'PresentationCredentialMissing: requested credential is not available (no matching rule applied)',
+      reason: 'credential-missing',
+      requestedVctValues: ['https://issuer.example/credentials/DrivingLicense'],
+      requestedCredentialTypes: ['DLTDrivingLicence'],
+      matchFailureKind: 'document-not-stored',
+    })
+
+    expect(resolvePresentationFailureUi(error)).toEqual(
+      expect.objectContaining({
+        kind: 'document-not-stored',
+        title: 'ไม่พบเอกสารที่ใช้ยืนยัน',
+        documentLabel: 'ใบอนุญาตขับขี่',
+        showRequestButton: true,
+        requestCredentialType: 'DLTDrivingLicence',
+      }),
+    )
+  })
+
+  test('maps driving-licence missing claims to Thai presentation labels', () => {
+    const error = new PresentationCredentialUnavailableError({
+      message:
+        'PresentationCredentialMissing: requested credential is not available (DLTDrivingLicence(sd-jwt) failed claims gate [missing claims: portrait, age_over_18])',
+      reason: 'credential-missing',
+      requestedVctValues: ['https://issuer.example/credentials/DrivingLicense'],
+      requestedCredentialTypes: ['DLTDrivingLicence'],
+      matchFailureKind: 'claims-incomplete',
+      unsatisfiedClaimKeys: ['portrait', 'age_over_18'],
+      recordType: 'DLTDrivingLicence',
+    })
+
+    expect(resolvePresentationFailureUi(error)).toEqual(
+      expect.objectContaining({
+        kind: 'claims-incomplete',
+        documentLabel: 'ใบอนุญาตขับขี่',
+        missingClaimLabels: ['รูปถ่าย', 'อายุเกิน 18 ปี'],
+        showRequestButton: false,
+      }),
+    )
+  })
+
+  test('maps verifier driving-licence claim names to schema presentation labels', () => {
+    const error = new PresentationCredentialUnavailableError({
+      message:
+        'PresentationCredentialMissing: requested credential is not available (DLTDrivingLicence(sd-jwt) failed claims gate [missing claims: full_name, license_type, photo])',
+      reason: 'credential-missing',
+      requestedVctValues: ['https://issuer.example/credentials/DrivingLicense'],
+      requestedCredentialTypes: ['DLTDrivingLicence'],
+      matchFailureKind: 'claims-incomplete',
+      unsatisfiedClaimKeys: ['full_name', 'license_type', 'photo'],
+      recordType: 'DLTDrivingLicence',
+    })
+
+    expect(resolvePresentationFailureUi(error)).toEqual(
+      expect.objectContaining({
+        kind: 'claims-incomplete',
+        documentLabel: 'ใบอนุญาตขับขี่',
+        missingClaimLabels: ['ชื่อ-นามสกุล', 'ประเภทใบอนุญาต', 'รูปถ่าย'],
+        showRequestButton: false,
+      }),
+    )
+  })
+
+  test('replaces unmapped missing-claim keys with a Thai fallback', () => {
+    const error = new PresentationCredentialUnavailableError({
+      message:
+        'PresentationCredentialMissing: requested credential is not available (DLTDrivingLicence(sd-jwt) failed claims gate [missing claims: unknown_iso_element])',
+      reason: 'credential-missing',
+      requestedVctValues: ['https://issuer.example/credentials/DrivingLicense'],
+      requestedCredentialTypes: ['DLTDrivingLicence'],
+      matchFailureKind: 'claims-incomplete',
+      unsatisfiedClaimKeys: ['unknown_iso_element'],
+      recordType: 'DLTDrivingLicence',
+    })
+
+    expect(resolvePresentationFailureUi(error)).toEqual(
+      expect.objectContaining({
+        kind: 'claims-incomplete',
+        missingClaimLabels: ['ข้อมูลที่ร้องขอ'],
       }),
     )
   })

@@ -2,7 +2,8 @@ import {
   isIssuerPortalCredentialType,
   type IssuerPortalCredentialType,
 } from '../../config/issuerPortalUrls'
-import { getCardSchema, getCardSchemaForConfigurationId } from '../../config/cardSchemas'
+import { getCardSchemaForConfigurationId } from '../../config/cardSchemas'
+import { readHistoryDocumentLabel } from '../../config/historyDisplayNames'
 
 export type PresentationUnavailableReason = 'credential-missing' | 'metadata-mismatch'
 
@@ -75,13 +76,13 @@ export function readPresentationUnavailableDetails(
   if (!mappedType) {
     return {
       reason: candidate.reason,
-      documentLabel: 'Requested document',
+      documentLabel: 'เอกสารที่ร้องขอ',
     }
   }
 
   return {
     reason: candidate.reason,
-    documentLabel: getCardSchema(mappedType).title,
+    documentLabel: readHistoryDocumentLabel({ credentialType: mappedType }),
     requestCredentialType: mappedType,
   }
 }

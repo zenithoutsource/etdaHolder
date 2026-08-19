@@ -3,10 +3,11 @@ import {
   type IssuerPortalCredentialType,
 } from '../../config/issuerPortalUrls'
 import {
+  findDisplayFieldForClaimKey,
   getCardSchema,
   getCardSchemaForConfigurationId,
-  resolvePresentationDisclosureLabel,
 } from '../../config/cardSchemas'
+import { readHistoryDocumentLabel } from '../../config/historyDisplayNames'
 import { PRESENTATION_REQUEST_ALREADY_USED_MESSAGE } from './presentationIntakeRejection'
 import { WALLET_HOME_COPY } from '../credentials/walletHomeCopy'
 import {
@@ -17,6 +18,7 @@ import {
 export type PresentationFailureKind =
   | PresentationMatchFailureKind
   | 'issuer-pid-missing'
+  | 'pid-required'
   | 'verifier-untrusted'
   | 'issuer-untrusted'
   | 'request-unsupported'
@@ -136,13 +138,25 @@ function resolveCredentialUnavailableFailureUi(
 }
 
 function resolveMessageFailureUi(raw: string, error?: unknown): PresentationFailureUi {
+  if (raw.includes('PresentationPidRequired')) {
+    return {
+      kind: 'pid-required',
+      title: WALLET_HOME_COPY.pidRequiredTitle,
+      body: WALLET_HOME_COPY.pidRequiredToPresentMessage,
+      hint: 'ขอและเก็บบัตรประชาชน (PID) ใน Wallet แล้วลองใหม่อีกครั้ง',
+      documentLabel: readHistoryDocumentLabel({ credentialType: 'ThaiNationalID' }),
+      showRequestButton: true,
+      requestCredentialType: 'ThaiNationalID',
+    }
+  }
+
   if (raw.includes('PresentationCredentialMissing:issuer-pid')) {
     return {
       kind: 'issuer-pid-missing',
       title: 'ยังไม่มีบัตรประชาชนใน Wallet',
       body: 'ผู้ออกเอกสารต้องการบัตรประชาชนก่อนจึงจะดำเนินการต่อได้',
-      hint: 'ขอและเก็บบัตรประชาชน (ThaID) ใน Wallet แล้วลองใหม่อีกครั้ง',
-      documentLabel: 'Thai National ID',
+      hint: 'ขอและเก็บบัตรประชาชน (PID) ใน Wallet แล้วลองใหม่อีกครั้ง',
+      documentLabel: readHistoryDocumentLabel({ credentialType: 'ThaiNationalID' }),
       showRequestButton: true,
       requestCredentialType: 'ThaiNationalID',
     }
@@ -348,7 +362,7 @@ function resolveMessageFailureUi(raw: string, error?: unknown): PresentationFail
         title: 'เอกสารไม่ครบข้อมูลที่ผู้ตรวจสอบต้องการ',
         body: 'มีเอกสารใน Wallet แล้ว แต่ข้อมูลบางส่วนที่ผู้ตรวจสอบขอไม่ได้รับตอนออกเอกสาร',
         hint: 'ติดต่อผู้ออกเอกสารเพื่อออกเอกสารใหม่ที่มีข้อมูลครบ หรือให้ผู้ตรวจสอบปรับรายการข้อมูลที่ขอ',
-        missingClaimLabels: keys,
+        missingClaimLabels: keys.map((key) => resolveUntypedFailureClaimLabel(key)),
         showRequestButton: false,
       }
     }
@@ -376,20 +390,40 @@ function resolveMatchFailureKind(error: PresentationCredentialUnavailableError):
   return 'document-not-stored'
 }
 
+const UNKNOWN_FAILURE_CLAIM_LABEL = 'ข้อมูลที่ร้องขอ'
+
 function readMissingClaimLabels(error: PresentationCredentialUnavailableError): string[] | undefined {
   if (error.unsatisfiedClaimKeys?.length) {
     const documentType = error.recordType ?? error.requestedCredentialTypes[0]
     if (documentType) {
       return error.unsatisfiedClaimKeys.map((key) =>
-        resolvePresentationDisclosureLabel(documentType, key),
+        resolvePresentationFailureClaimLabel(documentType, key),
       )
     }
-    return error.unsatisfiedClaimKeys
+    return error.unsatisfiedClaimKeys.map(() => UNKNOWN_FAILURE_CLAIM_LABEL)
   }
 
   const claimMatch = error.message.match(/missing claims:\s*([^;\]]+)/)
   if (!claimMatch) return undefined
-  return claimMatch[1].split(',').map((key) => key.trim()).filter(Boolean)
+  const keys = claimMatch[1].split(',').map((key) => key.trim()).filter(Boolean)
+  const documentType = error.recordType ?? error.requestedCredentialTypes[0]
+  if (!documentType) return keys.map(() => UNKNOWN_FAILURE_CLAIM_LABEL)
+  return keys.map((key) => resolvePresentationFailureClaimLabel(documentType, key))
+}
+
+function resolvePresentationFailureClaimLabel(documentType: string, claimKey: string): string {
+  return (
+    findDisplayFieldForClaimKey(getCardSchema(documentType).displayFields, claimKey)?.presentationLabel
+    ?? UNKNOWN_FAILURE_CLAIM_LABEL
+  )
+}
+
+function resolveUntypedFailureClaimLabel(claimKey: string): string {
+  for (const documentType of ['DLTDrivingLicence', 'ThaiNationalID', 'ChulalongkornUniversityTranscript']) {
+    const label = resolvePresentationFailureClaimLabel(documentType, claimKey)
+    if (label !== UNKNOWN_FAILURE_CLAIM_LABEL) return label
+  }
+  return UNKNOWN_FAILURE_CLAIM_LABEL
 }
 
 function readDocumentContext(error: PresentationCredentialUnavailableError): {
@@ -408,7 +442,7 @@ function readDocumentContext(error: PresentationCredentialUnavailableError): {
   }
 
   return {
-    documentLabel: getCardSchema(mappedType).title,
+    documentLabel: readHistoryDocumentLabel({ credentialType: mappedType }),
     requestCredentialType: mappedType,
   }
 }

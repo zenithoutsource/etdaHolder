@@ -1,4 +1,4 @@
-import { findDisplayFieldForClaimKey, getCardSchema } from '@/src/config/cardSchemas'
+import { collectDisplayFieldMatchKeys, findDisplayFieldForClaimKey, getCardSchema } from '@/src/config/cardSchemas'
 import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { base64UrlDecodeToString, decodeJwtPayload } from '@/src/utils/jwtUtils'
 
@@ -41,8 +41,7 @@ export function expandClaimKeysForSdJwtMatch(
     if (!documentType) continue
     const field = findDisplayFieldForClaimKey(getCardSchema(documentType).displayFields, key)
     if (!field) continue
-    expanded.add(field.key)
-    for (const alias of field.aliases ?? []) expanded.add(alias)
+    for (const matchKey of collectDisplayFieldMatchKeys(field)) expanded.add(matchKey)
   }
   return [...expanded]
 }
