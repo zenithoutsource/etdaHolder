@@ -1,6 +1,6 @@
 # Same-Device VP Presentation via Verifier Portal — `walletapp://callback` Intake
 
-> **Status:** Approved (2026-07-24)
+> **Status:** Implemented (2026-07-24; direct `openid4vp://` intake hardened 2026-08-07)
 > **Date:** 2026-07-24
 > **Related:** `docs/superpowers/specs/2026-07-20-same-device-authorization-code-issuance-design.md`, `docs/superpowers/specs/2026-07-20-same-device-vp-holder-selective-disclosure-design.md`, `docs/superpowers/specs/2026-07-23-vp-claim-selection-on-info-design.md`, `src/components/Oid4VpDisclosureFlow.tsx`, `src/services/credentials/parseIssuanceCallbackUrl.ts`, `app/callback.tsx`
 

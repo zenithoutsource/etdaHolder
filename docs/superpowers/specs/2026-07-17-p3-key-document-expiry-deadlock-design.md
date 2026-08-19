@@ -1,6 +1,6 @@
 # P3 Key + Document Expiry Deadlock — Design Spec
 
-> **Status:** Approved (design-level, 2026-07-17)
+> **Status:** Superseded for hardware / v2 (2026-08-19) — wallet-wide create-key vs ขอเอกสาร deadlock no longer applies. Hardware P3 mints `k_cred` on **ขอเอกสาร**. Flag-off Ed25519 may still use the ordered P3-1 lane.
 > **Date:** 2026-07-17
 > **Author:** Brainstorming session
 > **Parent:** `docs/superpowers/specs/2026-06-25-p3-wallet-key-renewal-design.md`

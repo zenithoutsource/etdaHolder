@@ -92,8 +92,8 @@ My QR tab
 
 Introduce neutral resolver (e.g. `resolveMyQrPresentationCredential`) with policy:
 
-1. **v1 default credential for My QR tab:** prefer presentable `DLTDrivingLicence` when dual-format ready; fall back to ThaID SD-JWT when driving licence unavailable (preserve existing checkpoint behavior).
-2. **Dual-format ready** means:
+1. **v1 My QR tab is document-agnostic:** the engagement QR is a broker session only. The wallet does **not** pre-select driving licence, ThaID, or any other document. Verifier `POST /verifier/scan` `docType` + deposited DCQL choose the credential after scan. `Oid4VpDisclosureFlow` matches against **all** presentable wallet credentials. Credential-detail **My QR** opens `VpQrModal` for every document; the My QR tab remains the disclosure host after scan.
+2. **Dual-format ready** (used at presentation match time, not QR create) means:
    - `findLogicalCredentialBySdJwtRecordId(record.id)` has both `formats['dc+sd-jwt']` and `formats['mso_mdoc']`.
    - `hasStoredMdoc(record.id)` is true.
    - `isCredentialPresentable(record)` is true.
@@ -180,13 +180,14 @@ The **mdl-mdoc-only NFC v1** slice (uncommitted on `dev` at brainstorming time) 
 
 ### My QR tab (`app/(tabs)/qr.tsx`)
 
-- Replace `resolvePidVpQrCredential` with new resolver (or extend with driving-licence-first policy per §5).
-- Copy strings: indicate driving licence when that credential is active (config-driven; no issuer-specific hardcoded screens).
+- Engagement QR is document-agnostic (no driving-licence-first resolver at QR create).
+- Copy is generic (`สแกน QR Code ของฉัน`); do not name the document type.
+- After scan, `Oid4VpDisclosureFlow` matches Verifier DCQL against all stored credentials (dual-format DL included when requested).
 - Phases unchanged: `loading` → `waiting_scan` → `request_ready` → `Oid4VpDisclosureFlow`.
 
-### Credential detail VP QR (optional v1)
+### Credential detail VP QR
 
-If `showVpQrButton` on driving licence detail exists, it may reuse the same broker session hook — **only if** it already mirrors My QR; otherwise defer to My QR tab only for v1.
+Document-detail **My QR** navigates to the My QR tab. It does not open a document-scoped QR modal and does not pass `credentialId`.
 
 ## 10. Error handling
 

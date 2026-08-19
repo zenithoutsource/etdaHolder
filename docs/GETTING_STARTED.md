@@ -98,7 +98,7 @@ If the app cannot reach the backend, re-run `yarn setup` and confirm `EXPO_PUBLI
 
 - **Optional mobile overrides:** copy `.env.development.local.example` → `.env.development.local` (issuer/verifier URLs, OID4VP trust, SSL pins, broker base URL)
 - **Optional server overrides:** copy `server/.env.development.local.example` → `server/.env.development.local`
-- **Full backend docs:** [server/README.md](../server/README.md) (Wallet Swagger at `/wallet-api/docs`, dev APIs at `/dev/docs`)
+- **Full backend docs:** [server/README.md](../server/README.md) (Wallet Swagger at `/wallet-api/docs`, development APIs at `/wallet-api/dev/docs`)
 - **Architecture & channels:** [ARCHITECTURE.md](./ARCHITECTURE.md)
 - **Production OID4VP verifier trust:** checklist below and `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md`
 

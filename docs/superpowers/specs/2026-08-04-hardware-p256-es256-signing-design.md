@@ -3,7 +3,7 @@
 > **Date:** 2026-08-04  
 > **Status:** Approved for implementation planning (revised after review-agent pass)  
 > **Supersedes (when implemented):** ADR 0008 (Keychain-protected software Ed25519) as the production **holder** signing algorithm and storage model; **conditionally** ADR 0002 when Animo spike fails and custom AndroidKeyStore module is chosen  
-> **Updates:** ADR 0001 (hardware non-extractable restored for protocol holder keys); ADR 0010 (topology kept; algorithm/storage becomes hardware P-256); **P3 renewal journey** (old-key presentation superseded by fresh reissue for this cutover)  
+> **Updates:** ADR 0001 (hardware non-extractable restored for protocol holder keys); ADR 0010 (topology kept; algorithm/storage becomes hardware P-256); **P3 renewal journey** (old-key presentation superseded by fresh reissue **for Ed25519→P-256 cutover only**; post-cutover hardware `k_cred` P3 uses old-VC proof)  
 > **Related:** Stakeholder decision that EdDSA is no longer required for holder keys; Issuer/Verifier accept ES256 for holder proofs; target device Samsung Galaxy A26  
 > **Review input:** Independent grill ([spec review chat](7c08c567-c485-43b0-b406-8e4ef816d18f)); P1–P6 canvas alignment (review pass against `canvases/p1`–`p6` sequence-check canvases); biometric = action-scoped session; iOS production blocked; migration = fresh reissue with no old-key proof; WP remote attestation required for **`k_attest` only**
 
@@ -349,7 +349,7 @@ Remote Android attestation and local hardware enforcement serve **different trus
 The P3 user journeys (`docs/User_Journey/id_card/P3.md`, `docs/User_Journey/ใบขับขี่/P3.md`, `docs/User_Journey/transcript/P3.md`) describe renewal with **presentation of the old VC using the old credential key**. This cutover spec **supersedes** that path for the Ed25519 → hardware P-256 migration:
 
 - **Instead:** fresh issuer reissue without old-key proof (same as P1/P2 issuance with a new hardware `k_cred`).
-- **After cutover is complete:** post-renewal lifecycle (destroy old key, bind new key) still follows ADR 0010 topology; only the **migration** step drops old-key presentation.
+- **After cutover is complete:** later hardware `k_cred` TTL uses P3 old-VC proof (mint pending `k_cred` on **ขอเอกสาร**, present the still-valid old VC, claim with that pending key). Fresh reissue remains for leftover Ed25519 and already-expired documents.
 - Revise the P3 journey docs above to note this supersession during implementation docs.
 
 ### Platform gate (iOS)

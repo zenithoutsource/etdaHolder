@@ -16,7 +16,7 @@ A unified 6-digit secret used for Wallet Account server authentication and local
 
 ## Issuer
 
-A government or institutional authority that issues Verifiable Credentials. Initial issuers: ThaID for national ID, DLT for driving licence, and Chulalongkorn University for transcript credentials. Issuers are identified by DIDs, initially `did:web`.
+A government or institutional authority that issues Verifiable Credentials. Initial issuers: PID for national ID, DLT for driving licence, and Chulalongkorn University for transcript credentials. Issuers are identified by DIDs, initially `did:web`.
 
 ## Verifier
 
@@ -44,7 +44,17 @@ One hardware P-256 key per wallet (`wallet.p256.attest`) used for Wallet Provide
 
 ## Credential Signing Key (`k_cred`)
 
-One key per issued credential (ADR 0010 topology, ADR 0011 algorithm). Default on Android is hardware P-256 (`alg: ES256`, `did:key` multicodec `0x1200`). The flag-off path is a Keychain-protected Ed25519 seed (`alg: EdDSA`, multicodec `[0xed, 0x01]`). OID4VCI PoP JWTs, OID4VP presentation tokens, and SD-JWT KB-JWTs for that credential are signed with its key. Created at issuance without Wallet Provider WUA. Destroyed on P3 renewal or P6 lifecycle actions that remove the credential's cryptographic binding. Leftover Ed25519 cards while hardware signing is on must be freshly reissued.
+One key per issued credential (ADR 0010 topology, ADR 0011 algorithm). Default on Android is hardware P-256 (`alg: ES256`, `did:key` multicodec `0x1200`). The flag-off path is a Keychain-protected Ed25519 seed (`alg: EdDSA`, multicodec `[0xed, 0x01]`). OID4VCI PoP JWTs, OID4VP presentation tokens, and SD-JWT KB-JWTs for that credential are signed with its key. Created at issuance without Wallet Provider WUA. Destroyed on P3 renewal or P6 lifecycle actions that remove the credential's cryptographic binding. Leftover Ed25519 cards while hardware signing is on must use Fresh reissue.
+
+## P3 renewal
+
+Continuity issuance of a replacement credential after that credential’s `k_cred` expires, while the old VC is still valid as a document. The Holder proves the old VC with the old `k_cred`, then a new `k_cred` binds the new VC. Not `k_attest` rotation and not a wallet-wide `did:key` rotate.
+_Avoid_: Fresh reissue; wallet-wide key rotation; destroying `k_attest` as part of this flow.
+
+## Fresh reissue
+
+Issuance without old-key proof. Used for leftover Ed25519 cards while hardware signing is on, and for documents that have already expired.
+_Avoid_: P3 renewal.
 
 ## Holder DID
 
@@ -102,8 +112,18 @@ _Avoid_: PID Presentation Consent; Wallet PIN unlock; the success screen after s
 
 ## PID Presentation Consent
 
-The Holder's approval to present the PID VC in an OID4VP Authorization Request (Issuer or Verifier). Distinct from Holder Confirmation (issuance) and from Wallet PIN.
-_Avoid_: Treating DOPA / issuance confirm as this step; a second PIN prompt in front of the sign-time gate.
+The Holder's approval to present the PID VC in an OID4VP Authorization Request (Issuer or Verifier). Distinct from Holder Confirmation (issuance), from Wallet PIN, and from NFC Presentment Consent.
+_Avoid_: Treating DOPA / issuance confirm as this step; a second PIN prompt in front of the sign-time gate; NFC Presentment Consent.
+
+## Issuer identity verification
+
+The Issuer acting as Verifier, requesting a PID VP during P2 before issuing another VC.
+_Avoid_: Holder Confirmation; DOPA; Verifier QR presentation of PID.
+
+## NFC Presentment Consent
+
+The Holder's Accept of the reader-profile disclosure ceiling before the Wallet arms HCE for ISO 18013-5 presentment. Distinct from PID Presentation Consent (OID4VP) and from the sign-time biometric on DeviceResponse.
+_Avoid_: Calling the NFC DeviceResponse a Verifiable Presentation (VP); treating this as PID Presentation Consent; a second consent screen after DeviceRequest; Holder claim toggles or OID4VP selective-disclosure UI on NFC.
 
 ## Transaction Code (`tx_code`)
 
@@ -157,4 +177,4 @@ TypeScript API client generated from the company's Swagger/OpenAPI spec via Orva
 
 ## Config-Driven UI
 
-Credential card rendering is controlled by `CardSchemaConfig` entries, not hardcoded screen components. Initial schemas cover ThaID, DLT Driving Licence, and Chulalongkorn University Transcript.
+Credential card rendering is controlled by `CardSchemaConfig` entries, not hardcoded screen components. Initial schemas cover PID, DLT Driving Licence, and Chulalongkorn University Transcript.

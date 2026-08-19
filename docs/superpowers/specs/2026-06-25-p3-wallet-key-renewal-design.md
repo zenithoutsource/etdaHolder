@@ -4,7 +4,7 @@
 
 > **Status:** Approved (canonical — merged 2026-06-26)
 > **Initial date:** 2026-06-25
-> **Last updated:** 2026-06-26
+> **Last updated:** 2026-08-19
 > **Author:** Brainstorming sessions (2026-06-25, 2026-06-26)
 
 This document is the **single source of truth** for P3 wallet key expiry and credential renewal. It merges the 2026-06-26 async-flow and UX-flow design drafts (removed after merge).
@@ -21,6 +21,7 @@ This document is the **single source of truth** for P3 wallet key expiry and cre
 | 2026-06-26 | **Implementation refinements:** realtime key-expiry modal (`WalletKeyExpiryHost` + `useWalletKeyExpired`); Active ribbon/badge only while old VC cleanup is pending (`shouldShowRenewedActiveBadge`); hide revoke/delete menu during rotation flow (`shouldHideCredentialActionMenu`); `confirmOldCredentialCleanup` clears `renewed-active` on replacement; home dismissible banner removed (cleanup CTA on old VC detail only) |
 | 2026-07-13 | **OID4VP old-VC auth (sequence steps 5–6):** dual-key retention — `forceRotateWalletKey` keeps previous Ed25519 seed in a second Keychain slot; `submitRenewalRequest` receives Issuer OID4VP `authorizationRequest`, silently presents the renewing old VC with previous-key PoP (`renewalOid4VpPresentation`), then polls/`offer-ready` auto-claim with **new** did:key PoP. Dev Issuer: `POST /wallet/renewal-vp/response` gates `offer-ready`. Previous seed wiped via `clearWalletKeyRotationRecord` / `clearPreviousWalletKey` when renewal work completes. |
 | 2026-07-17 | **Key + document expiry deadlock (UX lane):** when `did:key` TTL and documents compete, Wallet orders P3 sequence — create new `did:key` first when no `wallet.key_rotation`, then holder taps **ขอเอกสาร**. While rotation record exists, suppress create-key modal and steer to finish renewals/cleanup (second rotate remains hard-blocked). Details: `docs/superpowers/specs/2026-07-17-p3-key-document-expiry-deadlock-design.md`. |
+| 2026-08-19 | **Hardware P3 old-VC (post-cutover):** per-credential `k_cred` TTL (same `WALLET_KEY` env vars, `createdAt`). **ขอเอกสาร** mints a pending hardware `k_cred`, silent old-VC OID4VP with that card’s old key, Receive claims with the **same** pending key, Holder-confirm cleanup destroys the old alias. Fresh reissue stays leftover Ed25519 + document-expired. Retire v2/hardware wallet-wide P3-1. Wallet-wide rotate remains flag-off Ed25519 only. |
 
 ---
 
