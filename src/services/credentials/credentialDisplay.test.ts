@@ -1,4 +1,5 @@
-import { readCredentialDetailDisplay, readCredentialHolderProfile, readCredentialSummaryDisplay } from './credentialDisplay'
+import { getCardSchema } from '../../config/cardSchemas'
+import { readCredentialDetailDisplay, readCredentialHolderProfile, readCredentialSummaryDisplay, readPresentationFieldValue } from './credentialDisplay'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 const drivingLicenceRecord: VerifiableCredentialRecord = {
@@ -43,7 +44,7 @@ describe('credentialDisplay', () => {
   test('builds a schema-driven driving licence summary without transcript labels', () => {
     const summary = readCredentialSummaryDisplay(drivingLicenceRecord)
 
-    expect(summary.title).toBe('Driving Licence')
+    expect(summary.title).toBe('Driver License')
     expect(summary.documentTitle).toBe('DRIVING LICENSE')
     expect(summary.primaryText).toBe('Mali Somsri')
     expect(summary.rows).toEqual([
@@ -106,5 +107,11 @@ describe('credentialDisplay', () => {
       thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
       birthDate: '10 มิ.ย. 2530',
     })
+  })
+
+  test('composes driving-licence given and family names for a full_name presentation field', () => {
+    const fullNameField = getCardSchema('DLTDrivingLicence').displayFields.find((field) => field.key === 'fullName')
+    expect(fullNameField).toBeDefined()
+    expect(readPresentationFieldValue(drivingLicenceRecord.claims, fullNameField!)).toBe('Mali Somsri')
   })
 })

@@ -1,7 +1,7 @@
-import { getCardSchema, type CardSchemaConfig, type DisplayField } from '../../config/cardSchemas'
+import { getCardSchema, type CardSchemaConfig, type DisplayField, collectDisplayFieldMatchKeys } from '../../config/cardSchemas'
 import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
-import { isHiddenClaimKey, readClaimText, stringifyClaim } from './claimFormatting'
+import { hasAnyClaimValue, isHiddenClaimKey, readClaimText, stringifyClaim } from './claimFormatting'
 
 export type CredentialDisplayRow = {
   key: string
@@ -125,13 +125,33 @@ export function readDisplayValue(claims: Record<string, unknown>, field: Display
   return readClaimText(claims, [field.key, ...(field.aliases ?? [])])
 }
 
-export function readHolderName(record: VerifiableCredentialRecord): string {
-  return [
-    readClaimText(record.claims, ['givenName', 'given_name', 'firstName', 'first_name']),
-    readClaimText(record.claims, ['familyName', 'family_name', 'lastName', 'last_name']),
+export function readComposedPersonName(claims: Record<string, unknown>): string | undefined {
+  const name = [
+    readClaimText(claims, ['givenName', 'given_name', 'firstName', 'first_name']),
+    readClaimText(claims, ['familyName', 'family_name', 'lastName', 'last_name']),
   ]
     .filter(Boolean)
     .join(' ')
+    .trim()
+  return name || undefined
+}
+
+export function readPresentationFieldValue(
+  claims: Record<string, unknown>,
+  field: DisplayField,
+): string | undefined {
+  if (normalizeClaimKey(field.key) === 'fullname') {
+    return readClaimText(claims, [field.key, ...(field.aliases ?? [])]) ?? readComposedPersonName(claims)
+  }
+
+  const text = readDisplayValue(claims, field)
+  if (text) return text
+  if (hasAnyClaimValue(claims, collectDisplayFieldMatchKeys(field))) return ''
+  return undefined
+}
+
+export function readHolderName(record: VerifiableCredentialRecord): string {
+  return readComposedPersonName(record.claims) ?? ''
 }
 
 function readRows(claims: Record<string, unknown>, fields: DisplayField[]): CredentialDisplayRow[] {
