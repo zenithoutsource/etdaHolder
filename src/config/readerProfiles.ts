@@ -42,10 +42,14 @@ const TRANSCRIPT_COMPANION_CLAIMS = [
   'graduation_date',
 ]
 
+/** ACR1311 request/ceiling: names + DOB (host derives over-18) + licence class + issue/expiry. Do not request missing ISO items such as portrait or age_over_18 — Multipaz aborts with session status 20. */
 const MDL_MDOC_FIELDS: ReaderProfileField[] = [
-  { namespace: 'org.iso.18013.5.1', identifier: 'family_name' },
   { namespace: 'org.iso.18013.5.1', identifier: 'given_name' },
+  { namespace: 'org.iso.18013.5.1', identifier: 'family_name' },
   { namespace: 'org.iso.18013.5.1', identifier: 'birth_date' },
+  { namespace: 'org.iso.18013.5.1', identifier: 'driving_privileges' },
+  { namespace: 'org.iso.18013.5.1', identifier: 'issue_date' },
+  { namespace: 'org.iso.18013.5.1', identifier: 'expiry_date' },
 ]
 
 /** Built-in reader profiles. Extend this registry for additional vendors. */

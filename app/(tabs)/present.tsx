@@ -1,19 +1,32 @@
+/**
+ * Hidden NFC presentment — ISO 18013-5 static handover + HCE for one credential.
+ * Journey: P4 proximity (tap-only; no holder QR on waiting).
+ * Copy: readerProfiles + cardSchemas labels; waiting Thai is inline in WaitingForTapPanel.
+ * Layout: PreTapConsentPanel, WaitingForTapPanel, proximity PresentationResultPanel.
+ * Next: Wallet via useReturnToWallet.
+ * Map: docs/CODEMAPS/frontend.md#present-and-nfc
+ */
+
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '@/src/components/AppButton'
+import { PreTapConsentPanel } from '@/src/components/proximity/PreTapConsentPanel'
 import { PresentationResultPanel } from '@/src/components/proximity/PresentationResultPanel'
 import { WaitingForTapPanel } from '@/src/components/proximity/WaitingForTapPanel'
 import { WalletHeader } from '@/src/components/WalletHeader'
+import { getCardSchema } from '@/src/config/cardSchemas'
 import { HCE_ARM_WINDOW_MS } from '@/src/config/dualFormatPolicy'
 import { getReaderProfileForDocumentType } from '@/src/config/readerProfiles'
 import { useAndroidBackNavigation } from '@/src/hooks/useAndroidBackNavigation'
 import { useReturnToWallet } from '@/src/hooks/useReturnToWallet'
 import { useStoredCredentials } from '@/src/hooks/useStoredCredentials'
 import { isCredentialDocumentExpired } from '@/src/services/credentials/credentialDocumentExpiry'
+import { canPresentCredentialType, readPidGateStatus } from '@/src/services/credentials/credentialGuard'
 import { isCredentialPresentable } from '@/src/services/credentials/credentialLifecycle'
+import { readPidGateUserCopy } from '@/src/services/credentials/pidGateDialog'
 import { WALLET_HOME_COPY } from '@/src/services/credentials/walletHomeCopy'
 import { credentialRequiresHardwareReissue } from '@/src/services/crypto/hardwareCredentialSigningKey'
 import { logWalletError } from '@/src/services/debug/walletLogger'
@@ -35,15 +48,22 @@ export default function PresentScreen() {
   const requiresHardwareReissue = credential
     ? credentialRequiresHardwareReissue(credential.id)
     : false
+  const isPidPresentationBlocked = credential
+    ? !canPresentCredentialType(credential.type, credentials)
+    : false
+  const pidGateStatus = readPidGateStatus(credentials)
   const isPresentationBlocked =
     isDocumentExpired ||
     requiresHardwareReissue ||
+    isPidPresentationBlocked ||
     (credential ? !isCredentialPresentable(credential) : false)
   const status = useProximityStore((state) => state.status)
   const sharingMode = useProximityStore((state) => state.sharingMode)
-  const sharedFields = useProximityStore((state) => state.sharedFields)
+  const approvedMdocFields = useProximityStore((state) => state.approvedMdocFields)
   const error = useProximityStore((state) => state.error)
   const openPresentation = useProximityStore((state) => state.openPresentation)
+  const approvePresentation = useProximityStore((state) => state.approvePresentation)
+  const denyPresentation = useProximityStore((state) => state.denyPresentation)
   const reset = useProximityStore((state) => state.reset)
 
   const [mdocAvailable, setMdocAvailable] = useState<boolean | null>(null)
@@ -101,70 +121,88 @@ export default function PresentScreen() {
 
   const exitFlow = useAndroidBackNavigation(handleDone)
 
+  const handleAccept = useCallback(() => {
+    if (!approvedMdocFields || approvedMdocFields.length === 0) return
+    void approvePresentation(approvedMdocFields)
+  }, [approvePresentation, approvedMdocFields])
+
+  const handleDecline = useCallback(() => {
+    denyPresentation()
+    exitFlow()
+  }, [denyPresentation, exitFlow])
+
   const readerProfile = credential
     ? getReaderProfileForDocumentType(credential.type, sharingMode)
     : undefined
-  const ceilingLabels =
-    readerProfile?.profileId === 'mdl-acr1311u-n2-mdoc-only'
-      ? ['family name', 'given name', 'date of birth']
-      : (readerProfile?.mdocFields.map((field) => field.identifier.replace(/_/g, ' ')) ?? [])
 
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
       <WalletHeader title="NFC" onBack={exitFlow} />
-      <ScrollView className="flex-1 bg-surface" contentContainerClassName="px-4 py-6">
-        {credential ? (
-          <Text className="mb-4 text-center text-sm font-medium text-ink">
-            {credential.type}
-          </Text>
-        ) : null}
-
-        {credential && isPresentationBlocked ? (
-          <View className="rounded-[12px] bg-white px-5 py-6">
-            <Text className="text-center text-base font-semibold text-ink">
-              {requiresHardwareReissue
-                ? WALLET_HOME_COPY.hardwareReissueRequiredMessage
-                : isDocumentExpired
-                  ? WALLET_HOME_COPY.documentExpiredMessage
-                  : WALLET_HOME_COPY.myQrNoEligibleDocumentMessage}
+      {status === 'complete' ? (
+        <PresentationResultPanel onDone={exitFlow} />
+      ) : (
+        <ScrollView className="flex-1 bg-surface" contentContainerClassName="px-4 py-6">
+          {credential && status !== 'awaiting-consent' ? (
+            <Text className="text-2xl mb-4 text-center font-bold text-ink">
+              {getCardSchema(credential.type).title}
             </Text>
-            <View className="mt-4 items-center">
-              <AppButton variant="solid-block" label="Back" onPress={exitFlow} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
+          ) : null}
+
+          {credential && isPresentationBlocked ? (
+            <View className="rounded-[12px] bg-white px-5 py-6">
+              <Text className="text-center text-base font-semibold text-ink">
+                {requiresHardwareReissue
+                  ? WALLET_HOME_COPY.hardwareReissueRequiredMessage
+                  : isDocumentExpired
+                    ? WALLET_HOME_COPY.documentExpiredMessage
+                    : isPidPresentationBlocked
+                      ? pidGateStatus === 'ready'
+                        ? WALLET_HOME_COPY.pidRequiredToPresentMessage
+                        : readPidGateUserCopy(pidGateStatus, 'present').message
+                      : WALLET_HOME_COPY.myQrNoEligibleDocumentMessage}
+              </Text>
+              <View className="mt-4 items-center">
+                <AppButton variant="solid-block" label="Back" onPress={exitFlow} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
+              </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {mdocAvailable === false && !isPresentationBlocked ? (
-          <View className="rounded-[12px] bg-white px-5 py-6">
-            <Text className="text-center text-base font-semibold text-ink">
-              This document cannot be presented over NFC.
-            </Text>
-            <View className="mt-4 items-center">
-              <AppButton variant="solid-block" label="Back" onPress={exitFlow} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
+          {mdocAvailable === false && !isPresentationBlocked ? (
+            <View className="rounded-[12px] bg-white px-5 py-6">
+              <Text className="text-center text-base font-semibold text-ink">
+                This document cannot be presented over NFC.
+              </Text>
+              <View className="mt-4 items-center">
+                <AppButton variant="solid-block" label="Back" onPress={exitFlow} className="rounded-xl bg-ink px-8 py-3" textClassName="text-sm font-semibold text-white" />
+              </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
 
-        {status === 'approved' ? (
-          <WaitingForTapPanel preparing onCancel={exitFlow} />
-        ) : null}
+          {status === 'awaiting-consent' && readerProfile ? (
+            <PreTapConsentPanel
+              profile={readerProfile}
+              onAccept={handleAccept}
+              onDecline={handleDecline}
+            />
+          ) : null}
 
-        {status === 'hce-armed' || status === 'engaged' ? (
-          <WaitingForTapPanel ceilingLabels={ceilingLabels} onCancel={exitFlow} />
-        ) : null}
+          {status === 'approved' ? (
+            <WaitingForTapPanel preparing onCancel={exitFlow} />
+          ) : null}
 
-        {status === 'complete' && sharedFields ? (
-          <PresentationResultPanel sharedFields={sharedFields} onDone={exitFlow} />
-        ) : null}
+          {status === 'hce-armed' || status === 'engaged' ? (
+            <WaitingForTapPanel onCancel={exitFlow} />
+          ) : null}
 
-        {status === 'error' ? (
-          <View className="rounded-[12px] bg-white px-5 py-6">
-            <Text className="text-center text-base font-semibold text-danger">
-              {toFriendlyError(error ?? 'Connection lost. Try again.')}
-            </Text>
-          </View>
-        ) : null}
-      </ScrollView>
+          {status === 'error' ? (
+            <View className="rounded-[12px] bg-white px-5 py-6">
+              <Text className="text-center text-base font-semibold text-danger">
+                {toFriendlyError(error ?? 'Connection lost. Try again.')}
+              </Text>
+            </View>
+          ) : null}
+        </ScrollView>
+      )}
     </SafeAreaView>
   )
 }

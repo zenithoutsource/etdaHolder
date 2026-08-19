@@ -1,5 +1,13 @@
+/**
+ * NFC presentment state machine (idle → consent → HCE armed → complete/error).
+ * Journey: P4 Present route; arm/disarm via proximityArmSession.
+ * Copy: disclosure labels from cardSchemas + readerProfiles.
+ * Map: docs/CODEMAPS/frontend.md#present-and-nfc
+ */
+
 import { create } from 'zustand'
 
+import { resolvePresentationDisclosureLabel } from '@/src/config/cardSchemas'
 import type { ReaderSharingMode } from '@/src/config/readerProfiles'
 import { getReaderProfileForDocumentType, listMdocFieldKeysFromProfile } from '@/src/config/readerProfiles'
 import { logWalletError } from '@/src/services/debug/walletLogger'
@@ -85,12 +93,16 @@ function toUserFacingError(error: unknown): string {
   return 'Connection lost. Try again.'
 }
 
+function mapProximityDisclosureLabels(credentialType: string, fieldKeys: string[]): string[] {
+  return fieldKeys.map((key) => resolvePresentationDisclosureLabel(credentialType, key))
+}
+
 function readProximityDisclosureLabels(credentialId: string, sharingMode: ReaderSharingMode): string[] {
   const record = readStoredCredentialById(credentialId)
   if (!record) return []
   const profile = getReaderProfileForDocumentType(record.type, sharingMode)
   if (!profile) return []
-  return listMdocFieldKeysFromProfile(profile)
+  return mapProximityDisclosureLabels(record.type, listMdocFieldKeysFromProfile(profile))
 }
 
 export const useProximityStore = create<ProximityState & ProximityActions>((set, get) => ({
@@ -117,7 +129,7 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
       return
     }
     set({
-      status: 'approved',
+      status: 'awaiting-consent',
       selectedCredentialId: credentialId,
       sharingMode,
       approvedMdocFields,
@@ -125,7 +137,6 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
       deviceEngagementUri: null,
       error: null,
     })
-    void get().approvePresentation(approvedMdocFields)
   },
 
   approvePresentation: async (approvedMdocFields) => {
@@ -174,7 +185,7 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
               recordNfcPresentationSuccess(
                 record,
                 event.sharedFields.length > 0
-                  ? event.sharedFields
+                  ? mapProximityDisclosureLabels(record.type, event.sharedFields)
                   : readProximityDisclosureLabels(credentialId, sharingMode),
               )
             }
@@ -182,9 +193,8 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
           set({ status: 'complete', sharedFields: event.sharedFields })
           activeUnsubscribe?.()
           activeUnsubscribe = null
-          void disarmProximityPresentation().catch((e) =>
-            logWalletError('proximity-store', 'complete-disarm-failed', e),
-          )
+          // Keep HCE armed so GET RESPONSE can finish while the phone stays on
+          // the reader. Done / unmount still disarm via reset().
         },
         onError: (event: { code: string; message: string }) => {
           logWalletError('proximity-store', 'presentation error', new Error(`${event.code}: ${event.message}`))

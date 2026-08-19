@@ -31,5 +31,8 @@ test('resolves mDL mdoc-only profile for DLTDrivingLicence', () => {
     'org.iso.18013.5.1.family_name',
     'org.iso.18013.5.1.given_name',
     'org.iso.18013.5.1.birth_date',
+    'org.iso.18013.5.1.driving_privileges',
+    'org.iso.18013.5.1.issue_date',
+    'org.iso.18013.5.1.expiry_date',
   ])
 })
