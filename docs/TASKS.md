@@ -1,5 +1,17 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-20 (PID names, hide religion, DL OID4VP card)
+
+- Holder-facing names on driving licence and transcript (receive, detail, OID4VP info)
+  overlay stored PID (`ThaiNationalID`) Thai + English via `resolveDisplayHolderProfile`.
+  English is Latin-only; missing English shows `-` (no sample/mock names).
+- PID receive/detail hide ศาสนา because ThaID does not send religion. Schema still
+  has `religion` for Verifier matching.
+- OID4VP info uses the same document card as wallet detail for PID, DL, and
+  transcript. Driving-licence ประเภทยานพาหนะ maps ISO `B` on the card; VP token
+  still sends the raw claim.
+- Verification: `yarn test src/services/credentials/credentialDisplay.test.ts src/services/credentials/drivingLicenceDisplay.test.ts src/components/ThaiIdReceivePanel.test.tsx src/components/CredentialDocumentDetailCard.test.tsx src/components/DrivingLicenceDocumentCard.test.tsx src/components/DrivingLicencePreviewPanel.test.tsx src/components/TranscriptPreviewPanel.test.tsx src/components/PresentationInfoPanel.test.tsx --no-coverage`.
+
 ### Session 2026-08-19 (Driving-licence OID4VP claim aliases)
 
 - Verifier paths `full_name`, `license_type`, and `photo` now match an issued
@@ -1798,7 +1810,7 @@ Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operat
 
 [x] **P1-2.2** After idcard QR resolves, show "ยืนยันตัวตนผ่าน ThaID" interstitial screen (ThaID logo, "ยืนยัน" button) before credential acquisition — represents LoA High identity verification redirect to ThaID app; simulate with a proceed button that continues the OID4VCI flow (`app/(tabs)/scan.tsx` new `thaIdVerify` phase or separate screen)
 [x] **P1-2.3** After ThaID verification returns, show Holder Confirmation matching `P1-2.3-ThaID_success_page.png`: issuer seal/logo (กรมการปกครอง), document name (บัตรประชาชน), receiving unit, green checkmark ribbon, "ยืนยัน" button — replaces generic preview for ThaiNationalID offers
-[x] **P1-3** After tapping ยืนยัน on P1-2.3, show full credential data preview before final save — reference `P1-3-Receive_page.png` / `P1-2.5-idcard_vc.png`: ID CARD header band, holder photo, ชื่อ-นามสกุล (Thai + English romanised), เลขบัตรประจำตัวประชาชน (masked), วันเดือนปีเกิด, ศาสนา, ที่อยู่ตามทะเบียนบ้าน, "ยืนยัน" button that triggers `saveCredentialRecord()` and navigates to Wallet home
+[x] **P1-3** After tapping ยืนยัน on P1-2.3, show full credential data preview before final save — reference `P1-3-Receive_page.png` / `P1-2.5-idcard_vc.png`: ID CARD header band, holder photo, ชื่อ-นามสกุล (Thai + English romanised), เลขบัตรประจำตัวประชาชน (masked), วันเดือนปีเกิด, ศาสนา, ที่อยู่ตามบัตรประชาชน, "ยืนยัน" button that triggers `saveCredentialRecord()` and navigates to Wallet home
 [x] **P1-2.4** History Log screen lists issuance/presentation events; each row: issuer logo, issuer name, document type, date/time, status badge, action label — reference `P1-2.4-history_log_page.png` (10 records: ธนาคาร, โรงพยาบาล, 7-Eleven, Central/Driving License)
 
 ### 3.3 QR Scanner and NFC

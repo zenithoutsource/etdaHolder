@@ -28,7 +28,6 @@ export function ThaiIdReceivePanel({ record, onConfirm }: Props) {
   }
   const nationalId = findValue('nationalId')
   const birthDate = findValue('birthDate') ?? profile.birthDate
-  const religion = findValue('religion')
   const address = findValue('address')
   const expiryDate = findValue('expiryDate')
 
@@ -40,9 +39,9 @@ export function ThaiIdReceivePanel({ record, onConfirm }: Props) {
             <DocumentCardLayout
               primaryColor={schema.primaryColor}
               banner={<Text className="text-[15px] font-extrabold text-white">{schema.documentTitle}</Text>}
-              hero={<View className="flex-row"><Image testID="thai-id-receive-photo" source={portraitImage} className="h-[114px] w-24 rounded-lg" resizeMode="cover" /><View className="ml-4 flex-1 justify-center"><Text className="text-[11px] text-gray-cool">ชื่อ - นามสกุล</Text><Text className="text-[14px] font-extrabold text-navy-deep">{profile.thaiName ?? '-'}</Text>{profile.englishName ? <Text className="text-[12px] text-gray-cool">{profile.englishName}</Text> : null}<Text className="mt-3 text-[11px] text-gray-cool">เลขบัตรประจำตัวประชาชน</Text><Text className="text-[14px] font-extrabold text-navy-deep">{nationalId ?? '-'}</Text></View></View>}
-              leftColumn={<View><CredentialFieldRow label="วันเดือนปีเกิด" value={birthDate} divider={false} /><CredentialFieldRow label="ที่อยู่ตามทะเบียนบ้าน" value={address} /></View>}
-              rightColumn={<View><CredentialFieldRow label="ศาสนา" value={religion} divider={false} /><CredentialFieldRow label="วันหมดอายุ" value={expiryDate} /></View>}
+              hero={<View className="flex-row"><Image testID="thai-id-receive-photo" source={portraitImage} className="h-[114px] w-24 rounded-lg" resizeMode="cover" /><View className="ml-4 flex-1 justify-center"><Text className="text-[11px] text-gray-cool">ชื่อ - นามสกุล</Text><Text className="text-[14px] font-extrabold text-navy-deep">{profile.thaiName ?? '-'}</Text><Text className="text-[12px] text-gray-cool">{profile.englishName ?? '-'}</Text><Text className="mt-3 text-[11px] text-gray-cool">เลขบัตรประจำตัวประชาชน</Text><Text className="text-[14px] font-extrabold text-navy-deep">{nationalId ?? '-'}</Text></View></View>}
+              leftColumn={<View><CredentialFieldRow label="วันเดือนปีเกิด" value={birthDate} divider={false} /><CredentialFieldRow label="ที่อยู่ตามบัตรประชาชน" value={address} /></View>}
+              rightColumn={<View><CredentialFieldRow label="วันหมดอายุ" value={expiryDate} divider={false} /></View>}
             />
           </View>
           <AppButton variant="solid-block" label="ยืนยัน" onPress={onConfirm} className="mt-5 h-11 !bg-success" />

@@ -188,11 +188,8 @@ const PRIMARY_ID_KEYS = [
   "idNumber",
 ];
 const EMPTY_VALUE = "-";
-const MOCK_ID_CARD_ENGLISH_NAME = "Ms. Thodsopp Eekkasandigital";
-const MOCK_TRANSCRIPT_ENGLISH_NAME = "Ms. Thodsopp Eekkasandigital";
 const MOCK_ID_CARD_ADDRESS =
   "123/45 ถนนราชดำเนิน แขวงพระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200";
-const MOCK_ID_CARD_RELIGION = "พุทธ";
 
 function pickPrimaryId(
   rows: CredentialDisplayRow[],
@@ -302,8 +299,7 @@ function TranscriptDocumentDetailCard({
   const expiryValue =
     formatThaiDate(expiryDate?.value) ?? formatThaiDate(display.expiresAt);
   const thaiName = holderProfile?.thaiName;
-  const englishName =
-    holderProfile?.englishName || MOCK_TRANSCRIPT_ENGLISH_NAME;
+  const englishName = holderProfile?.englishName;
   const primaryName =
     thaiName ||
     (englishName && englishName !== display.title ? englishName : undefined);
@@ -431,7 +427,6 @@ function IdCardDocumentDetailCard({
     ["birthDate", "birthdate", "dateOfBirth", "dob"],
     /birth|dob|เกิด/i,
   );
-  const religion = findRow(rows, ["religion"], /religion|ศาสนา/i);
   const address = findRow(
     rows,
     ["address", "registeredAddress", "registered_address"],
@@ -450,7 +445,7 @@ function IdCardDocumentDetailCard({
   const expiryValue =
     formatThaiDate(expiryDate?.value) ?? formatThaiDate(display.expiresAt);
   const thaiName = holderProfile?.thaiName || display.primaryText;
-  const englishName = holderProfile?.englishName || MOCK_ID_CARD_ENGLISH_NAME;
+  const englishName = holderProfile?.englishName;
   const birthDateValue = birthDate?.value ?? holderProfile?.birthDate;
 
   return (
@@ -525,17 +520,13 @@ function IdCardDocumentDetailCard({
                   value={formatThaiDate(birthDateValue)}
                 />
                 <DocumentCardDetailValue
-                  label="ที่อยู่ตามทะเบียนบ้าน"
+                  label="ที่อยู่ตามบัตรประชาชน"
                   value={address?.value || MOCK_ID_CARD_ADDRESS}
                 />
               </View>
             }
             rightColumn={
               <View testID="document-detail-right-column" className="gap-3">
-                <DocumentCardDetailValue
-                  label="ศาสนา"
-                  value={religion?.value || MOCK_ID_CARD_RELIGION}
-                />
                 <DocumentCardDetailValue
                   label="วันอนุญาต / Issue Date"
                   value={formatThaiDate(issueDate?.value)}
@@ -563,6 +554,7 @@ function DrivingLicenceDocumentDetailCard({
   record,
   onOpenQr,
   onPresentViaNfc,
+  holderProfile,
   inactiveState,
   renewalBadgeLabel,
   renewalState,
@@ -578,7 +570,11 @@ function DrivingLicenceDocumentDetailCard({
         renewalState={renewalState}
         record={record}
       >
-        <DrivingLicenceDocumentCard record={record} bannerAction={bannerAction} />
+        <DrivingLicenceDocumentCard
+          record={record}
+          holderProfile={holderProfile}
+          bannerAction={bannerAction}
+        />
       </DocumentCardShell>
 
       <DocumentActionRow

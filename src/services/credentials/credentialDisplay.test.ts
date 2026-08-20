@@ -1,5 +1,11 @@
 import { getCardSchema } from '../../config/cardSchemas'
-import { readCredentialDetailDisplay, readCredentialHolderProfile, readCredentialSummaryDisplay, readPresentationFieldValue } from './credentialDisplay'
+import {
+  readCredentialDetailDisplay,
+  readCredentialHolderProfile,
+  readCredentialSummaryDisplay,
+  readPresentationFieldValue,
+  resolveDisplayHolderProfile,
+} from './credentialDisplay'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 const drivingLicenceRecord: VerifiableCredentialRecord = {
@@ -113,5 +119,58 @@ describe('credentialDisplay', () => {
     const fullNameField = getCardSchema('DLTDrivingLicence').displayFields.find((field) => field.key === 'fullName')
     expect(fullNameField).toBeDefined()
     expect(readPresentationFieldValue(drivingLicenceRecord.claims, fullNameField!)).toBe('Mali Somsri')
+  })
+
+  test('does not treat Thai given and family names as the English name', () => {
+    expect(
+      readCredentialHolderProfile({
+        ...thaiIdRecord,
+        claims: {
+          givenName: 'พิชญา',
+          familyName: 'รุ่งเรืองกิจ',
+        },
+      }),
+    ).toEqual({
+      thaiName: 'พิชญา รุ่งเรืองกิจ',
+    })
+  })
+
+  test('composes Latin given_name_en and family_name_en into the English name', () => {
+    expect(
+      readCredentialHolderProfile({
+        ...thaiIdRecord,
+        claims: {
+          thaiFullName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          given_name_en: 'Pitchaya',
+          family_name_en: 'Rungruangkit',
+        },
+      }),
+    ).toEqual({
+      thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+      englishName: 'Pitchaya Rungruangkit',
+    })
+  })
+
+  test('overlays PID Thai and English names onto a non-PID credential', () => {
+    expect(
+      resolveDisplayHolderProfile(drivingLicenceRecord, [thaiIdRecord, drivingLicenceRecord]),
+    ).toEqual({
+      thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+      englishName: 'Ms. Thodsopp Eekkasandigital',
+    })
+  })
+
+  test('keeps a PID record on its own holder profile', () => {
+    expect(resolveDisplayHolderProfile(thaiIdRecord, [thaiIdRecord, drivingLicenceRecord])).toEqual({
+      thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+      englishName: 'Ms. Thodsopp Eekkasandigital',
+      birthDate: '1990-05-15',
+    })
+  })
+
+  test('keeps the document profile when no PID is stored', () => {
+    expect(resolveDisplayHolderProfile(drivingLicenceRecord, [drivingLicenceRecord])).toEqual({
+      englishName: 'Mali Somsri',
+    })
   })
 })

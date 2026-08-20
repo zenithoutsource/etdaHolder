@@ -1,7 +1,7 @@
 /**
- * Driving-licence document card layout (detail and issuance preview).
- * Journey: Wallet detail; Scan claim preview.
- * Copy: drivingLicenceDisplay / drivingLicenceSample.
+ * Driving-licence document card layout (detail, issuance preview, OID4VP info).
+ * Journey: Wallet detail; Scan claim preview; P4 PresentationInfoPanel.
+ * Copy: drivingLicenceDisplay; PID overlay via holderProfile.
  * Layout: DocumentCardLayout, DocumentCardDetailValue.
  * Map: docs/CODEMAPS/frontend.md#wallet
  */
@@ -11,22 +11,25 @@ import { Image, Text, View } from 'react-native'
 
 import { DRIVING_LICENCE_IMAGE } from '../config/drivingLicenceSample'
 import { readDrivingLicenceCardView } from '../services/credentials/drivingLicenceDisplay'
+import type { CredentialHolderProfile } from '../services/credentials/credentialDisplay'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 import { DocumentCardDetailValue } from './DocumentCardDetailValue'
 import { DocumentCardLayout } from './DocumentCardLayout'
 
 type DrivingLicenceDocumentCardProps = Readonly<{
   record: VerifiableCredentialRecord
+  holderProfile?: CredentialHolderProfile
   bannerAction?: ReactNode
   testID?: string
 }>
 
 export function DrivingLicenceDocumentCard({
   record,
+  holderProfile,
   bannerAction,
   testID = 'driving-licence-card',
 }: DrivingLicenceDocumentCardProps) {
-  const view = readDrivingLicenceCardView(record)
+  const view = readDrivingLicenceCardView(record, holderProfile)
 
   return (
     <View testID={testID}>

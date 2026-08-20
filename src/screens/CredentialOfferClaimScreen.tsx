@@ -77,6 +77,7 @@ import {
   type VerifiableCredentialRecord,
 } from '../services/vci/exchangeService'
 import { resolveCredentialOfferDeeplink } from '../services/credentials/resolveCredentialOfferDeeplink'
+import { resolveDisplayHolderProfile } from '../services/credentials/credentialDisplay'
 import { readCredentialPreviewDisplay } from '../services/vci/qrIssuanceFlow'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
 import { normalizeNumericCode } from '../utils/normalizeNumericCode'
@@ -699,6 +700,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
           <WalletHeader onBack={exitFlow} />
           <DrivingLicencePreviewPanel
             record={phase.record}
+            holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
             onAccept={() => acceptPreview(phase.record, phase.pendingMdoc)}
           />
         </SafeAreaView>
@@ -725,6 +727,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
           <WalletHeader onBack={exitFlow} />
           <TranscriptPreviewPanel
             record={phase.record}
+            holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
             profileImage={credentialImages.transcript}
             onAccept={() => acceptPreview(phase.record, phase.pendingMdoc)}
           />

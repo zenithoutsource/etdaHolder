@@ -80,7 +80,7 @@ describe('readDrivingLicenceCardView', () => {
     })
 
     expect(view.thaiName).toBe('สมชาย ใจดี')
-    expect(view.englishName).toBe('Ms. Pichaya Rungruangkit')
+    expect(view.englishName).toBe('-')
     expect(view.licenceNumber).toBe('123456789')
     expect(view.type).toBe('รถยนต์ส่วนบุคคล')
     expect(view.englishType).toBe('Private Motor Car')
@@ -112,5 +112,16 @@ describe('readDrivingLicenceCardView', () => {
 
     expect(view.type).toBe('-')
     expect(view.englishType).toBe('-')
+  })
+
+  test('uses overlay holder profile names when provided', () => {
+    const view = readDrivingLicenceCardView(drivingLicenceRecord, {
+      thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+      englishName: 'Pitchaya Rungruangkit',
+    })
+
+    expect(view.thaiName).toBe('นางสาว พิชญา รุ่งเรืองกิจ')
+    expect(view.englishName).toBe('Pitchaya Rungruangkit')
+    expect(view.type).toBe('รถยนต์ส่วนบุคคล')
   })
 })

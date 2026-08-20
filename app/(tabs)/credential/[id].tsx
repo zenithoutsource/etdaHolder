@@ -77,7 +77,7 @@ import {
 import { logWalletError } from "../../../src/services/debug/walletLogger";
 import { isStaleDocumentExpiryNotification } from "../../../src/services/notifications/notificationDocumentExpiryRoute";
 import { resolveRenewalReadyReplacementRoute } from "../../../src/services/notifications/notificationRenewalRoute";
-import { readCredentialDetailDisplay, readCredentialHolderProfile } from "../../../src/services/credentials/credentialDisplay";
+import { readCredentialDetailDisplay, resolveDisplayHolderProfile } from "../../../src/services/credentials/credentialDisplay";
 import { shouldResetCredentialDetailSession } from "../../../src/services/credentials/credentialDetailSession";
 import {
   acknowledgeIssuerSuspension,
@@ -154,22 +154,9 @@ export default function CredentialDetailScreen() {
   const display = credential
     ? readCredentialDetailDisplay(credential)
     : undefined;
-  const isTranscript = credential?.type === "ChulalongkornUniversityTranscript";
-  const thaiIdCredential = credentials.find((record) => record.type === "ThaiNationalID");
-  const thaiIdHolderProfile = useMemo(
-    () => (thaiIdCredential ? readCredentialHolderProfile(thaiIdCredential) : undefined),
-    [thaiIdCredential],
-  );
-  const currentHolderProfile = useMemo(
-    () => (credential ? readCredentialHolderProfile(credential) : undefined),
-    [credential],
-  );
   const holderProfile = useMemo(
-    () => ({
-      ...currentHolderProfile,
-      ...thaiIdHolderProfile,
-    }),
-    [currentHolderProfile, thaiIdHolderProfile],
+    () => (credential ? resolveDisplayHolderProfile(credential, credentials) : undefined),
+    [credential, credentials],
   );
 
   const suspensionStatus = credential ? readIssuerSuspension(credential.id) : undefined;
@@ -633,11 +620,7 @@ export default function CredentialDetailScreen() {
             <CredentialDocumentDetailCard
               display={display}
               record={credential}
-              holderProfile={
-                display.imageKey === "id" || display.imageKey === "car" || isTranscript
-                  ? holderProfile
-                  : undefined
-              }
+              holderProfile={holderProfile}
             />
 
             <View className="mt-4">
@@ -705,11 +688,7 @@ export default function CredentialDetailScreen() {
               <CredentialDocumentDetailCard
                 display={display}
                 record={credential}
-                holderProfile={
-                  display.imageKey === "id" || display.imageKey === "car" || isTranscript
-                    ? holderProfile
-                    : undefined
-                }
+                holderProfile={holderProfile}
                 inactiveState={inactiveState}
                 renewalBadgeLabel={renewalBadgeLabel}
                 renewalState={showRenewedActiveBadge ? "renewed-active" : undefined}

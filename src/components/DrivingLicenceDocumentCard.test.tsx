@@ -79,4 +79,19 @@ describe('DrivingLicenceDocumentCard', () => {
     expect(screen.getByTestId('document-card-banner-action')).toBeTruthy()
     expect(screen.getByText('Open credential actions')).toBeTruthy()
   })
+
+  test('renders overlay holder profile names instead of licence claims', () => {
+    render(
+      <DrivingLicenceDocumentCard
+        record={drivingLicenceRecord}
+        holderProfile={{
+          thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishName: 'Pitchaya Rungruangkit',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('นางสาว พิชญา รุ่งเรืองกิจ')).toBeTruthy()
+    expect(screen.getByText('Pitchaya Rungruangkit')).toBeTruthy()
+  })
 })

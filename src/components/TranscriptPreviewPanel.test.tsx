@@ -43,6 +43,23 @@ describe('TranscriptPreviewPanel', () => {
     expect(onAccept).toHaveBeenCalledTimes(1)
   })
 
+  test('renders overlay PID names on the transcript preview card', () => {
+    render(
+      <TranscriptPreviewPanel
+        record={record}
+        holderProfile={{
+          thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishName: 'Pitchaya Rungruangkit',
+        }}
+        profileImage={require('../../assets/images/user_profile.png')}
+        onAccept={() => undefined}
+      />,
+    )
+
+    expect(screen.getByText('นางสาว พิชญา รุ่งเรืองกิจ')).toBeTruthy()
+    expect(screen.getByText('Pitchaya Rungruangkit')).toBeTruthy()
+  })
+
   test('uses the preview birth-date row when the holder profile has none', () => {
     const profileSpy = jest.spyOn(credentialDisplay, 'readCredentialHolderProfile').mockReturnValue({})
 

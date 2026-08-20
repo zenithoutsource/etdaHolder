@@ -19,7 +19,7 @@ Where to change text vs card chrome. Inline exceptions are listed per screen.
 | Issuer-requested PID presentation copy | [src/config/issuerPidPresentationCopy.ts](../../src/config/issuerPidPresentationCopy.ts) |
 | Colors | [src/config/themeColors.ts](../../src/config/themeColors.ts) |
 | NFC pre-tap disclosure set | [src/config/readerProfiles.ts](../../src/config/readerProfiles.ts) |
-| Display helpers (claim → label/value) | [src/services/credentials/credentialDisplay.ts](../../src/services/credentials/credentialDisplay.ts) |
+| Display helpers (claim → label/value; PID name overlay) | [src/services/credentials/credentialDisplay.ts](../../src/services/credentials/credentialDisplay.ts) (`resolveDisplayHolderProfile`) |
 
 **Inline exceptions (not extracted):** NFC waiting copy in [WaitingForTapPanel.tsx](../../src/components/proximity/WaitingForTapPanel.tsx); several Scan/Auth/OID4VP panel strings still live in the component.
 
@@ -48,6 +48,7 @@ Tab: [app/(tabs)/index.tsx](../../app/(tabs)/index.tsx). Hidden detail: [app/(ta
 - Slice B is not on Home. The runner is [runHardwareEcdsaSliceBChecklist](../../src/services/crypto/hardwareEcdsaDiagnostics.ts). Claim / startup do **not** log `slice-b-checklist-complete`. Metro tag is `[wallet:hardware-ecdsa]`, not `[hardware-ecdsa]`.
 - PID gate before present, My QR, or portal Fresh reissue on detail ([credentialGuard](../../src/services/credentials/credentialGuard.ts) / [pidGateDialog](../../src/services/credentials/pidGateDialog.ts)). Hardware P3 **ขอเอกสาร** of another card is not blocked by PID `renewal-required`.
 - Detail phases: `detail` | `issuerAck` | `renewalProcessing` | `revokeSubmitting` | `security` | `approve`. Focus reset clears the session.
+- Holder names on DL/transcript cards (detail, receive preview, OID4VP info) come from stored PID via `resolveDisplayHolderProfile`. PID religion is hidden (ThaID does not send it). Driving-licence vehicle type maps ISO `B` to Thai/English labels on the card; the VP token still sends the raw claim.
 
 ## Scan and issuance
 
@@ -55,7 +56,7 @@ Tab: [app/(tabs)/scan.tsx](../../app/(tabs)/scan.tsx). Hidden offer route: [app/
 
 Same-device portal return: [app/callback.tsx](../../app/callback.tsx), rewrite hook [app/+native-intent.tsx](../../app/+native-intent.tsx). Intake store: [deeplinkStore.ts](../../src/store/deeplinkStore.ts).
 
-**Panels:** [ScanCameraPermissionPanel](../../src/components/ScanCameraPermissionPanel.tsx), [ScanCaptureSurface](../../src/components/ScanCaptureSurface.tsx), [ThaiIdSuccessConfirmationPanel](../../src/components/ThaiIdSuccessConfirmationPanel.tsx) → [IssuanceTrustConfirmationPanel](../../src/components/IssuanceTrustConfirmationPanel.tsx), [ThaiIdReceivePanel](../../src/components/ThaiIdReceivePanel.tsx), [DrivingLicencePreviewPanel](../../src/components/DrivingLicencePreviewPanel.tsx), [TranscriptPreviewPanel](../../src/components/TranscriptPreviewPanel.tsx), [ScanSuccessPanel](../../src/components/ScanSuccessPanel.tsx). One component per issuance phase — do not merge them.
+**Panels:** [ScanCameraPermissionPanel](../../src/components/ScanCameraPermissionPanel.tsx), [ScanCaptureSurface](../../src/components/ScanCaptureSurface.tsx), [ThaiIdSuccessConfirmationPanel](../../src/components/ThaiIdSuccessConfirmationPanel.tsx) → [IssuanceTrustConfirmationPanel](../../src/components/IssuanceTrustConfirmationPanel.tsx), [ThaiIdReceivePanel](../../src/components/ThaiIdReceivePanel.tsx) (no religion row), [DrivingLicencePreviewPanel](../../src/components/DrivingLicencePreviewPanel.tsx), [TranscriptPreviewPanel](../../src/components/TranscriptPreviewPanel.tsx), [ScanSuccessPanel](../../src/components/ScanSuccessPanel.tsx). One component per issuance phase — do not merge them.
 
 **Copy / layout:** `cardSchemas` issuance confirmation; `WALLET_HOME_COPY` for PID-gate; camera permission copy is inline Thai in `ScanCameraPermissionPanel`; Scan errors often inline English.
 
@@ -99,7 +100,7 @@ Hidden route: [app/(tabs)/presentation-request.tsx](../../app/(tabs)/presentatio
 
 **Orchestrator:** [Oid4VpDisclosureFlow.tsx](../../src/components/Oid4VpDisclosureFlow.tsx).
 
-**Panels:** [FacePreparePanel](../../src/components/FacePreparePanel.tsx), [IssuerPidPresentationPanel](../../src/components/IssuerPidPresentationPanel.tsx), [PresentationConsentPanel](../../src/components/PresentationConsentPanel.tsx), [PresentationInfoPanel](../../src/components/PresentationInfoPanel.tsx) (summary + device + PoP + requested items), [PresentationFailurePanel](../../src/components/PresentationFailurePanel.tsx), [PresentationResultPanel](../../src/components/PresentationResultPanel.tsx) → [PresentationSuccessPanel](../../src/components/PresentationSuccessPanel.tsx). Chrome: [PresentationStepScaffold](../../src/components/PresentationStepScaffold.tsx).
+**Panels:** [FacePreparePanel](../../src/components/FacePreparePanel.tsx), [IssuerPidPresentationPanel](../../src/components/IssuerPidPresentationPanel.tsx), [PresentationConsentPanel](../../src/components/PresentationConsentPanel.tsx), [PresentationInfoPanel](../../src/components/PresentationInfoPanel.tsx) (same document card as wallet detail + device + PoP + requested items; Thai and English names from PID overlay), [PresentationFailurePanel](../../src/components/PresentationFailurePanel.tsx), [PresentationResultPanel](../../src/components/PresentationResultPanel.tsx) → [PresentationSuccessPanel](../../src/components/PresentationSuccessPanel.tsx). Chrome: [PresentationStepScaffold](../../src/components/PresentationStepScaffold.tsx).
 
 **Copy:** `issuerPidPresentationCopy`; disclosure labels in `cardSchemas`; consent party + transcript white Chula hero (other types use icons) in [presentationVerifierMocks.ts](../../src/config/presentationVerifierMocks.ts); failure kinds in [presentationFailureUi.ts](../../src/services/vp/presentationFailureUi.ts).
 
@@ -117,7 +118,7 @@ Hidden route: [app/(tabs)/presentation-request.tsx](../../app/(tabs)/presentatio
 - Prefers pending URI over active; dismissed redelivery grace; remount recovery. Replay-consumed exits with intake notify — do not flash loading for a stale dismissed URI.
 - `key={vpGeneration}` on the screen forces a clean state for a new request.
 - One biometric prompt on the sign path (approve/submit) — do not add a second app-level biometric in front of it.
-- Driving-licence DCQL may use Thai-ID-style paths (`full_name`, `license_type`, `photo`). Schema aliases / `matchAliases` map those to ISO/wallet claims (`given_name`+`family_name`, `licenceClass`, `portrait`) so consent shows **ชื่อ-นามสกุล**, **ประเภทใบอนุญาต**, **รูปถ่าย** instead of **ข้อมูลที่ร้องขอ**.
+- Driving-licence DCQL may use Thai-ID-style paths (`full_name`, `license_type`, `photo`). Schema aliases / `matchAliases` map those to ISO/wallet claims (`given_name`+`family_name`, `licenceClass`, `portrait`) so consent shows **ชื่อ-นามสกุล**, **ประเภทใบอนุญาต**, **รูปถ่าย** instead of **ข้อมูลที่ร้องขอ**. OID4VP info uses `CredentialDocumentDetailCard` for every type (Thai + English names). Driving-licence vehicle type on that card maps `B`; the VP wire value stays the issuer claim.
 
 ## Present and NFC
 

@@ -35,4 +35,20 @@ describe('DrivingLicencePreviewPanel', () => {
 
     expect(onAccept).toHaveBeenCalledTimes(1)
   })
+
+  test('renders overlay PID names on the driving-licence preview card', () => {
+    render(
+      <DrivingLicencePreviewPanel
+        record={drivingLicenceRecord}
+        holderProfile={{
+          thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishName: 'Pitchaya Rungruangkit',
+        }}
+        onAccept={() => undefined}
+      />,
+    )
+
+    expect(screen.getByText('นางสาว พิชญา รุ่งเรืองกิจ')).toBeTruthy()
+    expect(screen.getByText('Pitchaya Rungruangkit')).toBeTruthy()
+  })
 })

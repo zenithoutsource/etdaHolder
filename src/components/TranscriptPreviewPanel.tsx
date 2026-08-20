@@ -16,13 +16,17 @@ import {
 
 import { AppButton } from "./AppButton";
 import { DocumentCardLayout } from "./DocumentCardLayout";
-import { readCredentialHolderProfile } from "../services/credentials/credentialDisplay";
+import {
+  readCredentialHolderProfile,
+  type CredentialHolderProfile,
+} from "../services/credentials/credentialDisplay";
 import { readCredentialPreviewDisplay } from "../services/vci/qrIssuanceFlow";
 import type { VerifiableCredentialRecord } from "../services/vci/exchangeService";
 import { THEME } from "../config/themeColors";
 
 type Props = {
   record: VerifiableCredentialRecord;
+  holderProfile?: CredentialHolderProfile;
   profileImage: ImageSourcePropType;
   onAccept: () => void;
 };
@@ -47,11 +51,15 @@ function DetailValue({ label, value, critical = false }: DetailValueProps) {
 
 export function TranscriptPreviewPanel({
   record,
+  holderProfile,
   profileImage,
   onAccept,
 }: Props) {
   const preview = readCredentialPreviewDisplay(record);
-  const profile = readCredentialHolderProfile(record);
+  const profile = {
+    ...readCredentialHolderProfile(record),
+    ...holderProfile,
+  };
   const getRow = (key: string) =>
     preview.rows.find((row) => row.key === key)?.value;
   const birthDate = profile.birthDate ?? getRow("birthDate");
@@ -99,7 +107,7 @@ export function TranscriptPreviewPanel({
                     {profile.thaiName ?? "-"}
                   </Text>
                   <Text className="text-[12px] text-gray-cool">
-                    {profile.englishName ?? ""}
+                    {profile.englishName ?? "-"}
                   </Text>
                   {birthDate ? (
                     <>

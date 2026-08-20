@@ -1,5 +1,4 @@
 import { getCardSchema } from '../../config/cardSchemas'
-import { DRIVING_LICENCE_SAMPLE } from '../../config/drivingLicenceSample'
 import { resolveDrivingLicenceVehicleType } from '../../config/drivingLicenceVehicleCategories'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { readCredentialClaimMap } from '../vci/exchangeService'
@@ -7,6 +6,7 @@ import {
   readCredentialDetailDisplay,
   readCredentialHolderProfile,
   readDisplayValue,
+  type CredentialHolderProfile,
 } from './credentialDisplay'
 
 export type DrivingLicenceCardView = Readonly<{
@@ -62,11 +62,18 @@ function readFieldValue(
   return readDisplayValue(claims, { key, label: key, aliases: [...aliases] })
 }
 
-export function readDrivingLicenceCardView(record: VerifiableCredentialRecord): DrivingLicenceCardView {
+export function readDrivingLicenceCardView(
+  record: VerifiableCredentialRecord,
+  holderProfile?: CredentialHolderProfile,
+): DrivingLicenceCardView {
   const schema = getCardSchema('DLTDrivingLicence')
   const claims = readCredentialClaimMap(record)
   const enrichedRecord = { ...record, claims }
-  const profile = readCredentialHolderProfile(enrichedRecord)
+  const ownProfile = readCredentialHolderProfile(enrichedRecord)
+  const profile: CredentialHolderProfile = {
+    ...ownProfile,
+    ...holderProfile,
+  }
   const display = readCredentialDetailDisplay(enrichedRecord)
 
   const birthDateRaw =
@@ -102,8 +109,7 @@ export function readDrivingLicenceCardView(record: VerifiableCredentialRecord): 
 
   const vehicleType = readVehicleTypeLabels(licenceClass)
   const englishName =
-    readLatinEnglishName(claims, profile.englishName, profile.thaiName) ??
-    DRIVING_LICENCE_SAMPLE.englishName
+    readLatinEnglishName(claims, profile.englishName, profile.thaiName) ?? EMPTY_VALUE
 
   return {
     documentTitle: schema.documentTitle,

@@ -132,7 +132,8 @@ describe('CredentialDocumentDetailCard', () => {
 
     expect(screen.getByTestId('document-detail-band')).toHaveTextContent('ID CARD')
     expect(screen.getByText('15 พฤษภาคม 2546')).toBeTruthy()
-    expect(screen.getByText('พุทธ')).toBeTruthy()
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('พุทธ')).toBeNull()
     expect(screen.getByText('8 กันยายน 2561')).toBeTruthy()
     expect(screen.getByText('27 สิงหาคม 2570')).toBeTruthy()
   })
@@ -145,7 +146,7 @@ describe('CredentialDocumentDetailCard', () => {
           primaryRows: [
             { key: 'holderCode', label: 'เลขบัตรประจำตัวประชาชน', value: '9-9999-99999-99-9' },
             { key: 'belief', label: 'ศาสนา', value: 'Buddhist' },
-            { key: 'home', label: 'ที่อยู่ตามทะเบียนบ้าน', value: 'Bangkok residence' },
+            { key: 'home', label: 'ที่อยู่ตามบัตรประชาชน', value: 'Bangkok residence' },
             { key: 'validUntil', label: 'วันหมดอายุ', value: '2030-11-28' },
           ],
           extraRows: [],
@@ -155,12 +156,13 @@ describe('CredentialDocumentDetailCard', () => {
     )
 
     expect(screen.getByTestId('document-detail-primary-id')).toHaveTextContent('9-9999-99999-99-9')
-    expect(screen.getByText('Buddhist')).toBeTruthy()
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('Buddhist')).toBeNull()
     expect(screen.getByText('Bangkok residence')).toBeTruthy()
     expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
   })
 
-  test('uses requested ID card mock fallbacks when VC omits EN name, address, and religion', () => {
+  test('hides religion and does not invent English name when PID claims omit them', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -176,8 +178,9 @@ describe('CredentialDocumentDetailCard', () => {
       />
     )
 
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
-    expect(screen.getByText('พุทธ')).toBeTruthy()
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('-')
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('พุทธ')).toBeNull()
     expect(screen.getByText('123/45 ถนนราชดำเนิน แขวงพระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200')).toBeTruthy()
   })
 
@@ -342,7 +345,7 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('-')
   })
 
-  test('uses requested transcript English name mock when holder profile omits English name', () => {
+  test('shows dash for transcript English name when holder profile omits it', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -362,7 +365,7 @@ describe('CredentialDocumentDetailCard', () => {
     )
 
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('-')
   })
 
   test('uses the driving-licence card from issuer claims and retains document actions', () => {

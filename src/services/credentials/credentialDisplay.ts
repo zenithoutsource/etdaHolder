@@ -3,6 +3,24 @@ import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { hasAnyClaimValue, isHiddenClaimKey, readClaimText, stringifyClaim } from './claimFormatting'
 
+const PID_CREDENTIAL_TYPE = 'ThaiNationalID'
+const LATIN_NAME_PATTERN = /[A-Za-z]/
+const THAI_SCRIPT_PATTERN = /[\u0E00-\u0E7F]/
+const ENGLISH_GIVEN_NAME_KEYS = [
+  'givenNameEn',
+  'given_name_en',
+  'englishGivenName',
+  'firstNameEn',
+  'first_name_en',
+] as const
+const ENGLISH_FAMILY_NAME_KEYS = [
+  'familyNameEn',
+  'family_name_en',
+  'englishFamilyName',
+  'lastNameEn',
+  'last_name_en',
+] as const
+
 export type CredentialDisplayRow = {
   key: string
   label: string
@@ -77,7 +95,7 @@ export function readCredentialHolderProfile(record: VerifiableCredentialRecord):
     'nameThai',
     'ชื่อนามสกุล',
     'ชื่อ-นามสกุล',
-  ]) ?? (genericFullName && /[\u0E00-\u0E7F]/.test(genericFullName) ? genericFullName : undefined)
+  ]) ?? (genericFullName && THAI_SCRIPT_PATTERN.test(genericFullName) ? genericFullName : undefined)
   const thaiNameParts = [
     readFirstClaimTextLoose(record.claims, ['givenNameTh', 'given_name_th', 'givenNameThai', 'thaiGivenName', 'thai_given_name', 'firstNameTh', 'first_name_th', 'ชื่อ']),
     readFirstClaimTextLoose(record.claims, ['familyNameTh', 'family_name_th', 'familyNameThai', 'thaiFamilyName', 'thai_family_name', 'lastNameTh', 'last_name_th', 'นามสกุล']),
@@ -86,7 +104,14 @@ export function readCredentialHolderProfile(record: VerifiableCredentialRecord):
     .join(' ')
     .trim()
   const thaiName = explicitThaiName ?? (thaiNameParts || pickNameByScript(record.claims, 'thai'))
-  const englishName =
+  const composedEnglishName = [
+    readFirstClaimTextLoose(record.claims, [...ENGLISH_GIVEN_NAME_KEYS]),
+    readFirstClaimTextLoose(record.claims, [...ENGLISH_FAMILY_NAME_KEYS]),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+  const englishName = readLatinDisplayName(
     readFirstClaimTextLoose(record.claims, [
       'englishFullName',
       'english_full_name',
@@ -98,9 +123,10 @@ export function readCredentialHolderProfile(record: VerifiableCredentialRecord):
       'englishName',
       'nameEnglish',
     ]) ??
-    (genericFullName && /[A-Za-z]/.test(genericFullName) && !/[\u0E00-\u0E7F]/.test(genericFullName) ? genericFullName : undefined) ??
-    pickNameByScript(record.claims, 'latin') ??
-    readHolderName(record)
+      (composedEnglishName || undefined) ??
+      (isLatinDisplayName(genericFullName) ? genericFullName : undefined) ??
+      pickNameByScript(record.claims, 'latin'),
+  )
   const birthDate = readFirstClaimTextLoose(record.claims, [
     'birthDate',
     'birthdate',
@@ -118,6 +144,25 @@ export function readCredentialHolderProfile(record: VerifiableCredentialRecord):
     ...(thaiName ? { thaiName } : {}),
     ...(englishName ? { englishName } : {}),
     ...(birthDate ? { birthDate } : {}),
+  }
+}
+
+export function resolveDisplayHolderProfile(
+  record: VerifiableCredentialRecord,
+  credentials: readonly VerifiableCredentialRecord[] = [],
+): CredentialHolderProfile {
+  const own = readCredentialHolderProfile(record)
+  if (record.type === PID_CREDENTIAL_TYPE) return own
+
+  const pidMatches = credentials.filter((entry) => entry.type === PID_CREDENTIAL_TYPE)
+  const pid = pickPidForDisplay(pidMatches)
+  if (!pid) return own
+
+  const pidProfile = readCredentialHolderProfile(pid)
+  return {
+    ...own,
+    ...(pidProfile.thaiName ? { thaiName: pidProfile.thaiName } : {}),
+    ...(pidProfile.englishName ? { englishName: pidProfile.englishName } : {}),
   }
 }
 
@@ -191,10 +236,32 @@ function pickNameByScript(claims: Record<string, unknown>, script: 'thai' | 'lat
 
 function readThaiNamePart(claims: Record<string, unknown>, keys: string[]): string | undefined {
   const text = readFirstClaimTextLoose(claims, keys)
-  return text && /[\u0E00-\u0E7F]/.test(text) ? text : undefined
+  return text && THAI_SCRIPT_PATTERN.test(text) ? text : undefined
 }
 
 function readLatinNamePart(claims: Record<string, unknown>, keys: string[]): string | undefined {
   const text = readFirstClaimTextLoose(claims, keys)
-  return text && /[A-Za-z]/.test(text) && !/[\u0E00-\u0E7F]/.test(text) ? text : undefined
+  return isLatinDisplayName(text) ? text : undefined
+}
+
+function readLatinDisplayName(value?: string): string | undefined {
+  return isLatinDisplayName(value) ? value : undefined
+}
+
+function isLatinDisplayName(value?: string): value is string {
+  return Boolean(value && LATIN_NAME_PATTERN.test(value) && !THAI_SCRIPT_PATTERN.test(value))
+}
+
+function pickPidForDisplay(
+  matches: readonly VerifiableCredentialRecord[],
+): VerifiableCredentialRecord | undefined {
+  if (matches.length === 0) return undefined
+  const presentable = matches.filter((record) => !isPidExpiredForDisplay(record))
+  return (presentable.length > 0 ? presentable : matches)[0]
+}
+
+function isPidExpiredForDisplay(record: VerifiableCredentialRecord): boolean {
+  if (!record.expiresAt) return false
+  const expiry = Date.parse(record.expiresAt)
+  return !Number.isNaN(expiry) && expiry <= Date.now()
 }

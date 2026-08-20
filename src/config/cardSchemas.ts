@@ -49,7 +49,7 @@ export type CardSchemaConfig = {
   summaryRows?: DisplayField[][];
   /** Divider style for summaryRows. 'horizontal' (default) = line above each row. 'vertical' = line between columns. 'both' = both. */
   summaryRowDivider?: "horizontal" | "vertical" | "both";
-  /** Hide the Issue Date / Expiry Date footer row in PresentationCredentialSummaryCard. */
+  /** Hide the Issue Date / Expiry Date footer row on document summary chrome. */
   hideSummaryValidityFooter?: boolean;
   /** When true, first successful presentation marks credential Used (P6 Case 3). */
   singleUse?: boolean;
