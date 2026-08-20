@@ -1,3 +1,4 @@
+import { MOCK_HOLDER_ENGLISH_NAME } from '../../config/drivingLicenceSample'
 import { getCardSchema } from '../../config/cardSchemas'
 import { resolveDrivingLicenceVehicleType } from '../../config/drivingLicenceVehicleCategories'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
@@ -71,8 +72,8 @@ export function readDrivingLicenceCardView(
   const enrichedRecord = { ...record, claims }
   const ownProfile = readCredentialHolderProfile(enrichedRecord)
   const profile: CredentialHolderProfile = {
-    ...ownProfile,
-    ...holderProfile,
+    thaiName: ownProfile.thaiName ?? holderProfile?.thaiName,
+    birthDate: ownProfile.birthDate ?? holderProfile?.birthDate,
   }
   const display = readCredentialDetailDisplay(enrichedRecord)
 
@@ -108,13 +109,11 @@ export function readDrivingLicenceCardView(
     readFieldValue(claims, 'expiryDate', ['expiry_date', 'expirationDate']) ?? record.expiresAt
 
   const vehicleType = readVehicleTypeLabels(licenceClass)
-  const englishName =
-    readLatinEnglishName(claims, profile.englishName, profile.thaiName) ?? EMPTY_VALUE
 
   return {
     documentTitle: schema.documentTitle,
     thaiName: profile.thaiName ?? EMPTY_VALUE,
-    englishName,
+    englishName: MOCK_HOLDER_ENGLISH_NAME,
     birthDate: formatThaiCredentialDate(birthDateRaw) ?? birthDateRaw ?? EMPTY_VALUE,
     type: vehicleType.type,
     englishType: vehicleType.englishType,
@@ -135,38 +134,4 @@ function readVehicleTypeLabels(licenceClass?: string): { type: string; englishTy
   }
 
   return { type: licenceClass, englishType: EMPTY_VALUE }
-}
-
-function readLatinEnglishName(
-  claims: Record<string, unknown>,
-  profileEnglishName?: string,
-  thaiName?: string,
-): string | undefined {
-  if (isLatinName(profileEnglishName) && profileEnglishName !== thaiName) {
-    return profileEnglishName
-  }
-
-  const composed = [
-    readFieldValue(claims, 'givenNameEn', [
-      'given_name_en',
-      'englishGivenName',
-      'firstNameEn',
-      'first_name_en',
-    ]),
-    readFieldValue(claims, 'familyNameEn', [
-      'family_name_en',
-      'englishFamilyName',
-      'lastNameEn',
-      'last_name_en',
-    ]),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .trim()
-
-  return isLatinName(composed) ? composed : undefined
-}
-
-function isLatinName(value?: string): value is string {
-  return Boolean(value && /[A-Za-z]/.test(value) && !/[\u0E00-\u0E7F]/.test(value))
 }

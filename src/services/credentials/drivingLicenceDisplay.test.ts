@@ -24,12 +24,12 @@ describe('readDrivingLicenceCardView', () => {
   test('maps issuer claims into the driving-licence card view', () => {
     const view = readDrivingLicenceCardView(drivingLicenceRecord)
 
-    expect(view.documentTitle).toBe('DRIVING LICENSE')
+    expect(view.documentTitle).toBe('DRIVER LICENSE')
     expect(view.thaiName).toBe('สมชาย ใจดี')
     expect(view.licenceNumber).toBe('DLT-12345')
     expect(view.type).toBe('รถยนต์ส่วนบุคคล')
     expect(view.englishType).toBe('Private Motor Car')
-    expect(view.englishName).toBe('Somchai Jaidee')
+    expect(view.englishName).toBe('Ms. Thodsopp Eekkasandigital')
     expect(view.birthDate).toContain('2533')
     expect(view.expiryDate).toContain('2573')
   })
@@ -80,7 +80,7 @@ describe('readDrivingLicenceCardView', () => {
     })
 
     expect(view.thaiName).toBe('สมชาย ใจดี')
-    expect(view.englishName).toBe('-')
+    expect(view.englishName).toBe('Ms. Thodsopp Eekkasandigital')
     expect(view.licenceNumber).toBe('123456789')
     expect(view.type).toBe('รถยนต์ส่วนบุคคล')
     expect(view.englishType).toBe('Private Motor Car')
@@ -114,14 +114,35 @@ describe('readDrivingLicenceCardView', () => {
     expect(view.englishType).toBe('-')
   })
 
-  test('uses overlay holder profile names when provided', () => {
+  test('fills missing Thai name from the holder profile and uses the mock English name', () => {
+    const view = readDrivingLicenceCardView(
+      {
+        ...drivingLicenceRecord,
+        claims: {
+          licenceNumber: 'DLT-12345',
+          licenceClass: 'รถยนต์ส่วนบุคคล',
+        },
+      },
+      {
+        thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+        englishName: 'Pitchaya Rungruangkit',
+      },
+    )
+
+    expect(view.thaiName).toBe('นางสาว พิชญา รุ่งเรืองกิจ')
+    expect(view.englishName).toBe('Ms. Thodsopp Eekkasandigital')
+    expect(view.type).toBe('รถยนต์ส่วนบุคคล')
+  })
+
+  test('keeps the licence birth date when the issuer provided one', () => {
     const view = readDrivingLicenceCardView(drivingLicenceRecord, {
       thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
       englishName: 'Pitchaya Rungruangkit',
+      birthDate: '1987-06-10',
     })
 
-    expect(view.thaiName).toBe('นางสาว พิชญา รุ่งเรืองกิจ')
-    expect(view.englishName).toBe('Pitchaya Rungruangkit')
-    expect(view.type).toBe('รถยนต์ส่วนบุคคล')
+    expect(view.birthDate).toContain('พฤษภาคม')
+    expect(view.birthDate).toContain('2533')
+    expect(view.birthDate).not.toContain('2530')
   })
 })

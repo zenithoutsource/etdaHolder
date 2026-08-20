@@ -70,9 +70,9 @@ const FALLBACK_SCHEMA: CardSchemaConfig = {
 const SCHEMAS: CardSchemaConfig[] = [
   {
     type: "ThaiNationalID",
-    title: "Thai National ID",
+    title: "บัตรประชาชน",
     documentTitle: "ID CARD",
-    issuerName: "Department of Provincial Administration",
+    issuerName: "กรมการปกครอง",
     primaryColor: THEME.navy,
     imageKey: "id",
     issuerLogoKey: "thaid",
@@ -158,9 +158,9 @@ const SCHEMAS: CardSchemaConfig[] = [
   },
   {
     type: "DLTDrivingLicence",
-    title: "Driver License",
-    documentTitle: "DRIVING LICENSE",
-    issuerName: "Department of Land Transport",
+    title: "ใบขับขี่",
+    documentTitle: "DRIVER LICENSE",
+    issuerName: "กรมการขนส่งทางบก",
     primaryColor: THEME.navyRoyal,
     imageKey: "car",
     issuerLogoKey: "dltt",
@@ -352,9 +352,9 @@ const SCHEMAS: CardSchemaConfig[] = [
   },
   {
     type: "ChulalongkornUniversityTranscript",
-    title: "Academic Transcript",
+    title: "ใบแสดงผลการเรียน",
     documentTitle: "TRANSCRIPT",
-    issuerName: "Chulalongkorn University",
+    issuerName: "มหาวิทยาลัยจุฬาลงกรณ์",
     primaryColor: THEME.navyRoyal,
     imageKey: "transcript",
     issuerLogoKey: "chulalongkorn",

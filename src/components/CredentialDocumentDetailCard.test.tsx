@@ -247,6 +247,7 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
+    expect(screen.queryByText('วันเกิด / Date of Birth')).toBeNull()
   })
 
   test('resolves transcript values from Thai display labels when claim keys are unfamiliar', () => {
@@ -296,7 +297,7 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
   })
 
-  test('uses ID card holder profile as transcript name and birth date fallback', () => {
+  test('uses ID card holder profile as transcript Thai-name fallback and hides birth date', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -319,10 +320,40 @@ describe('CredentialDocumentDetailCard', () => {
 
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
-    expect(screen.getByText('15 พฤษภาคม 2533')).toBeTruthy()
+    expect(screen.queryByText('วันเกิด / Date of Birth')).toBeNull()
+    expect(screen.queryByText('15 พฤษภาคม 2533')).toBeNull()
   })
 
-  test('shows English holder name on the primary name line when Thai name is unavailable', () => {
+  test('hides transcript birth date even when the issuer provided one', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Academic Transcript',
+          documentTitle: 'TRANSCRIPT',
+          imageKey: 'transcript',
+          primaryText: 'Academic Transcript',
+          primaryRows: [
+            { key: 'studentId', label: 'Student ID', value: '6304012022' },
+            { key: 'birthDate', label: 'Date of Birth', value: '1980-01-01' },
+          ],
+          extraRows: [],
+        }}
+        holderProfile={{
+          thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishName: 'Ms. Thodsopp Eekkasandigital',
+          birthDate: '1990-05-15',
+        }}
+        onOpenQr={() => undefined}
+      />
+    )
+
+    expect(screen.queryByText('วันเกิด / Date of Birth')).toBeNull()
+    expect(screen.queryByText('1 มกราคม 2523')).toBeNull()
+    expect(screen.queryByText('15 พฤษภาคม 2533')).toBeNull()
+  })
+
+  test('keeps the transcript Thai line empty when Thai name is unavailable', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -341,11 +372,11 @@ describe('CredentialDocumentDetailCard', () => {
       />
     )
 
-    expect(screen.getByTestId('document-detail-name')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('-')
+    expect(screen.getByTestId('document-detail-name')).toHaveTextContent('-')
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
   })
 
-  test('shows dash for transcript English name when holder profile omits it', () => {
+  test('uses the mock English name on the transcript card even when the holder profile omits it', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -365,7 +396,7 @@ describe('CredentialDocumentDetailCard', () => {
     )
 
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('-')
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
   })
 
   test('uses the driving-licence card from issuer claims and retains document actions', () => {
@@ -389,7 +420,7 @@ describe('CredentialDocumentDetailCard', () => {
 
     expect(screen.getByTestId('driving-licence-card')).toBeTruthy()
     expectSharedDocumentCardLayout()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.documentTitle)).toBeTruthy()
+    expect(screen.getByText('DRIVER LICENSE')).toBeTruthy()
     expect(screen.getByText(DRIVING_LICENCE_SAMPLE.thaiName)).toBeTruthy()
     expect(screen.getByText(DRIVING_LICENCE_SAMPLE.licenceNumber)).toBeTruthy()
     expect(screen.getByTestId('driving-licence-expiry')).toHaveTextContent(

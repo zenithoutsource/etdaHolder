@@ -1,7 +1,7 @@
 /**
  * Full credential detail card (PID/transcript/generic) with DL branch and renewal overlay.
  * Journey: Wallet detail; also Issuer PID presentation.
- * Copy: credentialDisplay; inactive/renewal services.
+ * Copy: credentialDisplay; inactive/renewal services; transcript English from MOCK_HOLDER_ENGLISH_NAME; transcript hides birth date.
  * Layout: DrivingLicenceDocumentCard, DocumentCardLayout, DocumentCardDetailValue, CredentialRenewalOverlay.
  * Map: docs/CODEMAPS/frontend.md#wallet
  */
@@ -16,10 +16,12 @@ import {
   type ImageSourcePropType,
 } from "react-native";
 
-import type {
-  CredentialDetailDisplay,
-  CredentialDisplayRow,
-  CredentialHolderProfile,
+import { MOCK_HOLDER_ENGLISH_NAME } from "../config/drivingLicenceSample";
+import {
+  readCredentialHolderProfile,
+  type CredentialDetailDisplay,
+  type CredentialDisplayRow,
+  type CredentialHolderProfile,
 } from "../services/credentials/credentialDisplay";
 import type { CredentialRenewalState } from "../services/credentials/credentialKeyRenewal";
 import type { CredentialInactiveState } from "../services/credentials/credentialInactiveState";
@@ -261,11 +263,6 @@ function TranscriptDocumentDetailCard({
   bannerAction,
 }: Props) {
   const rows = [...display.primaryRows, ...display.extraRows];
-  const birthDate = findRow(
-    rows,
-    ["birthDate", "dateOfBirth", "dob"],
-    /birth|dob|วันเกิด/i,
-  );
   const studentId = findRow(
     rows,
     ["studentId", "student_id", "studentID"],
@@ -298,16 +295,9 @@ function TranscriptDocumentDetailCard({
   );
   const expiryValue =
     formatThaiDate(expiryDate?.value) ?? formatThaiDate(display.expiresAt);
-  const thaiName = holderProfile?.thaiName;
-  const englishName = holderProfile?.englishName;
-  const primaryName =
-    thaiName ||
-    (englishName && englishName !== display.title ? englishName : undefined);
-  const secondaryName =
-    thaiName && englishName && englishName !== display.title
-      ? englishName
-      : undefined;
-  const birthDateValue = birthDate?.value ?? holderProfile?.birthDate;
+  const ownProfile = record ? readCredentialHolderProfile(record) : {};
+  const thaiName = ownProfile.thaiName ?? holderProfile?.thaiName;
+  const primaryName = thaiName || undefined;
 
   return (
     <View>
@@ -358,13 +348,7 @@ function TranscriptDocumentDetailCard({
                     testID="document-detail-name-en"
                     className="text-[12px] leading-4 font-semibold text-wallet-navy"
                   >
-                    {secondaryName || EMPTY_VALUE}
-                  </Text>
-                  <Text className="mt-2 text-[10px] leading-[14px] text-blue-gray">
-                    วันเกิด / Date of Birth
-                  </Text>
-                  <Text className="text-[13px] font-bold leading-[18px] text-wallet-navy">
-                    {formatThaiDate(birthDateValue) || EMPTY_VALUE}
+                    {MOCK_HOLDER_ENGLISH_NAME}
                   </Text>
                 </View>
               </View>

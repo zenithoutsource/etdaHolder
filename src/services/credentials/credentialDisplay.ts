@@ -1,5 +1,5 @@
 import { getCardSchema, type CardSchemaConfig, type DisplayField, collectDisplayFieldMatchKeys } from '../../config/cardSchemas'
-import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
+import { normalizeClaimKey, readMdocElementIdentifier } from '@/src/utils/claimKeyNormalization'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { hasAnyClaimValue, isHiddenClaimKey, readClaimText, stringifyClaim } from './claimFormatting'
 
@@ -48,6 +48,11 @@ export type CredentialHolderProfile = {
   thaiName?: string
   englishName?: string
   birthDate?: string
+}
+
+export type PidMdocNameOverlay = {
+  given_name?: string
+  family_name?: string
 }
 
 export function readCredentialSummaryDisplay(record: VerifiableCredentialRecord): CredentialSummaryDisplay {
@@ -160,10 +165,163 @@ export function resolveDisplayHolderProfile(
 
   const pidProfile = readCredentialHolderProfile(pid)
   return {
-    ...own,
-    ...(pidProfile.thaiName ? { thaiName: pidProfile.thaiName } : {}),
-    ...(pidProfile.englishName ? { englishName: pidProfile.englishName } : {}),
+    ...(own.thaiName || pidProfile.thaiName ? { thaiName: own.thaiName ?? pidProfile.thaiName } : {}),
+    ...(own.englishName || pidProfile.englishName
+      ? { englishName: own.englishName ?? pidProfile.englishName }
+      : {}),
+    ...(own.birthDate || pidProfile.birthDate ? { birthDate: own.birthDate ?? pidProfile.birthDate } : {}),
   }
+}
+
+/**
+ * ISO mDL given_name/family_name for NFC DeviceResponse display.
+ * Session overlay only for fields the presenting document is missing.
+ */
+export function resolvePidMdocNameOverlay(
+  record: VerifiableCredentialRecord,
+  credentials: readonly VerifiableCredentialRecord[] = [],
+): PidMdocNameOverlay | undefined {
+  if (record.type === PID_CREDENTIAL_TYPE) return undefined
+
+  const own = readIsoGivenAndFamily(record)
+  if (own.given_name && own.family_name) return undefined
+
+  const pid = pickPidForDisplay(credentials.filter((entry) => entry.type === PID_CREDENTIAL_TYPE))
+  if (!pid) return undefined
+
+  const pidParts = readPidGivenAndFamily(pid)
+  const overlay: PidMdocNameOverlay = {
+    ...(!own.given_name && pidParts.given_name ? { given_name: pidParts.given_name } : {}),
+    ...(!own.family_name && pidParts.family_name ? { family_name: pidParts.family_name } : {}),
+  }
+  if (!overlay.given_name && !overlay.family_name) return undefined
+  return overlay
+}
+
+function readPidGivenAndFamily(pid: VerifiableCredentialRecord): PidMdocNameOverlay {
+  const given = readThaiNamePart(pid.claims, [
+    'givenNameTh',
+    'given_name_th',
+    'givenNameThai',
+    'thaiGivenName',
+    'thai_given_name',
+    'firstNameTh',
+    'first_name_th',
+    'ชื่อ',
+    'givenName',
+    'given_name',
+    'firstName',
+    'first_name',
+  ])
+  const family = readThaiNamePart(pid.claims, [
+    'familyNameTh',
+    'family_name_th',
+    'familyNameThai',
+    'thaiFamilyName',
+    'thai_family_name',
+    'lastNameTh',
+    'last_name_th',
+    'นามสกุล',
+    'familyName',
+    'family_name',
+    'lastName',
+    'last_name',
+  ])
+  if (given && family) return { given_name: given, family_name: family }
+  const thaiName = readCredentialHolderProfile(pid).thaiName
+  return thaiName ? splitThaiGivenAndFamily(thaiName) ?? {} : {}
+}
+
+function readIsoGivenAndFamily(record: VerifiableCredentialRecord): PidMdocNameOverlay {
+  const given = readFirstClaimTextLoose(record.claims, [
+    'givenName',
+    'given_name',
+    'firstName',
+    'first_name',
+    'givenNameTh',
+    'given_name_th',
+    'firstNameTh',
+    'first_name_th',
+    'ชื่อ',
+  ])
+  const family = readFirstClaimTextLoose(record.claims, [
+    'familyName',
+    'family_name',
+    'lastName',
+    'last_name',
+    'familyNameTh',
+    'family_name_th',
+    'lastNameTh',
+    'last_name_th',
+    'นามสกุล',
+  ])
+  return {
+    ...(given ? { given_name: given } : {}),
+    ...(family ? { family_name: family } : {}),
+  }
+}
+
+export function splitThaiGivenAndFamily(fullName: string): PidMdocNameOverlay | undefined {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return undefined
+  if (parts.length === 1) return { given_name: parts[0] }
+
+  const familyName = parts[parts.length - 1]
+  const givenName = parts.slice(0, -1).join(' ')
+  if (!givenName || !familyName) return undefined
+  return { given_name: givenName, family_name: familyName }
+}
+
+const FULL_NAME_DISCLOSURE_KEYS = new Set([
+  'fullname',
+  'name',
+  'thaifullname',
+  'thainame',
+  'studentname',
+  'student_name',
+])
+const GIVEN_NAME_DISCLOSURE_KEYS = new Set(['givenname', 'firstname', 'ชื่อ'])
+const FAMILY_NAME_DISCLOSURE_KEYS = new Set(['familyname', 'lastname', 'นามสกุล'])
+const ENGLISH_NAME_DISCLOSURE_KEYS = new Set([
+  'englishname',
+  'englishfullname',
+  'fullnameen',
+  'nameen',
+])
+
+/**
+ * Holder-facing presentment disclosure values: issuer value first, PID only when missing.
+ * VP wire stays unchanged.
+ */
+export function overlayPresentationDisclosureValue(
+  claimKey: string,
+  currentValue: string | undefined,
+  profile?: CredentialHolderProfile,
+): string | undefined {
+  const identifier = normalizeClaimKey(readMdocElementIdentifier(claimKey))
+  const pidParts = profile?.thaiName ? splitThaiGivenAndFamily(profile.thaiName) : undefined
+
+  if (ENGLISH_NAME_DISCLOSURE_KEYS.has(identifier)) {
+    if (isLatinDisplayName(currentValue)) return currentValue
+    return profile?.englishName || '-'
+  }
+  if (hasDisplayText(currentValue)) return currentValue
+  if (!profile) return currentValue
+
+  if (FULL_NAME_DISCLOSURE_KEYS.has(identifier)) {
+    return profile.thaiName ?? currentValue
+  }
+  if (GIVEN_NAME_DISCLOSURE_KEYS.has(identifier)) {
+    return pidParts?.given_name ?? currentValue
+  }
+  if (FAMILY_NAME_DISCLOSURE_KEYS.has(identifier)) {
+    return pidParts?.family_name ?? currentValue
+  }
+  return currentValue
+}
+
+function hasDisplayText(value?: string): value is string {
+  return Boolean(value && value.trim().length > 0)
 }
 
 export function readDisplayValue(claims: Record<string, unknown>, field: DisplayField): string | undefined {

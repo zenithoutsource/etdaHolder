@@ -5,6 +5,9 @@ import {
   readCredentialSummaryDisplay,
   readPresentationFieldValue,
   resolveDisplayHolderProfile,
+  resolvePidMdocNameOverlay,
+  splitThaiGivenAndFamily,
+  overlayPresentationDisclosureValue,
 } from './credentialDisplay'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
@@ -50,8 +53,8 @@ describe('credentialDisplay', () => {
   test('builds a schema-driven driving licence summary without transcript labels', () => {
     const summary = readCredentialSummaryDisplay(drivingLicenceRecord)
 
-    expect(summary.title).toBe('Driver License')
-    expect(summary.documentTitle).toBe('DRIVING LICENSE')
+    expect(summary.title).toBe('ใบขับขี่')
+    expect(summary.documentTitle).toBe('DRIVER LICENSE')
     expect(summary.primaryText).toBe('Mali Somsri')
     expect(summary.rows).toEqual([
       { key: 'licenceNumber', label: 'Licence Number', value: 'DLT-12345' },
@@ -151,12 +154,29 @@ describe('credentialDisplay', () => {
     })
   })
 
-  test('overlays PID Thai and English names onto a non-PID credential', () => {
+  test('keeps issuer values and fills only missing holder fields from PID', () => {
     expect(
       resolveDisplayHolderProfile(drivingLicenceRecord, [thaiIdRecord, drivingLicenceRecord]),
     ).toEqual({
       thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
-      englishName: 'Ms. Thodsopp Eekkasandigital',
+      englishName: 'Mali Somsri',
+      birthDate: '1990-05-15',
+    })
+  })
+
+  test('keeps the document birth date when the issuer provided one', () => {
+    const licenceWithBirthDate: VerifiableCredentialRecord = {
+      ...drivingLicenceRecord,
+      claims: {
+        ...drivingLicenceRecord.claims,
+        birthDate: '1980-01-01',
+      },
+    }
+
+    expect(resolveDisplayHolderProfile(licenceWithBirthDate, [thaiIdRecord, licenceWithBirthDate])).toEqual({
+      thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+      englishName: 'Mali Somsri',
+      birthDate: '1980-01-01',
     })
   })
 
@@ -172,5 +192,48 @@ describe('credentialDisplay', () => {
     expect(resolveDisplayHolderProfile(drivingLicenceRecord, [drivingLicenceRecord])).toEqual({
       englishName: 'Mali Somsri',
     })
+  })
+
+  test('splits a Thai PID full name into ISO given_name and family_name', () => {
+    expect(splitThaiGivenAndFamily('นางสาว พิชญา รุ่งเรืองกิจ')).toEqual({
+      given_name: 'นางสาว พิชญา',
+      family_name: 'รุ่งเรืองกิจ',
+    })
+  })
+
+  test('does not overlay NFC names when the licence already has given and family names', () => {
+    expect(resolvePidMdocNameOverlay(drivingLicenceRecord, [thaiIdRecord, drivingLicenceRecord])).toBeUndefined()
+    expect(resolvePidMdocNameOverlay(thaiIdRecord, [thaiIdRecord])).toBeUndefined()
+  })
+
+  test('builds a session NFC name overlay only for missing licence name fields', () => {
+    const namelessLicence: VerifiableCredentialRecord = {
+      ...drivingLicenceRecord,
+      claims: { licenceNumber: 'DLT-12345' },
+    }
+    expect(resolvePidMdocNameOverlay(namelessLicence, [thaiIdRecord, namelessLicence])).toEqual({
+      given_name: 'นางสาว พิชญา',
+      family_name: 'รุ่งเรืองกิจ',
+    })
+  })
+
+  test('keeps issuer presentment disclosure values and fills missing name fields from PID', () => {
+    const profile = {
+      thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+      englishName: 'Pitchaya Rungruangkit',
+    }
+    expect(overlayPresentationDisclosureValue('given_name', 'สมชาย', profile)).toBe('สมชาย')
+    expect(overlayPresentationDisclosureValue('family_name', 'ใจดี', profile)).toBe('ใจดี')
+    expect(overlayPresentationDisclosureValue('full_name', 'สมชาย ใจดี', profile)).toBe('สมชาย ใจดี')
+    expect(overlayPresentationDisclosureValue('given_name', '', profile)).toBe('นางสาว พิชญา')
+    expect(overlayPresentationDisclosureValue('family_name', undefined, profile)).toBe('รุ่งเรืองกิจ')
+    expect(overlayPresentationDisclosureValue('licenceClass', 'B', profile)).toBe('B')
+    expect(overlayPresentationDisclosureValue('english_name', 'Somchai Jaidee', { thaiName: profile.thaiName })).toBe(
+      'Somchai Jaidee',
+    )
+    expect(overlayPresentationDisclosureValue('english_name', '', { thaiName: profile.thaiName })).toBe('-')
+    expect(
+      overlayPresentationDisclosureValue('org.iso.18013.5.1:given_name', 'สมชาย', profile),
+    ).toBe('สมชาย')
   })
 })

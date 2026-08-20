@@ -1,7 +1,7 @@
 /**
  * Driving-licence document card layout (detail, issuance preview, OID4VP info).
  * Journey: Wallet detail; Scan claim preview; P4 PresentationInfoPanel.
- * Copy: drivingLicenceDisplay; PID overlay via holderProfile.
+ * Copy: drivingLicenceDisplay; holderProfile fills missing Thai name/birth date; English is MOCK_HOLDER_ENGLISH_NAME.
  * Layout: DocumentCardLayout, DocumentCardDetailValue.
  * Map: docs/CODEMAPS/frontend.md#wallet
  */
@@ -63,9 +63,13 @@ export function DrivingLicenceDocumentCard({
         }
         leftColumn={
           <View testID="driving-licence-left-column" className="gap-3">
+            <DocumentCardDetailValue
+              label="Licence No. / เลขที่ใบอนุญาต"
+              value={view.licenceNumber}
+              testID="driving-licence-number"
+            />
             <DocumentCardDetailValue label="ประเภทยานพาหนะ" value={view.type} />
             <DocumentCardDetailValue label="Vehicle type" value={view.englishType} />
-            <DocumentCardDetailValue label="Licence No. / เลขที่ใบอนุญาต" value={view.licenceNumber} />
           </View>
         }
         rightColumn={
