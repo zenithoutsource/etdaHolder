@@ -111,7 +111,7 @@ object MdocDisplayNameOverlay {
     }
   }
 
-  private fun readIssuerSignedItem(item: DataItem): Pair<CborMap, (CborMap) -> DataItem>? {
+  private fun readIssuerSignedItem(item: DataItem): Pair<CborMap, (DataItem) -> DataItem>? {
     if (item is Tagged && item.tagNumber == Tagged.ENCODED_CBOR) {
       val inner = item.taggedItem
       val map = decodeToMap(inner) ?: return null
@@ -139,7 +139,7 @@ object MdocDisplayNameOverlay {
     return decoded as? CborMap
   }
 
-  private fun replaceElementValue(map: CborMap, value: String): CborMap {
+  private fun replaceElementValue(map: CborMap, value: String): DataItem {
     return buildCborMap {
       map.items.forEach { (key, existing) ->
         val label = (key as? Tstr)?.value ?: return@forEach
@@ -152,7 +152,7 @@ object MdocDisplayNameOverlay {
     }
   }
 
-  private fun newIssuerSignedItem(digestId: Long, identifier: String, value: String): CborMap {
+  private fun newIssuerSignedItem(digestId: Long, identifier: String, value: String): DataItem {
     return buildCborMap {
       put("digestID", digestId.toDataItem())
       put("random", byteArrayOf(digestId.toByte(), 0x51, 0x44, 0x01, 0x02, 0x03, 0x04, 0x05))
@@ -161,8 +161,8 @@ object MdocDisplayNameOverlay {
     }
   }
 
-  private fun wrapEncoded(map: CborMap): DataItem =
-    Tagged(Tagged.ENCODED_CBOR, Bstr(Cbor.encode(map)))
+  private fun wrapEncoded(item: DataItem): DataItem =
+    Tagged(Tagged.ENCODED_CBOR, Bstr(Cbor.encode(item)))
 
   private fun readIdentifier(map: CborMap): String? = try {
     map["elementIdentifier"].asTstr

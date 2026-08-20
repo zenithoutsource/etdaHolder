@@ -1,5 +1,14 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-20 (EAS compileReleaseKotlin: mdoc overlay types)
+
+- EAS `:expo-mdoc-proximity:compileReleaseKotlin` failed because
+  `MdocDisplayNameOverlay` returned Multipaz `buildCborMap()` as `CborMap`.
+  That helper is `DataItem` (same as `MdocIssuerSignedExtractor.replaceIssuerAuth`).
+- Overlay rebuild helpers now return `DataItem`; wrap lambdas accept `DataItem`.
+- Verification: JVM compile of overlay + extractor against
+  `org.multipaz:multipaz-jvm:0.100.0` (`compileKotlin` / `compileTestKotlin` succeeded).
+
 ### Session 2026-08-20 (Back after claim/present success)
 
 - After OID4VCI **receive success** or OID4VP **present success**, Back was able to
