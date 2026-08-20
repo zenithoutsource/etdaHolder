@@ -297,7 +297,7 @@ const IDCardScreen = ({navigate, goBack}) => (
           <div style={{padding:'10px 12px',borderRight:'1px solid #eef2f8'}}>
             <Label>วันเดือนปีเกิด</Label>
             <div style={{fontSize:13,fontWeight:700,color:'#1a2a42',marginBottom:8}}>15 พฤษภาคม 2546</div>
-            <Label>ที่อยู่ตามทะเบียนบ้าน</Label>
+            <Label>ที่อยู่ตามบัตรประชาชน</Label>
             <div style={{fontSize:11.5,fontWeight:500,color:'#1a2a42',lineHeight:1.5}}>123/45 ถนนราชดำเนิน แขวง พระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200</div>
           </div>
           {/* Right col */}
@@ -626,7 +626,7 @@ const IDCardConfirmScreen = ({navigate, goBack}) => (
         <div style={{padding:'0 14px'}}>
           <Divider/><FRow label="วันเดือนปีเกิด" val="15 พฤษภาคม 2546"/>
           <Divider/><FRow label="ศาสนา" val="พุทธ"/>
-          <Divider/><FRow label="ที่อยู่ตามทะเบียนบ้าน" val="123/45 ถนนราชดำเนิน แขวง พระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200"/>
+          <Divider/><FRow label="ที่อยู่ตามบัตรประชาชน" val="123/45 ถนนราชดำเนิน แขวง พระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200"/>
         </div>
         <div style={{padding:'14px 14px 20px'}}>
           <button onClick={()=>navigate('face_prep')}

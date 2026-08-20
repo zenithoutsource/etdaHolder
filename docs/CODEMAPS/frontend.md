@@ -19,7 +19,8 @@ Where to change text vs card chrome. Inline exceptions are listed per screen.
 | Issuer-requested PID presentation copy | [src/config/issuerPidPresentationCopy.ts](../../src/config/issuerPidPresentationCopy.ts) |
 | Colors | [src/config/themeColors.ts](../../src/config/themeColors.ts) |
 | NFC pre-tap disclosure set | [src/config/readerProfiles.ts](../../src/config/readerProfiles.ts) |
-| Display helpers (claim → label/value; PID name overlay) | [src/services/credentials/credentialDisplay.ts](../../src/services/credentials/credentialDisplay.ts) (`resolveDisplayHolderProfile`) |
+| Display helpers (claim → label/value; issuer-first holder profile, PID fills gaps) | [src/services/credentials/credentialDisplay.ts](../../src/services/credentials/credentialDisplay.ts) (`resolveDisplayHolderProfile`) |
+| DL/transcript card English mock | [src/config/drivingLicenceSample.ts](../../src/config/drivingLicenceSample.ts) (`MOCK_HOLDER_ENGLISH_NAME`) |
 
 **Inline exceptions (not extracted):** NFC waiting copy in [WaitingForTapPanel.tsx](../../src/components/proximity/WaitingForTapPanel.tsx); several Scan/Auth/OID4VP panel strings still live in the component.
 
@@ -48,7 +49,7 @@ Tab: [app/(tabs)/index.tsx](../../app/(tabs)/index.tsx). Hidden detail: [app/(ta
 - Slice B is not on Home. The runner is [runHardwareEcdsaSliceBChecklist](../../src/services/crypto/hardwareEcdsaDiagnostics.ts). Claim / startup do **not** log `slice-b-checklist-complete`. Metro tag is `[wallet:hardware-ecdsa]`, not `[hardware-ecdsa]`.
 - PID gate before present, My QR, or portal Fresh reissue on detail ([credentialGuard](../../src/services/credentials/credentialGuard.ts) / [pidGateDialog](../../src/services/credentials/pidGateDialog.ts)). Hardware P3 **ขอเอกสาร** of another card is not blocked by PID `renewal-required`.
 - Detail phases: `detail` | `issuerAck` | `renewalProcessing` | `revokeSubmitting` | `security` | `approve`. Focus reset clears the session.
-- Holder names on DL/transcript cards (detail, receive preview, OID4VP info) come from stored PID via `resolveDisplayHolderProfile`. PID religion is hidden (ThaID does not send it). Driving-licence vehicle type maps ISO `B` to Thai/English labels on the card; the VP token still sends the raw claim.
+- Holder names **and birth date** on DL cards (detail, receive preview, OID4VP info) use the **issuer’s own claims** first via `resolveDisplayHolderProfile`. Stored PID fills a field only when that document omitted it. Driving-licence and transcript **English name** on the card is the mock `MOCK_HOLDER_ENGLISH_NAME` (`Ms. Thodsopp Eekkasandigital`). Transcript cards hide birth date. OID4VP consent/info disclosure **values** keep the issuer string when present (`overlayPresentationDisclosureValue`); empty name fields fall back to PID. VP tokens still send document claims. PID religion is hidden (ThaID does not send it). Driving-licence left column shows **เลขที่ใบอนุญาต** above **ประเภทยานพาหนะ**; vehicle type maps ISO `B` to Thai/English labels on the card; the VP token still sends the raw claim.
 
 ## Scan and issuance
 
@@ -56,7 +57,7 @@ Tab: [app/(tabs)/scan.tsx](../../app/(tabs)/scan.tsx). Hidden offer route: [app/
 
 Same-device portal return: [app/callback.tsx](../../app/callback.tsx), rewrite hook [app/+native-intent.tsx](../../app/+native-intent.tsx). Intake store: [deeplinkStore.ts](../../src/store/deeplinkStore.ts).
 
-**Panels:** [ScanCameraPermissionPanel](../../src/components/ScanCameraPermissionPanel.tsx), [ScanCaptureSurface](../../src/components/ScanCaptureSurface.tsx), [ThaiIdSuccessConfirmationPanel](../../src/components/ThaiIdSuccessConfirmationPanel.tsx) → [IssuanceTrustConfirmationPanel](../../src/components/IssuanceTrustConfirmationPanel.tsx), [ThaiIdReceivePanel](../../src/components/ThaiIdReceivePanel.tsx) (no religion row), [DrivingLicencePreviewPanel](../../src/components/DrivingLicencePreviewPanel.tsx), [TranscriptPreviewPanel](../../src/components/TranscriptPreviewPanel.tsx), [ScanSuccessPanel](../../src/components/ScanSuccessPanel.tsx). One component per issuance phase — do not merge them.
+**Panels:** [ScanCameraPermissionPanel](../../src/components/ScanCameraPermissionPanel.tsx), [ScanCaptureSurface](../../src/components/ScanCaptureSurface.tsx), [ThaiIdSuccessConfirmationPanel](../../src/components/ThaiIdSuccessConfirmationPanel.tsx) → [IssuanceTrustConfirmationPanel](../../src/components/IssuanceTrustConfirmationPanel.tsx), [ThaiIdReceivePanel](../../src/components/ThaiIdReceivePanel.tsx) / [DrivingLicencePreviewPanel](../../src/components/DrivingLicencePreviewPanel.tsx) / [TranscriptPreviewPanel](../../src/components/TranscriptPreviewPanel.tsx) (shared [CredentialReceiveCardPanel](../../src/components/CredentialReceiveCardPanel.tsx) → same `CredentialDocumentDetailCard` as detail; no My QR/NFC), [ScanSuccessPanel](../../src/components/ScanSuccessPanel.tsx). One component per issuance phase — do not merge them.
 
 **Copy / layout:** `cardSchemas` issuance confirmation; `WALLET_HOME_COPY` for PID-gate; camera permission copy is inline Thai in `ScanCameraPermissionPanel`; Scan errors often inline English.
 
@@ -73,6 +74,8 @@ Same-device portal return: [app/callback.tsx](../../app/callback.tsx), rewrite h
 - Explicit Scan reopen of a dismissed URI is a user action — clear `dismissedUri` before re-queue ([scan.tsx](../../app/(tabs)/scan.tsx)). Replay-consumed VP is ignored + intake notify.
 - Dual URL intake: `Linking.useURL` + `getInitialURL`; callback also merges `useLocalSearchParams` (Android Custom Tabs can stale Linking).
 - Claim screen uses pending/active/dismissed deeplink state plus a missing-offer grace; PID gate blocks non-PID offers until PID exists. P3 Home **ขอเอกสาร** can finish via Scan; dismissing the portal discards the pending key, and Scan then mints at claim before pairing.
+- After claim **success**, the offer URI is dismissed immediately and the same-device session is cleared. Header / Android Back leaves to Wallet home — it must not restore DOPA confirm, preview, or a consumed offer. Remount of a dismissed offer must not call `resolveOffer` again.
+- A consumed-offer DOPA confirm keeps fail-closed issuer auth (`toFriendlyError`). Show that error panel; do not hide it behind “Opening Credential Offer” when the pending URI is the same offer that just failed.
 
 ## My QR
 
@@ -102,7 +105,7 @@ Hidden route: [app/(tabs)/presentation-request.tsx](../../app/(tabs)/presentatio
 
 **Panels:** [FacePreparePanel](../../src/components/FacePreparePanel.tsx), [IssuerPidPresentationPanel](../../src/components/IssuerPidPresentationPanel.tsx), [PresentationConsentPanel](../../src/components/PresentationConsentPanel.tsx), [PresentationInfoPanel](../../src/components/PresentationInfoPanel.tsx) (same document card as wallet detail + device + PoP + requested items; Thai and English names from PID overlay), [PresentationFailurePanel](../../src/components/PresentationFailurePanel.tsx), [PresentationResultPanel](../../src/components/PresentationResultPanel.tsx) → [PresentationSuccessPanel](../../src/components/PresentationSuccessPanel.tsx). Chrome: [PresentationStepScaffold](../../src/components/PresentationStepScaffold.tsx).
 
-**Copy:** `issuerPidPresentationCopy`; disclosure labels in `cardSchemas`; consent party + transcript white Chula hero (other types use icons) in [presentationVerifierMocks.ts](../../src/config/presentationVerifierMocks.ts); failure kinds in [presentationFailureUi.ts](../../src/services/vp/presentationFailureUi.ts).
+**Copy:** `issuerPidPresentationCopy`; disclosure labels in `cardSchemas`; consent party + hero icons in [presentationVerifierMocks.ts](../../src/config/presentationVerifierMocks.ts); failure kinds in [presentationFailureUi.ts](../../src/services/vp/presentationFailureUi.ts).
 
 **Steps** (`FlowPhase` tags)
 
@@ -118,7 +121,9 @@ Hidden route: [app/(tabs)/presentation-request.tsx](../../app/(tabs)/presentatio
 - Prefers pending URI over active; dismissed redelivery grace; remount recovery. Replay-consumed exits with intake notify — do not flash loading for a stale dismissed URI.
 - `key={vpGeneration}` on the screen forces a clean state for a new request.
 - One biometric prompt on the sign path (approve/submit) — do not add a second app-level biometric in front of it.
-- Driving-licence DCQL may use Thai-ID-style paths (`full_name`, `license_type`, `photo`). Schema aliases / `matchAliases` map those to ISO/wallet claims (`given_name`+`family_name`, `licenceClass`, `portrait`) so consent shows **ชื่อ-นามสกุล**, **ประเภทใบอนุญาต**, **รูปถ่าย** instead of **ข้อมูลที่ร้องขอ**. OID4VP info uses `CredentialDocumentDetailCard` for every type (Thai + English names). Driving-licence vehicle type on that card maps `B`; the VP wire value stays the issuer claim.
+- After presentation **success**, consume/dismiss the VP URI immediately. Header / Android Back leaves to Wallet (`onCancel`) and must not open DOPA / credential-offer. **เสร็จสิ้น** (`onDone`) may resume an in-progress same-device claim after issuer PID VP.
+- Driving-licence DCQL may use Thai-ID-style paths (`full_name`, `license_type`, `photo`). Schema aliases / `matchAliases` map those to ISO/wallet claims (`given_name`+`family_name`, `licenceClass`, `portrait`) so consent shows **ชื่อ-นามสกุล**, **ประเภทใบอนุญาต**, **รูปถ่าย** instead of **ข้อมูลที่ร้องขอ**. OID4VP info uses `CredentialDocumentDetailCard` for every type. DL/transcript **English** on that card is `MOCK_HOLDER_ENGLISH_NAME`; transcript hides birth date. Consent and requested-item **values** keep issuer strings; empty name fields fall back to PID. VP wire stays the document claims. Driving-licence vehicle type on that card maps `B`; the VP wire value stays the issuer claim.
+- Holder-facing consent and info requested-item lists (`readConsentItems` / `prepareHolderFacingDisclosureItems`) hide **ศาสนา / religion** even if the verifier asked for it. Schema `religion` stays for matching; `readInitialSelectedClaimKeys` still includes it so the VP token can send the claim. Driving-licence lists that show **ชื่อ** and **นามสกุล** as separate rows put given name above family name (display only; submit keys keep match order). NFC [PreTapConsentPanel](../../src/components/proximity/PreTapConsentPanel.tsx) uses the same helper.
 
 ## Present and NFC
 
@@ -142,6 +147,8 @@ Hidden route: [app/(tabs)/present.tsx](../../app/(tabs)/present.tsx). Opened fro
 
 - Tap-only static NFC handover — Waiting for tap shows **no** holder QR.
 - Ensure native mdoc is stored before arming; reset the proximity store on unmount; HCE arm window from `HCE_ARM_WINDOW_MS` ([dualFormatPolicy](../../src/config/dualFormatPolicy.ts)).
+- NFC DeviceResponse **session overlay**: at arm/presentment, PID Thai `given_name` / `family_name` overlay ISO mDL names **only when those fields are missing** on the presenting document (`displayNameOverlay` → Kotlin `MdocDisplayNameOverlay`). If the issuer already sent names, the stored mdoc values go on the wire. Stored mdoc is never rewritten. Logs `fieldCount` only (no PII). Overlaying missing names still means `issuerAuth` / MSO digests will not match those items — the lab extractor does not verify; production ISO verifiers that check MSO would reject.
+- Pre-tap consent hides **ศาสนา / religion** if a reader profile lists it, and shows **ชื่อ** above **นามสกุล** when those are separate rows. Display only; the mdoc field set sent on tap is still the reader profile.
 
 ## History
 

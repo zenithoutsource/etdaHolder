@@ -1,5 +1,84 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-20 (Back after claim/present success)
+
+- After OID4VCI **receive success** or OID4VP **present success**, Back was able to
+  land on stale DOPA confirm (`ThaiIdSuccessConfirmationPanel` / กรมการปกครอง).
+  Confirming that consumed offer then failed issuer auth and could hide the
+  mapped error behind “Opening Credential Offer”.
+- Claim success now dismisses the offer URI and clears the same-device session
+  immediately. Header / Android Back still `replace('/(tabs)')`. Remount of the
+  same dismissed offer does not restore DOPA. Consumed-offer acquire failures
+  keep `toFriendlyError` on screen even if the same URI is re-queued as pending.
+- Presentation success dismisses the VP URI immediately. Success header Back
+  calls `onCancel` (Wallet). **เสร็จสิ้น** still resumes in-progress same-device
+  claim after issuer PID VP.
+- Verification: `yarn test src/screens/CredentialOfferClaimScreen.test.tsx src/components/Oid4VpDisclosureFlow.test.tsx src/screens/PresentationRequestScreen.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (Hide religion on presentment lists; DL given name first)
+
+- OID4VP consent and info requested-item lists hide **ศาสนา / religion** even when
+  the verifier requested it (`prepareHolderFacingDisclosureItems`). Schema
+  `religion` stays for matching. `readInitialSelectedClaimKeys` still includes it
+  so the VP token can send the claim. NFC `PreTapConsentPanel` uses the same UI
+  filter.
+- Driving-licence consent/preview lists that show **ชื่อ** and **นามสกุล** as
+  separate rows put given name above family name. Display only; submit keys keep
+  match order. `full_name` stays one row.
+- Verification: `yarn test src/services/vp/presentationDisclosureDisplay.test.ts src/components/PresentationConsentPanel.test.tsx src/components/PresentationRequestedItemsCard.test.tsx src/components/PresentationInfoPanel.test.tsx src/components/proximity/PreTapConsentPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (DL/transcript mock English; hide transcript birth date)
+
+- Driving-licence and transcript **document cards** always show English
+  `MOCK_HOLDER_ENGLISH_NAME` (`Ms. Thodsopp Eekkasandigital`). Thai names stay
+  issuer-first with PID only if missing. PID ID card is unchanged. VP/NFC wire
+  is unchanged.
+- Transcript cards hide **วันเกิด / Date of Birth** (detail, receive, OID4VP info).
+  PID and driving-licence cards still show birth date.
+- Verification: `yarn test src/services/credentials/drivingLicenceDisplay.test.ts src/components/DrivingLicenceDocumentCard.test.tsx src/components/DrivingLicencePreviewPanel.test.tsx src/components/TranscriptPreviewPanel.test.tsx src/components/CredentialDocumentDetailCard.test.tsx src/components/PresentationInfoPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (รับเอกสารสำเร็จ Thai vowel clipping)
+
+- Scan success title/body used `leading-6` / `leading-5`, which clips Thai tone
+  marks on **รับเอกสารสำเร็จ**. Matched AppDialog / presentation success spacing:
+  18px → `leading-[26px]`, 14px → `leading-[22px]`.
+- Verification: `yarn test src/components/ScanSuccessPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (Issuer values first, PID fills gaps)
+
+- Non-PID documents (DL, transcript) show **issuer claims** for names, birth date, and
+  presentment disclosure values. Stored PID fills a UI field only when that document
+  omitted it (`resolveDisplayHolderProfile`, `overlayPresentationDisclosureValue`).
+  Missing English/Latin still shows `-` unless PID has a Latin name. VP tokens stay
+  the document claims. PID religion remains hidden.
+- NFC session overlay applies PID `given_name`/`family_name` only when the presenting
+  mDL omits those fields. Issuer names are not rewritten.
+- Receive still uses the same `CredentialDocumentDetailCard` as detail; DL licence
+  number stays above vehicle type; ISO `B` still maps on the card.
+- Verification: `yarn test src/services/credentials/credentialDisplay.test.ts src/services/credentials/drivingLicenceDisplay.test.ts src/services/proximity/proximityArmSession.test.ts src/components/CredentialDocumentDetailCard.test.tsx src/components/DrivingLicenceDocumentCard.test.tsx src/components/DrivingLicencePreviewPanel.test.tsx src/components/TranscriptPreviewPanel.test.tsx src/components/PresentationInfoPanel.test.tsx src/components/PresentationConsentPanel.test.tsx src/components/PresentationRequestedItemsCard.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (Presentment PID names, NFC session overlay, receive = detail)
+
+- Holder-facing presentment UIs overlay stored PID (`ThaiNationalID`) Thai + English
+  names via `resolveDisplayHolderProfile` / `overlayPresentationDisclosureValue`
+  (OID4VP info card, consent/requested-item **values**, issuer-PID panel). VP/sd-jwt
+  tokens still send the matched document claims. Missing Latin English shows `-`.
+- NFC lab DeviceResponse: session-only PID `given_name`/`family_name` overlay at
+  arm/presentment (`displayNameOverlay` → `MdocDisplayNameOverlay`). Stored mdoc is
+  not rewritten. Logs `fieldCount` only. `issuerAuth` digests will not match; the
+  ACR1311 lab extractor does not verify MSO.
+- VC receive previews use the same `CredentialDocumentDetailCard` as detail
+  (`CredentialReceiveCardPanel`); no My QR/NFC on receive.
+- Verification: `yarn test src/services/credentials/credentialDisplay.test.ts src/services/proximity/proximityArmSession.test.ts src/components/ThaiIdReceivePanel.test.tsx src/components/DrivingLicencePreviewPanel.test.tsx src/components/TranscriptPreviewPanel.test.tsx src/components/PresentationInfoPanel.test.tsx src/components/PresentationConsentPanel.test.tsx src/components/PresentationRequestedItemsCard.test.tsx src/components/IssuerPidPresentationPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (PID birth date overlay, DL licence number placement)
+
+- Holder-facing birth date on driving licence and transcript overlays stored PID
+  via `resolveDisplayHolderProfile` (same as Thai/English names). Display-only;
+  stored claims and VP/mdoc wire stay the document values.
+- Driving-licence card left column puts **เลขที่ใบอนุญาต** above **ประเภทยานพาหนะ**.
+- Verification: `yarn test src/services/credentials/credentialDisplay.test.ts src/services/credentials/drivingLicenceDisplay.test.ts src/components/CredentialDocumentDetailCard.test.tsx src/components/DrivingLicenceDocumentCard.test.tsx --no-coverage`.
+
 ### Session 2026-08-20 (PID names, hide religion, DL OID4VP card)
 
 - Holder-facing names on driving licence and transcript (receive, detail, OID4VP info)
