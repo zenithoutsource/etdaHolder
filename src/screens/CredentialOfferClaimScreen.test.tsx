@@ -13,6 +13,8 @@ import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import { readPidGateStatus } from '../services/credentials/credentialGuard'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
 import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
+import { logWalletError } from '../services/debug/walletLogger'
+import { useSameDeviceIssuanceStore } from '../store/sameDeviceIssuanceStore'
 import {
   pairRenewalReplacementForSavedCredential,
   readRenewalIntakePendingKeyForOffer,
@@ -146,6 +148,7 @@ describe('CredentialOfferClaimScreen', () => {
     pairRenewalReplacementForSavedCredentialMock.mockReturnValue(false)
     acquireDualFormatForPreviewMock.mockReset()
     finalizeDualFormatCredentialMock.mockReset()
+    useSameDeviceIssuanceStore.getState().clearSession()
   })
 
   afterEach(() => {
@@ -952,5 +955,146 @@ describe('CredentialOfferClaimScreen', () => {
     fireEvent.press(screen.getByText('Back to Wallet'))
 
     expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)')
+  })
+
+  it('consumes the offer on claim success so remount cannot restore DOPA', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-success-back'
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+      txCode: undefined,
+    })
+    acquireCredentialRecordMock.mockResolvedValue({
+      id: 'id-card-success-back',
+      type: 'ThaiNationalID',
+      rawVc: 'vc',
+      claims: {},
+      issuedAt: '2026-06-09T00:00:00.000Z',
+    })
+
+    const { unmount } = render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+    fireEvent.press(screen.getByText('ยืนยัน'))
+    await waitFor(() => {
+      expect(screen.getByTestId('thai-id-receive-panel')).toBeTruthy()
+    })
+    fireEvent.press(screen.getByText('ยืนยัน'))
+    await waitFor(() => {
+      expect(screen.getByText('รับเอกสารสำเร็จ')).toBeTruthy()
+    })
+
+    expect(useDeeplinkStore.getState().dismissedUri).toBe(offerUri)
+    expect(useDeeplinkStore.getState().activeUri).toBeNull()
+    expect(useDeeplinkStore.getState().pendingUri).toBeNull()
+    expect(useSameDeviceIssuanceStore.getState().session).toBeNull()
+
+    unmount()
+    acquireCredentialRecordMock.mockClear()
+    resolveOfferMock.mockClear()
+    useUrlMock.mockReturnValue(offerUri)
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+    })
+    expect(screen.queryByText('ยืนยัน')).toBeNull()
+    expect(acquireCredentialRecordMock).not.toHaveBeenCalled()
+    expect(resolveOfferMock).not.toHaveBeenCalled()
+  })
+
+  it('Android Back from claim success leaves to Wallet without restoring DOPA', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-success-hw-back'
+    let hardwareBackHandler: (() => boolean | null | undefined) | undefined
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+      hardwareBackHandler = handler
+      return { remove: jest.fn() }
+    })
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+      txCode: undefined,
+    })
+    acquireCredentialRecordMock.mockResolvedValue({
+      id: 'id-card-success-hw-back',
+      type: 'ThaiNationalID',
+      rawVc: 'vc',
+      claims: {},
+      issuedAt: '2026-06-09T00:00:00.000Z',
+    })
+
+    render(<CredentialOfferRoute />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+    fireEvent.press(screen.getByText('ยืนยัน'))
+    await waitFor(() => {
+      expect(screen.getByTestId('thai-id-receive-panel')).toBeTruthy()
+    })
+    fireEvent.press(screen.getByText('ยืนยัน'))
+    await waitFor(() => {
+      expect(screen.getByText('รับเอกสารสำเร็จ')).toBeTruthy()
+    })
+
+    act(() => {
+      expect(hardwareBackHandler?.()).toBe(true)
+    })
+
+    expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)')
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+    expect(useDeeplinkStore.getState().activeUri).toBeNull()
+    expect(useDeeplinkStore.getState().dismissedUri).toBe(offerUri)
+  })
+
+  it('shows mapped issuer auth error when DOPA confirm retries a consumed offer', async () => {
+    const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fconsumed-offer'
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [{ id: 'ThaiNationalID', format: 'dc+sd-jwt', rawConfiguration: {} }],
+      issuer: 'https://issuer.example',
+      supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
+      txCode: undefined,
+    })
+    const consumedError = new Error('CredentialTokenExchangeFailed: invalid_grant')
+    acquireCredentialRecordMock.mockRejectedValue(consumedError)
+
+    render(<CredentialOfferClaimScreen />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+    })
+    fireEvent.press(screen.getByText('ยืนยัน'))
+
+    await waitFor(() => {
+      expect(screen.getByText(
+        'Authentication with the issuer failed. The transaction code may be incorrect or may belong to another request.',
+      )).toBeTruthy()
+    })
+    expect(logWalletError).toHaveBeenCalledWith(
+      'deeplink',
+      'credential-acquire-failed',
+      consumedError,
+      expect.any(Object),
+    )
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
+    expect(screen.queryByText('Opening Credential Offer')).toBeNull()
+
+    await act(async () => {
+      useDeeplinkStore.setState({ pendingUri: offerUri })
+    })
+
+    expect(screen.getByText(
+      'Authentication with the issuer failed. The transaction code may be incorrect or may belong to another request.',
+    )).toBeTruthy()
+    expect(screen.queryByText('Opening Credential Offer')).toBeNull()
+    expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
   })
 })

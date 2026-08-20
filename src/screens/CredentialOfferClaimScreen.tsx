@@ -3,7 +3,7 @@
  * Journey: P1 issuance (Scan QR or same-device callback); P3 same-type pairing after save.
  * Copy: WALLET_HOME_COPY; cardSchemas issuance confirmation; THEME.
  * Layout: ThaiID / DL / transcript panels, IssuanceTrustConfirmationPanel, ScanSuccessPanel.
- * Next: Wallet; may open issuer portal via WebBrowser.
+ * Next: Wallet on Back after success (offer dismissed so remount cannot restore DOPA).
  * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
  */
 
@@ -11,7 +11,7 @@ import * as Linking from 'expo-linking'
 import * as WebBrowser from 'expo-web-browser'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Image, ScrollView, Text, TextInput, View, type ImageSourcePropType } from 'react-native'
+import { ActivityIndicator, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../components/AppButton'
@@ -23,6 +23,7 @@ import { ScanSuccessPanel } from '../components/ScanSuccessPanel'
 import { ThaiIdReceivePanel } from '../components/ThaiIdReceivePanel'
 import { ThaiIdSuccessConfirmationPanel } from '../components/ThaiIdSuccessConfirmationPanel'
 import { TranscriptPreviewPanel } from '../components/TranscriptPreviewPanel'
+import { CredentialReceiveCardPanel } from '../components/CredentialReceiveCardPanel'
 import { WalletHeader } from '../components/WalletHeader'
 
 import { useAndroidBackNavigation } from '../hooks/useAndroidBackNavigation'
@@ -34,6 +35,7 @@ import { buildAuthorizationRequestUrlForResolvedOffer } from '../services/creden
 import { inferPortalCredentialTypeFromOffer } from '../services/credentials/inferPortalCredentialType'
 import { isAuthorizationCodeOnlyOffer } from '../services/credentials/isAuthorizationCodeOnlyOffer'
 import { resumeSameDeviceClaimFromSession } from '../services/credentials/resumeSameDeviceClaim'
+import { clearSameDeviceIssuanceSession } from '../services/credentials/sameDeviceIssuanceSession'
 import { readActiveSameDeviceSession } from '../store/sameDeviceIssuanceStore'
 import {
   canRequestCredentialType,
@@ -78,7 +80,6 @@ import {
 } from '../services/vci/exchangeService'
 import { resolveCredentialOfferDeeplink } from '../services/credentials/resolveCredentialOfferDeeplink'
 import { resolveDisplayHolderProfile } from '../services/credentials/credentialDisplay'
-import { readCredentialPreviewDisplay } from '../services/vci/qrIssuanceFlow'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
 import { normalizeNumericCode } from '../utils/normalizeNumericCode'
 
@@ -98,13 +99,6 @@ type ClaimPhase =
   | { tag: 'saving' }
   | { tag: 'success'; record: VerifiableCredentialRecord }
   | { tag: 'error'; message: string }
-
-const credentialImages: Record<string, ImageSourcePropType> = {
-  profile: require('../../assets/images/profile.png'),
-  id: require('../../assets/images/user_profile.png'),
-  car: require('../../assets/images/car.png'),
-  transcript: require('../../assets/images/user_profile.png'),
-}
 
 const RESOLVE_TIMEOUT_MS = 20_000
 const ACQUIRE_TIMEOUT_MS = 30_000
@@ -488,13 +482,13 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     return true
   }, [dismissedDeeplinkUri, handleOfferUri])
 
-  // Only treat a still-pending store URI as "incoming" so a failed offer from
-  // Linking.useURL / initialOfferUri can still show the error + Back CTA.
+  // A newer pending offer should replace a stale error with loading. Do not
+  // hide the mapped error for the offer that just failed (same URI replay).
+  const pendingIncomingOffer = resolveCredentialOfferDeeplink(pendingDeeplinkUri)
   const hasIncomingPendingOffer = Boolean(
-    (() => {
-      const pendingOffer = resolveCredentialOfferDeeplink(pendingDeeplinkUri)
-      return pendingOffer && pendingOffer !== dismissedDeeplinkUri
-    })(),
+    pendingIncomingOffer
+    && pendingIncomingOffer !== dismissedDeeplinkUri
+    && pendingIncomingOffer !== activeOfferUriRef.current,
   )
 
   useEffect(() => {
@@ -531,7 +525,10 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     ) {
       markOfferSourceHandled()
       directUrlHandledRef.current = resolvedIncomingOffer
-      beginOffer(resolvedIncomingOffer)
+      if (!beginOffer(resolvedIncomingOffer) && resolvedIncomingOffer === dismissedDeeplinkUri) {
+        onClose?.()
+        returnToWallet()
+      }
       return
     }
 
@@ -577,10 +574,19 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   }, [
     activeDeeplinkUri,
     beginOffer,
+    dismissedDeeplinkUri,
     incomingUrl,
     initialOfferUri,
+    onClose,
     pendingDeeplinkUri,
+    returnToWallet,
   ])
+
+  const consumeCompletedOffer = useCallback(() => {
+    const uriToDismiss = activeOfferUriRef.current ?? incomingUrl
+    if (uriToDismiss) setDismissedDeeplinkUri(uriToDismiss)
+    clearSameDeviceIssuanceSession()
+  }, [incomingUrl, setDismissedDeeplinkUri])
 
   const dismissActiveOffer = useCallback(() => {
     generationRef.current += 1
@@ -654,6 +660,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         logWalletError('deeplink', 'renewal-pair-failed', pairingError, describeCredentialForLog(record))
       }
       logWalletStep('deeplink', 'credential-save-complete', describeCredentialForLog(record))
+      consumeCompletedOffer()
       setPhase({ tag: 'success', record })
     } catch (err) {
       logWalletError('deeplink', 'credential-save-failed', err, describeCredentialForLog(record))
@@ -713,6 +720,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
           <WalletHeader onBack={exitFlow} />
           <ThaiIdReceivePanel
             record={phase.record}
+            holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
             onConfirm={() => {
               void handleSave(phase.record, phase.pendingMdoc)
             }}
@@ -728,51 +736,23 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
           <TranscriptPreviewPanel
             record={phase.record}
             holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
-            profileImage={credentialImages.transcript}
             onAccept={() => acceptPreview(phase.record, phase.pendingMdoc)}
           />
         </SafeAreaView>
       )
     }
 
-    const preview = readCredentialPreviewDisplay(phase.record)
-
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
         <WalletHeader onBack={exitFlow} />
-        <View className="flex-1 items-center bg-surface px-4 pt-6">
-          <ScrollView showsVerticalScrollIndicator={false} className="w-full" contentContainerClassName="items-center pb-8">
-            <View
-              testID="credential-preview-content"
-              className="w-full max-w-[380px] overflow-hidden rounded-lg bg-white"
-              style={{ elevation: 4, shadowColor: THEME.navyShadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12 }}>
-              <View className="bg-navy-royal px-5 py-3">
-                <Text className="text-[13px] font-extrabold text-white">{preview.documentTitle}</Text>
-              </View>
-              <View className="px-7 pb-6 pt-7">
-                <View className="items-center">
-                  <Image source={credentialImages[preview.imageKey]} className="h-[104px] w-[92px]" resizeMode="contain" />
-                </View>
-                <View className="mt-5">
-                  <Text className="text-[16px] font-extrabold leading-[22px] text-navy-deep">Information to receive</Text>
-                  {preview.rows.map((row) => (
-                    <View key={row.key} className="border-b border-gray200 py-3">
-                      <Text className="text-[12px] leading-4 text-gray-cool">{row.label}</Text>
-                      <Text className="text-[13px] font-bold leading-5 text-navy-deep">{row.value}</Text>
-                    </View>
-                  ))}
-                </View>
-                <AppButton
-                  variant="solid-block"
-                  label="ยอมรับ"
-                  onPress={() => acceptPreview(phase.record, phase.pendingMdoc)}
-                  className="mt-4 h-9 w-28 self-start !bg-success"
-                  textClassName="text-[14px]"
-                />
-              </View>
-            </View>
-          </ScrollView>
-        </View>
+        <CredentialReceiveCardPanel
+          testID="credential-preview-panel"
+          contentTestID="credential-preview-content"
+          record={phase.record}
+          holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
+          confirmLabel="ยอมรับ"
+          onConfirm={() => acceptPreview(phase.record, phase.pendingMdoc)}
+        />
       </SafeAreaView>
     )
   }
