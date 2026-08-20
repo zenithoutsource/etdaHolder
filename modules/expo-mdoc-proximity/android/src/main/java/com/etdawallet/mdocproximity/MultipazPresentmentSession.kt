@@ -161,13 +161,23 @@ object MultipazPresentmentSession {
       )
     }
     Log.i(TAG, "[multipaz-session] issuerSigned extracted docType=$docType")
+    val issuerSignedForPresentment = MdocDisplayNameOverlay.apply(
+      issuerSignedBytes,
+      state.displayNameOverlay,
+    )
+    if (state.displayNameOverlay.isNotEmpty()) {
+      Log.i(
+        TAG,
+        "[multipaz-session] display name overlay fieldCount=${state.displayNameOverlay.size}",
+      )
+    }
     val hardwareHandle = DeviceAuthBridge.hardwareHandle()
     if (hardwareHandle != null) {
-      runHardwareSession(state, docType, issuerSignedBytes, hardwareHandle)
+      runHardwareSession(state, docType, issuerSignedForPresentment, hardwareHandle)
       return
     }
 
-    runSoftwareEd25519Session(state, docType, issuerSignedBytes)
+    runSoftwareEd25519Session(state, docType, issuerSignedForPresentment)
   }
 
   private suspend fun runHardwareSession(

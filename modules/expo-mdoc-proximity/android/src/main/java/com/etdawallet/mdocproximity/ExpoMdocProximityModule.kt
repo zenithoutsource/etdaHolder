@@ -200,6 +200,7 @@ class ExpoMdocProximityModule : Module() {
       )
     }
     val companionSdJwt = config["companionSdJwt"] as? String
+    val displayNameOverlay = readStringMap(config["displayNameOverlay"])
     val armWindowMs = (config["armWindowMs"] as? Number)?.toLong() ?: 180_000L
     val responseDrainGraceMs = (config["responseDrainGraceMs"] as? Number)?.toLong() ?: 5_000L
 
@@ -220,6 +221,7 @@ class ExpoMdocProximityModule : Module() {
         companionSdJwt = companionSdJwt,
         armedUntilMs = System.currentTimeMillis() + armWindowMs,
         responseDrainGraceMs = responseDrainGraceMs,
+        displayNameOverlay = displayNameOverlay,
       ),
     )
 
@@ -244,5 +246,18 @@ class ExpoMdocProximityModule : Module() {
   private fun readStringList(value: Any?): List<String> {
     val items = value as? List<*> ?: return emptyList()
     return items.mapNotNull { it as? String }
+  }
+
+  private fun readStringMap(value: Any?): Map<String, String> {
+    val items = value as? Map<*, *> ?: return emptyMap()
+    val overlay = linkedMapOf<String, String>()
+    for ((key, entry) in items) {
+      val label = key as? String ?: continue
+      val text = entry as? String ?: continue
+      if (label.isNotBlank() && text.isNotBlank()) {
+        overlay[label] = text
+      }
+    }
+    return overlay
   }
 }

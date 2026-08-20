@@ -26,6 +26,7 @@ export type ProximityArmConfig = {
   approvedMdocFields: string[]
   companionTransportPluginId?: string
   companionSdJwt?: string
+  displayNameOverlay?: Record<string, string>
   armWindowMs: number
   responseDrainGraceMs?: number
 }

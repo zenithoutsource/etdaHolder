@@ -4,8 +4,12 @@ import {
   readerProfileUsesCompanion,
 } from '@/src/config/readerProfiles'
 import { HCE_ARM_WINDOW_MS, HCE_RESPONSE_DRAIN_GRACE_MS } from '@/src/config/dualFormatPolicy'
-import { logWalletError } from '@/src/services/debug/walletLogger'
-import { readStoredCredentialById } from '@/src/services/credentials/storedCredentials'
+import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
+import { resolvePidMdocNameOverlay } from '@/src/services/credentials/credentialDisplay'
+import {
+  readStoredCredentialById,
+  readStoredCredentials,
+} from '@/src/services/credentials/storedCredentials'
 
 import { estimateCompanionPayloadBytes } from './companionPayloadSize'
 import { prepareMdocDeviceAuthForArm, releaseMdocDeviceAuthSession } from './deviceAuth'
@@ -75,6 +79,14 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
     const profile = record
       ? getReaderProfileForDocumentType(record.type, input.sharingMode)
       : undefined
+    const displayNameOverlay = record
+      ? resolvePidMdocNameOverlay(record, readStoredCredentials())
+      : undefined
+    if (displayNameOverlay) {
+      logWalletStep('proximity-arm', 'pid-name-overlay', {
+        fieldCount: Object.keys(displayNameOverlay).length,
+      })
+    }
 
     await requireNativeProximityModule().armProximitySession({
       credentialId: input.credentialId,
@@ -85,6 +97,7 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
       ...(profile && readerProfileUsesCompanion(profile) && record?.rawVc
         ? { companionSdJwt: record.rawVc }
         : {}),
+      ...(displayNameOverlay ? { displayNameOverlay } : {}),
       armWindowMs: HCE_ARM_WINDOW_MS,
       responseDrainGraceMs: HCE_RESPONSE_DRAIN_GRACE_MS,
     })

@@ -11,6 +11,7 @@ data class ProximityArmState(
   val companionSdJwt: String?,
   val armedUntilMs: Long,
   val responseDrainGraceMs: Long = 5_000L,
+  val displayNameOverlay: Map<String, String> = emptyMap(),
 )
 
 object CompanionSession {
