@@ -9,16 +9,17 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Image, Text, View, type ImageSourcePropType } from 'react-native'
 
 import { getCardSchema, type DisplayField } from '../config/cardSchemas'
-import { readCredentialDetailDisplay, readCredentialHolderProfile, readDisplayValue } from '../services/credentials/credentialDisplay'
+import {
+  overlayPresentationDisclosureValue,
+  readCredentialDetailDisplay,
+  readDisplayValue,
+  type CredentialHolderProfile,
+} from '../services/credentials/credentialDisplay'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
 import { THEME } from '../config/themeColors'
 
 const portraitImage = require('../../assets/images/user_profile.png') as ImageSourcePropType
-
-type Props = {
-  record: VerifiableCredentialRecord
-}
 
 function formatThaiDate(value?: string): string | undefined {
   if (!value) return undefined
@@ -27,24 +28,29 @@ function formatThaiDate(value?: string): string | undefined {
   return new Intl.DateTimeFormat('th-TH-u-ca-buddhist', { day: 'numeric', month: 'long', year: 'numeric' }).format(date)
 }
 
+type Props = {
+  record: VerifiableCredentialRecord
+  holderProfile?: CredentialHolderProfile
+}
+
 function resolveSummaryValue(
   record: VerifiableCredentialRecord,
-  profile: ReturnType<typeof readCredentialHolderProfile>,
+  profile: CredentialHolderProfile,
   display: ReturnType<typeof readCredentialDetailDisplay>,
   field: DisplayField,
 ): string | undefined {
   if (field.key === 'issuedAt') return formatThaiDate(display.issuedAt)
-  return (
+  const raw =
     readDisplayValue(record.claims, field) ??
     (field.key === 'birthDate' ? profile.birthDate : undefined) ??
     field.staticValue
-  )
+  return overlayPresentationDisclosureValue(field.key, raw, profile)
 }
 
-export function PresentationCredentialSummaryCard({ record }: Props) {
+export function PresentationCredentialSummaryCard({ record, holderProfile }: Props) {
   const schema = getCardSchema(record.type)
   const display = readCredentialDetailDisplay(record)
-  const profile = readCredentialHolderProfile(record)
+  const profile = holderProfile ?? {}
   const summaryFields = schema.summaryFields ?? []
   const summaryValues = summaryFields.map((field) => ({
     field,

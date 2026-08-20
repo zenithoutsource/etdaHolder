@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native'
 import {
   PresentationConsentPanel,
   isToggleablePresentationDisclosure,
+  readConsentItems,
   readInitialSelectedClaimKeys,
 } from './PresentationConsentPanel'
 import type { ResolvedPresentationRequest } from '../services/vp/presentationService'
@@ -12,6 +13,14 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
     return null
   }
 })
+
+jest.mock('../hooks/useStoredCredentials', () => ({
+  useStoredCredentials: () => ({ credentials: mockStoredCredentials.current }),
+}))
+
+const mockStoredCredentials: { current: ResolvedPresentationRequest['matchedCredential'][] } = {
+  current: [],
+}
 
 const request: ResolvedPresentationRequest = {
   requestUri: 'openid4vp://authorize',
@@ -39,6 +48,10 @@ const request: ResolvedPresentationRequest = {
 }
 
 describe('PresentationConsentPanel', () => {
+  beforeEach(() => {
+    mockStoredCredentials.current = []
+  })
+
   test('readInitialSelectedClaimKeys pre-selects locked and toggleable disclosure keys', () => {
     expect(readInitialSelectedClaimKeys(request.disclosures)).toEqual(new Set(['national_id', 'religion']))
   })
@@ -52,7 +65,7 @@ describe('PresentationConsentPanel', () => {
     expect(screen.queryByTestId('presentation-consent-verifier-logo')).toBeNull()
   })
 
-  test('renders the white Chula PNG on transcript consent', () => {
+  test('uses a company icon instead of a Chula PNG on transcript consent', () => {
     render(
       <PresentationConsentPanel
         request={{
@@ -67,20 +80,58 @@ describe('PresentationConsentPanel', () => {
       />,
     )
 
-    expect(screen.getByTestId('presentation-consent-verifier-logo').props.source).toEqual(
-      require('../../assets/images/chulalongkorn-white.png'),
-    )
-    expect(screen.getByTestId('presentation-consent-verifier-logo').props.className).toContain('h-12')
+    expect(screen.queryByTestId('presentation-consent-verifier-logo')).toBeNull()
+    expect(screen.getByText('ข้อมูลที่บริษัทต้องการ')).toBeTruthy()
   })
 
-  test('renders all disclosure rows as locked consent items', () => {
+  test('hides religion on consent while still pre-selecting it for VP submit', () => {
+    expect(readInitialSelectedClaimKeys(request.disclosures)).toEqual(new Set(['national_id', 'religion']))
+
     render(
       <PresentationConsentPanel request={request} onAccept={jest.fn()} onReject={jest.fn()} />,
     )
 
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.getByText('เลขบัตรประจำตัวประชาชน')).toBeTruthy()
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('Buddhist')).toBeNull()
+    expect(screen.queryByText('Religion')).toBeNull()
   })
+
+  test('shows driving-licence given name above family name on consent', () => {
+    const disclosures = [
+      { key: 'family_name', label: 'นามสกุล', value: 'ใจดี', mandatory: true, selective: false },
+      { key: 'given_name', label: 'ชื่อ', value: 'สมชาย', mandatory: true, selective: false },
+    ]
+    expect(readConsentItems(disclosures, new Set(['family_name', 'given_name']), 'DLTDrivingLicence').map((item) => item.label)).toEqual([
+      'ชื่อ',
+      'นามสกุล',
+    ])
+
+    render(
+      <PresentationConsentPanel
+        request={{
+          ...request,
+          matchedCredential: {
+            id: 'licence-1',
+            type: 'DLTDrivingLicence',
+            rawVc: 'dl.jwt~',
+            claims: { givenName: 'สมชาย', familyName: 'ใจดี' },
+            issuedAt: '2026-01-01T00:00:00.000Z',
+          },
+          disclosures,
+        }}
+        onAccept={jest.fn()}
+        onReject={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByText('ชื่อ')).toBeTruthy()
+    expect(screen.getByText('นามสกุล')).toBeTruthy()
+    const json = JSON.stringify(screen.toJSON())
+    expect(json.indexOf('"ชื่อ"')).toBeLessThan(json.indexOf('"นามสกุล"'))
+  })
+
 
   test('primary button calls onAccept without requiring claim selection state', () => {
     const onAccept = jest.fn()
@@ -112,5 +163,46 @@ describe('PresentationConsentPanel', () => {
         selective: true,
       }),
     ).toBe(true)
+  })
+
+  test('keeps issuer driving-licence name disclosure values when present', () => {
+    mockStoredCredentials.current = [
+      {
+        id: 'pid-1',
+        type: 'ThaiNationalID',
+        rawVc: 'pid.jwt~',
+        claims: {
+          thaiFullName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishFullName: 'Pitchaya Rungruangkit',
+        },
+        issuedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+
+    render(
+      <PresentationConsentPanel
+        request={{
+          ...request,
+          matchedCredential: {
+            id: 'licence-1',
+            type: 'DLTDrivingLicence',
+            rawVc: 'dl.jwt~',
+            claims: { givenName: 'สมชาย', familyName: 'ใจดี' },
+            issuedAt: '2026-01-01T00:00:00.000Z',
+          },
+          disclosures: [
+            { key: 'given_name', label: 'ชื่อ', value: 'สมชาย', mandatory: true, selective: false },
+            { key: 'family_name', label: 'นามสกุล', value: 'ใจดี', mandatory: true, selective: false },
+          ],
+        }}
+        onAccept={jest.fn()}
+        onReject={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByText('สมชาย')).toBeTruthy()
+    expect(screen.getByText('ใจดี')).toBeTruthy()
+    expect(screen.queryByText('นางสาว พิชญา')).toBeNull()
+    expect(screen.queryByText('รุ่งเรืองกิจ')).toBeNull()
   })
 })

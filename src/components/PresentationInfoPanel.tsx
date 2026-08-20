@@ -62,6 +62,7 @@ export function PresentationInfoPanel({
           onToggleClaim={onToggleClaim}
           onAccept={onConfirm}
           submitting={submitting}
+          holderProfile={holderProfile}
         />
       </ScrollView>
     </View>

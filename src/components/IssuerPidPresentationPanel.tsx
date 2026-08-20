@@ -6,12 +6,14 @@
  * Map: docs/CODEMAPS/frontend.md#oid4vp-request
  */
 
+import { useMemo } from 'react'
 import { ScrollView, Text, View } from 'react-native'
 
 import { ISSUER_PID_PRESENTATION_COPY } from '../config/issuerPidPresentationCopy'
+import { useStoredCredentials } from '../hooks/useStoredCredentials'
 import {
   readCredentialDetailDisplay,
-  readCredentialHolderProfile,
+  resolveDisplayHolderProfile,
 } from '../services/credentials/credentialDisplay'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 import { AppButton } from './AppButton'
@@ -30,8 +32,12 @@ export function IssuerPidPresentationPanel({
   onDecline,
   submitting,
 }: Props) {
+  const { credentials } = useStoredCredentials()
   const display = readCredentialDetailDisplay(record)
-  const holderProfile = readCredentialHolderProfile(record)
+  const holderProfile = useMemo(
+    () => resolveDisplayHolderProfile(record, credentials),
+    [credentials, record],
+  )
 
   return (
     <View testID="issuer-pid-presentation-panel" className="flex-1 bg-white px-4 pt-6">

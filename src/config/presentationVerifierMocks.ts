@@ -7,7 +7,7 @@
 
 import type { ImageSourcePropType } from 'react-native'
 
-export type PresentationConsentHeroIcon = 'glass-cocktail' | 'car' | 'medical-bag'
+export type PresentationConsentHeroIcon = 'glass-cocktail' | 'car' | 'medical-bag' | 'office-building'
 
 export type PresentationVerifierMock = {
   /** Party name in History Log, consent, and success screen */
@@ -18,12 +18,11 @@ export type PresentationVerifierMock = {
   accessLabel: string
 }
 
-const TRANSCRIPT_CONSENT_LOGO = require('../../assets/images/chulalongkorn-white.png') as ImageSourcePropType
-
 const PRESENTATION_CONSENT_HERO_ICONS: Record<string, PresentationConsentHeroIcon> = {
   ThaiNationalID: 'glass-cocktail',
   DLTDrivingLicence: 'car',
   MedicalCertificate: 'medical-bag',
+  ChulalongkornUniversityTranscript: 'office-building',
 }
 
 const PRESENTATION_VERIFIER_MOCKS: Record<string, PresentationVerifierMock> = {
@@ -38,8 +37,8 @@ const PRESENTATION_VERIFIER_MOCKS: Record<string, PresentationVerifierMock> = {
     accessLabel: 'ใบขับขี่ดิจิทัล',
   },
   ChulalongkornUniversityTranscript: {
-    verifierName: 'มหาวิทยาลัยจุฬาลงกรณ์',
-    consentPartyLabel: 'มหาวิทยาลัยจุฬาลงกรณ์',
+    verifierName: 'บริษัท',
+    consentPartyLabel: 'บริษัท',
     accessLabel: 'ใบแสดงผลการเรียน',
   },
   MedicalCertificate: {
@@ -97,15 +96,14 @@ export function readPresentationAccessLabel(credentialType: string): string | un
   return readPresentationVerifierMock(credentialType)?.accessLabel
 }
 
-/** Consent-screen hero PNG — transcript only (white Chula logo). */
+/** Consent-screen hero PNG when a credential type has agency artwork. */
 export function readPresentationVerifierLogoSource(
-  credentialType: string,
+  _credentialType: string,
 ): ImageSourcePropType | undefined {
-  if (credentialType !== 'ChulalongkornUniversityTranscript') return undefined
-  return TRANSCRIPT_CONSENT_LOGO
+  return undefined
 }
 
-/** Consent-screen hero icon when there is no transcript PNG. */
+/** Consent-screen hero icon for the verifier mock of this credential type. */
 export function readPresentationConsentHeroIcon(
   credentialType: string,
 ): PresentationConsentHeroIcon | undefined {

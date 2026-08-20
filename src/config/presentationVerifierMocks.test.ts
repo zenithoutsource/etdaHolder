@@ -32,21 +32,19 @@ describe('presentationVerifierMocks', () => {
     expect(readPresentationAccessLabel('DLTDrivingLicence')).toBe('ใบขับขี่ดิจิทัล')
   })
 
-  test('uses the white Chula PNG only for transcript consent', () => {
-    expect(readPresentationVerifierLogoSource('ChulalongkornUniversityTranscript')).toEqual(
-      require('../../assets/images/chulalongkorn-white.png'),
-    )
+  test('does not use a consent-hero PNG for any credential type', () => {
+    expect(readPresentationVerifierLogoSource('ChulalongkornUniversityTranscript')).toBeUndefined()
     expect(readPresentationVerifierLogoSource('ThaiNationalID')).toBeUndefined()
     expect(readPresentationVerifierLogoSource('DLTDrivingLicence')).toBeUndefined()
     expect(readPresentationVerifierLogoSource('MedicalCertificate')).toBeUndefined()
     expect(readPresentationVerifierLogoSource('UnknownType')).toBeUndefined()
   })
 
-  test('maps non-transcript types to consent hero icons', () => {
+  test('maps credential types to consent hero icons', () => {
     expect(readPresentationConsentHeroIcon('ThaiNationalID')).toBe('glass-cocktail')
     expect(readPresentationConsentHeroIcon('DLTDrivingLicence')).toBe('car')
     expect(readPresentationConsentHeroIcon('MedicalCertificate')).toBe('medical-bag')
-    expect(readPresentationConsentHeroIcon('ChulalongkornUniversityTranscript')).toBeUndefined()
+    expect(readPresentationConsentHeroIcon('ChulalongkornUniversityTranscript')).toBe('office-building')
     expect(readPresentationConsentHeroIcon('UnknownType')).toBeUndefined()
   })
 

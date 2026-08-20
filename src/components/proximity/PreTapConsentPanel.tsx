@@ -1,7 +1,7 @@
 /**
  * Pre-tap fixed disclosure consent from the reader profile (no toggles).
  * Journey: P4 NFC Present (app/(tabs)/present.tsx).
- * Copy: readerProfiles; cardSchemas disclosure labels; presentationVerifierMocks hero icon.
+ * Copy: readerProfiles; cardSchemas disclosure labels; presentationVerifierMocks hero icon. Holder lists hide religion; given name above family name.
  * Layout: PresentationDisclosureList.
  * Map: docs/CODEMAPS/frontend.md#present-and-nfc
  */
@@ -18,6 +18,7 @@ import {
 } from '@/src/config/presentationVerifierMocks'
 import type { ReaderProfile } from '@/src/config/readerProfiles'
 import { THEME } from '@/src/config/themeColors'
+import { prepareHolderFacingDisclosureItems } from '@/src/services/vp/presentationDisclosureDisplay'
 
 type PreTapConsentPanelProps = {
   profile: ReaderProfile
@@ -32,12 +33,14 @@ export function PreTapConsentPanel({
   onDecline,
   submitting,
 }: PreTapConsentPanelProps) {
-  const items = profile.mdocFields.map((field) => ({
-    key: `${field.namespace}.${field.identifier}`,
-    label: resolvePresentationDisclosureLabel(profile.documentType, field.identifier),
-    selected: true,
-    toggleable: false as const,
-  }))
+  const items = prepareHolderFacingDisclosureItems(
+    profile.mdocFields.map((field) => ({
+      key: `${field.namespace}.${field.identifier}`,
+      label: resolvePresentationDisclosureLabel(profile.documentType, field.identifier),
+      selected: true,
+      toggleable: false as const,
+    })),
+  )
   const logoSource = readPresentationVerifierLogoSource(profile.documentType)
   const heroIcon = readPresentationConsentHeroIcon(profile.documentType)
 

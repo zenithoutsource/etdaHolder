@@ -46,4 +46,30 @@ describe('PreTapConsentPanel', () => {
     expect(onAccept).toHaveBeenCalledTimes(1)
     expect(onDecline).toHaveBeenCalledTimes(1)
   })
+
+  test('hides religion and shows given name above family name', () => {
+    expect(profile).toBeDefined()
+    if (!profile) return
+
+    render(
+      <PreTapConsentPanel
+        profile={{
+          ...profile,
+          mdocFields: [
+            { namespace: 'org.iso.18013.5.1', identifier: 'family_name' },
+            { namespace: 'org.iso.18013.5.1', identifier: 'religion' },
+            { namespace: 'org.iso.18013.5.1', identifier: 'given_name' },
+          ],
+        }}
+        onAccept={jest.fn()}
+        onDecline={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByText('ชื่อ')).toBeTruthy()
+    expect(screen.getByText('นามสกุล')).toBeTruthy()
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    const json = JSON.stringify(screen.toJSON())
+    expect(json.indexOf('"ชื่อ"')).toBeLessThan(json.indexOf('"นามสกุล"'))
+  })
 })

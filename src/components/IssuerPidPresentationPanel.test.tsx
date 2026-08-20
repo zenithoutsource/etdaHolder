@@ -5,6 +5,10 @@ import type { VerifiableCredentialRecord } from '../services/vci/exchangeService
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'MaterialCommunityIcons')
 
+jest.mock('../hooks/useStoredCredentials', () => ({
+  useStoredCredentials: () => ({ credentials: [] }),
+}))
+
 const pidRecord: VerifiableCredentialRecord = {
   id: 'pid-1',
   type: 'ThaiNationalID',
