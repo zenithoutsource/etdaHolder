@@ -3,7 +3,7 @@
  * Journey: P4 (PresentationRequestScreen and My QR).
  * Copy: presentationFailureUi, issuerPidPresentationCopy, cardSchemas labels.
  * Layout: FacePreparePanel, consent/info/issuer-PID panels, result/failure.
- * Next: Wallet on done/cancel.
+ * Next: Wallet on Back/cancel; Done may resume same-device claim.
  * Map: docs/CODEMAPS/frontend.md#oid4vp-request
  */
 
@@ -79,6 +79,8 @@ type Props = {
   onTerminalFailure?: (details: PresentationFailureUi) => void
   onDone: () => void
   onCancel: () => void
+  /** Fired when submit succeeds, before the holder leaves the success panel. */
+  onSucceeded?: () => void
 }
 
 const TERMINAL_REQUEST_FAILURE_KINDS = new Set<PresentationFailureUi['kind']>([
@@ -104,6 +106,7 @@ export function Oid4VpDisclosureFlow({
   onTerminalFailure,
   onDone,
   onCancel,
+  onSucceeded,
 }: Props) {
   const [phase, setPhase] = useState<FlowPhase>({ tag: 'resolving' })
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -269,6 +272,7 @@ export function Oid4VpDisclosureFlow({
           request.verifier.name,
         ),
       })
+      onSucceeded?.()
     } catch (err) {
       logWalletError(logScope, 'presentation-approve-failed', err)
       if (historyChannel === 'oid4vp') {
@@ -286,7 +290,7 @@ export function Oid4VpDisclosureFlow({
     } finally {
       setIsSubmitting(false)
     }
-  }, [deliveryPath, historyChannel, isSubmitting, logScope])
+  }, [deliveryPath, historyChannel, isSubmitting, logScope, onSucceeded])
 
   const declinePresentation = useCallback((
     request: ResolvedPresentationRequest,
@@ -393,7 +397,7 @@ export function Oid4VpDisclosureFlow({
 
   if (phase.tag === 'success') {
     return (
-      <PresentationStepScaffold title="Verifier" onBack={onDone}>
+      <PresentationStepScaffold title="Verifier" onBack={onCancel}>
         <PresentationResultPanel verifierName={phase.verifierName} onDone={onDone} />
       </PresentationStepScaffold>
     )

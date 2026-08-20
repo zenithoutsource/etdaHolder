@@ -3,7 +3,7 @@
  * Journey: P4 Verifier QR / deeplink VP.
  * Copy: inline loading / missing strings.
  * Layout: Oid4VpDisclosureFlow.
- * Next: Wallet; after issuer PID VP may push credential-offer.
+ * Next: Wallet on Back; Done after issuer PID VP may push credential-offer.
  * Map: docs/CODEMAPS/frontend.md#oid4vp-request
  */
 
@@ -318,6 +318,14 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
     exitPresentationFlow('user')
   }, [exitPresentationFlow])
 
+  const consumeActiveRequest = useCallback(() => {
+    const state = useDeeplinkStore.getState()
+    const uriToDismiss = activeRequestUriRef.current
+      ?? (state.activeUri && isPresentationRequestDeeplink(state.activeUri) ? state.activeUri : null)
+      ?? (state.pendingUri && isPresentationRequestDeeplink(state.pendingUri) ? state.pendingUri : null)
+    if (uriToDismiss) setDismissedDeeplinkUri(uriToDismiss)
+  }, [setDismissedDeeplinkUri])
+
   const finishAfterPresentation = useCallback(() => {
     void (async () => {
       if (isAwaitingSameDevicePidVp()) {
@@ -397,6 +405,7 @@ export function PresentationRequestScreen({ initialRequestUri }: Props = {}) {
       presentationOrigin={readPresentationUiOrigin(presentationFlowOrigin)}
       presentationFlowOrigin={presentationFlowOrigin}
       onRequestCredential={requestCredential}
+      onSucceeded={consumeActiveRequest}
       onDone={finishAfterPresentation}
       onCancel={exitFlow}
     />

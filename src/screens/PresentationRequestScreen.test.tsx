@@ -10,12 +10,13 @@ const mockText = Text
 const mockPressable = Pressable
 const mockRouterReplace = jest.fn()
 const mockRouterDismissTo = jest.fn()
+const mockRouterPush = jest.fn()
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     replace: mockRouterReplace,
     dismissTo: mockRouterDismissTo,
-    push: jest.fn(),
+    push: mockRouterPush,
     canGoBack: () => false,
     back: jest.fn(),
   }),
@@ -50,15 +51,22 @@ jest.mock('../services/vp/presentationRequestReplay', () => ({
   isPresentationRequestConsumed: jest.fn(() => false),
 }))
 
+jest.mock('../services/credentials/resumeSameDeviceClaim', () => ({
+  resumeSameDeviceClaimFromSession: jest.fn(async () => ({ status: 'no_session' })),
+  resumeSameDeviceClaimAfterPidVp: jest.fn(async () => ({ status: 'no_session' })),
+}))
+
 jest.mock('../components/Oid4VpDisclosureFlow', () => ({
   Oid4VpDisclosureFlow: ({
     authorizationRequestUri,
     onDone,
     onCancel,
+    onSucceeded,
   }: {
     authorizationRequestUri: string
     onDone: () => void
     onCancel: () => void
+    onSucceeded?: () => void
   }) => {
     if (/[?&]state=expired(?:&|$)/.test(authorizationRequestUri)) {
       return mockReact.createElement(
@@ -78,6 +86,11 @@ jest.mock('../components/Oid4VpDisclosureFlow', () => ({
       mockReact.createElement(mockText, null, `flow:${authorizationRequestUri}`),
       mockReact.createElement(
         mockPressable,
+        { accessibilityRole: 'button', onPress: () => onSucceeded?.() },
+        mockReact.createElement(mockText, null, 'mark-success'),
+      ),
+      mockReact.createElement(
+        mockPressable,
         { accessibilityRole: 'button', onPress: onDone },
         mockReact.createElement(mockText, null, 'done'),
       ),
@@ -86,20 +99,32 @@ jest.mock('../components/Oid4VpDisclosureFlow', () => ({
         { accessibilityRole: 'button', onPress: onCancel },
         mockReact.createElement(mockText, null, 'cancel'),
       ),
+      mockReact.createElement(
+        mockPressable,
+        { accessibilityRole: 'button', onPress: onCancel },
+        mockReact.createElement(mockText, null, 'header-back'),
+      ),
     )
   },
 }))
 
 import { isPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
+import { resumeSameDeviceClaimAfterPidVp } from '../services/credentials/resumeSameDeviceClaim'
+import { useSameDeviceIssuanceStore } from '../store/sameDeviceIssuanceStore'
 
 const isPresentationRequestConsumedMock = isPresentationRequestConsumed as jest.MockedFunction<
   typeof isPresentationRequestConsumed
+>
+const mockResumeSameDeviceClaimAfterPidVp = resumeSameDeviceClaimAfterPidVp as jest.MockedFunction<
+  typeof resumeSameDeviceClaimAfterPidVp
 >
 
 describe('PresentationRequestScreen deeplink remount', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     isPresentationRequestConsumedMock.mockReturnValue(false)
+    mockResumeSameDeviceClaimAfterPidVp.mockResolvedValue({ status: 'no_session' })
+    useSameDeviceIssuanceStore.getState().clearSession()
     useDeeplinkStore.setState({
       pendingUri: null,
       pendingPresentationFlowOrigin: null,
@@ -409,5 +434,105 @@ describe('PresentationRequestScreen deeplink remount', () => {
       expect(screen.queryByText('กำลังเปิดคำขอตรวจสอบ…')).toBeNull()
     })
     expect(mockRouterReplace).toHaveBeenCalled()
+  })
+
+  it('consumes the VP URI on presentation success so remount cannot reopen the request', async () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=success-consume'
+
+    useDeeplinkStore.getState().setPendingDeeplinkUri(requestUri)
+    render(<PresentationRequestRoute />)
+
+    await waitFor(() => {
+      expect(screen.getByText(`flow:${requestUri}`)).toBeTruthy()
+    })
+
+    fireEvent.press(screen.getByText('mark-success'))
+
+    expect(useDeeplinkStore.getState().dismissedUri).toBe(requestUri)
+    expect(useDeeplinkStore.getState().activeUri).toBeNull()
+    expect(mockRouterReplace).not.toHaveBeenCalled()
+    expect(mockRouterPush).not.toHaveBeenCalled()
+  })
+
+  it('header Back after presentation success returns to Wallet and does not open DOPA claim', async () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=success-header-back'
+    useSameDeviceIssuanceStore.getState().setSession({
+      id: 'session-1',
+      credentialType: 'DLTDrivingLicence',
+      phase: 'awaiting_pid_vp',
+      codeVerifier: 'verifier',
+      redirectUri: 'walletapp://callback',
+    })
+    mockResumeSameDeviceClaimAfterPidVp.mockResolvedValue({
+      status: 'claim_ready',
+      resolvedOffer: {
+        credentialConfigurations: [{ id: 'DLTDrivingLicence', format: 'dc+sd-jwt', rawConfiguration: {} }],
+        issuer: 'https://issuer.example',
+        txCode: undefined,
+      },
+      authorizationCodeExchange: {
+        authorizationCode: 'code',
+        codeVerifier: 'verifier',
+        redirectUri: 'walletapp://callback',
+        clientId: 'client',
+        tokenEndpoint: 'https://issuer.example/token',
+      },
+    })
+
+    useDeeplinkStore.getState().setPendingDeeplinkUri(requestUri)
+    render(<PresentationRequestRoute />)
+
+    await waitFor(() => {
+      expect(screen.getByText(`flow:${requestUri}`)).toBeTruthy()
+    })
+
+    fireEvent.press(screen.getByText('mark-success'))
+    fireEvent.press(screen.getByText('header-back'))
+
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith('/(tabs)')
+    })
+    expect(mockRouterPush).not.toHaveBeenCalledWith('/(tabs)/credential-offer')
+    expect(mockResumeSameDeviceClaimAfterPidVp).not.toHaveBeenCalled()
+  })
+
+  it('Done after issuer PID presentation resumes the in-progress claim', async () => {
+    const requestUri = 'openid4vp://?response_type=vp_token&state=success-done-resume'
+    useSameDeviceIssuanceStore.getState().setSession({
+      id: 'session-1',
+      credentialType: 'DLTDrivingLicence',
+      phase: 'awaiting_pid_vp',
+      codeVerifier: 'verifier',
+      redirectUri: 'walletapp://callback',
+    })
+    mockResumeSameDeviceClaimAfterPidVp.mockResolvedValue({
+      status: 'claim_ready',
+      resolvedOffer: {
+        credentialConfigurations: [{ id: 'DLTDrivingLicence', format: 'dc+sd-jwt', rawConfiguration: {} }],
+        issuer: 'https://issuer.example',
+        txCode: undefined,
+      },
+      authorizationCodeExchange: {
+        authorizationCode: 'code',
+        codeVerifier: 'verifier',
+        redirectUri: 'walletapp://callback',
+        clientId: 'client',
+        tokenEndpoint: 'https://issuer.example/token',
+      },
+    })
+
+    useDeeplinkStore.getState().setPendingDeeplinkUri(requestUri)
+    render(<PresentationRequestRoute />)
+
+    await waitFor(() => {
+      expect(screen.getByText(`flow:${requestUri}`)).toBeTruthy()
+    })
+
+    fireEvent.press(screen.getByText('done'))
+
+    await waitFor(() => {
+      expect(mockResumeSameDeviceClaimAfterPidVp).toHaveBeenCalled()
+      expect(mockRouterPush).toHaveBeenCalledWith('/(tabs)/credential-offer')
+    })
   })
 })

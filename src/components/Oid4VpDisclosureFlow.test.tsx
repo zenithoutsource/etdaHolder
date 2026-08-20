@@ -73,8 +73,23 @@ jest.mock('../services/vp/presentationRequestReplay', () => ({
 }))
 
 jest.mock('./PresentationStepScaffold', () => {
-  const { View } = require('react-native')
-  return { PresentationStepScaffold: ({ children }: { children: React.ReactNode }) => <View>{children}</View> }
+  const { Pressable, Text, View } = require('react-native')
+  return {
+    PresentationStepScaffold: ({
+      children,
+      onBack,
+    }: {
+      children: React.ReactNode
+      onBack: () => void
+    }) => (
+      <View>
+        <Pressable accessibilityRole="button" onPress={onBack}>
+          <Text>header-back</Text>
+        </Pressable>
+        {children}
+      </View>
+    ),
+  }
 })
 
 jest.mock('./FacePreparePanel', () => {
@@ -240,6 +255,38 @@ describe('Oid4VpDisclosureFlow', () => {
       expect.objectContaining({ channel: 'wallet', partyName: 'ผู้ตรวจสอบทดสอบ', credentialId: 'cred-1' }),
     )
     expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+  })
+
+  test('header Back on presentation success leaves the flow instead of calling Done', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    const onDone = jest.fn()
+    const onCancel = jest.fn()
+    const onSucceeded = jest.fn()
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        onDone={onDone}
+        onCancel={onCancel}
+        onSucceeded={onSucceeded}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('scan-face'))
+    await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
+    expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+    expect(onSucceeded).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('header-back'))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
   })
 
   test('issuer PID VP skips Face Prepare and submits from the PID card confirm', async () => {
