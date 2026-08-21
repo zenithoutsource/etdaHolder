@@ -1,9 +1,29 @@
+/**
+ * Credential UI schema registry — titles, colors, display/summary fields, issuance confirm, disclosure labels.
+ * Journey: every document card, issuance panel, and presentation disclosure list.
+ * Copy: field labels and presentationLabel (Thai) live here.
+ * Map: docs/CODEMAPS/frontend.md#copy-and-layout
+ */
+
 import { THEME } from './themeColors'
+import {
+  canonicalFirstPartyType,
+  isFirstPartyCredential,
+  isFirstPartyIssuerOrigin,
+  resolveFirstPartyType,
+  type FirstPartyRecordLike,
+} from './firstPartyCredential'
+
 export type DisplayField = {
   key: string;
   label: string;
   presentationLabel?: string;
   aliases?: string[];
+  /**
+   * Extra keys that satisfy this field for OID4VP matching / SD-JWT selection.
+   * Not used for credential-card rows (so given/family stay separate from fullName).
+   */
+  matchAliases?: string[];
   staticValue?: string;
   /** OID4VP Holder disclosure policy fallback when Issuer metadata is unavailable. */
   presentationDisclosure?: {
@@ -37,7 +57,7 @@ export type CardSchemaConfig = {
   summaryRows?: DisplayField[][];
   /** Divider style for summaryRows. 'horizontal' (default) = line above each row. 'vertical' = line between columns. 'both' = both. */
   summaryRowDivider?: "horizontal" | "vertical" | "both";
-  /** Hide the Issue Date / Expiry Date footer row in PresentationCredentialSummaryCard. */
+  /** Hide the Issue Date / Expiry Date footer row on document summary chrome. */
   hideSummaryValidityFooter?: boolean;
   /** When true, first successful presentation marks credential Used (P6 Case 3). */
   singleUse?: boolean;
@@ -58,9 +78,9 @@ const FALLBACK_SCHEMA: CardSchemaConfig = {
 const SCHEMAS: CardSchemaConfig[] = [
   {
     type: "ThaiNationalID",
-    title: "Thai National ID",
+    title: "บัตรประชาชน",
     documentTitle: "ID CARD",
-    issuerName: "Department of Provincial Administration",
+    issuerName: "กรมการปกครอง",
     primaryColor: THEME.navy,
     imageKey: "id",
     issuerLogoKey: "thaid",
@@ -134,7 +154,7 @@ const SCHEMAS: CardSchemaConfig[] = [
       },
     ],
     issuanceVerification: {
-      providerLabel: "ThaID",
+      providerLabel: "PID",
       imageKey: "thaid",
     },
     issuanceConfirmation: {
@@ -146,9 +166,9 @@ const SCHEMAS: CardSchemaConfig[] = [
   },
   {
     type: "DLTDrivingLicence",
-    title: "Driving Licence",
-    documentTitle: "DRIVING LICENSE",
-    issuerName: "Department of Land Transport",
+    title: "ใบขับขี่",
+    documentTitle: "DRIVER LICENSE",
+    issuerName: "กรมการขนส่งทางบก",
     primaryColor: THEME.navyRoyal,
     imageKey: "car",
     issuerLogoKey: "dltt",
@@ -156,11 +176,13 @@ const SCHEMAS: CardSchemaConfig[] = [
       {
         key: "givenName",
         label: "Given Name",
+        presentationLabel: "ชื่อ",
         aliases: ["given_name"],
       },
       {
         key: "familyName",
         label: "Family Name",
+        presentationLabel: "นามสกุล",
         aliases: ["family_name"],
       },
       {
@@ -168,6 +190,16 @@ const SCHEMAS: CardSchemaConfig[] = [
         label: "Full Name",
         presentationLabel: "ชื่อ-นามสกุล",
         aliases: ["full_name", "name"],
+        matchAliases: [
+          "givenName",
+          "familyName",
+          "given_name",
+          "family_name",
+          "firstName",
+          "first_name",
+          "lastName",
+          "last_name",
+        ],
       },
       {
         key: "birthDate",
@@ -197,12 +229,28 @@ const SCHEMAS: CardSchemaConfig[] = [
         key: "licenceClass",
         label: "Class",
         presentationLabel: "ประเภทใบอนุญาต",
-        aliases: ["licence_class", "licenseClass", "license_class"],
+        aliases: [
+          "licence_class",
+          "licenseClass",
+          "license_class",
+          "license_type",
+          "licence_type",
+          "licenseType",
+          "licenceType",
+          "driving_privileges",
+        ],
       },
       {
         key: "issuingCountry",
         label: "Issuing Country",
+        presentationLabel: "ประเทศผู้ออก",
         aliases: ["issuing_country"],
+      },
+      {
+        key: "issuingAuthority",
+        label: "Issuing Authority",
+        presentationLabel: "หน่วยงานผู้ออก",
+        aliases: ["issuing_authority"],
       },
       {
         key: "issuanceDate",
@@ -221,6 +269,63 @@ const SCHEMAS: CardSchemaConfig[] = [
         label: "Photo",
         presentationLabel: "รูปถ่าย",
         aliases: ["portrait", "image"],
+      },
+      {
+        key: "unDistinguishingSign",
+        label: "UN Distinguishing Sign",
+        presentationLabel: "รหัสประเทศ",
+        aliases: ["un_distinguishing_sign"],
+      },
+      {
+        key: "ageOver18",
+        label: "Over 18",
+        presentationLabel: "อายุเกิน 18 ปี",
+        aliases: ["age_over_18"],
+      },
+      {
+        key: "sex",
+        label: "Sex",
+        presentationLabel: "เพศ",
+        aliases: ["gender"],
+      },
+      {
+        key: "nationality",
+        label: "Nationality",
+        presentationLabel: "สัญชาติ",
+      },
+      {
+        key: "residentAddress",
+        label: "Resident Address",
+        presentationLabel: "ที่อยู่",
+        aliases: ["resident_address"],
+      },
+      {
+        key: "birthPlace",
+        label: "Place of Birth",
+        presentationLabel: "สถานที่เกิด",
+        aliases: ["birth_place"],
+      },
+      {
+        key: "height",
+        label: "Height",
+        presentationLabel: "ส่วนสูง",
+      },
+      {
+        key: "weight",
+        label: "Weight",
+        presentationLabel: "น้ำหนัก",
+      },
+      {
+        key: "eyeColour",
+        label: "Eye Colour",
+        presentationLabel: "สีตา",
+        aliases: ["eye_colour", "eye_color"],
+      },
+      {
+        key: "hairColour",
+        label: "Hair Colour",
+        presentationLabel: "สีผม",
+        aliases: ["hair_colour", "hair_color"],
       },
     ],
     summaryFields: [
@@ -255,9 +360,9 @@ const SCHEMAS: CardSchemaConfig[] = [
   },
   {
     type: "ChulalongkornUniversityTranscript",
-    title: "Academic Transcript",
+    title: "ใบแสดงผลการเรียน",
     documentTitle: "TRANSCRIPT",
-    issuerName: "Chulalongkorn University",
+    issuerName: "มหาวิทยาลัยจุฬาลงกรณ์",
     primaryColor: THEME.navyRoyal,
     imageKey: "transcript",
     issuerLogoKey: "chulalongkorn",
@@ -438,6 +543,12 @@ const SCHEMAS: CardSchemaConfig[] = [
         aliases: ["expiry_date", "expirationDate", "validUntil", "valid_until"],
       },
     ],
+    issuanceConfirmation: {
+      documentLabel: "ใบรับรองแพทย์",
+      issuerLabel: "โรงพยาบาล",
+      imageKey: "profile",
+      accent: "navy",
+    },
   },
 ];
 
@@ -445,11 +556,14 @@ const SCHEMA_MAP = new Map<string, CardSchemaConfig>(
   SCHEMAS.map((s) => [s.type, s]),
 );
 
-import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization';
+import {
+  normalizeClaimKey,
+  readMdocElementIdentifier,
+} from '@/src/utils/claimKeyNormalization';
 
 export { normalizeClaimKey as normalizeClaimLabelKey };
 
-export function findDisplayFieldForClaimKey(
+function matchDisplayField(
   fields: DisplayField[],
   claimKey: string,
 ): DisplayField | undefined {
@@ -461,6 +575,20 @@ export function findDisplayFieldForClaimKey(
         (alias) => normalizeClaimKey(alias) === normalizedKey,
       ),
   );
+}
+
+export function findDisplayFieldForClaimKey(
+  fields: DisplayField[],
+  claimKey: string,
+): DisplayField | undefined {
+  return (
+    matchDisplayField(fields, claimKey) ??
+    matchDisplayField(fields, readMdocElementIdentifier(claimKey))
+  );
+}
+
+export function collectDisplayFieldMatchKeys(field: DisplayField): string[] {
+  return [field.key, ...(field.aliases ?? []), ...(field.matchAliases ?? [])];
 }
 
 export function resolvePresentationDisclosureLabel(
@@ -478,42 +606,25 @@ export function getCardSchema(type: string): CardSchemaConfig {
   return SCHEMA_MAP.get(type) ?? FALLBACK_SCHEMA;
 }
 
+export function resolveCardSchema(record: FirstPartyRecordLike): CardSchemaConfig {
+  const firstPartyType = resolveFirstPartyType(record);
+  if (firstPartyType) return getCardSchema(firstPartyType);
+  return FALLBACK_SCHEMA;
+}
+
 export function getAllCardSchemas(): CardSchemaConfig[] {
   return SCHEMAS;
 }
 
 export function getCardSchemaForConfigurationId(
   configurationId?: string,
+  issuer?: string,
 ): CardSchemaConfig {
   if (!configurationId) return FALLBACK_SCHEMA;
-
-  const normalized = configurationId.toLowerCase();
-  if (normalized.includes("transcript"))
-    return getCardSchema("ChulalongkornUniversityTranscript");
-  if (
-    normalized.includes("medical") ||
-    normalized.includes("medicine") ||
-    normalized.includes("medcert")
-  ) {
-    return getCardSchema("MedicalCertificate");
-  }
-  if (
-    normalized.includes("driving") ||
-    normalized.includes("licence") ||
-    normalized.includes("license") ||
-    normalized.includes("mdl") ||
-    normalized.includes("1801351mdl")
-  ) {
-    return getCardSchema("DLTDrivingLicence");
-  }
-  if (
-    normalized.includes("thai") ||
-    normalized.includes("national") ||
-    normalized.includes("idcard") ||
-    normalized.includes("id_card")
-  ) {
-    return getCardSchema("ThaiNationalID");
-  }
-
+  if (issuer && !isFirstPartyIssuerOrigin(issuer)) return FALLBACK_SCHEMA;
+  const firstPartyType = canonicalFirstPartyType(configurationId);
+  if (firstPartyType) return getCardSchema(firstPartyType);
   return FALLBACK_SCHEMA;
 }
+
+export { isFirstPartyCredential, resolveFirstPartyType };

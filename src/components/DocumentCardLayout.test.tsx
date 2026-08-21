@@ -34,5 +34,41 @@ describe('DocumentCardLayout', () => {
       expect.objectContaining({ backgroundColor: '#002887' }),
     )
     expect(screen.queryByTestId('document-card-banner-secondary')).toBeNull()
+    expect(screen.getByTestId('document-card-banner').props.className).toContain('items-center')
+    expect(screen.queryByTestId('document-card-banner-action')).toBeNull()
+  })
+
+  test('renders an optional banner action aligned in the header', () => {
+    render(
+      <DocumentCardLayout
+        primaryColor="#002887"
+        banner={<Text>DOCUMENT</Text>}
+        bannerAction={<Text>Menu</Text>}
+        hero={<Text>Hero content</Text>}
+        leftColumn={<Text>Left content</Text>}
+        rightColumn={<Text>Right content</Text>}
+      />,
+    )
+
+    expect(screen.getByTestId('document-card-banner-action')).toBeTruthy()
+    expect(screen.getByText('Menu')).toBeTruthy()
+    expect(screen.getByTestId('document-card-banner').props.className).toContain('items-center')
+  })
+
+  test('applies an optional columns class name', () => {
+    render(
+      <DocumentCardLayout
+        primaryColor="#002887"
+        banner={<Text>DOCUMENT</Text>}
+        hero={<Text>Hero content</Text>}
+        leftColumn={<Text>Left content</Text>}
+        rightColumn={<Text>Right content</Text>}
+        columnsClassName="flex-row px-4 pt-4 pb-12"
+      />,
+    )
+
+    expect(screen.getByTestId('document-card-columns').props.className).toBe(
+      'flex-row px-4 pt-4 pb-12',
+    )
   })
 })

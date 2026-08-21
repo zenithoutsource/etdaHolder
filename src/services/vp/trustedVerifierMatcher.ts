@@ -1,4 +1,5 @@
 import { parseClientId, readResponseUriMatchesClientId } from './clientIdScheme'
+import { readTrustAnyOid4vcPeerEnabled } from '@/src/config/oid4vcPeerTrustPolicy'
 
 export type TrustedVerifier = {
   clientId: string
@@ -11,6 +12,7 @@ export function findTrustedVerifier(
   clientId: string,
   responseUri: string,
   trustedVerifiers: TrustedVerifier[],
+  trustAnyHttpsPeer: boolean = readTrustAnyOid4vcPeerEnabled(),
 ): TrustedVerifier | undefined {
   const responseOrigin = readUrlOrigin(responseUri)
   if (!responseOrigin) return undefined
@@ -31,7 +33,7 @@ export function findTrustedVerifier(
     return undefined
   }
 
-  return trustedVerifiers.find((verifier) => {
+  const allowlisted = trustedVerifiers.find((verifier) => {
     if (!verifier.allowedOrigins.includes(responseOrigin)) return false
 
     const verifierClientId = parseClientId(verifier.clientId)
@@ -50,6 +52,29 @@ export function findTrustedVerifier(
 
     return verifier.clientId === clientId || clientId.startsWith(`${verifier.clientId}/`)
   })
+
+  if (allowlisted) return allowlisted
+  if (!trustAnyHttpsPeer) return undefined
+  return createEphemeralHttpsVerifier(clientId, responseOrigin)
+}
+
+function createEphemeralHttpsVerifier(
+  clientId: string,
+  responseOrigin: string,
+): TrustedVerifier | undefined {
+  let origin: URL
+  try {
+    origin = new URL(responseOrigin)
+  } catch {
+    return undefined
+  }
+  if (origin.protocol !== 'https:') return undefined
+
+  return {
+    clientId,
+    name: origin.host,
+    allowedOrigins: [responseOrigin],
+  }
 }
 
 function readUrlOrigin(raw: string): string | undefined {

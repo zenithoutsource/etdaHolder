@@ -1,0 +1,7 @@
+.gradle/
+build/
+out/
+testdata/
+*.pem
+*.p8
+*.key

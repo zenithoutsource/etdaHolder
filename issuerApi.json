@@ -5,6 +5,111 @@
     "version": "1.0"
   },
   "paths": {
+    "/thaiid/login": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "parameters": [
+          {
+            "name": "ReturnUrl",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentType",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/DocumentType"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/thaid/callback": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/Account/ThaIDSignIn": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ReturnUrl",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentType",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/DocumentType"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/token": {
       "post": {
         "tags": [
@@ -122,68 +227,6 @@
         }
       }
     },
-    "/api/CredentialConfig/claims/add-field": {
-      "post": {
-        "tags": [
-          "Credential Config"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddFieldRequest"
-              }
-            },
-            "text/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddFieldRequest"
-              }
-            },
-            "application/*+json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddFieldRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/CredentialConfig/claims/remove-field": {
-      "delete": {
-        "tags": [
-          "Credential Config"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RemoveFieldRequest"
-              }
-            },
-            "text/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RemoveFieldRequest"
-              }
-            },
-            "application/*+json": {
-              "schema": {
-                "$ref": "#/components/schemas/RemoveFieldRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
     "/credential-offer": {
       "post": {
         "tags": [
@@ -250,6 +293,30 @@
     },
     "/.well-known/openid-credential-issuer": {
       "get": {
+        "tags": [
+          "Metadata"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "tags": [
+          "Metadata"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/nonce": {
+      "post": {
         "tags": [
           "Metadata"
         ],
@@ -360,7 +427,7 @@
         }
       }
     },
-    "/credentials/Iso18013DriversLicenseCredential": {
+    "/credentials/DrivingLicence": {
       "get": {
         "tags": [
           "Selective Disclosure"
@@ -460,27 +527,6 @@
   },
   "components": {
     "schemas": {
-      "AddFieldRequest": {
-        "type": "object",
-        "properties": {
-          "field_name": {
-            "type": "string",
-            "nullable": true
-          },
-          "mandatory": {
-            "type": "boolean"
-          },
-          "label_en": {
-            "type": "string",
-            "nullable": true
-          },
-          "label_th": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "additionalProperties": false
-      },
       "ClaimConfigInput": {
         "type": "object",
         "properties": {
@@ -493,6 +539,9 @@
               "$ref": "#/components/schemas/ClaimDisplayInput"
             },
             "nullable": true
+          },
+          "sd": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -593,8 +642,7 @@
         "enum": [
           "Transcript",
           "IdCard",
-          "DriverLicense",
-          "BootCamp"
+          "DriverLicense"
         ],
         "type": "string"
       },
@@ -614,8 +662,8 @@
             "type": "string",
             "nullable": true
           },
-          "proof": {
-            "$ref": "#/components/schemas/Proof"
+          "proofs": {
+            "$ref": "#/components/schemas/ProofsContainer"
           }
         },
         "additionalProperties": false
@@ -637,29 +685,14 @@
         },
         "additionalProperties": false
       },
-      "Proof": {
+      "ProofsContainer": {
         "type": "object",
         "properties": {
-          "proof_type": {
-            "type": "string",
-            "nullable": true
-          },
           "jwt": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "additionalProperties": false
-      },
-      "RemoveFieldRequest": {
-        "type": "object",
-        "properties": {
-          "credential_type": {
-            "type": "string",
-            "nullable": true
-          },
-          "field_name": {
-            "type": "string",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "nullable": true
           }
         },

@@ -1,30 +1,5 @@
 import { jsonContent, responseRef, schemaRef } from './openApiHelpers'
 
-const htmlContent = (description: string, example?: string) => ({
-  description,
-  content: {
-    'text/html': {
-      schema: { type: 'string' },
-      ...(example ? { example } : {}),
-    },
-  },
-})
-
-const sessionIdParam = {
-  name: 'sessionId',
-  in: 'path',
-  required: true,
-  schema: { type: 'string', format: 'uuid' },
-} as const
-
-const sessionQueryParam = {
-  name: 's',
-  in: 'query',
-  required: true,
-  schema: { type: 'string', format: 'uuid' },
-  description: 'Presentation session identifier',
-} as const
-
 const credentialIdQuery = {
   name: 'credentialId',
   in: 'query',
@@ -47,11 +22,10 @@ export const developmentOpenApiDocument = {
     title: 'Development API',
     version: '1.0.0',
     description:
-      'Local simulation and diagnostic operations. These routes are not available in production.',
+      'Local simulation and diagnostic operations. These routes are not available in production unless ENABLE_DEVELOPMENT_APIS is true. Lifecycle simulation lives under /wallet-api/dev/*.',
   },
   servers: [{ url: '/' }],
   tags: [
-    { name: 'Development presentation sessions' },
     { name: 'Credential suspension' },
     { name: 'Credential lifecycle' },
     { name: 'Holder revocation' },
@@ -59,92 +33,6 @@ export const developmentOpenApiDocument = {
     { name: 'Credential renewal' },
   ],
   paths: {
-    '/dev/vp-session': {
-      post: {
-        tags: ['Development presentation sessions'],
-        summary: 'Create a development presentation session',
-        description:
-          'Creates a local presentation session without a production verify URL. Not available in production.',
-        responses: {
-          201: {
-            description: 'Created',
-            ...jsonContent(schemaRef('DevPresentationSession')),
-          },
-        },
-      },
-    },
-    '/dev/vp-session/{sessionId}': {
-      put: {
-        tags: ['Development presentation sessions'],
-        summary: 'Upload a development presentation token',
-        description:
-          'Uploads an SD-JWT VP for a development session. Accepts any credentialType unlike the v1 gateway.',
-        parameters: [sessionIdParam],
-        requestBody: {
-          required: true,
-          ...jsonContent(schemaRef('DevPresentationUploadRequest')),
-        },
-        responses: {
-          200: {
-            description: 'OK',
-            ...jsonContent(schemaRef('PresentationUploadResponse')),
-          },
-          400: responseRef('BadRequest'),
-          404: responseRef('NotFound'),
-          409: responseRef('Conflict'),
-          410: responseRef('Gone'),
-        },
-      },
-    },
-    '/dev/vp-session/{sessionId}/status': {
-      get: {
-        tags: ['Development presentation sessions'],
-        summary: 'Poll development session status',
-        parameters: [sessionIdParam],
-        responses: {
-          200: {
-            description: 'OK',
-            ...jsonContent(schemaRef('PresentationStatusResponse')),
-          },
-          404: {
-            description: 'Not Found',
-            ...jsonContent({
-              type: 'object',
-              required: ['status'],
-              properties: { status: { type: 'string', enum: ['not-found'] } },
-            }),
-          },
-        },
-      },
-    },
-    '/dev/vp-verify': {
-      get: {
-        tags: ['Development presentation sessions'],
-        summary: 'Verify a development presentation in the browser',
-        parameters: [sessionQueryParam],
-        responses: {
-          200: htmlContent('Verification result HTML'),
-          202: {
-            description: 'Presentation has not been uploaded yet',
-            headers: {
-              'Retry-After': {
-                description: 'Seconds before retrying',
-                schema: { type: 'integer', example: 2 },
-              },
-            },
-            content: {
-              'text/html': {
-                schema: { type: 'string' },
-                example: '<!doctype html><html><body>Presentation pending</body></html>',
-              },
-            },
-          },
-          404: htmlContent('Session not found HTML'),
-          409: htmlContent('Session already consumed HTML'),
-          410: htmlContent('Session expired HTML'),
-        },
-      },
-    },
     '/wallet-api/dev/wallet/suspension-status': {
       get: {
         tags: ['Credential suspension'],
@@ -254,7 +142,7 @@ export const developmentOpenApiDocument = {
     '/wallet-api/dev/issuer/holder-revoke': {
       post: {
         tags: ['Holder revocation'],
-        summary: 'Confirm holder revocation with PoP',
+        summary: 'Confirm holder revocation with ES256 PoP',
         requestBody: {
           required: true,
           ...jsonContent(schemaRef('HolderRevokeRequest')),
@@ -351,40 +239,6 @@ export const developmentOpenApiDocument = {
         type: 'object',
         required: ['message'],
         properties: { message: { type: 'string', example: 'Bad Request' } },
-      },
-      DevPresentationSession: {
-        type: 'object',
-        required: ['sessionId', 'nonce', 'expiresAt'],
-        properties: {
-          sessionId: { type: 'string', format: 'uuid' },
-          nonce: { type: 'string' },
-          expiresAt: { type: 'string', format: 'date-time' },
-        },
-      },
-      DevPresentationUploadRequest: {
-        type: 'object',
-        required: ['vpToken', 'credentialType'],
-        properties: {
-          vpToken: { type: 'string', example: placeholders.vpToken },
-          credentialType: { type: 'string', example: 'ThaiNationalID' },
-        },
-      },
-      PresentationUploadResponse: {
-        type: 'object',
-        required: ['ok'],
-        properties: { ok: { type: 'boolean', enum: [true] } },
-      },
-      PresentationStatusResponse: {
-        type: 'object',
-        required: ['status', 'expiresAt'],
-        properties: {
-          status: {
-            type: 'string',
-            enum: ['pending', 'ready', 'verified', 'verify_failed', 'expired'],
-          },
-          expiresAt: { type: 'string', format: 'date-time' },
-          reason: { type: 'string' },
-        },
       },
       SuspensionStatusResponse: {
         type: 'object',
@@ -508,7 +362,11 @@ export const developmentOpenApiDocument = {
         properties: {
           credentialId: { type: 'string', example: placeholders.credentialId },
           holderDid: { type: 'string', example: placeholders.holderDid },
-          popJwt: { type: 'string', example: placeholders.popJwt },
+          popJwt: {
+            type: 'string',
+            description: 'Holder status-change PoP JWT. alg must be ES256.',
+            example: placeholders.popJwt,
+          },
         },
       },
       HolderRevokeResponse: {

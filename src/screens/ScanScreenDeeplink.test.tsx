@@ -34,6 +34,12 @@ jest.mock('../components/WalletHeader', () => ({
   WalletHeader: () => mockReact.createElement(mockText, null, 'Scan Header'),
 }))
 
+jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
+  return function MockMaterialCommunityIcons() {
+    return null
+  }
+})
+
 jest.mock('../hooks/useScreenCaptureGuard', () => ({
   useScreenCaptureGuard: jest.fn(),
 }))
@@ -69,7 +75,11 @@ describe('ScanScreen deeplink handling', () => {
     cameraMock.useCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()])
     useDeeplinkStore.setState({
       pendingUri: null,
+      pendingPresentationFlowOrigin: null,
+      pendingOfferFlowOrigin: null,
       activeUri: null,
+      activePresentationFlowOrigin: null,
+      activeOfferFlowOrigin: null,
       dismissedUri: null,
       offerGeneration: 0,
       vpGeneration: 0,
@@ -77,7 +87,7 @@ describe('ScanScreen deeplink handling', () => {
     })
   })
 
-  it('stores pending credential offer URI without navigating from Scan', async () => {
+  it('stores scan origin and navigates to credential-offer when an offer QR is scanned', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Ftranscript-offer'
 
     render(<ScanScreen />)
@@ -87,8 +97,18 @@ describe('ScanScreen deeplink handling', () => {
     })
 
     expect(useDeeplinkStore.getState().pendingUri).toBe(offerUri)
-    expect(mockRouterPush).not.toHaveBeenCalled()
+    expect(useDeeplinkStore.getState().pendingOfferFlowOrigin).toBe('scan')
+    expect(mockRouterPush).toHaveBeenCalledWith('/(tabs)/credential-offer')
     expect(screen.queryByText('Scan Success')).toBeNull()
+  })
+
+  it('shows the camera permission panel when access is not granted', () => {
+    cameraMock.useCameraPermissions.mockReturnValue([{ granted: false, canAskAgain: true }, jest.fn()])
+
+    render(<ScanScreen />)
+
+    expect(screen.getByTestId('scan-camera-permission-panel')).toBeTruthy()
+    expect(screen.getByText('อนุญาตให้ใช้กล้อง')).toBeTruthy()
   })
 
   it('hands off scanned OID4VP QR to presentation-request route', async () => {

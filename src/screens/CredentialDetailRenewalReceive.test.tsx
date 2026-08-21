@@ -73,11 +73,15 @@ jest.mock('../../src/services/credentials/credentialRenewalService', () => ({
   submitRenewalRequest: jest.fn(),
 }))
 jest.mock('../../src/services/credentials/holderRevokeService', () => ({
+  HolderRevokeHardwareKeyRequiredError: class HolderRevokeHardwareKeyRequiredError extends Error {},
   HolderRevokeSigningCancelledError: class HolderRevokeSigningCancelledError extends Error {},
   submitHolderRevokeRequest: jest.fn(),
 }))
-jest.mock('../../src/services/credentials/credentialGuard', () => ({ canSubmitCredentialRenewal: () => false }))
-jest.mock('../../src/services/credentials/credentialDocumentExpiry', () => ({ isCredentialExpiringSoon: () => false }))
+jest.mock('../../src/services/credentials/credentialGuard', () => ({
+  canSubmitCredentialRenewal: () => false,
+  readPidGateStatus: () => 'ready',
+}))
+jest.mock('../../src/services/credentials/credentialDocumentExpiry', () => ({ isCredentialExpiringSoon: () => false, isCredentialDocumentExpired: () => false }))
 jest.mock('../../src/services/credentials/renewalCleanupNotification', () => ({ isRenewalAwaitingHolderCleanup: () => false }))
 jest.mock('../../src/services/credentials/walletHomeCopy', () => ({
   WALLET_HOME_COPY: { acknowledge: 'OK', cancel: 'Cancel', requestCredential: 'Request', requestNewCredential: 'Request new', renewalCleanupCta: 'Clean up' },

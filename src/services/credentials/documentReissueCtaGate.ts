@@ -2,7 +2,6 @@ import type { WalletKeyExpiryLane } from '../crypto/walletKeyExpiryLane'
 import type { CredentialRenewalState } from './credentialKeyRenewal'
 
 const BLOCKING_RENEWAL_STATES = new Set<CredentialRenewalState>([
-  'renewal-required',
   'renewal-processing',
   'cleanup-pending',
   'old-revoked',
@@ -17,7 +16,7 @@ export function shouldOfferDocumentReissueCta(input: {
   documentExpired: boolean
   renewalState?: CredentialRenewalState
 }): boolean {
-  if (!input.documentExpired || input.lane === 'create-key') return false
+  if (!input.documentExpired) return false
   if (input.renewalState && BLOCKING_RENEWAL_STATES.has(input.renewalState)) {
     return false
   }
@@ -26,6 +25,8 @@ export function shouldOfferDocumentReissueCta(input: {
 
 export function shouldShowWalletKeyExpiredPrompt(
   lane: WalletKeyExpiryLane,
+  usesWalletWideKeyRotation = true,
 ): boolean {
+  if (!usesWalletWideKeyRotation) return false
   return lane === 'create-key'
 }

@@ -4,6 +4,8 @@ import { createHash } from 'react-native-quick-crypto'
 
 import { readVerifierDcqlVpTokenShape } from '../../config/runtimeFlags'
 import { readRecord, readString } from '../../utils/jwtUtils'
+import { verifyEs256CompactJwt } from '../crypto/es256JwtVerify'
+import { didKeyToP256PublicJwk } from '../crypto/p256Identity'
 import type { ResolvedPresentationRequest } from './presentationService'
 
 if (!hashes.sha512) hashes.sha512 = sha512
@@ -57,7 +59,11 @@ export function describePresentationAttempt(input: {
     `kb_nonce_matches_request=${readString(kbPayload?.nonce) === input.request.nonce}`,
     `kb_sd_hash_present=${typeof kbPayload?.sd_hash === 'string' && kbPayload.sd_hash.length > 0}`,
     `kb_sd_hash_matches=${formatOptionalBoolean(Boolean(kbSdHash && recomputedSdHash && kbSdHash === recomputedSdHash))}`,
+    `kb_header_jwk_matches_cnf_jwk=${formatOptionalBoolean(jwksEqual(kbHeaderJwk, credentialCnfJwk))}`,
     `kb_signature_self_verifies=${formatOptionalBoolean(verifyKbJwt(kbJwt, kbHeader))}`,
+    `kb_signature_verifies_against_cnf_jwk=${formatOptionalBoolean(
+      verifyEs256KbAgainstJwk(kbJwt, kbHeader, credentialCnfJwk),
+    )}`,
     `kb_iat_age_seconds=${formatNumber(kbIssuedAt === undefined ? undefined : Math.floor(Date.now() / 1000) - kbIssuedAt)}`,
   ]
 
@@ -140,7 +146,16 @@ function base64UrlEncode(input: Uint8Array | string): string {
 }
 
 function verifyKbJwt(kbJwt: string | undefined, kbHeader: JsonRecord | undefined): boolean | undefined {
-  if (!kbJwt || readString(kbHeader?.alg) !== 'EdDSA') return undefined
+  if (!kbJwt || !kbHeader) return undefined
+
+  const alg = readString(kbHeader.alg)
+  if (alg === 'ES256') {
+    const publicJwk = readP256PublicJwk(kbHeader)
+    if (!publicJwk) return undefined
+    return verifyEs256CompactJwt(kbJwt, publicJwk)
+  }
+
+  if (alg !== 'EdDSA') return undefined
 
   const parts = kbJwt.split('.')
   if (parts.length !== 3 || !parts[2]) return false
@@ -156,6 +171,44 @@ function verifyKbJwt(kbJwt: string | undefined, kbHeader: JsonRecord | undefined
     )
   } catch {
     return false
+  }
+}
+
+/** Verifier typically verifies KB against credential `cnf.jwk` (not only KB header jwk). */
+function verifyEs256KbAgainstJwk(
+  kbJwt: string | undefined,
+  kbHeader: JsonRecord | undefined,
+  cnfJwk: JsonRecord | undefined,
+): boolean | undefined {
+  if (!kbJwt || !kbHeader || !cnfJwk) return undefined
+  if (readString(kbHeader.alg) !== 'ES256') return undefined
+  if (cnfJwk.kty !== 'EC' || cnfJwk.crv !== 'P-256') return undefined
+  if (!readString(cnfJwk.x) || !readString(cnfJwk.y)) return undefined
+  return verifyEs256CompactJwt(kbJwt, cnfJwk)
+}
+
+function jwksEqual(left: JsonRecord | undefined, right: JsonRecord | undefined): boolean | undefined {
+  if (!left || !right) return undefined
+  return (
+    readString(left.kty) === readString(right.kty) &&
+    readString(left.crv) === readString(right.crv) &&
+    readString(left.x) === readString(right.x) &&
+    readString(left.y) === readString(right.y)
+  )
+}
+
+function readP256PublicJwk(header: JsonRecord | undefined): Record<string, unknown> | undefined {
+  const jwk = readRecord(header?.jwk)
+  if (jwk?.kty === 'EC' && jwk.crv === 'P-256') return jwk
+
+  const kid = readString(header?.kid)
+  const did = kid?.split('#')[0]
+  if (!did?.startsWith('did:key:z')) return undefined
+
+  try {
+    return didKeyToP256PublicJwk(did)
+  } catch {
+    return undefined
   }
 }
 

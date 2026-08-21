@@ -56,4 +56,22 @@ describe('PinEntrySurface', () => {
     fireEvent.changeText(screen.getByTestId('pin-entry-code-boxes-input'), '12-34-56')
     expect(onFill).toHaveBeenCalledWith('123456')
   })
+
+  test('hides the in-app keypad when showKeypad is false', () => {
+    render(
+      <PinEntrySurface
+        title="New PIN"
+        subtitle="Create a PIN"
+        pin="12"
+        showLock={false}
+        showKeypad={false}
+        onDigit={jest.fn()}
+        onBackspace={jest.fn()}
+        onFingerprint={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByText('New PIN')).toBeTruthy()
+    expect(screen.queryByTestId('pin-key-1')).toBeNull()
+  })
 })

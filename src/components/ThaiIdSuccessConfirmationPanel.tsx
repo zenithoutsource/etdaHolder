@@ -1,3 +1,5 @@
+/** PID DOPA confirm step — thin wrapper over IssuanceTrustConfirmationPanel. */
+
 import { IssuanceTrustConfirmationPanel } from './IssuanceTrustConfirmationPanel'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 

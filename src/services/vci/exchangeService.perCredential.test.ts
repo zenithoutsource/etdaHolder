@@ -1,5 +1,8 @@
 import * as credentialSigningKey from '../crypto/credentialSigningKey'
+import * as hardwareCredentialSigningKey from '../crypto/hardwareCredentialSigningKey'
 import * as walletCryptoActivation from '../crypto/walletCryptoActivation'
+import * as credentialKeyRegistry from '../crypto/credentialKeyRegistry'
+import * as storedCredentials from '../credentials/storedCredentials'
 import {
   acquireCredentialRecord,
   claimCredential,
@@ -7,6 +10,7 @@ import {
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from './exchangeService'
+import { makeTestOid4vcContext } from './testFixtures'
 
 const mockIsWalletCryptoV2Enabled = jest.fn()
 const mockReadCachedWalletAttestations = jest.fn()
@@ -36,6 +40,8 @@ function resolvedOffer(): ResolvedCredentialOffer {
     preAuthorizedCode: 'pre-auth',
     supportedFlows: ['pre-authorized_code'],
     version: 10015,
+    protocolPath: 'oid4vc',
+    oid4vcContext: makeTestOid4vcContext(),
   }
 }
 
@@ -46,8 +52,11 @@ function unsignedJwt(payload: Record<string, unknown>): string {
 }
 
 describe('per-credential', () => {
+  const originalCredentialAttestationsEnv = process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED
+
   beforeEach(() => {
     jest.clearAllMocks()
+    process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED = 'true'
     mockIsWalletCryptoV2Enabled.mockReturnValue(true)
     mockReadCachedWalletAttestations.mockReturnValue({
       wua: { value: 'wua.jwt.', expiresAt: '2026-07-25T00:00:00.000Z' },
@@ -58,6 +67,7 @@ describe('per-credential', () => {
     jest
       .spyOn(walletCryptoActivation, 'readCachedWalletAttestations')
       .mockImplementation(() => mockReadCachedWalletAttestations())
+    jest.spyOn(walletCryptoActivation, 'activateWalletCryptoV2').mockResolvedValue()
 
     jest.spyOn(credentialSigningKey, 'createPendingCredentialKey').mockResolvedValue('pending-key-1')
     jest.spyOn(credentialSigningKey, 'bindPendingKeyToCredential').mockResolvedValue({
@@ -68,11 +78,89 @@ describe('per-credential', () => {
       createdAt: '2026-07-24T00:00:00.000Z',
     })
     jest.spyOn(credentialSigningKey, 'discardPendingCredentialKey').mockResolvedValue()
+    jest.spyOn(credentialSigningKey, 'destroyCredentialKey').mockResolvedValue()
     jest.spyOn(credentialSigningKey, 'getCredentialHolderDid').mockReturnValue('did:key:z6MkperCredential')
   })
 
   afterEach(() => {
     jest.restoreAllMocks()
+    if (originalCredentialAttestationsEnv === undefined) {
+      delete process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED
+    } else {
+      process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED = originalCredentialAttestationsEnv
+    }
+  })
+
+  test('does not attach wallet attestations on credential request by default', async () => {
+    delete process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED
+    const resolved = resolvedOffer()
+    let capturedWalletAttestations: { wua: string; wia: string } | undefined
+
+    await claimCredential(resolved, {
+      tx_code: '123456',
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+        signProof: async () => 'proof.jwt',
+        requestCredential: async ({ walletAttestations }) => {
+          capturedWalletAttestations = walletAttestations
+          return unsignedJwt({
+            jti: 'vc-123',
+            vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+            iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+          })
+        },
+        getCredentialStorage: () => ({
+          getString: () => undefined,
+          set: () => undefined,
+        }),
+      },
+    })
+
+    expect(capturedWalletAttestations).toBeUndefined()
+  })
+
+  test('claim flow creates pending k_cred when Wallet Provider v2 flag is off', async () => {
+    mockIsWalletCryptoV2Enabled.mockReturnValue(false)
+    delete process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED
+    const resolved = resolvedOffer()
+    let capturedSignOptions: { credentialKeyId?: string } | undefined
+    let capturedWalletAttestations: { wua: string; wia: string } | undefined
+    const writes = new Map<string, string>()
+    const rawVc = unsignedJwt({
+      jti: 'vc-123',
+      vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+      iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+    })
+
+    await claimCredential(resolved, {
+      tx_code: '123456',
+      dependencies: {
+        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+        signProof: async (_nonce, _audience, options) => {
+          capturedSignOptions = options
+          return 'proof.jwt'
+        },
+        requestCredential: async ({ walletAttestations }) => {
+          capturedWalletAttestations = walletAttestations
+          return rawVc
+        },
+        getCredentialStorage: () => ({
+          getString: (key: string) => writes.get(key),
+          set: (key: string, value: string) => {
+            writes.set(key, value)
+          },
+        }),
+      },
+    })
+
+    expect(credentialSigningKey.createPendingCredentialKey).toHaveBeenCalledTimes(1)
+    expect(capturedSignOptions?.credentialKeyId).toBe('pending-key-1')
+    expect(capturedWalletAttestations).toBeUndefined()
+    expect(credentialSigningKey.bindPendingKeyToCredential).toHaveBeenCalledWith(
+      'pending-key-1',
+      'vc-123',
+      'ThaiNationalID',
+    )
   })
 
   test('claim flow creates pending key before signProof and binds after acquire', async () => {
@@ -164,7 +252,7 @@ describe('per-credential', () => {
     expect(sessionSignProof).toHaveBeenCalledWith(
       'nonce-1',
       resolved.issuer,
-      { keyBinding: 'did-kid', credentialKeyId: 'shared-key-1' },
+      { keyBinding: 'jwk', credentialKeyId: 'shared-key-1' },
     )
     expect(dependencySignProof).not.toHaveBeenCalled()
   })
@@ -221,7 +309,40 @@ describe('per-credential', () => {
     expect(credentialSigningKey.bindPendingKeyToCredential).not.toHaveBeenCalled()
   })
 
-  test('sync uses per-credential associated_did when v2 is enabled', async () => {
+  test('claimCredential destroys bound key when MMKV save fails after bind', async () => {
+    const resolved = resolvedOffer()
+    const rawVc = unsignedJwt({
+      jti: 'vc-save-fail',
+      vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+      iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+    })
+
+    await expect(
+      claimCredential(resolved, {
+        tx_code: '123456',
+        dependencies: {
+          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+          signProof: async () => 'proof.jwt',
+          requestCredential: async () => rawVc,
+          getCredentialStorage: () => ({
+            getString: () => undefined,
+            set: () => {
+              throw new Error('mmkv-write-failed')
+            },
+          }),
+        },
+      }),
+    ).rejects.toThrow('mmkv-write-failed')
+
+    expect(credentialSigningKey.bindPendingKeyToCredential).toHaveBeenCalledWith(
+      'pending-key-1',
+      'vc-save-fail',
+      'ThaiNationalID',
+    )
+    expect(credentialSigningKey.destroyCredentialKey).toHaveBeenCalledWith('vc-save-fail')
+  })
+
+  test('sync uses per-credential associated_did when a k_cred registry row exists', async () => {
     mockIsWalletCryptoV2Enabled.mockReturnValue(true)
     const record: VerifiableCredentialRecord = {
       id: 'vc-123',
@@ -247,6 +368,241 @@ describe('per-credential', () => {
           return { status: 201 }
         },
       },
+    })
+  })
+
+  describe('hardware P-256 pending key path', () => {
+    const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+
+    beforeEach(() => {
+      process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+      mockIsWalletCryptoV2Enabled.mockReturnValue(false)
+
+      jest.spyOn(hardwareCredentialSigningKey, 'createPendingHardwareCredentialKey').mockResolvedValue('pending-hw-key-1')
+      jest.spyOn(hardwareCredentialSigningKey, 'bindPendingHardwareKeyToCredential').mockResolvedValue({
+        credentialId: 'vc-hw-123',
+        holderDid: 'did:key:z6MkHardwareCredential',
+        alias: 'wallet.cred.pending.pending-hw-key-1',
+        credentialType: 'ThaiNationalID',
+        createdAt: '2026-07-24T00:00:00.000Z',
+        securityLevelHint: 'STRONGBOX',
+      })
+      jest.spyOn(hardwareCredentialSigningKey, 'discardPendingHardwareCredentialKey').mockResolvedValue()
+      jest.spyOn(hardwareCredentialSigningKey, 'destroyHardwareCredentialKey').mockResolvedValue()
+    })
+
+    afterEach(() => {
+      if (originalHardwareFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+      } else {
+        process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
+      }
+    })
+
+    test('claimCredential creates and binds hardware pending key when hardware flag is on', async () => {
+      const resolved = resolvedOffer()
+      const rawVc = unsignedJwt({
+        jti: 'vc-hw-123',
+        vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+        iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+      })
+
+      await claimCredential(resolved, {
+        tx_code: '123456',
+        dependencies: {
+          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+          signProof: async () => 'proof.jwt',
+          requestCredential: async () => rawVc,
+          getCredentialStorage: () => ({
+            getString: () => undefined,
+            set: () => undefined,
+          }),
+        },
+      })
+
+      expect(hardwareCredentialSigningKey.createPendingHardwareCredentialKey).toHaveBeenCalledTimes(1)
+      expect(credentialSigningKey.createPendingCredentialKey).not.toHaveBeenCalled()
+      expect(hardwareCredentialSigningKey.bindPendingHardwareKeyToCredential).toHaveBeenCalledWith(
+        'pending-hw-key-1',
+        'vc-hw-123',
+        'ThaiNationalID',
+      )
+      expect(credentialSigningKey.bindPendingKeyToCredential).not.toHaveBeenCalled()
+    })
+
+    test('claimCredential reuses a supplied pending hardware key instead of minting another', async () => {
+      const resolved = resolvedOffer()
+      const rawVc = unsignedJwt({
+        jti: 'vc-hw-reuse',
+        vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+        iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+      })
+
+      await claimCredential(resolved, {
+        tx_code: '123456',
+        pendingCredentialKeyId: 'pending-reuse-1',
+        dependencies: {
+          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+          signProof: async () => 'proof.jwt',
+          requestCredential: async () => rawVc,
+          getCredentialStorage: () => ({
+            getString: () => undefined,
+            set: () => undefined,
+          }),
+        },
+      })
+
+      expect(hardwareCredentialSigningKey.createPendingHardwareCredentialKey).not.toHaveBeenCalled()
+      expect(hardwareCredentialSigningKey.bindPendingHardwareKeyToCredential).toHaveBeenCalledWith(
+        'pending-reuse-1',
+        'vc-hw-reuse',
+        'ThaiNationalID',
+      )
+    })
+
+    test('claimCredential destroys the hardware key when MMKV save fails after bind', async () => {
+      jest.spyOn(hardwareCredentialSigningKey, 'discardHardwareCredentialKeyReplacement').mockResolvedValue(false)
+      jest.spyOn(hardwareCredentialSigningKey, 'hasHardwareCredentialKey').mockImplementation(
+        (keyId) => keyId === 'vc-hw-save-fail',
+      )
+      const resolved = resolvedOffer()
+      const rawVc = unsignedJwt({
+        jti: 'vc-hw-save-fail',
+        vc: { type: ['VerifiableCredential', 'ThaiNationalID'] },
+        iat: Math.floor(new Date('2025-10-09T08:53:20.000Z').getTime() / 1000),
+      })
+
+      await expect(
+        claimCredential(resolved, {
+          tx_code: '123456',
+          dependencies: {
+            acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce-1' }),
+            signProof: async () => 'proof.jwt',
+            requestCredential: async () => rawVc,
+            getCredentialStorage: () => ({
+              getString: () => undefined,
+              set: () => {
+                throw new Error('mmkv-write-failed')
+              },
+            }),
+          },
+        }),
+      ).rejects.toThrow('mmkv-write-failed')
+
+      expect(hardwareCredentialSigningKey.destroyHardwareCredentialKey).toHaveBeenCalledWith('vc-hw-save-fail')
+      expect(credentialSigningKey.destroyCredentialKey).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('hardware P-256 PID-first cutover gate', () => {
+    const originalHardwareFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+
+    function drivingLicenceOffer(): ResolvedCredentialOffer {
+      const offer = resolvedOffer()
+      return {
+        ...offer,
+        credentialConfigurations: [
+          {
+            id: 'DLTDrivingLicence',
+            requestId: 'DLTDrivingLicence',
+            format: 'dc+sd-jwt',
+            rawConfiguration: { format: 'dc+sd-jwt' } as ResolvedCredentialOffer['credentialConfigurations'][number]['rawConfiguration'],
+          },
+        ],
+      }
+    }
+
+    beforeEach(() => {
+      process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+      jest.spyOn(credentialKeyRegistry, 'listCredentialKeyRecords').mockReturnValue([
+        {
+          credentialId: 'vc-ed25519-pid',
+          holderDid: 'did:key:z6Mklegacy',
+          keychainService: 'wallet.ed25519_seed.cred.vc-ed25519-pid',
+          credentialType: 'ThaiNationalID',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ])
+      jest.spyOn(storedCredentials, 'readStoredCredentials').mockReturnValue([
+        {
+          id: 'vc-ed25519-pid',
+          type: 'ThaiNationalID',
+          rawVc: 'vc',
+          claims: {},
+          issuedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ])
+      jest.spyOn(hardwareCredentialSigningKey, 'hasHardwareCredentialKey').mockReturnValue(false)
+      jest.spyOn(hardwareCredentialSigningKey, 'createPendingHardwareCredentialKey').mockResolvedValue('pending-hw-cutover')
+      jest.spyOn(hardwareCredentialSigningKey, 'discardPendingHardwareCredentialKey').mockResolvedValue()
+    })
+
+    afterEach(() => {
+      if (originalHardwareFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
+      } else {
+        process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = originalHardwareFlag
+      }
+    })
+
+    test('acquireCredentialRecord blocks driving-licence offers until a hardware PID exists', async () => {
+      const acquireAccessToken = jest.fn()
+
+      await expect(
+        acquireCredentialRecord(drivingLicenceOffer(), {
+          dependencies: {
+            acquireAccessToken,
+            signProof: async () => 'proof.jwt',
+            requestCredential: async () => 'unused',
+            getCredentialStorage: () => ({
+              getString: () => undefined,
+              set: () => undefined,
+            }),
+          },
+        }),
+      ).rejects.toThrow('Reissue your national ID')
+
+      expect(acquireAccessToken).not.toHaveBeenCalled()
+      expect(hardwareCredentialSigningKey.createPendingHardwareCredentialKey).not.toHaveBeenCalled()
+    })
+
+    test('claimCredential blocks driving-licence offers before opening an issuance session', async () => {
+      const acquireAccessToken = jest.fn()
+
+      await expect(
+        claimCredential(drivingLicenceOffer(), {
+          dependencies: {
+            acquireAccessToken,
+            signProof: async () => 'proof.jwt',
+            requestCredential: async () => 'unused',
+            getCredentialStorage: () => ({
+              getString: () => undefined,
+              set: () => undefined,
+            }),
+          },
+        }),
+      ).rejects.toThrow('Reissue your national ID')
+
+      expect(acquireAccessToken).not.toHaveBeenCalled()
+      expect(hardwareCredentialSigningKey.createPendingHardwareCredentialKey).not.toHaveBeenCalled()
+    })
+
+    test('acquireCredentialRecord still reaches token exchange for PID offers during cutover', async () => {
+      await expect(
+        acquireCredentialRecord(resolvedOffer(), {
+          dependencies: {
+            acquireAccessToken: async () => {
+              throw new Error('token-reached')
+            },
+            signProof: async () => 'proof.jwt',
+            requestCredential: async () => 'unused',
+            getCredentialStorage: () => ({
+              getString: () => undefined,
+              set: () => undefined,
+            }),
+          },
+        }),
+      ).rejects.toThrow('token-reached')
     })
   })
 })

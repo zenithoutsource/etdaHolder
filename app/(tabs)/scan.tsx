@@ -1,3 +1,12 @@
+/**
+ * Scan tab — camera QR for OID4VCI offers and OID4VP requests; optional renew shortcut.
+ * Journey: P1 issuance intake; P4 Verifier QR.
+ * Copy: ScanCameraPermissionPanel Thai gate copy; inline English scan errors.
+ * Layout: ScanCameraPermissionPanel, then ScanCaptureSurface.
+ * Next: credential-offer or presentation-request.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import { useCameraPermissions } from 'expo-camera'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useRef, useState } from 'react'
@@ -5,13 +14,14 @@ import { Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../../src/components/AppButton'
+import { ScanCameraPermissionPanel } from '../../src/components/ScanCameraPermissionPanel'
 import { ScanCaptureSurface } from '../../src/components/ScanCaptureSurface'
 import { WalletHeader } from '../../src/components/WalletHeader'
 import { useScreenCaptureGuard } from '../../src/hooks/useScreenCaptureGuard'
 import { submitRenewalRequest } from '../../src/services/credentials/credentialRenewalService'
 import { logWalletError, logWalletStep } from '../../src/services/debug/walletLogger'
 import { describeUriForLog } from '../../src/services/scan/scanLogDescriptors'
-import { isCredentialOfferDeeplink, useDeeplinkStore } from '../../src/store/deeplinkStore'
+import { isCredentialOfferDeeplink, tryQueueDeeplinkUri, useDeeplinkStore } from '../../src/store/deeplinkStore'
 import { isOid4VpAuthorizationRequest } from '../../src/services/vp/presentationService'
 import {
   notifyPresentationIntakeRejectionForUri,
@@ -26,14 +36,14 @@ type ScanPhase =
 export default function ScanScreen() {
   useScreenCaptureGuard()
   const [permission, requestPermission] = useCameraPermissions()
+  const [requestingPermission, setRequestingPermission] = useState(false)
   const [phase, setPhase] = useState<ScanPhase>({ tag: 'scanning' })
   const processingRef = useRef(false)
   const generationRef = useRef(0)
   const router = useRouter()
   const { renew } = useLocalSearchParams<{ renew?: string | string[] }>()
   const renewCredentialId = Array.isArray(renew) ? renew[0] : renew
-  const setPendingPresentationRequest = useDeeplinkStore((s) => s.setPendingPresentationRequest)
-  const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
+  const clearDismissedDeeplinkUri = useDeeplinkStore((s) => s.clearDismissedDeeplinkUri)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
 
@@ -46,10 +56,14 @@ export default function ScanScreen() {
 
   const handoffPresentationRequest = useCallback((uri: string) => {
     logWalletStep('scan', 'presentation-handoff', describeUriForLog(uri))
-    setPendingPresentationRequest({ uri, origin: 'scan' })
+    // Explicit Scan reopen of a previously dismissed URI (user action, not Linking redelivery).
+    if (useDeeplinkStore.getState().dismissedUri === uri) {
+      clearDismissedDeeplinkUri()
+    }
+    tryQueueDeeplinkUri(uri, { origin: 'scan' })
     processingRef.current = false
     router.push('/(tabs)/presentation-request')
-  }, [router, setPendingPresentationRequest])
+  }, [clearDismissedDeeplinkUri, router])
 
   useFocusEffect(
     useCallback(() => {
@@ -105,7 +119,8 @@ export default function ScanScreen() {
     processingRef.current = true
 
     if (isOid4VpAuthorizationRequest(uri)) {
-      if (readPresentationIntakeRejectionForUri(uri)) {
+      const rejection = readPresentationIntakeRejectionForUri(uri)
+      if (rejection === 'consumed') {
         logWalletStep('scan', 'presentation-replay-ignored', describeUriForLog(uri))
         notifyPresentationIntakeRejectionForUri(uri)
         processingRef.current = false
@@ -120,8 +135,12 @@ export default function ScanScreen() {
 
     if (isCredentialOfferDeeplink(uri)) {
       logWalletStep('scan', 'credential-offer-handoff', describeUriForLog(uri))
-      setPendingDeeplinkUri(uri)
+      if (useDeeplinkStore.getState().dismissedUri === uri) {
+        clearDismissedDeeplinkUri()
+      }
+      tryQueueDeeplinkUri(uri, { origin: 'scan' })
       processingRef.current = false
+      router.push('/(tabs)/credential-offer')
       return
     }
 
@@ -130,17 +149,38 @@ export default function ScanScreen() {
     processingRef.current = false
   }
 
+  async function handleAllowCamera() {
+    setRequestingPermission(true)
+    logWalletStep('scan', 'camera-permission-request')
+    try {
+      await requestPermission()
+    } catch (error) {
+      logWalletError('scan', 'camera-permission-request-failed', error)
+    } finally {
+      setRequestingPermission(false)
+    }
+  }
+
   if (!permission) {
-    return <View className="flex-1" />
+    return (
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
+        <WalletHeader />
+        <View className="flex-1 bg-wallet-bg" />
+      </SafeAreaView>
+    )
   }
 
   if (!permission.granted) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-surface-soft p-6">
-        <Text className="mb-5 text-center text-[15px] text-gray700">
-          Camera access is required to scan QR codes.
-        </Text>
-        <AppButton variant="solid-block" label="Allow Camera" onPress={requestPermission} className="rounded-xl px-[18px] py-[14px]" textClassName="text-[15px] font-semibold" />
+      <SafeAreaView className="flex-1 bg-wallet-navy" edges={['top']}>
+        <WalletHeader />
+        <ScanCameraPermissionPanel
+          canAskAgain={permission.canAskAgain !== false}
+          onAllow={() => {
+            void handleAllowCamera()
+          }}
+          requesting={requestingPermission}
+        />
       </SafeAreaView>
     )
   }

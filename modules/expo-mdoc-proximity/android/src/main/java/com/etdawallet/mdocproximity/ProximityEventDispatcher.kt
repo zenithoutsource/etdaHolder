@@ -11,8 +11,16 @@ object ProximityEventDispatcher {
     emitter?.invoke("onRequestReceived", mapOf("requestedFields" to requestedFields))
   }
 
-  fun sendPresentationComplete(sharedFields: List<String>) {
-    emitter?.invoke("onPresentationComplete", mapOf("sharedFields" to sharedFields))
+  fun sendPresentationComplete(sharedFields: List<String>, omittedFields: List<OmittedMdocField> = emptyList()) {
+    emitter?.invoke(
+      "onPresentationComplete",
+      mapOf(
+        "sharedFields" to sharedFields,
+        "omittedFields" to omittedFields.map { field ->
+          mapOf("key" to field.key, "reason" to field.reason)
+        },
+      ),
+    )
   }
 
   fun sendError(code: String, message: String) {

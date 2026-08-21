@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <receiver
+      android:name=".StrongBoxKeyMintProbeReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.etdawallet.hardwareecdsa.PROBE_STRONGBOX" />
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

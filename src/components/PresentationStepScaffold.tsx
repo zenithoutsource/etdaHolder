@@ -1,3 +1,5 @@
+/** SafeArea plus WalletHeader chrome wrapper for OID4VP steps. */
+
 import type { ReactNode } from 'react'
 import { SafeAreaView } from 'react-native-safe-area-context'
 

@@ -1,3 +1,10 @@
+/**
+ * PoP signature snippet with copy-to-clipboard.
+ * Journey: P4 info step; credential detail.
+ * Copy: inline Thai PoP labels.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import { useEffect, useRef, useState } from 'react'
 import * as Clipboard from 'expo-clipboard'
 import { Text, View } from 'react-native'

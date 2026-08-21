@@ -1,16 +1,20 @@
-import { PresentationSuccessPanel } from '@/src/components/PresentationSuccessPanel'
+/** NFC success wrapper reusing OID4VP result UI. No claim/field list. */
+
+import { PresentationResultPanel as VerifierPresentationResultPanel } from '@/src/components/PresentationResultPanel'
+import { WALLET_HISTORY_COPY } from '@/src/config/walletHistoryCopy'
+import type { OmittedMdocField } from '@/src/services/proximity/nativeProximityModule'
 
 type PresentationResultPanelProps = {
-  sharedFields: string[]
+  credentialType?: string
+  sharedFields?: string[]
+  omittedFields?: OmittedMdocField[]
   onDone: () => void
 }
 
-export function PresentationResultPanel({ sharedFields, onDone }: PresentationResultPanelProps) {
+export function PresentationResultPanel({ onDone }: PresentationResultPanelProps) {
   return (
-    <PresentationSuccessPanel
-      title="Success!"
-      message={`Shared ${sharedFields.length} field${sharedFields.length === 1 ? '' : 's'}`}
-      buttonLabel="Done"
+    <VerifierPresentationResultPanel
+      verifierName={WALLET_HISTORY_COPY.partyPlaceholderNfc}
       onDone={onDone}
     />
   )

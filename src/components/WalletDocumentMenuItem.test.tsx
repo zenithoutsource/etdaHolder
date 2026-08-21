@@ -100,4 +100,53 @@ describe('WalletDocumentMenuItem', () => {
 
     expect(screen.queryByText('Receive new document')).toBeNull()
   })
+
+  test('splits icon/label press from chevron expand on suspended rows', () => {
+    const onPress = jest.fn()
+    const onToggleExpand = jest.fn()
+
+    render(
+      <WalletDocumentMenuItem
+        label="ID Card"
+        icon={icon}
+        iconStyle={{ width: 40, height: 40 }}
+        hasCredential
+        isExpanded={false}
+        requestLabel="Request"
+        onPress={onPress}
+        onToggleExpand={onToggleExpand}
+      />,
+    )
+
+    fireEvent.press(screen.getByText('ID Card'))
+    expect(onPress).toHaveBeenCalledTimes(1)
+    expect(onToggleExpand).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByLabelText('ขยายเอกสาร'))
+    expect(onToggleExpand).toHaveBeenCalledTimes(1)
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
+
+  test('does not call onPress when expanding an already expanded suspended row', () => {
+    const onPress = jest.fn()
+    const onToggleExpand = jest.fn()
+
+    render(
+      <WalletDocumentMenuItem
+        label="ID Card"
+        icon={icon}
+        iconStyle={{ width: 40, height: 40 }}
+        hasCredential
+        isExpanded
+        requestLabel="Request"
+        onPress={onPress}
+        onToggleExpand={onToggleExpand}
+        inactivePanelMessage="เอกสารถูกระงับโดยผู้ออกเอกสาร"
+      />,
+    )
+
+    fireEvent.press(screen.getByLabelText('ย่อเอกสาร'))
+    expect(onToggleExpand).toHaveBeenCalledTimes(1)
+    expect(onPress).not.toHaveBeenCalled()
+  })
 })

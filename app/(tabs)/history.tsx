@@ -1,5 +1,14 @@
-import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+/**
+ * History Log tab — filterable issuance / presentation / lifecycle events.
+ * Journey: P5 presentation audit; P6 lifecycle.
+ * Copy: historyDisplayNames, walletHistoryFilters; default filter issuance.
+ * Layout: HistoryFilterChips, HistoryItem, HistoryEmptyState.
+ * Next: app/(tabs)/history-event/[id].tsx
+ * Map: docs/CODEMAPS/frontend.md#history
+ */
+
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -13,14 +22,19 @@ import { useStoredCredentials } from '../../src/hooks/useStoredCredentials';
 import { requestPresentationAccessSuspension } from '../../src/services/history/requestPresentationAccessSuspension';
 import { readWalletHistoryEvent } from '../../src/services/history/walletEventLog';
 import { readWalletHistoryRows } from '../../src/services/history/walletHistory';
-import type { WalletHistoryFilter } from '../../src/services/history/walletHistoryFilters';
+import {
+  parseWalletHistoryFilter,
+  type WalletHistoryFilter,
+} from '../../src/services/history/walletHistoryFilters';
 
 export default function HistoryLogScreen() {
   useScreenCaptureGuard();
   const router = useRouter();
+  const { filter: filterParam } = useLocalSearchParams<{ filter?: string | string[] }>();
+  const requestedFilter = parseWalletHistoryFilter(filterParam);
   const { showDialog } = useAppDialog();
   const { error } = useStoredCredentials();
-  const [filter, setFilter] = useState<WalletHistoryFilter>('issuance');
+  const [filter, setFilter] = useState<WalletHistoryFilter>(requestedFilter ?? 'issuance');
   const [refreshTick, setRefreshTick] = useState(0);
   const items = readWalletHistoryRows({ filter });
 
@@ -28,6 +42,16 @@ export default function HistoryLogScreen() {
     setRefreshTick((value) => value + 1);
   }, []);
 
+  useEffect(() => {
+    if (requestedFilter) setFilter(requestedFilter);
+  }, [requestedFilter]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (requestedFilter) setFilter(requestedFilter);
+      bumpList();
+    }, [bumpList, requestedFilter]),
+  );
   const handleSuspendAccess = useCallback(
     (eventId: string) => {
       const event = readWalletHistoryEvent(eventId);

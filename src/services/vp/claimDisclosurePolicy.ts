@@ -1,6 +1,7 @@
-import type { CredentialConfigurationSupportedV1_0_15, IssuerMetadataV1_0_15 } from '@sphereon/oid4vci-common'
+import type { CredentialConfigurationSupportedV1_0_15, IssuerMetadataV1_0_15 } from '../vci/walletVciTypes'
 
 import {
+  collectDisplayFieldMatchKeys,
   findDisplayFieldForClaimKey,
   getCardSchema,
   resolvePresentationDisclosureLabel,
@@ -90,7 +91,7 @@ export function collectClaimPolicyLookupKeys(documentType: string, claimKey: str
   const field = findDisplayFieldForClaimKey(schema.displayFields, normalizedClaimKey)
   if (field) {
     keys.add(normalizeClaimKey(field.key))
-    for (const alias of field.aliases ?? []) {
+    for (const alias of collectDisplayFieldMatchKeys(field)) {
       keys.add(normalizeClaimKey(alias))
     }
   }

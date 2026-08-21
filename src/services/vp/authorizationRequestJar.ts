@@ -1,19 +1,25 @@
+import { isTrustedIssuerJwtAlg } from '@/src/config/issuerJwtVerifyPolicy'
 import {
   decodeJsonBase64Url,
   isRecord,
+  isSameJwk,
   looksLikeCompactJwt,
   readString,
   toErrorMessage,
 } from '@/src/utils/jwtUtils'
 import { verifyEdDsaCompactJwt } from '../crypto/eddsaJwtVerify'
+import { verifyEs256CompactJwt } from '../crypto/es256JwtVerify'
+import { didKeyToP256PublicJwk } from '../crypto/p256Identity'
 import {
   clientIdAllowsUnsignedRequestObject,
   clientIdRequiresSignedRequestObject,
   parseClientId,
   type SupportedClientIdScheme,
 } from './clientIdScheme'
+import { didKeyToEd25519PublicJwk } from './didKeyPublicJwk'
 import { resolveDidWebVerificationJwk } from './didWebResolver'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
+import { resolveJwkFromVerifierJwks } from './verifierJwks'
 
 export type ParseAuthorizationRequestBodyOptions = {
   trustedVerifiers: TrustedVerifier[]
@@ -67,6 +73,12 @@ async function parseVerifiedAuthorizationRequestJwt(
     throw new Error('PresentationRequestInvalid: client_id is required')
   }
 
+  if (clientId.startsWith('did:')) {
+    throw new Error(
+      'PresentationRequestInvalid: OID4VP 1.0 requires client_id "decentralized_identifier:did:…"; bare did: is not supported',
+    )
+  }
+
   const parsedClientId = parseClientId(clientId)
   if (parsedClientId.scheme === 'unknown' || parsedClientId.scheme === 'openid_federation') {
     throw new Error(`PresentationRequestUnsupported: client_id scheme ${parsedClientId.scheme} is not supported`)
@@ -111,9 +123,9 @@ async function parseVerifiedAuthorizationRequestJwt(
       header,
       trustedVerifiers: options.trustedVerifiers,
       fetchImpl: options.fetchImpl ?? fetch,
-    }).catch(() => undefined)
+    })
 
-    if (verificationJwk && !verifyAuthorizationRequestSignature(jwt, verificationJwk, alg)) {
+    if (!verifyAuthorizationRequestSignature(jwt, verificationJwk, alg)) {
       throw new Error('PresentationRequestInvalid: request object signature verification failed')
     }
   } else if (!clientIdAllowsUnsignedRequestObject(scheme)) {
@@ -140,7 +152,7 @@ function parseUnsignedAuthorizationRequestJson(text: string): Record<string, unk
   }
 }
 
-async function resolveRequestObjectVerificationJwk(input: {
+export async function resolveRequestObjectVerificationJwk(input: {
   clientId: string
   responseUri: string | undefined
   header: Record<string, unknown>
@@ -151,12 +163,22 @@ async function resolveRequestObjectVerificationJwk(input: {
   const trustedVerifier = input.responseUri
     ? findTrustedVerifier(input.clientId, input.responseUri, input.trustedVerifiers)
     : undefined
+  const headerKid = readString(input.header.kid)
 
-  if (trustedVerifier?.verificationJwk) return trustedVerifier.verificationJwk
+  let resolved: Record<string, unknown> | undefined
+
+  if (trustedVerifier?.verificationJwk) {
+    const pinned = trustedVerifier.verificationJwk
+    const pinnedKid = readString(pinned.kid)
+    if (!headerKid || !pinnedKid || pinnedKid === headerKid) {
+      resolved = pinned
+    }
+  }
 
   if (
-    parsedClientId.scheme === 'decentralized_identifier' &&
-    parsedClientId.originalClientId.startsWith('did:web:')
+    !resolved
+    && parsedClientId.scheme === 'decentralized_identifier'
+    && parsedClientId.originalClientId.startsWith('did:web:')
   ) {
     if (!input.responseUri) {
       throw new Error('PresentationRequestInvalid: response_uri is required')
@@ -165,24 +187,79 @@ async function resolveRequestObjectVerificationJwk(input: {
       throw new Error('PresentationRequestInvalid: verifier is not trusted')
     }
 
-    return resolveDidWebVerificationJwk(
+    resolved = await resolveDidWebVerificationJwk(
       parsedClientId.originalClientId,
-      readString(input.header.kid),
+      headerKid,
       input.fetchImpl,
     )
   }
 
-  const headerJwk = input.header.jwk
-  if (isRecord(headerJwk)) return headerJwk
+  if (
+    !resolved
+    && parsedClientId.scheme === 'decentralized_identifier'
+    && parsedClientId.originalClientId.startsWith('did:key:')
+  ) {
+    if (!trustedVerifier) {
+      throw new Error('PresentationRequestInvalid: verifier is not trusted')
+    }
+    resolved = resolveDidKeyVerificationJwk(parsedClientId.originalClientId, headerKid)
+  }
 
-  throw new Error('PresentationRequestInvalid: verifier signing key is not available')
+  if (!resolved && parsedClientId.scheme === 'redirect_uri') {
+    if (!input.responseUri) {
+      throw new Error('PresentationRequestInvalid: response_uri is required')
+    }
+    if (!trustedVerifier) {
+      throw new Error('PresentationRequestInvalid: verifier is not trusted')
+    }
+
+    resolved = await resolveJwkFromVerifierJwks({
+      responseUri: input.responseUri,
+      kid: headerKid,
+      fetchImpl: input.fetchImpl,
+    })
+  }
+
+  if (!resolved) {
+    throw new Error('PresentationRequestInvalid: verifier signing key is not available')
+  }
+
+  const headerJwk = input.header.jwk
+  if (isRecord(headerJwk) && !isSameJwk(headerJwk, resolved)) {
+    throw new Error('PresentationRequestInvalid: request object jwk does not match trusted verifier key')
+  }
+
+  return resolved
 }
 
-function verifyAuthorizationRequestSignature(
+function resolveDidKeyVerificationJwk(did: string, kid: string | undefined): Record<string, unknown> {
+  const didWithoutFragment = did.split('#')[0]!
+  if (kid) {
+    const kidDid = kid.startsWith('did:') ? kid.split('#')[0]! : undefined
+    if (kidDid && kidDid !== didWithoutFragment) {
+      throw new Error('PresentationRequestInvalid: request object kid does not match client_id')
+    }
+  }
+
+  try {
+    return didKeyToP256PublicJwk(didWithoutFragment)
+  } catch {
+    // fall through to Ed25519
+  }
+
+  try {
+    return didKeyToEd25519PublicJwk(didWithoutFragment)
+  } catch {
+    throw new Error('PresentationRequestInvalid: unsupported did:key verifier signing key')
+  }
+}
+
+export function verifyAuthorizationRequestSignature(
   jwt: string,
   publicJwk: Record<string, unknown>,
   alg: string,
 ): boolean {
-  if (alg !== 'EdDSA') return false
-  return verifyEdDsaCompactJwt(jwt, publicJwk)
+  if (!isTrustedIssuerJwtAlg(alg)) return false
+  if (alg === 'EdDSA') return verifyEdDsaCompactJwt(jwt, publicJwk)
+  return verifyEs256CompactJwt(jwt, publicJwk)
 }

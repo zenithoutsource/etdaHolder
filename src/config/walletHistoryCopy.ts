@@ -1,0 +1,68 @@
+/**
+ * Holder-facing History Log copy that the Wallet authors itself.
+ * Channel captions for OID4VCI/OID4VP stay hybrid per CONTEXT.md (Issuer/Verifier/Deep link).
+ */
+
+export const WALLET_HISTORY_COPY = {
+  infoBoxLabelPresentation: 'ประเภทข้อมูลที่เข้าถึง',
+  infoBoxLabelDocument: 'เอกสาร',
+  partyRoleVerifier: 'ผู้ตรวจสอบ',
+  partyRoleIssuer: 'ผู้ออกเอกสาร',
+  partyRoleBackend: 'ระบบหลังบ้าน',
+  partyRoleWallet: 'Wallet',
+  partyFallbackVerifier: 'ผู้ตรวจสอบ',
+  partyFallbackIssuer: 'ผู้ออกเอกสาร',
+  partyPlaceholderBackend: 'ระบบหลังบ้าน',
+  partyPlaceholderNfc: 'เครื่องอ่าน NFC',
+  channelNfc: 'ผ่าน NFC ระยะใกล้',
+  channelVpRelay: 'ผ่าน VP Relay',
+  channelBackend: 'ซิงก์ระบบหลังบ้าน',
+  channelInWallet: 'ดำเนินการใน Wallet',
+  channelRenewal: 'ต่ออายุใน Wallet',
+  channelAccessSuspended: 'คำขอระงับการเข้าถึง',
+  // Hybrid (locked in CONTEXT.md)
+  channelQrVerifier: 'ผ่าน QR Verifier',
+  channelDeepLinkVerifier: 'ผ่าน Deep link Verifier',
+  channelQrIssuer: 'ผ่าน QR Issuer',
+  channelDeepLinkIssuer: 'ผ่าน Deep link Issuer',
+  channelReceiveIssuer: 'รับเอกสารจาก Issuer',
+  channelVerifyFailedQr: 'ตรวจสอบเอกสารผ่าน QR Issuer ไม่ผ่าน',
+  channelVerifyFailedDeepLink: 'ตรวจสอบเอกสารผ่าน Deep link Issuer ไม่ผ่าน',
+  channelVerifyFailedIssuer: 'ตรวจสอบเอกสารจาก Issuer ไม่ผ่าน',
+  actionReceived: 'รับเอกสารแล้ว',
+  actionVerifyFailed: 'ตรวจสอบเอกสารไม่สำเร็จ',
+  actionPresentationSuccess: 'แสดงเอกสารสำเร็จ',
+  actionPresentationDeclined: 'ปฏิเสธการแสดงเอกสาร',
+  actionPresentationFailed: 'แสดงเอกสารไม่สำเร็จ',
+  actionAccessSuspended: 'ขอระงับการเข้าถึงแล้ว',
+  actionRevoked: 'ระงับเอกสารแล้ว',
+  actionDeleted: 'ลบเอกสารแล้ว',
+  actionUsed: 'ใช้งานเอกสารแล้ว',
+  actionRenewal: 'ต่ออายุเอกสารสำเร็จ',
+  actionBackendSuccess: 'ซิงก์ระบบหลังบ้านสำเร็จ',
+  actionBackendFailed: 'ซิงก์ระบบหลังบ้านไม่สำเร็จ',
+  actionDefault: 'รายการประวัติ',
+  subtitleReceived: 'บันทึกเอกสารลง Wallet แล้ว',
+  subtitlePresentationSuccess: 'แสดงเอกสารสำเร็จ',
+  subtitleRevoked: 'ยืนยันการระงับเอกสารใน Wallet',
+  subtitleDeletedHolder: 'ยืนยันการลบเอกสารใน Wallet',
+  subtitleDeletedSystem: 'เอกสารหมดอายุ — ระบบลบออกจาก Wallet อัตโนมัติ',
+  subtitleUsed: 'เอกสารถูกใช้สิทธิ์แล้ว — ไม่สามารถแสดงซ้ำได้',
+  subtitleRenewal: 'เอกสารใหม่พร้อมใช้งานหลังต่ออายุ',
+  subtitleBackendSuccess: 'บันทึกเอกสารไปยังระบบหลังบ้านสำเร็จ',
+  failureVerifierRejected: 'ผู้ตรวจสอบปฏิเสธ',
+  failureNetwork: 'เครือข่ายขัดข้อง',
+  failureBiometric: 'ยกเลิกการยืนยันตัวตน',
+  failureTimeout: 'หมดเวลา',
+  failureSignature: 'ลายเซ็นไม่ถูกต้อง',
+  failureHolderBinding: 'ผูกกุญแจผู้ถือไม่ตรง',
+  failureUnknown: 'เกิดข้อผิดพลาด',
+} as const
+
+/** Wallet-authored English placeholders stored on older history rows. */
+export const WALLET_HISTORY_PARTY_PLACEHOLDERS: Record<string, string> = {
+  Verifier: WALLET_HISTORY_COPY.partyFallbackVerifier,
+  'Wallet Backend': WALLET_HISTORY_COPY.partyPlaceholderBackend,
+  'NFC Reader': WALLET_HISTORY_COPY.partyPlaceholderNfc,
+  ThaID: 'PID',
+}

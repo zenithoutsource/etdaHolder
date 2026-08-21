@@ -21,12 +21,14 @@ Session-by-session progress, verification runs, and next steps live in `docs/TAS
 - Exception — wire-protocol constants: values already deployed on the wire (the companion AID byte sequence, the `urn:etda:companion:nfc:v1` KB-JWT `aud`) stay unchanged until a protocol version bump, because renaming them breaks reader compatibility. Treat them as opaque constants.
 - Existing `etda*`-named files/classes (e.g. remaining `etda-*` doc/spec mentions) are legacy: rename to neutral names when touching them, and do not add new references to the old names.
 
-**Standing architecture note (ADR 0007 → ADR 0008, 2026-06-16):** The program requires EdDSA/Ed25519 for both OID4VCI issuance PoP and OID4VP presentation KB-JWT. The target Galaxy S24 Ultra proved AndroidKeyStore Ed25519 key generation unavailable in practice (AndroidKeyStore returned EC keys for Ed25519 requests). Production uses a Keychain-protected software Ed25519 seed with biometric/device authentication at every sign call, producing protocol-valid `alg: EdDSA` signatures — a documented security tradeoff versus hardware non-extractability (ADR 0008, `docs/SECURITY.md` Section 1).
+**Standing architecture note (ADR 0011):** Production holder keys are hardware P-256 / ES256 (`k_attest` plus per-credential `k_cred`). Ed25519 `k_cred` remains only when `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=false` (ADR 0008). iOS stays fail-closed until Secure Enclave lands.
 
 **Files to read before starting:**
 - `CLAUDE.md` - architecture rules and commands
 - `CONTEXT.md` - domain glossary
+- Cursor Canvas P1–P6 journey sequences under `canvases/` (`p1-sequence-check`, `p2-sequence-check`, `p3-key-rotation-sequence-check`, `p4-vp-presentation-sequence-check`, `p5-vp-verification-audit`, `p6-revocation-status-sequence-check`) — mandatory before any new system/feature so specs stay aligned
 - `docs/ARCHITECTURE.md` - protocol, storage, and UI boundaries
+- `docs/CODEMAPS/frontend.md` - tab-first map of Wallet screens, panels, copy/layout homes, and flow steps
 - `docs/API.md` - generated SDK boundary and local backend URL adapter
 - `docs/SECURITY.md` - crypto, storage, biometric, network, and build rules (includes Section 6 "Current Security Findings")
 - `docs/TASKS.md` - active backlog and blockers
@@ -101,15 +103,24 @@ Session-by-session progress, verification runs, and next steps live in `docs/TAS
 - If new UI/behavior is reusable across screens (a panel shape, a gating flow, a card row), it must ship as a component/hook under `src/components/` or `src/hooks/`, not copy-pasted or reimplemented per screen.
 - When two pieces of code do the same job, they must be written the same way — same naming, same structure, same patterns — as if one person wrote the whole codebase. Diverging implementations of a shared concern (e.g. two slightly different biometric-gate call sites, two slightly different card-row renderers) are a defect: consolidate to one shared implementation instead of leaving near-duplicates that read as inconsistent.
 - When touching a feature area, check sibling files in the same directory for the established pattern first, and match it rather than inventing a new one.
+- New or touched files under `app/`, `src/screens/`, and `src/components/` must keep a file-top purpose comment (full header on screens/panels/cards: purpose, journey, copy/layout, next, map link; one-liner on primitives such as `AppButton`). English only. Do not add walkthrough comments next to obvious JSX or `setState`.
+- If a screen's files, copy home, or flow steps change, update [`docs/CODEMAPS/frontend.md`](docs/CODEMAPS/frontend.md) in the same change set. Start there when you cannot find a Wallet screen or Holder-facing string.
 
 ## Planning Philosophy
 
 When planning any new system, feature, or integration:
 
-1. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs stated.
-2. **Best practice before convenience** — prefer APNs/FCM push with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant protocol flows over custom shortcuts.
-3. **Name the tradeoffs explicitly** — if recommending a simpler path, state what production capability is deferred and the trigger for when it must be addressed.
-4. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before writing implementation steps.
+1. **Read Cursor Canvas P1–P6 first** — before designing or implementing anything new, read the journey sequence canvases so the work matches the locked P1–P6 specs and step statuses. Do not invent divergent actors, steps, or outcomes. If a change would alter a P1–P6 sequence, update the relevant canvas (and related User Journey / specs) in the same change set. Canvas files live under the Cursor project `canvases/` directory:
+   - `canvases/p1-sequence-check.canvas.tsx`
+   - `canvases/p2-sequence-check.canvas.tsx`
+   - `canvases/p3-key-rotation-sequence-check.canvas.tsx`
+   - `canvases/p4-vp-presentation-sequence-check.canvas.tsx`
+   - `canvases/p5-vp-verification-audit.canvas.tsx`
+   - `canvases/p6-revocation-status-sequence-check.canvas.tsx`
+2. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs stated.
+3. **Best practice before convenience** — prefer APNs/FCM push with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant protocol flows over custom shortcuts.
+4. **Name the tradeoffs explicitly** — if recommending a simpler path, state what production capability is deferred and the trigger for when it must be addressed.
+5. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before writing implementation steps.
 
 ## Master Branch Hygiene
 
@@ -157,7 +168,7 @@ Allowed path: Mobile Wallet App -> TypeScript SDK -> API Gateway or local develo
 
 ### 3. Decoupled Protocol Execution
 
-Use `@sphereon/oid4vci-client` for OID4VCI offer parsing and Pre-Authorized Code flows. Legacy `/exchange/*` endpoints in the backend spec are forbidden from mobile code.
+Use `@openid4vc/openid4vci` for OID4VCI offer parsing and Pre-Authorized Code flows. Legacy `/exchange/*` endpoints in the backend spec are forbidden from mobile code.
 
 ### 4. Self-Sovereign Architecture
 
@@ -165,13 +176,13 @@ The app claims credentials directly from Issuers. The company backend authentica
 
 ## Security Guidelines
 
-- Production Holder DID is `did:key` derived from the Keychain-protected Ed25519 public key using multicodec prefix `[0xed, 0x01]`. The Ed25519 seed is software-generated and retrieved through `react-native-keychain`; this is not hardware non-extractable.
-- Current PoP JWT: uses `kid` header, not `jwk`; payload `iss`/`sub` is the Ed25519 Holder DID and `alg` is `EdDSA`.
+- Production Holder DID is `did:key` derived from the hardware P-256 public key (multicodec `0x1200`, `alg: ES256`) when hardware signing is on. Flag-off Ed25519 uses multicodec `[0xed, 0x01]` and `alg: EdDSA`.
+- Current PoP JWT: uses `kid` (and `jwk` for hardware ES256 where required); payload `iss`/`sub` is the credential Holder DID.
 - No AsyncStorage: credentials are stored in encrypted MMKV; encryption key is held in `react-native-keychain`.
-- Biometric sign-time gate: biometric authentication fires on every `signProof()` call.
-- One biometric prompt per user action: a single user-initiated action (approve a presentation, claim a credential, rotate a key) must trigger exactly one authentication event. If the action requires a cryptographic sign call, that sign-time Keychain gate is the only prompt — do not add a separate app-level biometric/consent check in front of it for the same action. Only add a second, independent prompt when the action does no signing at all (so the sign-time gate never fires) and still needs its own auth.
-- NFC Presentation: ISO 18013-5 proximity channel; native mdoc module not yet selected.
-- Online Presentation: OID4VP 1.0 first slice is implemented. Production uses Keychain-protected Ed25519 EdDSA for SD-JWT KB-JWT.
+- Biometric sign-time gate: one prompt per user action on `k_cred` PoP or presentation (native session when hardware is on; Keychain when flag-off).
+- One biometric prompt per user action: a single user-initiated action (approve a presentation, claim a credential, rotate a key) must trigger exactly one authentication event. If the action requires a cryptographic sign call, that sign-time Keychain/native gate is the only prompt — do not add a separate app-level biometric/consent check in front of it for the same action. Only add a second, independent prompt when the action does no signing at all (so the sign-time gate never fires) and still needs its own auth.
+- NFC Presentation: ISO 18013-5 proximity channel; A26 + ACR1311 DeviceResponse remains a release gate.
+- Online Presentation: OID4VP 1.0 first slice is implemented. Production uses hardware P-256 ES256 for SD-JWT KB-JWT when the hardware flag is on.
 
 ## Configurable Time/Duration Values
 
@@ -204,7 +215,7 @@ Any constant that expresses a duration, TTL, or timing window for a system-wide 
 
 ## Key Package Decisions
 
-- Production signing: `@noble/ed25519` with the 32-byte seed stored in `react-native-keychain` and retrieved under biometric/device authentication for signing.
+- Production signing: hardware P-256 / ES256 via `modules/expo-wallet-hardware-ecdsa` (`EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND=custom`). Flag-off Ed25519: `@noble/ed25519` with the 32-byte seed in `react-native-keychain`.
 - Storage: `react-native-mmkv` v4 via `createMMKV()`, requiring `react-native-nitro-modules`
 - Crypto, non-signing: `react-native-quick-crypto`
 - State: `zustand`, with TanStack Query for SDK-generated API hooks

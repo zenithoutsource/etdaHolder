@@ -1,0 +1,19 @@
+package org.wallet.mdocnfchost
+
+const val MDL_DOCTYPE = "org.iso.18013.5.1.mDL"
+const val MDL_NAMESPACE = "org.iso.18013.5.1"
+const val ISO_MDOC_AID_HEX = "A0000002480400"
+const val NDEF_AID_HEX_CONSTANT = "D2760000850101"
+const val DEFAULT_HOST = "127.0.0.1"
+const val DEFAULT_PORT = 8787
+const val DEFAULT_TAP_TIMEOUT_MS = 180_000L
+
+/** Names, DOB (host derives over-18), licence class, issue and expiry. Missing ISO items abort as session status 20. */
+val MDL_REQUEST_FIELDS = listOf(
+  "family_name",
+  "given_name",
+  "birth_date",
+  "driving_privileges",
+  "issue_date",
+  "expiry_date",
+)

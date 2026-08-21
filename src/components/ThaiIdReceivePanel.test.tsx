@@ -32,8 +32,12 @@ describe('ThaiIdReceivePanel', () => {
     expect(screen.getByTestId('document-card-divider')).toBeTruthy()
     expect(screen.getByTestId('document-card-right-column')).toBeTruthy()
     expect(screen.getByText('1-2345-67890-12-3')).toBeTruthy()
-    expect(screen.getByText('Buddhist')).toBeTruthy()
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('Buddhist')).toBeNull()
     expect(screen.getByText('Bangkok')).toBeTruthy()
+    expect(screen.getByTestId('document-detail-card')).toBeTruthy()
+    expect(screen.queryByTestId('document-detail-my-qr')).toBeNull()
+    expect(screen.queryByTestId('document-detail-present-nfc')).toBeNull()
 
     fireEvent.press(screen.getByText('ยืนยัน'))
 

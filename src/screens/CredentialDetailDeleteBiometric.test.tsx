@@ -6,6 +6,7 @@ import CredentialDetailScreen from '../../app/(tabs)/credential/[id]'
 
 const mockReact = React
 const mockRefresh = jest.fn()
+const mockPush = jest.fn()
 const mockConfirmCredentialDeletionBiometric = jest.fn()
 const mockIsCredentialDeletionBiometricCancellation = jest.fn()
 const mockHasWalletPin = jest.fn(() => true)
@@ -19,7 +20,7 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => () => null)
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'credential-1' }),
-  useRouter: () => ({ back: jest.fn(), push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ back: jest.fn(), push: mockPush, replace: jest.fn() }),
   useFocusEffect: (effect: () => void | (() => void)) => {
     mockReact.useEffect(() => effect(), [])
   },
@@ -54,7 +55,8 @@ jest.mock('../../src/components/AppDialog', () => ({
 }))
 
 jest.mock('../../src/components/CredentialDocumentDetailCard', () => ({
-  CredentialDocumentDetailCard: () => null,
+  CredentialDocumentDetailCard: ({ bannerAction }: { bannerAction?: unknown }) =>
+    bannerAction ?? null,
 }))
 
 jest.mock('../../src/components/CredentialActionMenu', () => ({
@@ -124,16 +126,19 @@ jest.mock('../../src/services/credentials/credentialRenewalService', () => ({
 }))
 
 jest.mock('../../src/services/credentials/holderRevokeService', () => ({
+  HolderRevokeHardwareKeyRequiredError: class HolderRevokeHardwareKeyRequiredError extends Error {},
   HolderRevokeSigningCancelledError: class HolderRevokeSigningCancelledError extends Error {},
   submitHolderRevokeRequest: jest.fn(),
 }))
 
 jest.mock('../../src/services/credentials/credentialGuard', () => ({
   canSubmitCredentialRenewal: () => false,
+  readPidGateStatus: () => 'ready',
 }))
 
 jest.mock('../../src/services/credentials/credentialDocumentExpiry', () => ({
   isCredentialExpiringSoon: () => false,
+  isCredentialDocumentExpired: () => false,
 }))
 
 jest.mock('../../src/services/credentials/renewalCleanupNotification', () => ({
@@ -320,5 +325,22 @@ describe('CredentialDetailScreen delete biometric', () => {
     }
 
     expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
+  })
+
+  test('opens History on the lifecycle filter after delete approval', async () => {
+    mockConfirmCredentialDeletionBiometric.mockResolvedValueOnce(undefined)
+
+    renderDeleteSecurityScreen()
+    fireEvent.press(screen.getByTestId('pin-key-fingerprint'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
+    })
+    fireEvent.press(screen.getByRole('button', { name: 'Approve' }))
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/(tabs)/history',
+      params: { filter: 'lifecycle' },
+    })
   })
 })

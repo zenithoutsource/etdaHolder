@@ -1,3 +1,10 @@
+/**
+ * Full-screen acknowledge overlay for an issuer-suspended credential.
+ * Journey: P6 (built + tested; not screen-wired today).
+ * Copy: inline EN/Thai.
+ * Map: docs/CODEMAPS/frontend.md#wallet
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'

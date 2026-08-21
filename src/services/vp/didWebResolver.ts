@@ -3,6 +3,7 @@ import {
   DID_WEB_MAX_BYTES,
 } from '@/src/config/didWebFetchPolicy'
 import { isRecord, readRecord, readString } from '@/src/utils/jwtUtils'
+import { didKeyToEd25519PublicJwk } from './didKeyPublicJwk'
 
 export type VerificationJwk = Record<string, unknown>
 
@@ -92,16 +93,31 @@ export async function resolveDidWebVerificationJwk(
     throw new Error('DidWebResolveFailed: verification method not found')
   }
 
-  const publicKeyJwk = readRecord(verificationMethod.publicKeyJwk)
-  if (!publicKeyJwk) {
-    throw new Error('DidWebResolveFailed: verification method publicKeyJwk is required')
-  }
-
+  const publicKeyJwk = readVerificationPublicJwk(verificationMethod)
   return publicKeyJwk
 }
 
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
+}
+
+function readVerificationPublicJwk(method: Record<string, unknown>): VerificationJwk {
+  const publicKeyJwk = readRecord(method.publicKeyJwk)
+  if (publicKeyJwk) return publicKeyJwk
+
+  const multibase = readString(method.publicKeyMultibase)
+  if (!multibase) {
+    throw new Error(
+      'DidWebResolveFailed: verification method publicKeyJwk or publicKeyMultibase is required',
+    )
+  }
+
+  try {
+    const encoded = multibase.startsWith('z') ? multibase : `z${multibase}`
+    return didKeyToEd25519PublicJwk(`did:key:${encoded}`)
+  } catch {
+    throw new Error('DidWebResolveFailed: publicKeyMultibase is not a supported Ed25519 key')
+  }
 }
 
 function readVerificationMethod(

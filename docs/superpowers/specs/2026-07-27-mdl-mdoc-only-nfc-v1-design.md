@@ -17,6 +17,8 @@ This spec narrows the production proximity backlog to a deliverable v1 slice. It
 
 **Explicit non-goal:** [mdoc-web-verifier](https://github.com/stelauconseil/mdoc-web-verifier) (BLE Web Bluetooth verifier). It is not part of the production or v1 validation path.
 
+**Superseded (holder engagement):** Holder DeviceEngagement QR for mDL NFC is superseded by [`2026-08-17-mdl-nfc-static-handover-tap-only-design.md`](./2026-08-17-mdl-nfc-static-handover-tap-only-design.md) (tap-only static NFC handover).
+
 ## 1. Summary
 
 Deliver the first end-to-end **mdoc-only** NFC presentation for **Driving Licence mDL** (`org.iso.18013.5.1.mDL`) on **Samsung Galaxy A26 + ACR1311U-N2**, with a **minimal interop field set** (three ISO 18013-5 data elements).
@@ -146,7 +148,7 @@ Pre-tap consent uses this profile as the **disclosure ceiling**. Native code rej
 - **Compile:** PASS — `org.multipaz:multipaz:0.100.0` + `org.multipaz:multipaz-compose:0.100.0`; `:expo-mdoc-proximity:compileDebugKotlin` succeeds.
 - **API evidence:** `org.multipaz.mdoc.transport.NfcTransportMdoc.processCommandApdu`, `org.multipaz.compose.mdoc.MdocNfcDataTransferService` (AID `A0000002480400`).
 - **Runtime / physical:** PENDING — A26 + ACR1311 Part G; `presentationReady` is true when Multipaz probe passes on device; E2E DeviceResponse still requires Part G.
-- **Integration:** `MultipazPresentmentSession` builds QR engagement + runs `Iso18013Presentment`; APDUs delegate to `NfcTransportMdoc.processCommandApdu`. Pre-tap device auth via `installMdocDeviceKey` (one Keychain unlock at arm).
+- **Integration:** `MultipazPresentmentSession` builds QR engagement + runs `Iso18013Presentment`. `CompanionHostApduService` forwards mdoc APDUs including SELECT to `NfcTransportMdoc.processCommandApdu` and returns null, completing via `sendResponseApdu`. Hardware-on device auth uses an opaque `mdoc` session handle (`installMdocSigningHandle`); flag-off still uses `installMdocDeviceKey`.
 
 
 1. Add Multipaz Android dependency to `expo-mdoc-proximity`.

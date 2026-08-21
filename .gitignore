@@ -37,6 +37,10 @@ env
 server/.env
 server/env
 
+# local credential JWT dumps from scripts/fetch-document-jwt.mjs
+tmp/
+credential-response.json
+
 # session scratch
 .codex-expo*.log
 server/.codex-server.log

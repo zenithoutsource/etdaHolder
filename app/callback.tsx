@@ -1,9 +1,18 @@
+/**
+ * Issuer/portal return handler (walletapp://callback).
+ * Journey: P1 same-device issuance; may hand off to OID4VP.
+ * Copy: none (spinner only).
+ * Next: credential-offer, presentation-request, pin-lock, or Wallet.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import * as Linking from 'expo-linking'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef } from 'react'
 import { ActivityIndicator, Platform, View } from 'react-native'
 
 import { readWalletReturnUrl } from '@/src/config/sameDeviceIssuance'
+import { continueSameDeviceIssuanceAfterPortal } from '@/src/services/credentials/sameDeviceIssuance'
 import {
   describeIssuanceCallbackForLog,
   describeIssuanceCallbackSearchParamsForLog,
@@ -13,11 +22,12 @@ import { notifyPortalReturnUrl } from '@/src/services/credentials/portalReturnBr
 import {
   buildIssuanceCallbackUrlFromSearchParams,
   resolveIssuanceCallbackFromSources,
+  storePendingFromIssuanceCallbackUrl,
 } from '@/src/services/credentials/resolveIssuanceCallbackResult'
 import { hasWalletPin } from '@/src/services/auth/walletPin'
-import { logWalletStep } from '@/src/services/debug/walletLogger'
+import { logWalletError, logWalletStep } from '@/src/services/debug/walletLogger'
 import { useAuthStore } from '@/src/store/authStore'
-import { useDeeplinkStore } from '@/src/store/deeplinkStore'
+import { useDeeplinkStore, tryQueueDeeplinkUri } from '@/src/store/deeplinkStore'
 import { isPortalReturnUrlIgnoredDuringCapture } from '@/src/services/credentials/portalReturnBridge'
 import { isPresentationRequestConsumed } from '@/src/services/vp/presentationRequestReplay'
 import { notifyPresentationIntakeRejectionForUri } from '@/src/services/vp/presentationIntakeRejection'
@@ -37,8 +47,6 @@ export default function IssuanceCallbackRoute() {
   const router = useRouter()
   const incomingUrl = Linking.useURL()
   const searchParams = useLocalSearchParams()
-  const setPendingPresentationRequest = useDeeplinkStore((s) => s.setPendingPresentationRequest)
-  const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri)
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri)
   const isPinVerified = useAuthStore((s) => s.isPinVerified)
   const handledRef = useRef(false)
@@ -95,33 +103,80 @@ export default function IssuanceCallbackRoute() {
 
     handledRef.current = true
 
-    if (
-      parsed.uri === dismissedDeeplinkUri
-      || isPortalReturnUrlIgnoredDuringCapture(parsed.uri)
-      || (
-        parsed.kind === 'presentation_request'
-        && isPresentationRequestConsumed(parsed.uri)
-      )
-    ) {
-      logWalletStep(
-        'deeplink',
-        parsed.kind === 'presentation_request'
-          ? 'presentation-replay-ignored'
-          : 'credential-offer-dismissed-ignored',
-      )
-      if (parsed.kind === 'presentation_request') {
-        notifyPresentationIntakeRejectionForUri(parsed.uri)
+    if (parsed.kind === 'authorization_code' || parsed.kind === 'authorization_error') {
+      const returnUrl = readWalletReturnUrl()
+      const callbackUrl = buildIssuanceCallbackUrlFromSearchParams(
+        searchParams as Record<string, string | string[] | undefined>,
+        returnUrl,
+      ) ?? incomingUrl
+      if (callbackUrl && parsed.kind === 'authorization_code') {
+        storePendingFromIssuanceCallbackUrl(callbackUrl, returnUrl)
+      }
+      logWalletStep('deeplink', 'callback-routed', {
+        kind: parsed.kind,
+        linking: describeIssuanceCallbackForLog(incomingUrl),
+        searchParams: describeIssuanceCallbackSearchParamsForLog(
+          searchParams as Record<string, string | string[] | undefined>,
+        ),
+      })
+      if (parsed.kind === 'authorization_code') {
+        void (async () => {
+          try {
+            const continuation = await continueSameDeviceIssuanceAfterPortal()
+            if (continuation.status === 'claim_ready') {
+              router.replace('/(tabs)/credential-offer')
+              return
+            }
+            if (continuation.status === 'awaiting_pid_vp') {
+              router.replace('/(tabs)/presentation-request')
+              return
+            }
+          } catch (error) {
+            logWalletError('deeplink', 'same-device-issuance-continuation-failed', error)
+          }
+          router.replace('/(tabs)')
+        })()
+        return
       }
       router.replace('/(tabs)')
       return
     }
 
-    const queuePendingUri = (uri: string) => {
-      if (parsed.kind === 'presentation_request') {
-        setPendingPresentationRequest({ uri, origin: 'same-device' })
-        return
+    if (isPortalReturnUrlIgnoredDuringCapture(parsed.uri)) {
+      logWalletStep('deeplink', 'portal-stale-callback-ignored')
+      router.replace('/(tabs)')
+      return
+    }
+
+    if (
+      parsed.uri === dismissedDeeplinkUri
+      || (
+        parsed.kind === 'presentation_request'
+        && isPresentationRequestConsumed(parsed.uri)
+      )
+    ) {
+      const consumed = parsed.kind === 'presentation_request'
+        && isPresentationRequestConsumed(parsed.uri)
+      logWalletStep(
+        'deeplink',
+        consumed
+          ? 'presentation-replay-ignored'
+          : parsed.kind === 'presentation_request'
+            ? 'presentation-dismissed-ignored'
+            : 'credential-offer-dismissed-ignored',
+      )
+      if (consumed) {
+        notifyPresentationIntakeRejectionForUri(parsed.uri)
       }
-      setPendingDeeplinkUri(uri)
+      // Land on Wallet home — avoid back() onto a blank presentation-request screen.
+      router.replace('/(tabs)')
+      return
+    }
+
+    const queuePendingUri = (uri: string) => {
+      if (!tryQueueDeeplinkUri(uri, { origin: 'same-device' })) {
+        logWalletStep('deeplink', 'presentation-dismissed-ignored')
+      }
     }
 
     const pinRequired = Platform.OS !== 'web' && hasWalletPin() && !isPinVerified
@@ -139,7 +194,11 @@ export default function IssuanceCallbackRoute() {
       return
     }
 
-    queuePendingUri(parsed.uri)
+    if (!tryQueueDeeplinkUri(parsed.uri, { origin: 'same-device' })) {
+      logWalletStep('deeplink', 'presentation-dismissed-ignored')
+      router.replace('/(tabs)')
+      return
+    }
     logWalletStep('deeplink', 'callback-routed', {
       kind: parsed.kind,
       linking: describeIssuanceCallbackForLog(incomingUrl),
@@ -159,8 +218,6 @@ export default function IssuanceCallbackRoute() {
     isPinVerified,
     router,
     searchParams,
-    setPendingPresentationRequest,
-    setPendingDeeplinkUri,
   ])
 
   useEffect(() => {

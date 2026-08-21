@@ -2,7 +2,6 @@ import { parseIssuanceCallbackUrl } from '../credentials/parseIssuanceCallbackUr
 import {
   notifyPresentationIntakeRejection,
   notifyPresentationIntakeRejectionForUri,
-  PRESENTATION_REQUEST_ALREADY_HANDLED_MESSAGE,
   PRESENTATION_REQUEST_ALREADY_USED_MESSAGE,
   readPresentationIntakeRejection,
   readPresentationIntakeRejectionForUri,
@@ -16,6 +15,7 @@ describe('presentationIntakeRejection', () => {
       pendingUri: null,
       pendingPresentationFlowOrigin: null,
       activeUri: null,
+      activePresentationFlowOrigin: null,
       dismissedUri: null,
       offerGeneration: 0,
       vpGeneration: 0,
@@ -53,13 +53,12 @@ describe('presentationIntakeRejection', () => {
     )
   })
 
-  test('stores a dismissed presentation error for deeplink intake', () => {
+  test('detects a dismissed presentation URI without opening the intake modal', () => {
     useDeeplinkStore.getState().setDismissedDeeplinkUri(requestUri)
 
-    expect(notifyPresentationIntakeRejectionForUri(requestUri)).toBe(true)
-    expect(useDeeplinkStore.getState().presentationIntakeError).toBe(
-      PRESENTATION_REQUEST_ALREADY_HANDLED_MESSAGE,
-    )
+    expect(readPresentationIntakeRejectionForUri(requestUri)).toBe('dismissed')
+    expect(notifyPresentationIntakeRejectionForUri(requestUri)).toBe(false)
+    expect(useDeeplinkStore.getState().presentationIntakeError).toBeNull()
   })
 
   test('ignores unsupported URLs', () => {

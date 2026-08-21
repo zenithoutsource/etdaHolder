@@ -11,7 +11,7 @@ The wallet acquires credentials directly from Issuer services, stores them local
 ```text
 Mobile UI
   -> QR / NFC / SDK offer delivery
-  -> @sphereon/oid4vci-client
+  -> @openid4vc/openid4vci (via src/services/vci/oid4vc/)
   -> src/services/vci/exchangeService.ts
   -> src/services/crypto/crypto.ts for biometric-gated PoP signing
   -> src/services/storage/storage.ts encrypted MMKV
@@ -30,7 +30,7 @@ All OID4VCI issuance mechanics run on-device:
 2. Fetch Issuer metadata.
 3. Execute Pre-Authorized Code token exchange.
 4. Build a PoP JWT with `kid` header and Holder DID `iss`.
-5. Sign with the Keychain-protected Ed25519 Wallet Signing Key.
+5. Sign with the bound holder `k_cred` (hardware P-256 / ES256 by default; Keychain Ed25519 when the hardware flag is off).
 6. Submit credential request to the Issuer credential endpoint.
 7. Normalize compact JWT VC or compact SD-JWT VC into `VerifiableCredentialRecord`.
 8. Save locally in encrypted MMKV.
@@ -65,11 +65,11 @@ Use this table to choose the correct flow. **Scan and deep links are online path
 | Present to verifier (online) | Scan tab — `openid4vp://` QR | OID4VP | Send VP (SD-JWT) | Implemented |
 | Present to verifier (online) | Deep link `walletapp://callback` (VP) | OID4VP | Send VP | Implemented |
 | Present to verifier (online) | My QR tab | OID4VP (broker → `direct_post`) | Send VP | Implemented |
-| Present to reader (proximity) | Credential detail → NFC → engagement QR → tap | ISO 18013-5 mdoc (Android HCE, AID `A0000002480400`) | Send mdoc | In progress — see [`2026-07-27-mdl-mdoc-only-nfc-v1-design.md`](./superpowers/specs/2026-07-27-mdl-mdoc-only-nfc-v1-design.md) |
+| Present to reader (proximity) | Credential detail → NFC → hold | ISO 18013-5 static NFC handover + mdoc data retrieval | Send mdoc | Spec [`2026-08-17-mdl-nfc-static-handover-tap-only-design.md`](./superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md) |
 
 **Not in scope:** [mdoc-web-verifier](https://github.com/stelauconseil/mdoc-web-verifier) and other BLE browser verifiers — production proximity validation uses Samsung A26 + ACR1311U-N2 (NFC), not Web Bluetooth.
 
-The **engagement QR** on the NFC present screen is for the **reader** to obtain `DeviceEngagement` before tap. It is not the same as a Scan-tab OID4VP or issuance QR.
+The holder golden path uses **static NFC handover** (Type 4 NDEF on AID `D2760000850101`) so the reader obtains `DeviceEngagement` from the tap; the wallet Waiting for tap screen shows **no** holder QR. Host paste of a `mdoc:` engagement URI remains a **lab fallback** only. Proximity NFC is not the same as a Scan-tab OID4VP or issuance QR.
 
 ### Channel status (implementation)
 
@@ -92,8 +92,8 @@ The first OID4VP slice is intentionally narrow and Verifier-driven:
 2. Validate `client_id` against the local Verifier allowlist and require the `response_uri` origin to be allowlisted.
 3. Accept Presentation Exchange requests only when the requested disclosure is the ThaiNationalID birth date, or the development Verifier API's DCQL IDCard request.
 4. Show native Holder consent before signing.
-5. Sign a JWT VP token with the Keychain-protected Ed25519 Wallet Signing Key under the same biometric sign-time gate.
-6. Send `vp_token`, `presentation_submission`, and optional `state` to the Verifier using `direct_post`.
+5. Sign a JWT VP token with the bound holder `k_cred` under the same one-prompt biometric gate.
+6. Send `vp_token`, `presentation_submission`, and optional `state` using `direct_post`, or encrypt the Authorization Response and POST `response=<JWE>` when `response_mode` is `direct_post.jwt`.
 7. Record successful presentations locally after the Verifier returns a successful HTTP response.
 
 The current development allowlist includes `http://verifier.zenithcomp.co.th:455/openid4vc/verify` for the supplied Verifier API and is emitted only in development builds. Production deployments trust env-configured `decentralized_identifier:did:web:` Verifiers through `EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN`, and optional `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK`; unpinned DID document resolution uses HTTPS `did.json` with the `EXPO_PUBLIC_DID_WEB_FETCH_TIMEOUT_MS` and `EXPO_PUBLIC_DID_WEB_MAX_BYTES` policy.
@@ -188,7 +188,7 @@ No issuer-specific card components should be added. Extend schemas instead.
 
 | Package | Role |
 |---|---|
-| `@sphereon/oid4vci-client` | OID4VCI credential acquisition |
+| `@openid4vc/openid4vci` | OID4VCI credential acquisition |
 | `@noble/curves` | Ed25519 EdDSA signing |
 | `react-native-quick-crypto` | Non-signing hashing, random bytes, encoding support |
 | `react-native-mmkv` | Encrypted local key-value storage |
@@ -211,6 +211,8 @@ No issuer-specific card components should be added. Extend schemas instead.
 | 0005 | Backend-only certificate pinning |
 | 0006 | ISO 18013-5 mdoc native module selection criteria |
 | 0007 | Android-first EdDSA Ed25519 production signing |
-| 0008 | Keychain-protected Ed25519 production signing |
+| 0008 | Keychain-protected Ed25519 production signing (superseded for default holder keys by 0011) |
+| 0010 | Per-credential signing keys |
+| 0011 | Hardware P-256 / ES256 holder keys |
 
 OID4VP 1.0 online presentation has an implemented first slice but still needs a full ADR before broader claim sets, Verifier onboarding, or registry-backed trust rules are expanded.

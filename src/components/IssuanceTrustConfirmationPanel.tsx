@@ -1,3 +1,11 @@
+/**
+ * Schema-driven “trust this issuer/document” confirmation step.
+ * Journey: P1 claim; PID via ThaiIdSuccessConfirmationPanel.
+ * Copy: cardSchemas issuanceConfirmation.
+ * Layout: TrustConfirmationCard.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import { Image, View, type ImageSourcePropType } from 'react-native'
 
 import {

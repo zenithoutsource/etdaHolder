@@ -1,6 +1,8 @@
 import {
   createCipheriv as nodeCreateCipheriv,
   createDecipheriv as nodeCreateDecipheriv,
+  createSign as nodeCreateSign,
+  generateKeyPairSync as nodeGenerateKeyPairSync,
   pbkdf2Sync as nodePbkdf2Sync,
 } from 'crypto'
 
@@ -27,6 +29,10 @@ export const createHash = jest.fn(() => {
 })
 
 export const randomBytes = jest.fn((size: number) => Buffer.alloc(size, 0))
+
+export const generateKeyPairSync = jest.fn(nodeGenerateKeyPairSync)
+
+export const createSign = jest.fn(nodeCreateSign)
 
 export const pbkdf2Sync = jest.fn(
   (password: string, salt: string, iterations: number, keylen: number, digest: string) =>

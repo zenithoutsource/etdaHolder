@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native'
 
 import { Oid4VpDisclosureFlow } from './Oid4VpDisclosureFlow'
 import { logWalletError } from '../services/debug/walletLogger'
+import { useSameDeviceIssuanceStore } from '../store/sameDeviceIssuanceStore'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
 jest.mock('../services/debug/walletLogger', () => ({
@@ -9,12 +10,17 @@ jest.mock('../services/debug/walletLogger', () => ({
   logWalletError: jest.fn(),
 }))
 
-jest.mock('../config/trustedVerifiers', () => ({ TRUSTED_VERIFIERS: [] }))
+jest.mock('../config/trustedVerifiers', () => ({
+  TRUSTED_VERIFIERS: [],
+  isIssuerOid4VpClientId: () => false,
+  isIssuerOid4VpResponseUri: () => false,
+}))
 
 jest.mock('../config/cardSchemas', () => jest.requireActual('../config/cardSchemas'))
 
 jest.mock('../services/credentials/credentialLifecycle', () => ({
-  filterPresentableCredentials: (records: unknown[]) => records,
+  filterPresentableCredentials: (records: { id?: string }[]) =>
+    records.filter((record) => !String(record.id ?? '').startsWith('legacy-')),
 }))
 
 jest.mock('../services/scan/scanFriendlyErrors', () => ({
@@ -67,8 +73,23 @@ jest.mock('../services/vp/presentationRequestReplay', () => ({
 }))
 
 jest.mock('./PresentationStepScaffold', () => {
-  const { View } = require('react-native')
-  return { PresentationStepScaffold: ({ children }: { children: React.ReactNode }) => <View>{children}</View> }
+  const { Pressable, Text, View } = require('react-native')
+  return {
+    PresentationStepScaffold: ({
+      children,
+      onBack,
+    }: {
+      children: React.ReactNode
+      onBack: () => void
+    }) => (
+      <View>
+        <Pressable accessibilityRole="button" onPress={onBack}>
+          <Text>header-back</Text>
+        </Pressable>
+        {children}
+      </View>
+    ),
+  }
 })
 
 jest.mock('./FacePreparePanel', () => {
@@ -129,6 +150,30 @@ jest.mock('./PresentationResultPanel', () => {
   }
 })
 
+jest.mock('./IssuerPidPresentationPanel', () => {
+  const { Pressable, Text } = require('react-native')
+  return {
+    IssuerPidPresentationPanel: ({
+      onConfirm,
+      onDecline,
+      submitting,
+    }: {
+      onConfirm: () => void
+      onDecline: () => void
+      submitting?: boolean
+    }) => (
+      <>
+        <Pressable onPress={onConfirm} disabled={submitting}>
+          <Text>issuer-pid-confirm</Text>
+        </Pressable>
+        <Pressable onPress={onDecline}>
+          <Text>issuer-pid-decline</Text>
+        </Pressable>
+      </>
+    ),
+  }
+})
+
 const credential = { id: 'cred-1', type: 'ThaiNationalID', rawVc: 'a~b~', claims: {} } as unknown as VerifiableCredentialRecord
 
 function buildRequest() {
@@ -159,6 +204,7 @@ beforeEach(() => {
   mockReadMode.mockReturnValue('sd-jwt-kb')
   mockCreateResponse.mockResolvedValue({ vpToken: 'vp~kb', presentationSubmission: { id: 'sub' } })
   mockSubmit.mockResolvedValue({ status: 'accepted' })
+  useSameDeviceIssuanceStore.getState().clearSession()
 })
 
 describe('Oid4VpDisclosureFlow', () => {
@@ -209,6 +255,165 @@ describe('Oid4VpDisclosureFlow', () => {
       expect.objectContaining({ channel: 'wallet', partyName: 'ผู้ตรวจสอบทดสอบ', credentialId: 'cred-1' }),
     )
     expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+  })
+
+  test('header Back on presentation success leaves the flow instead of calling Done', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    const onDone = jest.fn()
+    const onCancel = jest.fn()
+    const onSucceeded = jest.fn()
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        onDone={onDone}
+        onCancel={onCancel}
+        onSucceeded={onSucceeded}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('scan-face'))
+    await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
+    expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+    expect(onSucceeded).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('header-back'))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  test('issuer PID VP skips Face Prepare and submits from the PID card confirm', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    useSameDeviceIssuanceStore.getState().setSession({
+      id: 'session-1',
+      credentialType: 'DLTDrivingLicence',
+      phase: 'awaiting_pid_vp',
+      codeVerifier: 'verifier',
+      redirectUri: 'walletapp://callback',
+    })
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://issuer/r/1"
+        credentials={[credential]}
+        historyChannel="oid4vp"
+        logScope="presentation-request"
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    expect(screen.queryByText('scan-face')).toBeNull()
+    expect(screen.queryByText('consent-accept')).toBeNull()
+    expect(screen.getByText('issuer-pid-confirm')).toBeTruthy()
+
+    fireEvent.press(screen.getByText('issuer-pid-confirm'))
+    await flush()
+    expect(mockCreateResponse).toHaveBeenCalledTimes(1)
+    expect(mockSubmit).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('info-confirm')).toBeNull()
+    expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+  })
+
+  test('issuer PID VP decline cancels without submitting', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    useSameDeviceIssuanceStore.getState().setSession({
+      id: 'session-1',
+      credentialType: 'DLTDrivingLicence',
+      phase: 'awaiting_pid_vp',
+      codeVerifier: 'verifier',
+      redirectUri: 'walletapp://callback',
+    })
+    const onCancel = jest.fn()
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://issuer/r/1"
+        credentials={[credential]}
+        historyChannel="oid4vp"
+        logScope="presentation-request"
+        onDone={jest.fn()}
+        onCancel={onCancel}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('issuer-pid-decline'))
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(mockSubmit).not.toHaveBeenCalled()
+  })
+
+  test('shows issuer-pid missing when the Issuer PID VP cannot match ThaiNationalID', async () => {
+    mockResolve.mockRejectedValue(new Error('PresentationCredentialMissing:issuer-pid: no ThaiNationalID'))
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://issuer/r/1"
+        credentials={[]}
+        historyChannel="oid4vp"
+        logScope="presentation-request"
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    expect(screen.getByText('ยังไม่มีบัตรประชาชนใน Wallet')).toBeTruthy()
+  })
+
+  test('keeps the success panel when presentable credentials change after submit', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    const secondCredential = {
+      id: 'cred-2',
+      type: 'DLTDrivingLicence',
+      rawVc: 'c~d~',
+      claims: {},
+    } as unknown as VerifiableCredentialRecord
+
+    const { rerender } = render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        historyChannel="oid4vp"
+        logScope="presentation-request"
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('scan-face'))
+    await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
+    expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+    expect(mockResolve).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential, secondCredential]}
+        historyChannel="oid4vp"
+        logScope="presentation-request"
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+    await flush()
+
+    expect(screen.getByText('success-ผู้ตรวจสอบทดสอบ')).toBeTruthy()
+    expect(screen.queryByText('กำลังเปิดการสำแดง…')).toBeNull()
+    expect(mockResolve).toHaveBeenCalledTimes(1)
   })
 
   test('reports a replay-ledger failure after the presentation has been submitted', async () => {
@@ -310,6 +515,27 @@ describe('Oid4VpDisclosureFlow', () => {
     expect(screen.getByText('ผู้ตรวจสอบไม่ได้รับความเชื่อถือ')).toBeTruthy()
   })
 
+  test('does not pass hardware-reissue credentials into presentation resolve', async () => {
+    mockResolve.mockRejectedValue(new Error('PresentationCredentialMissing'))
+    const legacyCredential = { ...credential, id: 'legacy-ed25519' }
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[legacyCredential]}
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    expect(mockResolve).toHaveBeenCalledWith(
+      'openid4vp://authorize?request_uri=http://verifier/r/1',
+      [],
+      expect.any(Object),
+    )
+  })
+
   test('shows a friendly document-unavailable state without exposing the requested vct URL', async () => {
     const onRequestCredential = jest.fn()
     mockResolve.mockRejectedValue(Object.assign(
@@ -337,7 +563,7 @@ describe('Oid4VpDisclosureFlow', () => {
 
     await flush()
     expect(screen.getByTestId('presentation-failure-panel')).toBeTruthy()
-    expect(screen.getByText('Academic Transcript')).toBeTruthy()
+    expect(screen.getByText('ใบแสดงผลการเรียน')).toBeTruthy()
     expect(screen.getByText('เอกสารไม่ตรงกับที่ผู้ตรวจสอบขอ')).toBeTruthy()
     expect(screen.queryByText(/https:\/\/issuer\.example/)).toBeNull()
 

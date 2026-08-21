@@ -1,3 +1,10 @@
+/**
+ * “Approve by Wallet” device registration card on the OID4VP info step.
+ * Journey: P4 PresentationInfoPanel; also credential detail evidence UI.
+ * Copy: inline Thai registration copy.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import * as Device from 'expo-device'
 import { Text, View, Image, type ImageSourcePropType, } from 'react-native'
 

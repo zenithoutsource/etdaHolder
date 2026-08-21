@@ -1,7 +1,17 @@
+/**
+ * OID4VCI claim pipeline — resolve, optional auth/tx_code, preview, save.
+ * Journey: P1 issuance (Scan QR or same-device callback); P3 same-type pairing after save.
+ * Copy: WALLET_HOME_COPY; cardSchemas issuance confirmation; THEME.
+ * Layout: ThaiID / DL / transcript panels, IssuanceTrustConfirmationPanel, ScanSuccessPanel.
+ * Next: Wallet on Back after success (offer dismissed so remount cannot restore DOPA).
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import * as Linking from 'expo-linking'
+import * as WebBrowser from 'expo-web-browser'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Image, ScrollView, Text, TextInput, View, type ImageSourcePropType } from 'react-native'
+import { ActivityIndicator, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../components/AppButton'
@@ -13,34 +23,48 @@ import { ScanSuccessPanel } from '../components/ScanSuccessPanel'
 import { ThaiIdReceivePanel } from '../components/ThaiIdReceivePanel'
 import { ThaiIdSuccessConfirmationPanel } from '../components/ThaiIdSuccessConfirmationPanel'
 import { TranscriptPreviewPanel } from '../components/TranscriptPreviewPanel'
+import { CredentialReceiveCardPanel } from '../components/CredentialReceiveCardPanel'
 import { WalletHeader } from '../components/WalletHeader'
 
 import { useAndroidBackNavigation } from '../hooks/useAndroidBackNavigation'
 import { useReturnToWallet } from '../hooks/useReturnToWallet'
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
+import { readTrustAnyOid4vcPeerEnabled } from '../config/oid4vcPeerTrustPolicy'
+import { readWalletReturnUrl } from '../config/sameDeviceIssuance'
+import type { IssuerPortalCredentialType } from '../config/issuerPortalUrls'
+import { buildAuthorizationRequestUrlForResolvedOffer } from '../services/credentials/buildAuthorizationRequestUrlForResolvedOffer'
+import { inferPortalCredentialTypeFromOffer } from '../services/credentials/inferPortalCredentialType'
+import { isAuthorizationCodeOnlyOffer } from '../services/credentials/isAuthorizationCodeOnlyOffer'
+import { resumeSameDeviceClaimFromSession } from '../services/credentials/resumeSameDeviceClaim'
+import { clearSameDeviceIssuanceSession } from '../services/credentials/sameDeviceIssuanceSession'
+import { readActiveSameDeviceSession } from '../store/sameDeviceIssuanceStore'
 import {
   canRequestCredentialType,
   isPidCredentialOffer,
   readPidGateStatus,
 } from '../services/credentials/credentialGuard'
+import { assertHardwareCutoverReissueAllowedForOffer } from '../services/crypto/cutoverMigrationPolicy'
 import { readCredentialRenewalStatuses } from '../services/credentials/credentialKeyRenewal'
+import { readPidGateUserCopy } from '../services/credentials/pidGateDialog'
 import { WALLET_HOME_COPY } from '../services/credentials/walletHomeCopy'
 import {
   deleteExpiredCredentialAfterReissue,
   readExpiredCredentialsForCleanupAfterClaim,
 } from '../services/credentials/documentExpiryCleanup'
 import {
-  acquireDrivingLicenceMdocOnlyForPreview,
   acquireDualFormatForPreview,
   finalizeDualFormatCredential,
   isDualFormatOffer,
-  isDrivingLicenceDualFormatOffer,
   selectOfferForSingleFormatAcquire,
   type PendingMdocCredential,
 } from '../services/credentials/dualFormatIssuance'
+import {
+  pairRenewalReplacementForSavedCredential,
+  readRenewalIntakePendingKeyForOffer,
+} from '../services/credentials/renewalIssuerIntake'
 import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
-import { discardPendingCredentialKey } from '../services/crypto/credentialSigningKey'
+import { discardIssuanceCredentialArtifacts, commitIssuanceCredentialKeyReplacement } from '../services/crypto/perCredentialSigning'
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
 import {
   describeCredentialForLog,
@@ -51,37 +75,32 @@ import { toFriendlyError } from '../services/scan/scanFriendlyErrors'
 import {
   acquireCredentialRecord,
   resolveOffer,
+  type AuthorizationCodeExchangeInput,
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from '../services/vci/exchangeService'
 import { resolveCredentialOfferDeeplink } from '../services/credentials/resolveCredentialOfferDeeplink'
-import { readCredentialPreviewDisplay } from '../services/vci/qrIssuanceFlow'
+import { resolveDisplayHolderProfile } from '../services/credentials/credentialDisplay'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
 import { normalizeNumericCode } from '../utils/normalizeNumericCode'
 
 import { THEME } from '../config/themeColors'
+import { resolveFirstPartyType } from '../config/firstPartyCredential'
 
 const SCREEN_SAFE_EDGES = ['top'] as const
 
 type ClaimPhase =
   | { tag: 'initializing' }
   | { tag: 'resolving' }
+  | { tag: 'auth_redirect'; offer: ResolvedCredentialOffer; credentialType: IssuerPortalCredentialType }
   | { tag: 'txCode'; offer: ResolvedCredentialOffer }
   | { tag: 'dopaConfirm'; offer: ResolvedCredentialOffer; txCode?: string }
   | { tag: 'acquiring' }
   | { tag: 'preview'; record: VerifiableCredentialRecord; pendingMdoc?: PendingMdocCredential }
-  | { tag: 'receive'; record: VerifiableCredentialRecord; pendingMdoc?: PendingMdocCredential }
   | { tag: 'issuerConfirm'; record: VerifiableCredentialRecord; pendingMdoc?: PendingMdocCredential }
   | { tag: 'saving' }
   | { tag: 'success'; record: VerifiableCredentialRecord }
   | { tag: 'error'; message: string }
-
-const credentialImages: Record<string, ImageSourcePropType> = {
-  profile: require('../../assets/images/profile.png'),
-  id: require('../../assets/images/user_profile.png'),
-  car: require('../../assets/images/car.png'),
-  transcript: require('../../assets/images/user_profile.png'),
-}
 
 const RESOLVE_TIMEOUT_MS = 20_000
 const ACQUIRE_TIMEOUT_MS = 30_000
@@ -127,6 +146,8 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   const lastStartedOfferRef = useRef<string | null>(null)
   const missingOfferCheckRef = useRef(0)
   const acquireAbortControllerRef = useRef<AbortController | null>(null)
+  const authorizationCodeExchangeRef = useRef<AuthorizationCodeExchangeInput | undefined>(undefined)
+  const sameDeviceResumeCheckedRef = useRef(false)
   const returnToWallet = useReturnToWallet(router)
 
   useEffect(() => {
@@ -172,41 +193,21 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       ...describeOfferForLog(offer),
       txCodeProvided: Boolean(code),
     })
+    const renewalPendingKeyId = readRenewalIntakePendingKeyForOffer(offer)
+    const renewalPendingKeyOptions = renewalPendingKeyId
+      ? { pendingCredentialKeyId: renewalPendingKeyId }
+      : {}
     try {
       if (isDualFormatOffer(offer.credentialConfigurations)) {
-        if (isDrivingLicenceDualFormatOffer(offer.credentialConfigurations)) {
-          logWalletStep('deeplink', 'credential-acquire-driving-licence-mdoc-only', describeOfferForLog(offer))
-          const mdocPreview = await withTimeout(
-            acquireDrivingLicenceMdocOnlyForPreview(offer, {
-              tx_code: code,
-              signal: acquireAbortController.signal,
-            }),
-            ACQUIRE_TIMEOUT_MS,
-            'DeeplinkTimeout: acquiring credential timed out',
-            () => acquireAbortController.abort(),
-          )
-          logWalletStep('deeplink', 'credential-acquire-complete', {
-            ...describeCredentialForLog(mdocPreview.primaryRecord),
-            mdocPresent: Boolean(mdocPreview.pendingMdoc),
-            mdocOnlyDebugSlice: true,
-          })
-          if (generationRef.current === gen) {
-            setPhase({
-              tag: 'preview',
-              record: mdocPreview.primaryRecord,
-              ...(mdocPreview.pendingMdoc ? { pendingMdoc: mdocPreview.pendingMdoc } : {}),
-            })
-          } else if (mdocPreview.pendingMdoc?.pendingCredentialKeyId) {
-            void discardPendingCredentialKey(mdocPreview.pendingMdoc.pendingCredentialKeyId)
-          }
-          return
-        }
-
         logWalletStep('deeplink', 'credential-acquire-dual-format', describeOfferForLog(offer))
         const dualPreview = await withTimeout(
           acquireDualFormatForPreview(offer, {
             tx_code: code,
             signal: acquireAbortController.signal,
+            ...renewalPendingKeyOptions,
+            ...(authorizationCodeExchangeRef.current
+              ? { authorizationCodeExchange: authorizationCodeExchangeRef.current }
+              : {}),
           }),
           ACQUIRE_TIMEOUT_MS,
           'DeeplinkTimeout: acquiring credential timed out',
@@ -231,21 +232,16 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
             })
             return
           }
-          if (dualPreview.primaryRecord.type === 'ThaiNationalID') {
-            setPhase({
-              tag: 'receive',
-              record: dualPreview.primaryRecord,
-              ...(dualPreview.pendingMdoc ? { pendingMdoc: dualPreview.pendingMdoc } : {}),
-            })
-          } else {
-            setPhase({
-              tag: 'preview',
-              record: dualPreview.primaryRecord,
-              ...(dualPreview.pendingMdoc ? { pendingMdoc: dualPreview.pendingMdoc } : {}),
-            })
-          }
-        } else if (dualPreview.pendingMdoc?.pendingCredentialKeyId) {
-          void discardPendingCredentialKey(dualPreview.pendingMdoc.pendingCredentialKeyId)
+          setPhase({
+            tag: 'preview',
+            record: dualPreview.primaryRecord,
+            ...(dualPreview.pendingMdoc ? { pendingMdoc: dualPreview.pendingMdoc } : {}),
+          })
+        } else {
+          void discardIssuanceCredentialArtifacts({
+            credentialId: dualPreview.primaryRecord.id,
+            pendingCredentialKeyId: dualPreview.pendingMdoc?.pendingCredentialKeyId,
+          })
         }
         return
       }
@@ -259,6 +255,10 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         acquireCredentialRecord(offerToAcquire, {
           tx_code: code,
           signal: acquireAbortController.signal,
+          ...renewalPendingKeyOptions,
+          ...(authorizationCodeExchangeRef.current
+            ? { authorizationCodeExchange: authorizationCodeExchangeRef.current }
+            : {}),
         }),
         ACQUIRE_TIMEOUT_MS,
         'DeeplinkTimeout: acquiring credential timed out',
@@ -266,11 +266,9 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       )
       logWalletStep('deeplink', 'credential-acquire-complete', describeCredentialForLog(record))
       if (generationRef.current === gen) {
-        setPhase(
-          record.type === 'ThaiNationalID'
-            ? { tag: 'receive', record }
-            : { tag: 'preview', record },
-        )
+        setPhase({ tag: 'preview', record })
+      } else {
+        void discardIssuanceCredentialArtifacts({ credentialId: record.id })
       }
     } catch (err) {
       logWalletError('deeplink', 'credential-acquire-failed', err, describeOfferForLog(offer))
@@ -282,6 +280,153 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       }
     }
   }, [])
+
+  const proceedAfterOfferResolved = useCallback(async (offer: ResolvedCredentialOffer) => {
+    const gen = generationRef.current
+    setTxCode('')
+    const latestCredentials = readStoredCredentials()
+    const renewalStatuses = readCredentialRenewalStatuses(latestCredentials)
+    const isPidOffer = isPidCredentialOffer(offer)
+    const pidGateStatus = readPidGateStatus(latestCredentials, renewalStatuses)
+    logWalletStep('deeplink', 'offer-resolved', {
+      ...describeOfferForLog(offer),
+      isPidOffer,
+      pidGateStatus,
+      authorizationCodeFlow: Boolean(authorizationCodeExchangeRef.current),
+    })
+    if (!isPidOffer && pidGateStatus !== 'ready' && !readTrustAnyOid4vcPeerEnabled()) {
+      logWalletError(
+        'deeplink',
+        'offer-requires-pid',
+        new Error('Usable PID credential required before this offer'),
+        describeOfferForLog(offer),
+      )
+      if (generationRef.current === gen) {
+        setPhase({
+          tag: 'error',
+          message: readPidGateUserCopy(pidGateStatus, 'request').message,
+        })
+      }
+      return
+    }
+    try {
+      assertHardwareCutoverReissueAllowedForOffer(offer)
+    } catch (error) {
+      logWalletError('deeplink', 'offer-cutover-blocked', error, describeOfferForLog(offer))
+      if (generationRef.current === gen) {
+        const raw = error instanceof Error ? error.message : String(error)
+        setPhase({ tag: 'error', message: toFriendlyError(raw) })
+      }
+      return
+    }
+    if (isPidOffer) {
+      if (
+        canRequestCredentialType('ThaiNationalID', latestCredentials, renewalStatuses)
+      ) {
+        logWalletStep('deeplink', 'offer-pid-flow', describeOfferForLog(offer))
+        if (generationRef.current !== gen) return
+        if (offer.txCode) {
+          setPhase({ tag: 'txCode', offer })
+          return
+        }
+        setPhase({ tag: 'dopaConfirm', offer })
+        return
+      }
+
+      if (pidGateStatus === 'ready') {
+        if (generationRef.current === gen) {
+          setPhase({
+            tag: 'error',
+            message: WALLET_HOME_COPY.thaIdAlreadyActiveMessage,
+          })
+        }
+        return
+      }
+
+      if (generationRef.current === gen) {
+        setPhase({
+          tag: 'error',
+          message: readPidGateUserCopy(pidGateStatus, 'request').message,
+        })
+      }
+      return
+    }
+    if (offer.txCode) {
+      logWalletStep('deeplink', 'offer-tx-code-required', describeOfferForLog(offer))
+      if (generationRef.current === gen) setPhase({ tag: 'txCode', offer })
+      return
+    }
+    if (generationRef.current === gen) {
+      setPhase({ tag: 'dopaConfirm', offer })
+    }
+  }, [])
+
+  const resumeSameDeviceClaimIfReady = useCallback(async () => {
+    try {
+      const resume = await resumeSameDeviceClaimFromSession()
+      if (resume.status !== 'claim_ready') return false
+
+      authorizationCodeExchangeRef.current = resume.authorizationCodeExchange
+      generationRef.current += 1
+      setPhase({ tag: 'resolving' })
+      logWalletStep('same-device-issuance', 'claim-screen-resume', {
+        configurationIds: resume.resolvedOffer.credentialConfigurations.map((configuration) => configuration.id),
+      })
+      await proceedAfterOfferResolved(resume.resolvedOffer)
+      return true
+    } catch (err) {
+      logWalletError('same-device-issuance', 'claim-screen-resume-failed', err)
+      setPhase({
+        tag: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      })
+      return false
+    }
+  }, [proceedAfterOfferResolved])
+
+  useEffect(() => {
+    if (sameDeviceResumeCheckedRef.current) return
+    sameDeviceResumeCheckedRef.current = true
+    void resumeSameDeviceClaimIfReady()
+  }, [resumeSameDeviceClaimIfReady])
+
+  useEffect(() => {
+    if (phase.tag !== 'auth_redirect') return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const authUrl = await buildAuthorizationRequestUrlForResolvedOffer(
+          phase.offer,
+          phase.credentialType,
+        )
+        logWalletStep('same-device-issuance', 'auth-redirect-open', {
+          credentialType: phase.credentialType,
+        })
+        await WebBrowser.openAuthSessionAsync(authUrl, readWalletReturnUrl())
+        if (cancelled) return
+        const resumed = await resumeSameDeviceClaimIfReady()
+        if (!resumed && !cancelled) {
+          setPhase({
+            tag: 'error',
+            message: 'Complete issuer login in the browser, then return to the Wallet to continue.',
+          })
+        }
+      } catch (err) {
+        logWalletError('same-device-issuance', 'auth-redirect-failed', err)
+        if (!cancelled) {
+          setPhase({
+            tag: 'error',
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [phase, resumeSameDeviceClaimIfReady])
 
   const handleOfferUri = useCallback(async (uri: string) => {
     if (!isCredentialOfferDeeplink(uri)) {
@@ -296,80 +441,32 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     logWalletStep('deeplink', 'offer-detected', describeUriForLog(uri))
     try {
       const offer = await withTimeout(resolveOffer(uri), RESOLVE_TIMEOUT_MS, 'DeeplinkTimeout: resolving offer timed out')
-      setTxCode('')
-      const latestCredentials = readStoredCredentials()
-      const renewalStatuses = readCredentialRenewalStatuses(latestCredentials)
-      const isPidOffer = isPidCredentialOffer(offer)
-      const pidGateStatus = readPidGateStatus(latestCredentials, renewalStatuses)
-      logWalletStep('deeplink', 'offer-resolved', {
-        ...describeOfferForLog(offer),
-        isPidOffer,
-        pidGateStatus,
-      })
-      if (!isPidOffer && pidGateStatus !== 'ready') {
-        logWalletError(
-          'deeplink',
-          'offer-requires-pid',
-          new Error('Usable PID credential required before this offer'),
-          describeOfferForLog(offer),
-        )
-        if (generationRef.current === gen) {
-          setPhase({
-            tag: 'error',
-            message:
-              pidGateStatus === 'missing'
-                ? WALLET_HOME_COPY.pidRequiredMessage
-                : WALLET_HOME_COPY.renewThaIdRequiredMessage,
-          })
-        }
-        return
-      }
-      if (isPidOffer) {
-        if (
-          canRequestCredentialType('ThaiNationalID', latestCredentials, renewalStatuses)
-        ) {
-          logWalletStep('deeplink', 'offer-pid-flow', describeOfferForLog(offer))
-          if (generationRef.current !== gen) return
-          if (offer.txCode) {
-            setPhase({ tag: 'txCode', offer })
-            return
-          }
-          setPhase({ tag: 'dopaConfirm', offer })
-          return
-        }
-
-        if (pidGateStatus === 'ready') {
+      if (
+        isAuthorizationCodeOnlyOffer(offer)
+        && !readActiveSameDeviceSession()?.authorizationCode
+      ) {
+        const credentialType = inferPortalCredentialTypeFromOffer(offer)
+        if (!credentialType) {
           if (generationRef.current === gen) {
             setPhase({
               tag: 'error',
-              message: WALLET_HOME_COPY.thaIdAlreadyActiveMessage,
+              message: 'This authorization-code offer is not supported from Scan. Request the document from Wallet Home.',
             })
           }
           return
         }
-
         if (generationRef.current === gen) {
-          setPhase({
-            tag: 'error',
-            message: WALLET_HOME_COPY.renewThaIdRequiredMessage,
-          })
+          setPhase({ tag: 'auth_redirect', offer, credentialType })
         }
         return
       }
-      if (offer.txCode) {
-        logWalletStep('deeplink', 'offer-tx-code-required', describeOfferForLog(offer))
-        if (generationRef.current === gen) setPhase({ tag: 'txCode', offer })
-        return
-      }
-      if (generationRef.current === gen) {
-        setPhase({ tag: 'dopaConfirm', offer })
-      }
+      await proceedAfterOfferResolved(offer)
     } catch (err) {
       logWalletError('deeplink', 'offer-resolve-failed', err, describeUriForLog(uri))
       const raw = err instanceof Error ? err.message : String(err)
       if (generationRef.current === gen) setPhase({ tag: 'error', message: toFriendlyError(raw) })
     }
-  }, [acquireForPreview])
+  }, [acquireForPreview, proceedAfterOfferResolved])
 
   const beginOffer = useCallback((uri: string) => {
     if (!isCredentialOfferDeeplink(uri)) return false
@@ -387,13 +484,13 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     return true
   }, [dismissedDeeplinkUri, handleOfferUri])
 
-  // Only treat a still-pending store URI as "incoming" so a failed offer from
-  // Linking.useURL / initialOfferUri can still show the error + Back CTA.
+  // A newer pending offer should replace a stale error with loading. Do not
+  // hide the mapped error for the offer that just failed (same URI replay).
+  const pendingIncomingOffer = resolveCredentialOfferDeeplink(pendingDeeplinkUri)
   const hasIncomingPendingOffer = Boolean(
-    (() => {
-      const pendingOffer = resolveCredentialOfferDeeplink(pendingDeeplinkUri)
-      return pendingOffer && pendingOffer !== dismissedDeeplinkUri
-    })(),
+    pendingIncomingOffer
+    && pendingIncomingOffer !== dismissedDeeplinkUri
+    && pendingIncomingOffer !== activeOfferUriRef.current,
   )
 
   useEffect(() => {
@@ -430,7 +527,10 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     ) {
       markOfferSourceHandled()
       directUrlHandledRef.current = resolvedIncomingOffer
-      beginOffer(resolvedIncomingOffer)
+      if (!beginOffer(resolvedIncomingOffer) && resolvedIncomingOffer === dismissedDeeplinkUri) {
+        onClose?.()
+        returnToWallet()
+      }
       return
     }
 
@@ -476,10 +576,19 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   }, [
     activeDeeplinkUri,
     beginOffer,
+    dismissedDeeplinkUri,
     incomingUrl,
     initialOfferUri,
+    onClose,
     pendingDeeplinkUri,
+    returnToWallet,
   ])
+
+  const consumeCompletedOffer = useCallback(() => {
+    const uriToDismiss = activeOfferUriRef.current ?? incomingUrl
+    if (uriToDismiss) setDismissedDeeplinkUri(uriToDismiss)
+    clearSameDeviceIssuanceSession()
+  }, [incomingUrl, setDismissedDeeplinkUri])
 
   const dismissActiveOffer = useCallback(() => {
     generationRef.current += 1
@@ -487,11 +596,18 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
     lastStartedOfferRef.current = null
     acquireAbortControllerRef.current?.abort()
     const pendingCredentialKeyId =
-      phase.tag === 'preview' || phase.tag === 'receive' || phase.tag === 'issuerConfirm'
+      phase.tag === 'preview' || phase.tag === 'issuerConfirm'
         ? phase.pendingMdoc?.pendingCredentialKeyId
         : undefined
-    if (pendingCredentialKeyId) {
-      void discardPendingCredentialKey(pendingCredentialKeyId)
+    const credentialId =
+      phase.tag === 'preview' || phase.tag === 'issuerConfirm'
+        ? phase.record.id
+        : undefined
+    if (credentialId || pendingCredentialKeyId) {
+      void discardIssuanceCredentialArtifacts({
+        credentialId,
+        pendingCredentialKeyId,
+      })
     }
     const uriToDismiss = activeOfferUriRef.current ?? incomingUrl
     if (uriToDismiss) setDismissedDeeplinkUri(uriToDismiss)
@@ -539,10 +655,21 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       } else {
         saveScannedCredential(record, { refreshCredentials })
       }
+      await commitIssuanceCredentialKeyReplacement(record.id)
+      try {
+        pairRenewalReplacementForSavedCredential(record)
+      } catch (pairingError) {
+        logWalletError('deeplink', 'renewal-pair-failed', pairingError, describeCredentialForLog(record))
+      }
       logWalletStep('deeplink', 'credential-save-complete', describeCredentialForLog(record))
+      consumeCompletedOffer()
       setPhase({ tag: 'success', record })
     } catch (err) {
       logWalletError('deeplink', 'credential-save-failed', err, describeCredentialForLog(record))
+      void discardIssuanceCredentialArtifacts({
+        credentialId: record.id,
+        pendingCredentialKeyId: pendingMdoc?.pendingCredentialKeyId,
+      })
       setPhase({ tag: 'error', message: err instanceof Error ? err.message : String(err) })
     }
   }
@@ -560,9 +687,10 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   }
 
   const acceptPreview = (record: VerifiableCredentialRecord, pendingMdoc?: PendingMdocCredential) => {
+    const firstPartyType = resolveFirstPartyType(record)
     if (
-      record.type === 'DLTDrivingLicence'
-      || record.type === 'ChulalongkornUniversityTranscript'
+      firstPartyType === 'DLTDrivingLicence'
+      || firstPartyType === 'ChulalongkornUniversityTranscript'
     ) {
       setPhase({
         tag: 'issuerConfirm',
@@ -576,87 +704,59 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   }
 
   if (phase.tag === 'preview') {
-    if (phase.record.type === 'DLTDrivingLicence') {
+    const previewType = resolveFirstPartyType(phase.record)
+    if (previewType === 'DLTDrivingLicence') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={exitFlow} />
           <DrivingLicencePreviewPanel
             record={phase.record}
+            holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
             onAccept={() => acceptPreview(phase.record, phase.pendingMdoc)}
           />
         </SafeAreaView>
       )
     }
 
-    if (phase.record.type === 'ThaiNationalID') {
+    if (previewType === 'ThaiNationalID') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={exitFlow} />
-          <ThaiIdSuccessConfirmationPanel
+          <ThaiIdReceivePanel
             record={phase.record}
-            onConfirm={() =>
-              setPhase({
-                tag: 'receive',
-                record: phase.record,
-                ...(phase.pendingMdoc ? { pendingMdoc: phase.pendingMdoc } : {}),
-              })
-            }
+            holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
+            onConfirm={() => {
+              void handleSave(phase.record, phase.pendingMdoc)
+            }}
           />
         </SafeAreaView>
       )
     }
 
-    if (phase.record.type === 'ChulalongkornUniversityTranscript') {
+    if (previewType === 'ChulalongkornUniversityTranscript') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={exitFlow} />
           <TranscriptPreviewPanel
             record={phase.record}
-            profileImage={credentialImages.transcript}
+            holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
             onAccept={() => acceptPreview(phase.record, phase.pendingMdoc)}
           />
         </SafeAreaView>
       )
     }
 
-    const preview = readCredentialPreviewDisplay(phase.record)
-
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
         <WalletHeader onBack={exitFlow} />
-        <View className="flex-1 items-center bg-surface px-4 pt-6">
-          <ScrollView showsVerticalScrollIndicator={false} className="w-full" contentContainerClassName="items-center pb-8">
-            <View
-              testID="credential-preview-content"
-              className="w-full max-w-[380px] overflow-hidden rounded-lg bg-white"
-              style={{ elevation: 4, shadowColor: THEME.navyShadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12 }}>
-              <View className="bg-navy-royal px-5 py-3">
-                <Text className="text-[13px] font-extrabold text-white">{preview.documentTitle}</Text>
-              </View>
-              <View className="px-7 pb-6 pt-7">
-                <View className="items-center">
-                  <Image source={credentialImages[preview.imageKey]} className="h-[104px] w-[92px]" resizeMode="contain" />
-                </View>
-                <View className="mt-5">
-                  <Text className="text-[16px] font-extrabold leading-[22px] text-navy-deep">Information to receive</Text>
-                  {preview.rows.map((row) => (
-                    <View key={row.key} className="border-b border-gray200 py-3">
-                      <Text className="text-[12px] leading-4 text-gray-cool">{row.label}</Text>
-                      <Text className="text-[13px] font-bold leading-5 text-navy-deep">{row.value}</Text>
-                    </View>
-                  ))}
-                </View>
-                <AppButton
-                  variant="solid-block"
-                  label="ยอมรับ"
-                  onPress={() => acceptPreview(phase.record, phase.pendingMdoc)}
-                  className="mt-4 h-9 w-28 self-start !bg-success"
-                  textClassName="text-[14px]"
-                />
-              </View>
-            </View>
-          </ScrollView>
-        </View>
+        <CredentialReceiveCardPanel
+          testID="credential-preview-panel"
+          contentTestID="credential-preview-content"
+          record={phase.record}
+          holderProfile={resolveDisplayHolderProfile(phase.record, credentials)}
+          confirmLabel="ยอมรับ"
+          onConfirm={() => acceptPreview(phase.record, phase.pendingMdoc)}
+        />
       </SafeAreaView>
     )
   }
@@ -667,20 +767,6 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         <WalletHeader onBack={exitFlow} />
         <IssuanceTrustConfirmationPanel
           variant="issuer"
-          record={phase.record}
-          onConfirm={() => {
-            void handleSave(phase.record, phase.pendingMdoc)
-          }}
-        />
-      </SafeAreaView>
-    )
-  }
-
-  if (phase.tag === 'receive') {
-    return (
-      <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
-        <WalletHeader onBack={exitFlow} />
-        <ThaiIdReceivePanel
           record={phase.record}
           onConfirm={() => {
             void handleSave(phase.record, phase.pendingMdoc)
@@ -788,6 +874,8 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       ? 'Saving Credential'
       : phase.tag === 'acquiring'
         ? 'Acquiring Credential'
+        : phase.tag === 'auth_redirect'
+          ? 'Opening Issuer Login'
         : phase.tag === 'resolving'
           ? 'Reading Offer'
           : 'Opening Credential Offer'

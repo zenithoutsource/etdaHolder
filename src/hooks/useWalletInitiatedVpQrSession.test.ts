@@ -78,6 +78,66 @@ describe('useWalletInitiatedVpQrSession', () => {
     expect(result.current.authorizationRequestUri).toBeNull()
   })
 
+  test('creates a broker session without pre-selecting a credential', async () => {
+    const createSession = jest.fn().mockResolvedValue({
+      session_id: 'session-1',
+      broker_request_endpoint: 'http://broker/session/session-1/request',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      qr_payload: 'http://broker/session/session-1/request',
+    })
+    const fetchPresentationRequestUri = jest.fn().mockResolvedValue(null)
+    const client = createMockBrokerClient({ createSession, fetchPresentationRequestUri })
+
+    const { result } = renderHook(() =>
+      useWalletInitiatedVpQrSession({
+        active: true,
+        client,
+        walletId: 'wallet-1',
+        deviceToken: 'ExponentPushToken[x]',
+        platform: 'android',
+      }),
+    )
+
+    await flush()
+
+    expect(createSession).toHaveBeenCalledTimes(1)
+    expect(result.current.phase).toBe('waiting_scan')
+  })
+
+  test('does not create a second broker session when the hook re-renders while still active', async () => {
+    const createSession = jest.fn().mockResolvedValue({
+      session_id: 'session-1',
+      broker_request_endpoint: 'http://broker/session/session-1/request',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      qr_payload: 'http://broker/session/session-1/request',
+    })
+    const fetchPresentationRequestUri = jest.fn().mockResolvedValue(null)
+    const client = createMockBrokerClient({ createSession, fetchPresentationRequestUri })
+
+    const { rerender } = renderHook(
+      (props: { credential: VerifiableCredentialRecord }) =>
+        useWalletInitiatedVpQrSession({
+          credential: props.credential,
+          active: true,
+          client,
+          walletId: 'wallet-1',
+          deviceToken: 'token',
+          platform: 'android',
+        }),
+      { initialProps: { credential } },
+    )
+
+    await flush()
+    expect(createSession).toHaveBeenCalledTimes(1)
+
+    rerender({
+      credential: { ...credential, id: 'cred-2', type: 'DLTDrivingLicence' },
+    })
+    await flush()
+
+    expect(createSession).toHaveBeenCalledTimes(1)
+  })
+
   test('moves to request_ready once the poll returns a deposited request and stops polling', async () => {
     const createSession = jest.fn().mockResolvedValue({
       session_id: 'session-1',

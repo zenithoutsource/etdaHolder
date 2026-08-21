@@ -1,4 +1,4 @@
-import { isRecord, toErrorMessage } from '@/src/utils/jwtUtils'
+import { decodeJsonBase64Url, isRecord, toErrorMessage } from '@/src/utils/jwtUtils'
 import type { AuthorizationRequestMaterial } from './types'
 
 function parseUrl(raw: string): URL {
@@ -18,9 +18,14 @@ export async function fetchAuthorizationRequestMaterial(
 
   if (requestUri) {
     const fetchImpl = options.fetchImpl ?? fetch
-    const response = await fetchImpl(requestUri, {
-      headers: { Accept: 'application/json, application/oauth-authz-req+jwt' },
-    })
+    let response: Response
+    try {
+      response = await fetchImpl(requestUri, {
+        headers: { Accept: 'application/json, application/oauth-authz-req+jwt' },
+      })
+    } catch (error) {
+      throw new Error(`PresentationRequestFetchFailed: ${toErrorMessage(error)}`)
+    }
     if (!response.ok) {
       throw new Error(`PresentationRequestFetchFailed: HTTP ${response.status}`)
     }
@@ -51,8 +56,7 @@ export function readRoutingPreviewFromMaterial(material: AuthorizationRequestMat
       try {
         const payloadSegment = trimmed.split('.')[1]
         if (payloadSegment) {
-          const json = Buffer.from(payloadSegment.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
-          const parsed = JSON.parse(json) as unknown
+          const parsed = decodeJsonBase64Url<unknown>(payloadSegment)
           if (isRecord(parsed)) return parsed
         }
       } catch {

@@ -1,5 +1,6 @@
 import { getPublicKey, hashes } from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha2.js'
+import { Platform } from 'react-native'
 import { randomBytes } from 'react-native-quick-crypto'
 import * as Keychain from 'react-native-keychain'
 
@@ -56,6 +57,7 @@ function publicKeyToEd25519Jwk(publicKey: Uint8Array): JsonWebKey {
   }
 }
 
+/** Device-bound only — no biometric prompt on write/get (attest activation uses public JWK). */
 function getKeychainSetOptions(service: string): Keychain.SetOptions {
   if (isBiometricDisabledForTesting()) {
     return {
@@ -64,24 +66,36 @@ function getKeychainSetOptions(service: string): Keychain.SetOptions {
     }
   }
 
+  if (Platform.OS === 'android') {
+    return {
+      service,
+      securityLevel: __DEV__
+        ? Keychain.SECURITY_LEVEL.SECURE_SOFTWARE
+        : Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
+      storage: Keychain.STORAGE_TYPE.AES_GCM_NO_AUTH,
+    }
+  }
+
   return {
     service,
-    accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
     accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
-    securityLevel: Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
-    storage: Keychain.STORAGE_TYPE.AES_GCM,
   }
 }
 
 function getKeychainGetOptions(service: string): Keychain.GetOptions {
-  if (isBiometricDisabledForTesting()) {
-    return { service }
-  }
+  return { service }
+}
 
-  return {
-    service,
-    accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE,
+function holderDidFromAttestJwk(jwk: JsonWebKey): string {
+  if (typeof jwk.x !== 'string') {
+    throw new Error('InvalidAttestPublicJwk')
   }
+  const padded = jwk.x.replace(/-/g, '+').replace(/_/g, '/')
+  const padLength = (4 - (padded.length % 4)) % 4
+  const binary = atob(`${padded}${'='.repeat(padLength)}`)
+  const publicKey = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) publicKey[i] = binary.charCodeAt(i)
+  return ed25519PublicKeyToDidKey(publicKey)
 }
 
 async function readStoredEd25519Seed(service: string): Promise<Uint8Array | undefined> {
@@ -126,30 +140,37 @@ function readCachedAttestPublicJwk(): JsonWebKey | undefined {
 export async function ensureWalletAttestKey(): Promise<{ holderDid: string; publicJwk: JsonWebKey }> {
   try {
     const cachedJwk = readCachedAttestPublicJwk()
-    const existingSeed = await readStoredEd25519Seed(ATTEST_KEYCHAIN_SERVICE)
-    if (existingSeed && cachedJwk) {
-      const publicKey = getPublicKey(existingSeed)
-      const holderDid = ed25519PublicKeyToDidKey(publicKey)
+    if (cachedJwk) {
+      const holderDid = holderDidFromAttestJwk(cachedJwk)
       logWalletStep('crypto', 'wallet-attest-key-cache-hit')
       return { holderDid, publicJwk: cachedJwk }
     }
 
+    const existingSeed = await readStoredEd25519Seed(ATTEST_KEYCHAIN_SERVICE)
     if (existingSeed) {
-      const publicKey = getPublicKey(existingSeed)
-      const publicJwk = cacheAttestPublicJwk(publicKey)
-      const holderDid = ed25519PublicKeyToDidKey(publicKey)
-      logWalletStep('crypto', 'wallet-attest-key-existing')
-      return { holderDid, publicJwk }
+      try {
+        const publicKey = getPublicKey(existingSeed)
+        const publicJwk = cacheAttestPublicJwk(publicKey)
+        const holderDid = ed25519PublicKeyToDidKey(publicKey)
+        logWalletStep('crypto', 'wallet-attest-key-existing')
+        return { holderDid, publicJwk }
+      } finally {
+        existingSeed.fill(0)
+      }
     }
 
     const seed = randomBytes(32)
-    assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
-    await writeEd25519Seed(seed, ATTEST_KEYCHAIN_SERVICE)
-    const publicKey = getPublicKey(seed)
-    const publicJwk = cacheAttestPublicJwk(publicKey)
-    const holderDid = ed25519PublicKeyToDidKey(publicKey)
-    logWalletStep('crypto', 'wallet-attest-key-generated')
-    return { holderDid, publicJwk }
+    try {
+      assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+      await writeEd25519Seed(seed, ATTEST_KEYCHAIN_SERVICE)
+      const publicKey = getPublicKey(seed)
+      const publicJwk = cacheAttestPublicJwk(publicKey)
+      const holderDid = ed25519PublicKeyToDidKey(publicKey)
+      logWalletStep('crypto', 'wallet-attest-key-generated')
+      return { holderDid, publicJwk }
+    } finally {
+      seed.fill(0)
+    }
   } catch (error) {
     logWalletError('crypto', 'wallet-attest-key-init-failed', error)
     throw error

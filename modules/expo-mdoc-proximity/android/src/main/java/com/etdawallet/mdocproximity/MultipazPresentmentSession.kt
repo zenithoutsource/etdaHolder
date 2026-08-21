@@ -1,20 +1,23 @@
 package com.etdawallet.mdocproximity
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.cbor.Cbor
-import org.multipaz.cbor.Simple
 import org.multipaz.cbor.toDataItem
 import org.multipaz.crypto.Algorithm
 import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcCurve
+import org.multipaz.document.Document
+import org.multipaz.document.DocumentStore
 import org.multipaz.document.buildDocumentStore
 import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.mdoc.connectionmethod.MdocConnectionMethodNfc
@@ -26,14 +29,19 @@ import org.multipaz.mdoc.transport.MdocTransportFactory
 import org.multipaz.mdoc.transport.MdocTransportOptions
 import org.multipaz.mdoc.transport.advertise
 import org.multipaz.mdoc.transport.waitForConnection
+import org.multipaz.presentment.ConsentData
+import org.multipaz.presentment.CredentialSelection
 import org.multipaz.presentment.Iso18013Presentment
 import org.multipaz.presentment.SimplePresentmentSource
 import org.multipaz.prompt.promptModelSilentConsent
+import org.multipaz.request.Requester
+import org.multipaz.request.TrustedRequesterIdentity
 import org.multipaz.securearea.SecureAreaRepository
 import org.multipaz.securearea.software.SoftwareCreateKeySettings
 import org.multipaz.securearea.software.SoftwareSecureArea
 import org.multipaz.storage.ephemeral.EphemeralStorage
 import org.multipaz.util.toBase64Url
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
@@ -46,29 +54,54 @@ import kotlin.time.ExperimentalTime
 object MultipazPresentmentSession {
   private const val TAG = "MultipazSession"
   private const val MDOC_DOMAIN = "wallet-mdoc-ed25519"
+  private const val MDOC_HARDWARE_DOMAIN = "wallet-mdoc-p256"
   private const val DEVICE_KEY_ALIAS = "wallet-mdoc-device-key"
 
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var sessionJob: Job? = null
   private val engagementUri = AtomicReference<String?>(null)
   private val sharedFields = AtomicReference<List<String>>(emptyList())
+  private val transportListening = AtomicBoolean(false)
 
-  suspend fun start(state: ProximityArmState, mdocBytes: ByteArray) {
-    stop()
+  suspend fun start(
+    state: ProximityArmState,
+    mdocBytes: ByteArray,
+    storedDocType: String? = null,
+  ) {
+    resetTransport()
+    // Multipaz onDeactivated() launches an async coroutine that removes NFC
+    // instances. Wait so a new open() is not immediately torn down.
+    delay(150)
     sharedFields.set(emptyList())
 
     sessionJob = scope.launch {
+      val launchedJob = coroutineContext[Job]
       try {
-        runSession(state, mdocBytes)
-      } catch (error: Exception) {
+        runSession(state, mdocBytes, storedDocType)
+      } catch (error: CancellationException) {
+        throw error
+      } catch (error: MdocProximityException) {
+        val tag =
+          if (error.code == MdocProximityErrors.DISCLOSURE_CEILING_EXCEEDED) {
+            "proximity-policy"
+          } else {
+            "multipaz-session"
+          }
+        Log.e(TAG, "[$tag] presentation failed", error)
+        ProximityEventDispatcher.sendError(
+          error.code,
+          error.message ?: "Presentation failed",
+        )
+      } catch (error: Throwable) {
         Log.e(TAG, "[multipaz-session] presentation failed", error)
         ProximityEventDispatcher.sendError(
           MdocProximityErrors.PROXIMITY_NOT_READY,
           error.message ?: "Multipaz presentation failed",
         )
       } finally {
-        engagementUri.set(null)
-        DeviceAuthBridge.clear()
+        if (sessionJob === launchedJob && CompanionSession.peekArmState() == null) {
+          engagementUri.set(null)
+        }
       }
     }
 
@@ -77,20 +110,41 @@ object MultipazPresentmentSession {
         delay(10)
       }
     }
+    if (engagementUri.get() == null) {
+      resetTransport()
+      throw MdocProximityException(
+        MdocProximityErrors.PROXIMITY_NOT_READY,
+        "Device engagement QR was not produced",
+      )
+    }
   }
 
   fun stop() {
+    resetTransport()
+    // Auth is installed at JS arm time and must survive session restart.
+    // Clear only on explicit JS stop/disarm, not when regenerating DeviceEngagement.
+    DeviceAuthBridge.clear()
+  }
+
+  private fun resetTransport() {
     sessionJob?.cancel()
     sessionJob = null
     engagementUri.set(null)
     sharedFields.set(emptyList())
+    transportListening.set(false)
     MultipazMdocAdapter.resetSession()
-    DeviceAuthBridge.clear()
   }
 
   fun deviceEngagementUri(): String? = engagementUri.get()
 
-  private suspend fun runSession(state: ProximityArmState, mdocBytes: ByteArray) {
+  /** True while an advertised NfcTransportMdoc instance can accept APDUs. */
+  fun isTransportListening(): Boolean = transportListening.get()
+
+  private suspend fun runSession(
+    state: ProximityArmState,
+    mdocBytes: ByteArray,
+    storedDocType: String?,
+  ) {
     if (!DeviceAuthBridge.isReady()) {
       throw MdocProximityException(
         MdocProximityErrors.PROXIMITY_NOT_READY,
@@ -98,7 +152,82 @@ object MultipazPresentmentSession {
       )
     }
 
-    val (docType, issuerSignedBytes) = extractIssuerSigned(mdocBytes)
+    val (docType, issuerSignedBytes) = try {
+      MdocIssuerSignedExtractor.extract(mdocBytes, storedDocType)
+    } catch (error: IllegalArgumentException) {
+      throw MdocProximityException(
+        MdocProximityErrors.PROXIMITY_NOT_READY,
+        error.message ?: "Stored mDOC is not a usable issuer-signed document",
+      )
+    }
+    Log.i(TAG, "[multipaz-session] issuerSigned extracted docType=$docType")
+    val issuerSignedForPresentment = MdocDisplayNameOverlay.apply(
+      issuerSignedBytes,
+      state.displayNameOverlay,
+    )
+    if (state.displayNameOverlay.isNotEmpty()) {
+      Log.i(
+        TAG,
+        "[multipaz-session] display name overlay fieldCount=${state.displayNameOverlay.size}",
+      )
+    }
+    val hardwareHandle = DeviceAuthBridge.hardwareHandle()
+    if (hardwareHandle != null) {
+      runHardwareSession(state, docType, issuerSignedForPresentment, hardwareHandle)
+      return
+    }
+
+    runSoftwareEd25519Session(state, docType, issuerSignedForPresentment)
+  }
+
+  private suspend fun runHardwareSession(
+    state: ProximityArmState,
+    docType: String,
+    issuerSignedBytes: ByteArray,
+    hardwareHandle: String,
+  ) {
+    val storage = EphemeralStorage()
+    val hardwareSecureArea = HardwareHandleSecureArea(hardwareHandle)
+    val secureAreaRepository = SecureAreaRepository.Builder()
+      .add(hardwareSecureArea)
+      .build()
+
+    val documentStore = buildDocumentStore(
+      storage = storage,
+      secureAreaRepository = secureAreaRepository,
+    ) {}
+
+    val documentTypeRepository = DocumentTypeRepository()
+    val keyInfo = hardwareSecureArea.getKeyInfo(HardwareHandleSecureArea.KEY_ALIAS)
+
+    val document = documentStore.createDocument(
+      displayName = "Proximity mDOC",
+      typeDisplayName = docType,
+    )
+
+    val credential = MdocCredential.createForExistingAlias(
+      document = document,
+      asReplacementForIdentifier = null,
+      domain = MDOC_HARDWARE_DOMAIN,
+      secureArea = hardwareSecureArea,
+      docType = docType,
+      existingKeyAlias = keyInfo.alias,
+    )
+    certifyIssuerSigned(credential, issuerSignedBytes)
+
+    presentArmedDocument(
+      state = state,
+      documentStore = documentStore,
+      documentTypeRepository = documentTypeRepository,
+      domain = MDOC_HARDWARE_DOMAIN,
+    )
+  }
+
+  private suspend fun runSoftwareEd25519Session(
+    state: ProximityArmState,
+    docType: String,
+    issuerSignedBytes: ByteArray,
+  ) {
     val holderPrivateKey = DeviceAuthBridge.buildPrivateKey()
       ?: throw MdocProximityException(MdocProximityErrors.PROXIMITY_NOT_READY, "Device key is unavailable")
 
@@ -134,14 +263,37 @@ object MultipazPresentmentSession {
       docType = docType,
       existingKeyAlias = keyInfo.alias,
     )
-    credential.certify(ByteString(issuerSignedBytes))
+    certifyIssuerSigned(credential, issuerSignedBytes)
 
+    presentArmedDocument(
+      state = state,
+      documentStore = documentStore,
+      documentTypeRepository = documentTypeRepository,
+      domain = MDOC_DOMAIN,
+    )
+  }
+
+  private suspend fun presentArmedDocument(
+    state: ProximityArmState,
+    documentStore: DocumentStore,
+    documentTypeRepository: DocumentTypeRepository,
+    domain: String,
+  ) {
     val presentmentSource = SimplePresentmentSource(
       documentStore = documentStore,
       documentTypeRepository = documentTypeRepository,
-      showConsentPromptFn = ::promptModelSilentConsent,
+      showConsentPromptFn = { requester, trustedRequesterIdentity, consentData, preselected, onFocus ->
+        enforceConsentCeiling(
+          state = state,
+          requester = requester,
+          trustedRequesterIdentity = trustedRequesterIdentity,
+          consentData = consentData,
+          preselectedDocuments = preselected,
+          onDocumentsInFocus = onFocus,
+        )
+      },
       preferSignatureToKeyAgreement = true,
-      domainsMdocSignature = listOf(MDOC_DOMAIN),
+      domainsMdocSignature = listOf(domain),
     )
 
     val eDeviceKey = Crypto.createEcPrivateKey(EcCurve.P256)
@@ -152,46 +304,186 @@ object MultipazPresentmentSession {
       ),
     )
     val transportOptions = MdocTransportOptions(bleUseL2CAP = false)
-    val advertisedTransports = connectionMethods.advertise(
+    val advertisedForEngagement = connectionMethods.advertise(
       role = MdocRole.MDOC,
       transportFactory = MdocTransportFactory.Default,
       options = transportOptions,
     )
 
     val deviceEngagement = buildDeviceEngagement(eDeviceKey = eDeviceKey.publicKey) {
-      advertisedTransports.forEach { addConnectionMethod(it.connectionMethod) }
+      advertisedForEngagement.forEach { addConnectionMethod(it.connectionMethod) }
       addCapability(Capability.READER_AUTH_ALL_SUPPORT, true.toDataItem())
       addCapability(Capability.EXTENDED_REQUEST_SUPPORT, true.toDataItem())
     }.toDataItem()
+    advertisedForEngagement.forEach { transport ->
+      try {
+        transport.close()
+      } catch (_: Exception) {
+      }
+    }
 
     val encodedDeviceEngagement = ByteString(Cbor.encode(deviceEngagement))
     engagementUri.set("mdoc:" + encodedDeviceEngagement.toByteArray().toBase64Url())
-    Log.d(TAG, "[multipaz-session] engagement URI ready")
-
-    val transport = advertisedTransports.waitForConnection(eSenderKey = eDeviceKey.publicKey)
-
-    ProximityEventDispatcher.sendDeviceEngaged()
-    ProximityEventDispatcher.sendRequestReceived(state.approvedMdocFields)
-
-    Iso18013Presentment(
-      transport = transport,
-      eDeviceKey = eDeviceKey,
-      deviceEngagement = deviceEngagement,
-      handover = Simple.NULL,
-      source = presentmentSource,
-      keyAgreementPossible = listOf(EcCurve.P256),
-      onSendingResponse = {
-        sharedFields.set(state.approvedMdocFields)
-      },
+    CompanionSession.setNdefMessage(
+      NfcStaticHandover.encode(encodedDeviceEngagement.toByteArray()),
     )
+    val nfcHandover = NfcStaticHandover.handoverDataItem(
+      CompanionSession.readNdefMessage()
+        ?: throw MdocProximityException(
+          MdocProximityErrors.PROXIMITY_NOT_READY,
+          "NFC static handover NDEF is unavailable",
+        ),
+    )
+    Log.i(TAG, "[multipaz-session] engagement URI ready")
 
-    StoredMdocPresentationEngine.completePresentation(sharedFields.get())
+    // Keep the same DeviceEngagement (eDeviceKey) until Cancel or DeviceResponse.
+    // A missed tap fails the Multipaz transport; TimeoutCancellationException is a
+    // CancellationException and used to abort this job, which cleared the URI and
+    // made the next SELECT return 6A81 while JS still showed Waiting for tap.
+    //
+    // Notify JS from onSendingResponse. Iso18013Presentment does not return until
+    // the NFC field drops, so waiting for it leaves Waiting for tap while the
+    // host already has claims. Keep HCE up until presentment returns so GET
+    // RESPONSE can finish.
+    while (CompanionSession.readArmState() != null) {
+      // Clear any stale failed NfcTransportMdoc instance, then wait: Multipaz
+      // onDeactivated() removes instances in an async coroutine, and a new open()
+      // started before that runs would be torn down immediately.
+      MultipazMdocAdapter.onNfcDeactivated()
+      delay(150)
+
+      val advertisedTransports = connectionMethods.advertise(
+        role = MdocRole.MDOC,
+        transportFactory = MdocTransportFactory.Default,
+        options = transportOptions,
+      )
+      transportListening.set(true)
+      var deviceResponseSent = false
+      try {
+        val transport = advertisedTransports.waitForConnection(eSenderKey = eDeviceKey.publicKey)
+        Log.i(TAG, "[multipaz-session] NFC transport connected")
+        ProximityEventDispatcher.sendDeviceEngaged()
+
+        try {
+          Iso18013Presentment(
+            transport = transport,
+            eDeviceKey = eDeviceKey,
+            deviceEngagement = deviceEngagement,
+            handover = nfcHandover,
+            source = presentmentSource,
+            keyAgreementPossible = listOf(EcCurve.P256),
+            timeout = null,
+            timeoutSubsequentRequests = null,
+            onSendingResponse = {
+              deviceResponseSent = true
+              val outcome = CompanionSession.readDisclosureOutcome()
+              sharedFields.set(outcome?.sharedFields ?: state.approvedMdocFields)
+              Log.i(TAG, "[multipaz-session] DeviceResponse sending, notifying JS complete")
+              StoredMdocPresentationEngine.notifyPresentationComplete(
+                sharedFields.get(),
+                outcome?.omittedFields.orEmpty(),
+              )
+            },
+          )
+        } catch (error: Throwable) {
+          if (error is MdocProximityException) throw error
+          if (isFatalPresentmentCancellation(error)) throw error
+          if (deviceResponseSent) {
+            Log.i(TAG, "[multipaz-session] presentment ended after DeviceResponse")
+          } else {
+            Log.w(TAG, "[multipaz-session] presentment failed before DeviceResponse, listening again", error)
+          }
+        }
+
+        if (deviceResponseSent) {
+          Log.i(TAG, "[multipaz-session] presentment returned after DeviceResponse, stopping HCE")
+          StoredMdocPresentationEngine.finishSessionAfterPresentment()
+          break
+        }
+        Log.w(TAG, "[multipaz-session] NFC tap missed, listening again")
+      } catch (error: Throwable) {
+        if (error is MdocProximityException) throw error
+        if (isFatalPresentmentCancellation(error)) throw error
+        Log.w(TAG, "[multipaz-session] NFC tap missed, listening again", error)
+      } finally {
+        transportListening.set(false)
+        advertisedTransports.forEach { transport ->
+          try {
+            transport.close()
+          } catch (_: Exception) {
+          }
+        }
+      }
+    }
   }
 
-  private fun extractIssuerSigned(mdocBytes: ByteArray): Pair<String, ByteArray> {
-    val root = Cbor.decode(mdocBytes)
-    val docType = root["docType"].asTstr
-    val issuerSigned = root["issuerSigned"]
-    return docType to Cbor.encode(issuerSigned)
+  private suspend fun certifyIssuerSigned(
+    credential: MdocCredential,
+    issuerSignedBytes: ByteArray,
+  ) {
+    try {
+      val stampedOriginal = MdocIssuerAuthCertifySupport.certify(credential, issuerSignedBytes)
+      if (stampedOriginal) {
+        Log.w(
+          TAG,
+          "[multipaz-session] stamped original issuerSigned after Multipaz MSO parse failed ${MdocIssuerAuthCertifySupport.describeMso(issuerSignedBytes)}",
+        )
+      }
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: MdocProximityException) {
+      throw error
+    } catch (error: Exception) {
+      Log.e(
+        TAG,
+        "[multipaz-session] certify failed ${MdocIssuerAuthCertifySupport.describeMso(issuerSignedBytes)}",
+        error,
+      )
+      val detail = error.message?.takeIf { it.isNotBlank() && it != "Failed requirement." }
+        ?: "Stored mDOC could not be certified for proximity"
+      throw MdocProximityException(MdocProximityErrors.PROXIMITY_NOT_READY, detail)
+    }
+  }
+
+  private fun isFatalPresentmentCancellation(error: Throwable): Boolean {
+    if (error !is CancellationException) return false
+    return error !is TimeoutCancellationException
+  }
+
+  private suspend fun enforceConsentCeiling(
+    state: ProximityArmState,
+    requester: Requester,
+    trustedRequesterIdentity: TrustedRequesterIdentity?,
+    consentData: ConsentData,
+    preselectedDocuments: List<Document>,
+    onDocumentsInFocus: (List<Document>) -> Unit,
+  ): CredentialSelection? {
+    val selection = promptModelSilentConsent(
+      requester,
+      trustedRequesterIdentity,
+      consentData,
+      preselectedDocuments,
+      onDocumentsInFocus,
+    ) ?: return null
+
+    val requestedKeys = ApprovedMdocFieldCeiling.requestedFieldKeys(selection)
+    ProximityEventDispatcher.sendRequestReceived(requestedKeys)
+
+    val extraCount = ApprovedMdocFieldCeiling.extraFieldCount(state.profileCeiling, selection)
+    if (extraCount > 0) {
+      Log.w(TAG, "[proximity-policy] DeviceRequest exceeds consent ceiling extraFields=$extraCount")
+      throw MdocProximityException(
+        MdocProximityErrors.DISCLOSURE_CEILING_EXCEEDED,
+        "Presentation failed — try again",
+      )
+    }
+
+    val (disclosed, omitted) = ApprovedMdocFieldCeiling.disclosedAndOmitted(
+      requestedKeys,
+      state.approvedMdocFields,
+      state.profileCeiling,
+    )
+    CompanionSession.storeDisclosureOutcome(disclosed, omitted)
+    return ApprovedMdocFieldCeiling.filterToApproved(selection, state.approvedMdocFields)
   }
 }

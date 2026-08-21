@@ -1,3 +1,14 @@
+/**
+ * Root layout — startup, PIN/storage unlock, deeplink intake, access redirect, Stack.
+ * Journey: Auth/PIN gates before tabs; pending offer/VP routed after unlock.
+ * Copy: StartupLoadingPanel; inline startup errors via toUserMessage.
+ * Next: (tabs), auth, pin-setup, pin-lock, callback.
+ * Map: docs/CODEMAPS/frontend.md#global-hosts
+ *
+ * Idle-grace PIN lock also cancels an in-flight issuer-portal wait so protocol
+ * work cannot continue on the PIN screen.
+ */
+
 import '@/src/sdk/fetchIndirection';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -7,7 +18,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Platform, Text, View } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import '../global.css';
 import '@/src/styles/nativewindInterop';
 import 'react-native-reanimated';
@@ -16,6 +27,7 @@ import { useColorScheme } from '@/src/hooks/use-color-scheme';
 import { AppDialogProvider } from '@/src/components/AppDialog';
 import { StoragePinMigrationStep } from '@/src/components/auth/StoragePinMigrationStep';
 import { ForgotPinFlow } from '@/src/components/auth/ForgotPinFlow';
+import { StartupLoadingPanel } from '@/src/components/StartupLoadingPanel';
 import { StartupStoragePinUnlock } from '@/src/components/StartupStoragePinUnlock';
 import { installWalletApiFetch } from '@/src/sdk/installWalletApiFetch';
 import { hasWalletPin, setWalletPin } from '@/src/services/auth/walletPin';
@@ -38,16 +50,18 @@ import {
   shouldOfferStoragePinRecovery,
   type RootStartupState,
 } from '@/src/services/startup/startupState';
-import { useAuthStore } from '@/src/store/authStore';
+import { completeForgotPinRecovery } from '@/src/services/startup/completeForgotPinRecovery';
+import { useAuthStore } from '@/src/store/authStore'
 import {
   isPresentationRequestDeeplink,
   isSupportedWalletDeeplink,
   readPendingCredentialOfferRoute,
   readPendingPresentationRoute,
+  tryQueueDeeplinkUri,
   useDeeplinkStore,
 } from '@/src/store/deeplinkStore';
 import { storePendingFromIssuanceCallbackUrl } from '@/src/services/credentials/resolveIssuanceCallbackResult';
-import { isPortalReturnUrlIgnoredDuringCapture } from '@/src/services/credentials/portalReturnBridge';
+import { isPortalReturnUrlIgnoredDuringCapture, cancelPortalReturnWait } from '@/src/services/credentials/portalReturnBridge';
 import {
   configurePresentationReplayStorage,
   createWebPresentationReplayStorage,
@@ -55,8 +69,6 @@ import {
 } from '@/src/services/vp/presentationRequestReplay';
 import { notifyPresentationIntakeRejection } from '@/src/services/vp/presentationIntakeRejection';
 import { useNotificationRouteStore } from '@/src/store/notificationRouteStore';
-
-import { THEME } from '../src/config/themeColors'
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -109,16 +121,14 @@ export default function RootLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isPinVerified = useAuthStore((s) => s.isPinVerified);
   const isAuthenticatedRef = useRef(isAuthenticated);
-  const setPendingDeeplinkUri = useDeeplinkStore((s) => s.setPendingDeeplinkUri);
-  const setPendingPresentationRequest = useDeeplinkStore((s) => s.setPendingPresentationRequest);
-  const setIncomingDeeplinkUri = useDeeplinkStore((s) => s.setIncomingDeeplinkUri);
   const pendingDeeplinkUri = useDeeplinkStore((s) => s.pendingUri);
   const dismissedDeeplinkUri = useDeeplinkStore((s) => s.dismissedUri);
+  const deeplinkRouteEpoch = useDeeplinkStore((s) => s.routeEpoch);
   const router = useRouter();
   const incomingUrl = Linking.useURL();
   const currentSegment = segments[0];
   const isTabRoute = currentSegment === '(tabs)';
-  const lastRoutedDeeplinkRef = useRef<string | null>(null);
+  const lastRoutedDeeplinkRef = useRef<{ uri: string; epoch: number } | null>(null);
   const handledLaunchUrlsRef = useRef(new Set<string>());
   const handledRouteUrisRef = useRef(new Set<string>());
   const initialLaunchUrlFetchedRef = useRef(false);
@@ -127,6 +137,13 @@ export default function RootLayout() {
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    void import('@/src/services/crypto/knoxVaultStrongBoxStartupProbe').then(({ maybeRunKnoxVaultStrongBoxStartupProbe }) => {
+      maybeRunKnoxVaultStrongBoxStartupProbe();
+    });
+  }, []);
 
   const prepareWallet = useCallback(async ({
     storagePin,
@@ -148,7 +165,7 @@ export default function RootLayout() {
       }
 
       const [
-        { generateWalletKeyIfNeeded, getHolderDid, ensureWalletKeyRegisteredAtBackfill },
+        { hasWalletKey, ensureWalletKeyRegisteredAtBackfill },
         { initStorage, initStorageWithPin, isStoragePinFallbackAvailable, canVerifyStoragePinUnlock, needsStoragePinFallbackMigration, getCredentialStorage },
         { assertDeviceIntegrity },
         { assertConfiguredWalletApiRuntimePolicy },
@@ -320,28 +337,26 @@ export default function RootLayout() {
       const { ensureWalletHistoryBackfill } = await import('@/src/services/history/walletEventLog');
       ensureWalletHistoryBackfill();
       logWalletStep('startup', 'wallet-history-backfill-complete');
-      await generateWalletKeyIfNeeded();
-      if (!isCurrentRun()) return;
+      // Defer wallet-seed / k_attest Keychain create off cold start (see
+      // docs/superpowers/specs/2026-08-07-defer-first-install-keychain-biometric-design.md).
       if (ensureWalletKeyRegisteredAtBackfill()) {
         logWalletStep('startup', 'wallet-key-registered-at-backfilled');
       }
-      logWalletStep('startup', 'wallet-key-ready');
+      logWalletStep('startup', 'wallet-key-ready-deferred');
 
       const {
-        activateWalletCryptoV2,
         detectLegacySingleKeyWallet,
         isWalletCryptoV2Enabled,
       } = await import('@/src/services/crypto/walletCryptoActivation');
 
       if (detectLegacySingleKeyWallet()) {
         logWalletStep('startup', 'wallet-crypto-v2-legacy-wallet-detected');
-        throw new Error('WalletCryptoLegacyWallet');
       }
 
-      if (!isWalletCryptoV2Enabled()) {
-        await activateWalletCryptoV2();
-        if (!isCurrentRun()) return;
-        logWalletStep('startup', 'wallet-crypto-v2-activated');
+      if (isWalletCryptoV2Enabled()) {
+        logWalletStep('startup', 'wallet-crypto-v2-already-enabled');
+      } else {
+        logWalletStep('startup', 'wallet-crypto-v2-activation-deferred');
       }
 
       await loadSession();
@@ -359,11 +374,20 @@ export default function RootLayout() {
         setPinVerified(true)
       }
       logWalletStep('startup', 'session-loaded');
-      void import('@/src/services/notifications/pushNotificationService')
-        .then(({ launchPushNotificationsInBackground }) => {
-          launchPushNotificationsInBackground(getHolderDid());
-          logWalletStep('startup', 'push-notifications-started');
-        })
+      void import('@/src/services/crypto/credentialKeyRegistry')
+        .then(({ readFirstCredentialHolderDid }) =>
+          import('@/src/services/notifications/pushNotificationService').then(
+            ({ launchPushNotificationsInBackground }) => {
+              const pushHolderDid = readFirstCredentialHolderDid()
+              if (!pushHolderDid) {
+                logWalletStep('startup', 'push-notifications-deferred-no-credential-did')
+                return
+              }
+              launchPushNotificationsInBackground(pushHolderDid)
+              logWalletStep('startup', 'push-notifications-started')
+            },
+          ),
+        )
         .catch((error: unknown) => {
           logWalletError('startup', 'push-notifications-module-load-failed', error);
         });
@@ -405,9 +429,18 @@ export default function RootLayout() {
   const handleStoragePinMigrationComplete = useCallback(async () => {
     try {
       setPinVerified(true);
-      const { getHolderDid } = await import('@/src/services/crypto/crypto');
-      const { initPushNotifications } = await import('@/src/services/notifications/pushNotificationService');
-      await initPushNotifications(getHolderDid());
+      const { readFirstCredentialHolderDid } = await import(
+        '@/src/services/crypto/credentialKeyRegistry'
+      );
+      const pushHolderDid = readFirstCredentialHolderDid();
+      if (pushHolderDid) {
+        const { initPushNotifications } = await import(
+          '@/src/services/notifications/pushNotificationService'
+        );
+        await initPushNotifications(pushHolderDid);
+      } else {
+        logWalletStep('startup', 'push-notifications-deferred-no-credential-did');
+      }
       setStartupState({ status: 'ready' });
       logWalletStep('startup', 'prepare-wallet-ready-after-migration');
     } catch (error) {
@@ -428,11 +461,11 @@ export default function RootLayout() {
   }, []);
 
   const handleStartupForgotPinComplete = useCallback(async () => {
-    const { resetStorage } = await import('@/src/services/storage/storage');
-    await resetStorage();
-    await logout();
-    setStartupState({ status: 'ready' });
-    router.replace('/auth');
+    await completeForgotPinRecovery({
+      logout,
+      markStartupReady: () => setStartupState({ status: 'ready' }),
+      replaceAuth: () => router.replace('/auth'),
+    });
   }, [logout, router]);
 
   useEffect(() => {
@@ -472,6 +505,7 @@ export default function RootLayout() {
 
         if (authState.isPinVerified) {
           authState.setPinVerified(false);
+          cancelPortalReturnWait();
           logWalletStep('wallet-unlock', 'session-expired');
         }
       } finally {
@@ -516,20 +550,17 @@ export default function RootLayout() {
       return;
     }
 
-    const dismissed = useDeeplinkStore.getState().dismissedUri;
-    if (url === dismissed) {
-      notifyPresentationIntakeRejection(url);
+    if (store) {
+      if (!tryQueueDeeplinkUri(url, { origin: 'same-device' })) {
+        logWalletStep('deeplink', 'presentation-dismissed-ignored');
+        return;
+      }
+    } else if (url === useDeeplinkStore.getState().dismissedUri) {
+      logWalletStep('deeplink', 'presentation-dismissed-ignored');
       return;
     }
 
-    if (store) {
-      if (isPresentationRequestDeeplink(url)) {
-        setPendingPresentationRequest({ uri: url, origin: 'same-device' });
-      } else {
-        setPendingDeeplinkUri(url);
-      }
-    }
-
+    const dismissed = useDeeplinkStore.getState().dismissedUri;
     const pinExists = Platform.OS === 'web' || hasWalletPin();
     const pinVerified = useAuthStore.getState().isPinVerified;
     if (pinExists && Platform.OS !== 'web' && !pinVerified) return;
@@ -550,7 +581,7 @@ export default function RootLayout() {
       hasWalletPin: pinExists,
     })
     if (presentationRoute) { router.push(presentationRoute); return; }
-  }, [router, setPendingDeeplinkUri, setPendingPresentationRequest]);
+  }, [router]);
 
   useEffect(() => {
     if (startupState.status !== 'ready') return;
@@ -561,29 +592,27 @@ export default function RootLayout() {
         return null;
       }
       const parsed = storePendingFromIssuanceCallbackUrl(url);
+      if (parsed.kind === 'authorization_code' || parsed.kind === 'authorization_error') {
+        return null;
+      }
       if (parsed.kind !== 'unsupported') {
+        // Consumed/dismissed VP URIs are not routed; tryQueue also refuses dismissed.
         if (
-          parsed.uri === useDeeplinkStore.getState().dismissedUri
-          || (
-            parsed.kind === 'presentation_request'
-            && isPresentationRequestConsumed(parsed.uri)
-          )
+          parsed.kind === 'presentation_request'
+          && isPresentationRequestConsumed(parsed.uri)
         ) {
           return null;
         }
         return parsed.uri;
       }
       if (!isSupportedWalletDeeplink(url)) return null;
-      if (url === useDeeplinkStore.getState().dismissedUri) return null;
       if (isPresentationRequestDeeplink(url) && isPresentationRequestConsumed(url)) return null;
       return url;
     };
 
     const queuePendingRouteUri = (routeUri: string) => {
-      if (isPresentationRequestDeeplink(routeUri)) {
-        setPendingPresentationRequest({ uri: routeUri, origin: 'same-device' });
-      } else {
-        setPendingDeeplinkUri(routeUri);
+      if (!tryQueueDeeplinkUri(routeUri, { origin: 'same-device' })) {
+        logWalletStep('deeplink', 'presentation-dismissed-ignored');
       }
     };
 
@@ -597,7 +626,7 @@ export default function RootLayout() {
         return;
       }
       if (handledRouteUrisRef.current.has(routeUri)) return;
-      if (routeUri === lastRoutedDeeplinkRef.current) return;
+      if (routeUri === lastRoutedDeeplinkRef.current?.uri) return;
 
       const startupRoute = readStartupRoute({
         isAuthenticated,
@@ -607,7 +636,10 @@ export default function RootLayout() {
         hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
       });
       handledRouteUrisRef.current.add(routeUri);
-      lastRoutedDeeplinkRef.current = routeUri;
+      lastRoutedDeeplinkRef.current = {
+        uri: routeUri,
+        epoch: useDeeplinkStore.getState().routeEpoch,
+      };
 
       if (
         startupRoute !== '/auth'
@@ -647,13 +679,10 @@ export default function RootLayout() {
         notifyPresentationIntakeRejection(url);
         return;
       }
-      // Warm-app events must hit the store so vpGeneration/offerGeneration bump
-      // and PresentationRequestScreen / CredentialOfferClaimScreen remount.
-      // setIncoming also clears a matching dismissedUri for same-URI reopen.
-      if (isPresentationRequestDeeplink(routeUri)) {
-        setPendingPresentationRequest({ uri: routeUri, origin: 'same-device' });
-      } else {
-        setIncomingDeeplinkUri(routeUri);
+      // tryQueue refuses dismissed URIs (silent) so Android Back redelivery cannot reopen.
+      if (!tryQueueDeeplinkUri(routeUri, { origin: 'same-device' })) {
+        logWalletStep('deeplink', 'presentation-dismissed-ignored');
+        return;
       }
       routeDeeplink(routeUri);
     });
@@ -670,19 +699,37 @@ export default function RootLayout() {
     currentSegment,
     router,
     routeDeeplink,
-    setPendingDeeplinkUri,
-    setIncomingDeeplinkUri,
-    setPendingPresentationRequest,
   ]);
 
   useEffect(() => {
     if (startupState.status !== 'ready' || !pendingDeeplinkUri || !isPinVerified) {
       return;
     }
-    if (pendingDeeplinkUri === lastRoutedDeeplinkRef.current) return;
-    lastRoutedDeeplinkRef.current = pendingDeeplinkUri;
+    if (pendingDeeplinkUri === dismissedDeeplinkUri) return;
+
+    const lastRouted = lastRoutedDeeplinkRef.current;
+    if (
+      lastRouted
+      && lastRouted.uri === pendingDeeplinkUri
+      && lastRouted.epoch === deeplinkRouteEpoch
+    ) {
+      return;
+    }
+
+    lastRoutedDeeplinkRef.current = {
+      uri: pendingDeeplinkUri,
+      epoch: deeplinkRouteEpoch,
+    };
     routeDeeplink(pendingDeeplinkUri);
-  }, [startupState.status, pendingDeeplinkUri, dismissedDeeplinkUri, isAuthenticated, isPinVerified, routeDeeplink]);
+  }, [
+    startupState.status,
+    pendingDeeplinkUri,
+    dismissedDeeplinkUri,
+    deeplinkRouteEpoch,
+    isAuthenticated,
+    isPinVerified,
+    routeDeeplink,
+  ]);
 
   useEffect(() => {
     if (startupState.status !== 'ready' || !isPinVerified) return;
@@ -720,19 +767,13 @@ export default function RootLayout() {
             />
           )
         ) : (
-          <View className="absolute inset-0 flex-1 items-center justify-center gap-3 bg-white p-6">
-            {startupState.status === 'loading' ? (
-              <>
-                <ActivityIndicator color={THEME.navy} />
-                <Text className="text-sm text-gray500">Starting wallet...</Text>
-              </>
-            ) : (
-              <>
-                <Text className="text-center text-lg font-semibold">Wallet startup failed</Text>
-                <Text className="text-center text-gray500">{startupState.message}</Text>
-              </>
-            )}
-          </View>
+          <StartupLoadingPanel
+            status={startupState.status === 'error' ? 'error' : 'loading'}
+            message={startupState.status === 'error' ? startupState.message : undefined}
+            onReady={() => {
+              void SplashScreen.hideAsync().catch(() => undefined);
+            }}
+          />
         )}
       </ThemeProvider>
     );

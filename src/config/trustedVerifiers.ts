@@ -15,6 +15,10 @@ const BUILD_ENV: Env = {
     process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN,
   EXPO_PUBLIC_VERIFIER_DID_WEB_NAME: process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_NAME,
   EXPO_PUBLIC_VERIFIER_DID_WEB_JWK: process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_JWK,
+  EXPO_PUBLIC_VERIFIER_DID_KEY_CLIENT_ID: process.env.EXPO_PUBLIC_VERIFIER_DID_KEY_CLIENT_ID,
+  EXPO_PUBLIC_VERIFIER_DID_KEY_RESPONSE_ORIGIN:
+    process.env.EXPO_PUBLIC_VERIFIER_DID_KEY_RESPONSE_ORIGIN,
+  EXPO_PUBLIC_VERIFIER_DID_KEY_NAME: process.env.EXPO_PUBLIC_VERIFIER_DID_KEY_NAME,
   EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID:
     process.env.EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_CLIENT_ID,
   EXPO_PUBLIC_ISSUER_OID4VP_DID_WEB_RESPONSE_ORIGIN:
@@ -53,10 +57,9 @@ function buildDidWebTrustedPartyFromEnv(input: {
   if (!didWebClientId || !didWebResponseOrigin) return undefined
 
   const parsed = parseClientId(didWebClientId)
-  const normalizedClientId =
-    parsed.scheme === 'decentralized_identifier'
-      ? didWebClientId
-      : `decentralized_identifier:${didWebClientId}`
+  const normalizedClientId = didWebClientId.startsWith('decentralized_identifier:')
+    ? didWebClientId
+    : `decentralized_identifier:${parsed.scheme === 'decentralized_identifier' ? parsed.originalClientId : didWebClientId}`
 
   const verificationJwk = readVerificationJwk(input.env, input.jwkKey)
 
@@ -65,6 +68,42 @@ function buildDidWebTrustedPartyFromEnv(input: {
     name: input.env[input.nameKey]?.trim() || input.fallbackName || 'Trusted Party',
     allowedOrigins: [didWebResponseOrigin],
     ...(verificationJwk ? { verificationJwk } : {}),
+  }
+}
+
+function buildDidKeyTrustedPartyFromEnv(input: {
+  env: Env
+  clientIdKey: string
+  responseOriginKey: string
+  nameKey: string
+  fallbackName?: string
+  fallbackOriginFromApiBaseUrl?: boolean
+}): TrustedVerifier | undefined {
+  const rawClientId = input.env[input.clientIdKey]?.trim()
+  if (!rawClientId) return undefined
+
+  const didKeyClientId = rawClientId.startsWith('decentralized_identifier:did:key:')
+    ? rawClientId.slice('decentralized_identifier:'.length)
+    : rawClientId
+  if (!didKeyClientId.startsWith('did:key:')) return undefined
+
+  const responseOrigin =
+    readOrigin(input.env[input.responseOriginKey]) ??
+    (input.fallbackOriginFromApiBaseUrl
+      ? readOrigin(normalizeBaseUrl(input.env.EXPO_PUBLIC_VERIFIER_API_BASE_URL))
+      : undefined)
+  if (!responseOrigin) return undefined
+
+  const parsed = parseClientId(didKeyClientId)
+  const normalizedClientId =
+    parsed.scheme === 'decentralized_identifier'
+      ? parsed.clientId
+      : `decentralized_identifier:${didKeyClientId}`
+
+  return {
+    clientId: normalizedClientId,
+    name: input.env[input.nameKey]?.trim() || input.fallbackName || 'Trusted Verifier',
+    allowedOrigins: [responseOrigin],
   }
 }
 
@@ -104,6 +143,16 @@ export function buildTrustedVerifiersFromEnv(
     jwkKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_JWK',
   })
   if (verifierDidWeb) verifiers.push(verifierDidWeb)
+
+  const verifierDidKey = buildDidKeyTrustedPartyFromEnv({
+    env,
+    clientIdKey: 'EXPO_PUBLIC_VERIFIER_DID_KEY_CLIENT_ID',
+    responseOriginKey: 'EXPO_PUBLIC_VERIFIER_DID_KEY_RESPONSE_ORIGIN',
+    nameKey: 'EXPO_PUBLIC_VERIFIER_DID_KEY_NAME',
+    fallbackName: env.EXPO_PUBLIC_VERIFIER_NAME?.trim() || 'Trusted Verifier',
+    fallbackOriginFromApiBaseUrl: true,
+  })
+  if (verifierDidKey) verifiers.push(verifierDidKey)
 
   const issuerDidWeb = buildDidWebTrustedPartyFromEnv({
     env,

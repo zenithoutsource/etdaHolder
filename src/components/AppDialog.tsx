@@ -1,8 +1,22 @@
+/** Global modal dialog provider and useAppDialog hook. Hidden while PIN lock is required. */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { Modal, Pressable, Text, View } from 'react-native'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Modal, Platform, Pressable, Text, View } from 'react-native'
 
 import { THEME } from '../config/themeColors'
+import { hasWalletPin } from '../services/auth/walletPin'
+import {
+  isWalletPinLockRequired,
+  readWalletPinLockRequired,
+} from '../services/auth/walletPinNavigation'
+import { logWalletStep } from '../services/debug/walletLogger'
+import { useAuthStore } from '../store/authStore'
+import {
+  readPendingCredentialOfferRoute,
+  readPendingPresentationRoute,
+  useDeeplinkStore,
+} from '../store/deeplinkStore'
 
 export type AppDialogAction = {
   label: string
@@ -63,8 +77,36 @@ function actionTextClassName(variant: AppDialogAction['variant']): string {
   return 'text-white'
 }
 
+function hasPendingPinUnlockDeeplinkRoute(): boolean {
+  const { pendingUri, dismissedUri } = useDeeplinkStore.getState()
+  const { isAuthenticated } = useAuthStore.getState()
+  const pinExists = Platform.OS !== 'web' && hasWalletPin()
+  const routeInput = {
+    pendingUri,
+    dismissedUri,
+    isAuthenticated,
+    platform: Platform.OS,
+    hasWalletPin: pinExists,
+  }
+
+  return Boolean(
+    readPendingCredentialOfferRoute(routeInput)
+    || readPendingPresentationRoute(routeInput),
+  )
+}
+
 export function AppDialogProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<AppDialogOptions | null>(null)
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const isPinVerified = useAuthStore((state) => state.isPinVerified)
+  const pinLockRequired = isWalletPinLockRequired({
+    platform: Platform.OS,
+    isAuthenticated,
+    isPinVerified,
+    hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
+  })
+  const wasPinLockedRef = useRef(pinLockRequired)
+  const dialogVisible = Boolean(dialog) && !pinLockRequired
 
   const hideDialog = useCallback(() => {
     setDialog(null)
@@ -73,6 +115,28 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
   const showDialog = useCallback((options: AppDialogOptions) => {
     setDialog(options)
   }, [])
+
+  useEffect(() => {
+    if (pinLockRequired) {
+      if (dialog) {
+        logWalletStep('wallet-unlock', 'app-dialog-deferred', { title: dialog.title })
+      }
+      wasPinLockedRef.current = true
+      return
+    }
+
+    if (wasPinLockedRef.current && dialog) {
+      if (hasPendingPinUnlockDeeplinkRoute()) {
+        logWalletStep('wallet-unlock', 'app-dialog-dropped-pending-deeplink', {
+          title: dialog.title,
+        })
+        setDialog(null)
+      } else {
+        logWalletStep('wallet-unlock', 'app-dialog-restored', { title: dialog.title })
+      }
+    }
+    wasPinLockedRef.current = false
+  }, [dialog, pinLockRequired])
 
   const contextValue = useMemo(
     () => ({
@@ -89,6 +153,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
   const icon = dialog?.icon ?? 'info'
 
   async function handleActionPress(action: AppDialogAction) {
+    if (readWalletPinLockRequired()) return
     await action.onPress?.()
     if (action.dismissOnPress !== false) hideDialog()
   }
@@ -99,16 +164,16 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
       <Modal
         animationType="fade"
         transparent
-        visible={Boolean(dialog)}
-        onRequestClose={dismissible ? hideDialog : undefined}>
+        visible={dialogVisible}
+        onRequestClose={dismissible && dialogVisible ? hideDialog : undefined}>
         <View className="flex-1 items-center justify-center bg-black/35 px-5">
           <Pressable
             testID="app-dialog-backdrop"
             className="absolute inset-0"
-            disabled={!dismissible}
+            disabled={!dismissible || !dialogVisible}
             onPress={hideDialog}
           />
-          {dialog ? (
+          {dialogVisible && dialog ? (
             <View
               testID="app-dialog"
               className="w-full max-w-[360px] rounded-[18px] bg-white p-5"

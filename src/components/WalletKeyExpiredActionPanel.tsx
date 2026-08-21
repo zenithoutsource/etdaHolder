@@ -1,3 +1,10 @@
+/**
+ * Inline amber panel to rotate the wallet key.
+ * Journey: P3 home menu and credential detail.
+ * Copy: WALLET_HOME_COPY key-expiry strings.
+ * Map: docs/CODEMAPS/frontend.md#wallet
+ */
+
 import { Text, View } from 'react-native'
 
 import { AppButton } from './AppButton'

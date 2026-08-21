@@ -1,3 +1,11 @@
+/**
+ * Credential detail overflow menu — Revoke and Delete.
+ * Journey: Wallet detail (P6).
+ * Copy: inline Thai/EN labels.
+ * Next: parent wires PIN/biometric then approve.
+ * Map: docs/CODEMAPS/frontend.md#wallet
+ */
+
 import { View } from 'react-native'
 
 import { AppButton } from './AppButton'

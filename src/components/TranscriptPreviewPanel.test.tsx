@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native'
 
 import { TranscriptPreviewPanel } from './TranscriptPreviewPanel'
-import * as credentialDisplay from '../services/credentials/credentialDisplay'
 
 const record = {
   id: 'transcript-preview',
@@ -24,7 +23,7 @@ describe('TranscriptPreviewPanel', () => {
   test('renders dynamic claims in the shared card and accepts the credential', () => {
     const onAccept = jest.fn()
 
-    render(<TranscriptPreviewPanel record={record} profileImage={require('../../assets/images/user_profile.png')} onAccept={onAccept} />)
+    render(<TranscriptPreviewPanel record={record} onAccept={onAccept} />)
 
     expect(screen.getByTestId('transcript-preview-panel').props.className).toContain('items-center')
     expect(screen.getByTestId('transcript-preview-content').props.className).toContain('max-w-[380px]')
@@ -37,24 +36,43 @@ describe('TranscriptPreviewPanel', () => {
     expect(screen.getByText('6304012022')).toBeTruthy()
     expect(screen.getByText('Engineering')).toBeTruthy()
     expect(screen.getByText('3.75')).toBeTruthy()
+    expect(screen.getByTestId('document-detail-card')).toBeTruthy()
+    expect(screen.queryByTestId('document-detail-my-qr')).toBeNull()
+    expect(screen.queryByTestId('document-detail-present-nfc')).toBeNull()
 
     fireEvent.press(screen.getByText('ยอมรับ'))
 
     expect(onAccept).toHaveBeenCalledTimes(1)
   })
 
-  test('uses the preview birth-date row when the holder profile has none', () => {
-    const profileSpy = jest.spyOn(credentialDisplay, 'readCredentialHolderProfile').mockReturnValue({})
-
+  test('fills missing Thai name from the holder profile and uses the mock English name', () => {
     render(
       <TranscriptPreviewPanel
-        record={{ ...record, claims: { ...record.claims, birthDate: '1990-05-15' } }}
-        profileImage={require('../../assets/images/user_profile.png')}
+        record={record}
+        holderProfile={{
+          thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishName: 'Pitchaya Rungruangkit',
+        }}
         onAccept={() => undefined}
       />,
     )
 
-    expect(screen.getByText('1990-05-15')).toBeTruthy()
-    profileSpy.mockRestore()
+    expect(screen.getByText('นางสาว พิชญา รุ่งเรืองกิจ')).toBeTruthy()
+    expect(screen.getByText('Ms. Thodsopp Eekkasandigital')).toBeTruthy()
+    expect(screen.queryByText('Somchai Jaidee')).toBeNull()
+    expect(screen.queryByText('วันเกิด / Date of Birth')).toBeNull()
+  })
+
+  test('hides transcript birth date even when the issuer provided one', () => {
+    render(
+      <TranscriptPreviewPanel
+        record={{ ...record, claims: { ...record.claims, birthDate: '1980-01-01' } }}
+        holderProfile={{ birthDate: '1990-05-15' }}
+        onAccept={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByText('วันเกิด / Date of Birth')).toBeNull()
+    expect(screen.queryByText('1 มกราคม 2523')).toBeNull()
   })
 })

@@ -85,4 +85,67 @@ describe('PresentationRequestedItemsCard', () => {
     expect(screen.getByText('ยอมรับ')).not.toBeDisabled()
     expect(screen.queryByText('เลือกรายการเพื่อส่งตรวจสอบ')).toBeNull()
   })
+
+  test('keeps issuer disclosure values even when a holder profile is passed', () => {
+    render(
+      <PresentationRequestedItemsCard
+        documentType="DLTDrivingLicence"
+        disclosures={[
+          { key: 'given_name', label: 'ชื่อ', value: 'สมชาย', mandatory: true, selective: false },
+          { key: 'family_name', label: 'นามสกุล', value: 'ใจดี', mandatory: true, selective: false },
+        ]}
+        selectedClaimKeys={new Set(['given_name', 'family_name'])}
+        onToggleClaim={jest.fn()}
+        onAccept={jest.fn()}
+        holderProfile={{
+          thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishName: 'Pitchaya Rungruangkit',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('สมชาย')).toBeTruthy()
+    expect(screen.getByText('ใจดี')).toBeTruthy()
+    expect(screen.queryByText('นางสาว พิชญา')).toBeNull()
+    expect(screen.queryByText('รุ่งเรืองกิจ')).toBeNull()
+  })
+
+  test('hides religion on requested items even when the verifier asked for it', () => {
+    render(
+      <PresentationRequestedItemsCard
+        documentType="ThaiNationalID"
+        disclosures={[
+          { key: 'national_id', label: 'ID', value: '123', mandatory: true, selective: false },
+          { key: 'religion', label: 'Religion', value: 'Buddhist', mandatory: false, selective: true },
+        ]}
+        selectedClaimKeys={new Set(['national_id', 'religion'])}
+        onToggleClaim={jest.fn()}
+        onAccept={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByText('เลขบัตรประจำตัวประชาชน')).toBeTruthy()
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('Buddhist')).toBeNull()
+  })
+
+  test('shows driving-licence given name above family name', () => {
+    render(
+      <PresentationRequestedItemsCard
+        documentType="DLTDrivingLicence"
+        disclosures={[
+          { key: 'family_name', label: 'นามสกุล', value: 'ใจดี', mandatory: true, selective: false },
+          { key: 'given_name', label: 'ชื่อ', value: 'สมชาย', mandatory: true, selective: false },
+        ]}
+        selectedClaimKeys={new Set(['family_name', 'given_name'])}
+        onToggleClaim={jest.fn()}
+        onAccept={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByText('ชื่อ')).toBeTruthy()
+    expect(screen.getByText('นามสกุล')).toBeTruthy()
+    const json = JSON.stringify(screen.toJSON())
+    expect(json.indexOf('"ชื่อ"')).toBeLessThan(json.indexOf('"นามสกุล"'))
+  })
 })

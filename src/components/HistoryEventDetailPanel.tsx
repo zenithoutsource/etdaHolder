@@ -1,7 +1,16 @@
+/**
+ * Single history event body — status, disclosure list, hide.
+ * Journey: History detail (P5 / P6).
+ * Copy: inline Thai status labels; WalletHistoryRow.
+ * Layout: PresentationDisclosureList, StatusBadge.
+ * Map: docs/CODEMAPS/frontend.md#history
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
 import { AppButton } from './AppButton'
+import { HistoryIssuerLogo } from './HistoryIssuerLogo'
 import { PresentationDisclosureList } from './PresentationDisclosureList'
 import { StatusBadge } from './StatusBadge'
 import type { WalletHistoryRow } from '../services/history/walletHistory'
@@ -75,7 +84,18 @@ export function HistoryEventDetailPanel({ row, onHide }: HistoryEventDetailPanel
       </View>
 
       <View className="gap-4 rounded-[12px] bg-white px-4 py-4">
-        <DetailField label={row.partyRoleLabel} value={row.partyName} />
+        <View className="flex-row items-start gap-3">
+          <HistoryIssuerLogo
+            credentialType={row.credentialType}
+            documentType={row.documentType}
+            partyName={row.partyName}
+            logoTestID="history-event-issuer-logo"
+            iconTestID="history-event-issuer-icon"
+          />
+          <View className="min-w-0 flex-1">
+            <DetailField label={row.partyRoleLabel} value={row.partyName} />
+          </View>
+        </View>
         <DetailField label={row.infoBoxLabel} value={row.infoBoxValue} />
         <DetailField label="วันที่และเวลา" value={formatDateTime(row.occurredAt)} />
         <DetailField label="ช่องทาง" value={row.channelCaption} />

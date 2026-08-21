@@ -108,3 +108,16 @@ test('readSuccessfullyPresentedCredentialIds respects badge-cleared timestamp', 
   clearSuccessfulPresentationBadge('cred-1', new Date('2026-06-02T00:00:00.000Z'))
   expect(readSuccessfullyPresentedCredentialIds()).toEqual([])
 })
+
+test('readSuccessfullyPresentedCredentialIds includes NFC presentation success', () => {
+  appendWalletHistoryEvent({
+    kind: 'nfc-presentation-success',
+    credentialId: 'dl-1',
+    documentType: 'ใบอนุญาตขับรถ',
+    partyName: 'เครื่องอ่าน NFC',
+    disclosedClaims: ['ชื่อ'],
+    channel: 'nfc',
+    occurredAt: '2026-08-18T00:00:00.000Z',
+  })
+  expect(readSuccessfullyPresentedCredentialIds()).toEqual(['dl-1'])
+})

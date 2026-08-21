@@ -1,9 +1,11 @@
-import type { PlatformOSType } from 'react-native'
+import { Platform, type PlatformOSType } from 'react-native'
 
+import { useAuthStore } from '../../store/authStore'
 import {
   readPendingCredentialOfferRoute,
   readPendingPresentationRoute,
 } from '../../store/deeplinkStore'
+import { hasWalletPin } from './walletPin'
 
 type PostLoginRouteInput = {
   platform: PlatformOSType
@@ -28,6 +30,25 @@ export type WalletRoute = '/(tabs)' | '/auth' | '/pin-setup' | '/pin-lock'
 
 export const PIN_UNLOCK_FLOW_SEGMENTS = new Set(['pin-lock', 'forgot-pin'])
 
+export function isWalletPinLockRequired(input: {
+  platform: PlatformOSType
+  isAuthenticated: boolean
+  isPinVerified: boolean
+  hasWalletPin: boolean
+}): boolean {
+  return input.platform !== 'web' && input.isAuthenticated && input.hasWalletPin && !input.isPinVerified
+}
+
+export function readWalletPinLockRequired(platform: PlatformOSType = Platform.OS): boolean {
+  const { isAuthenticated, isPinVerified } = useAuthStore.getState()
+  return isWalletPinLockRequired({
+    platform,
+    isAuthenticated,
+    isPinVerified,
+    hasWalletPin: platform !== 'web' && hasWalletPin(),
+  })
+}
+
 export function readPostLoginRoute(input: PostLoginRouteInput): WalletRoute {
   if (input.platform !== 'web' && !input.hasWalletPin) return '/pin-setup'
   return '/(tabs)'
@@ -37,7 +58,7 @@ const UNAUTHENTICATED_PUBLIC_SEGMENTS = new Set(['auth', 'login', 'register', 'f
 const AUTHENTICATED_AUTH_FLOW_SEGMENTS = new Set(['auth', 'login', 'pin-setup', 'forgot-pin', 'pin-lock', 'callback'])
 
 function requiresPinUnlock(input: StartupRouteInput): boolean {
-  return input.platform !== 'web' && input.hasWalletPin && !input.isPinVerified
+  return isWalletPinLockRequired(input)
 }
 
 export function readStartupRoute(input: StartupRouteInput): WalletRoute | undefined {

@@ -1,7 +1,9 @@
-import { readCredentialHolderProfile, readDisplayValue } from '../credentials/credentialDisplay'
-import { readClaimText } from '../credentials/claimFormatting'
+import { readCredentialHolderProfile, readPresentationFieldValue } from '../credentials/credentialDisplay'
+import { hasAnyClaimValue, readClaimText } from '../credentials/claimFormatting'
 import { isIssuerOid4VpClientId, isIssuerOid4VpResponseUri } from '../../config/trustedVerifiers'
-import { getCardSchema, findDisplayFieldForClaimKey, resolvePresentationDisclosureLabel } from '../../config/cardSchemas'
+import { findDisplayFieldForClaimKey, collectDisplayFieldMatchKeys, resolvePresentationDisclosureLabel, resolveCardSchema } from '../../config/cardSchemas'
+import { isFirstPartyDrivingLicence } from '../../config/firstPartyCredential'
+import { formatDrivingLicenceVehicleTypeDisplay } from '../../config/drivingLicenceVehicleCategories'
 import {
   isSdJwtKbDisabledForTesting,
   readVerifierDcqlVpTokenShape,
@@ -26,6 +28,8 @@ import {
   readCredentialVct,
 } from './dcqlCredentialMatch'
 import { parseDcqlCredentialSets, resolveDcqlCredentialSelection } from './dcqlCredentialSetResolver'
+import { formatDcqlVpTokenEnvelope } from './oid4vc/formatDcqlVpTokenEnvelope'
+import { describePresentationAttempt } from './presentationDiagnostics'
 import { assertDualFormatPresentationReady, isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
 import { isSdJwtDcqlFormat } from './dualFormatQuery'
 import {
@@ -37,6 +41,7 @@ import {
 } from './presentationCredentialMatch'
 import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
+import { hasUsablePidCredential } from '../credentials/credentialGuard'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
 import { PresentationCredentialUnavailableError, type PresentationMatchFailureKind } from './presentationUnavailable'
 import { isPresentationNonceConsumed } from './presentationRequestReplay'
@@ -50,6 +55,13 @@ import { parseAuthorizationRequestViaOid4vc } from './oid4vc/parseAuthorizationR
 import { shouldUseOid4vcVpAdapter } from './oid4vc/shouldUseOid4vcVpAdapter'
 import { submitDirectPostViaOid4vc } from './oid4vc/submitDirectPostViaOid4vc'
 import type { Oid4vcAdapterContext, PresentationFlowOrigin, ProtocolPath } from './oid4vc/types'
+import {
+  isSupportedOid4vpResponseMode,
+  resolveOid4vpResponseEncryptionParams,
+  type Oid4vpResponseEncryptionParams,
+  type Oid4vpResponseMode,
+} from './oid4vpResponseEncryption'
+import { buildDirectPostFormBody } from './directPostFormBody'
 
 type JsonRecord = Record<string, unknown>
 
@@ -108,11 +120,13 @@ export type DcqlQuery = {
 
 export type { PresentationFlowOrigin, ProtocolPath } from './oid4vc/types'
 
+export type { Oid4vpResponseMode } from './oid4vpResponseEncryption'
+
 export type ResolvedPresentationRequest = {
   requestUri: string
   clientId: string
   responseUri: string
-  responseMode: 'direct_post'
+  responseMode: Oid4vpResponseMode
   nonce: string
   state?: string
   presentationDefinition?: PresentationDefinition
@@ -122,6 +136,7 @@ export type ResolvedPresentationRequest = {
   disclosures: PresentationDisclosure[]
   protocolPath: ProtocolPath
   oid4vcContext?: Oid4vcAdapterContext
+  responseEncryption?: Oid4vpResponseEncryptionParams
 }
 
 export type PresentationSubmission = {
@@ -139,6 +154,7 @@ export type ResolvePresentationRequestOptions = {
   trustedVerifiers: TrustedVerifier[]
   fetchImpl?: typeof fetch
   fetchIssuerMetadata?: FetchIssuerMetadata
+  walletCredentials?: VerifiableCredentialRecord[]
 }
 
 export type SubmitPresentationResponseOptions = {
@@ -162,12 +178,18 @@ type PresentationTokenModeOptions =
   }
 
 
-const SUPPORTED_RESPONSE_MODE = 'direct_post'
 const THAI_ID_TYPE = 'ThaiNationalID'
 const TRANSCRIPT_TYPE = 'ChulalongkornUniversityTranscript'
 const DRIVING_LICENCE_TYPE = 'DLTDrivingLicence'
 const BIRTH_DATE_PATHS = new Set(['$.birthDate', '$.birthdate', '$.birth_date', '$.dateOfBirth', '$.date_of_birth', '$.dob'])
 const BIRTH_DATE_KEYS = ['birthDate', 'birthdate', 'birth_date', 'dateOfBirth', 'date_of_birth', 'dob']
+
+function hasPidPresentationAnchor(
+  presentableCredentials: VerifiableCredentialRecord[],
+  walletCredentials?: VerifiableCredentialRecord[],
+): boolean {
+  return hasUsablePidCredential(walletCredentials ?? presentableCredentials)
+}
 
 export function isOid4VpAuthorizationRequest(raw: string): boolean {
   if (!raw.trim()) return false
@@ -215,9 +237,14 @@ export async function resolvePresentationRequest(
     throw replayError
   }
 
-  if (responseMode !== SUPPORTED_RESPONSE_MODE) {
+  if (!isSupportedOid4vpResponseMode(responseMode)) {
     throw new Error(`PresentationRequestUnsupported: response_mode ${responseMode} is not supported`)
   }
+
+  const responseEncryption =
+    responseMode === 'direct_post.jwt'
+      ? resolveOid4vpResponseEncryptionParams(authorizationRequest)
+      : undefined
 
   assertMutuallyExclusiveQueryLanguages(authorizationRequest)
 
@@ -357,6 +384,13 @@ export async function resolvePresentationRequest(
     })
   }
 
+  if (
+    !hasPidPresentationAnchor(credentials, options.walletCredentials) &&
+    matchedCredential.type !== THAI_ID_TYPE
+  ) {
+    throw new Error('PresentationPidRequired')
+  }
+
   if (effectiveDcqlQuery && isDualFormatDcqlRequest(effectiveDcqlQuery)) {
     await assertDualFormatPresentationReady(matchedCredential)
   }
@@ -376,10 +410,11 @@ export async function resolvePresentationRequest(
     requestUri: rawRequestUri,
     clientId,
     responseUri,
-    responseMode: SUPPORTED_RESPONSE_MODE,
+    responseMode: responseMode as Oid4vpResponseMode,
     nonce,
     protocolPath,
     ...(oid4vcContext ? { oid4vcContext } : {}),
+    ...(responseEncryption ? { responseEncryption } : {}),
     ...(readString(authorizationRequest.state) ? { state: readString(authorizationRequest.state) } : {}),
     ...(presentationDefinition ? { presentationDefinition } : {}),
     ...(effectiveDcqlQuery ? { dcqlQuery: effectiveDcqlQuery } : {}),
@@ -464,6 +499,8 @@ export async function submitPresentationResponse(
     submissionPresent: Boolean(options.presentationSubmission),
     statePresent: Boolean(request.state),
     protocolPath: request.protocolPath,
+    responseMode: request.responseMode,
+    encryptedResponse: request.responseMode === 'direct_post.jwt',
   })
   if (__DEV__) {
     console.info('[wallet:oid4vp] submit-response-debug', {
@@ -478,41 +515,59 @@ export async function submitPresentationResponse(
       throw new Error('PresentationSubmissionFailed: oid4vc adapter context is missing')
     }
 
-    const adapterResult = await submitDirectPostViaOid4vc({
-      oid4vcContext: request.oid4vcContext,
-      responseUri: request.responseUri,
-      vpToken: formattedVpToken,
-      ...(request.state ? { state: request.state } : {}),
-      fetchImpl: options.fetchImpl,
-    })
+    try {
+      const adapterResult = await submitDirectPostViaOid4vc({
+        oid4vcContext: request.oid4vcContext,
+        responseUri: request.responseUri,
+        responseMode: request.responseMode,
+        ...(request.responseEncryption ? { responseEncryption: request.responseEncryption } : {}),
+        vpToken: formattedVpToken,
+        ...(request.state ? { state: request.state } : {}),
+        ...(options.presentationSubmission ? { presentationSubmission: options.presentationSubmission } : {}),
+        request,
+        fetchImpl: options.fetchImpl,
+      })
 
-    logWalletStep('oid4vp', 'submit-response-received', {
-      responseUri: request.responseUri,
-      verifierName: request.verifier.name,
-      status: adapterResult.status,
-      ok: adapterResult.ok,
-      responseKeys: isRecord(adapterResult.parsedBody) ? Object.keys(adapterResult.parsedBody) : [],
-      protocolPath: request.protocolPath,
-    })
+      logWalletStep('oid4vp', 'submit-response-received', {
+        responseUri: request.responseUri,
+        verifierName: request.verifier.name,
+        status: adapterResult.status,
+        ok: adapterResult.ok,
+        responseKeys: isRecord(adapterResult.parsedBody) ? Object.keys(adapterResult.parsedBody) : [],
+        protocolPath: request.protocolPath,
+      })
 
-    const parsedBody = adapterResult.parsedBody
-    const redirectUri = readVerifierReturnUrl(parsedBody, request)
+      const parsedBody = adapterResult.parsedBody
+      const redirectUri = readVerifierReturnUrl(parsedBody, request)
 
-    return {
-      status: readString(isRecord(parsedBody) ? parsedBody.status : undefined) ?? 'verified',
-      ...(readString(isRecord(parsedBody) ? parsedBody.message : undefined)
-        ? { message: readString(isRecord(parsedBody) ? parsedBody.message : undefined) }
-        : {}),
-      ...(redirectUri ? { redirectUri } : {}),
+      return {
+        status: readString(isRecord(parsedBody) ? parsedBody.status : undefined) ?? 'verified',
+        ...(readString(isRecord(parsedBody) ? parsedBody.message : undefined)
+          ? { message: readString(isRecord(parsedBody) ? parsedBody.message : undefined) }
+          : {}),
+        ...(redirectUri ? { redirectUri } : {}),
+      }
+    } catch (error) {
+      const diagnostic = describePresentationAttempt({
+        request,
+        vpToken: options.vpToken,
+      })
+      logWalletError('oid4vp', 'submit-response-failed', error, {
+        responseUri: request.responseUri,
+        verifierName: request.verifier.name,
+        protocolPath: request.protocolPath,
+        diagnostic,
+      })
+      const raw = error instanceof Error ? error.message : String(error)
+      throw new Error(raw)
     }
   }
 
-  const body = new URLSearchParams()
-  body.set('vp_token', formattedVpToken)
-  if (options.presentationSubmission) {
-    body.set('presentation_submission', JSON.stringify(options.presentationSubmission))
-  }
-  if (request.state) body.set('state', request.state)
+  const body = buildDirectPostFormBody({
+    request,
+    formattedVpToken,
+    presentationSubmission: options.presentationSubmission,
+  })
 
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
     method: 'POST',
@@ -532,11 +587,16 @@ export async function submitPresentationResponse(
     responseKeys: isRecord(parsedBody) ? Object.keys(parsedBody) : [],
   })
   if (!response.ok) {
+    const diagnostic = describePresentationAttempt({
+      request,
+      vpToken: options.vpToken,
+    })
     logWalletError('oid4vp', 'submit-response-failed', new Error(`PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`), {
       responseUri: request.responseUri,
       verifierName: request.verifier.name,
       status: response.status,
       parsedBody,
+      diagnostic,
     })
     const isIssuerPost = isIssuerOid4VpResponseUri(request.responseUri) || isIssuerOid4VpClientId(request.clientId)
     throw new Error(
@@ -661,17 +721,12 @@ function formatVpTokenForResponse(request: ResolvedPresentationRequest, vpToken:
   if (!request.dcqlQuery) return vpToken
   if (isPreformattedDualFormatVpToken(request, vpToken)) return vpToken
 
-  const shape = readVerifierDcqlVpTokenShape()
-  if (shape === 'raw') return vpToken
-
-  return JSON.stringify(
-    Object.fromEntries(
-      request.dcqlQuery.credentials.map((credential) => [
-        credential.id,
-        shape === 'object_string' ? vpToken : [vpToken],
-      ]),
+  return formatDcqlVpTokenEnvelope({
+    entries: Object.fromEntries(
+      request.dcqlQuery.credentials.map((credential) => [credential.id, vpToken]),
     ),
-  )
+    shape: readVerifierDcqlVpTokenShape(),
+  })
 }
 
 function formatVerifierError(body: JsonRecord): string {
@@ -988,7 +1043,7 @@ function readCredentialDisclosure(record: VerifiableCredentialRecord): Presentat
   const credentialLabelByType: Record<string, string> = {
     [THAI_ID_TYPE]: 'Thai National ID',
     [TRANSCRIPT_TYPE]: 'Academic Transcript',
-    [DRIVING_LICENCE_TYPE]: 'Driving Licence',
+    [DRIVING_LICENCE_TYPE]: 'Driver License',
   }
 
   return {
@@ -1047,7 +1102,7 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
   const claimsQueries = query.credentials.flatMap((credential) => credential.claims ?? [])
   if (claimsQueries.length === 0) return undefined
 
-  const schema = getCardSchema(record.type)
+  const schema = resolveCardSchema(record)
   const claims = readCredentialClaimMap(record)
   const normalizedClaimKeys = new Map(Object.keys(claims).map((key) => [normalizeClaimKey(key), key]))
 
@@ -1060,21 +1115,23 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
     const field = findDisplayFieldForClaimKey(schema.displayFields, requestedKey)
 
     const lookupKeys = field
-      ? [field.key, ...(field.aliases ?? [])]
+      ? collectDisplayFieldMatchKeys(field)
       : [normalizedClaimKeys.get(normalizedRequestedKey) ?? requestedKey]
 
-    const value = field ? readDisplayValue(claims, field) : readClaimText(claims, lookupKeys)
-    if (value === undefined) continue
-
-    const matchedKey =
-      lookupKeys.find((key) => readClaimText(claims, [key]) !== undefined) ??
-      normalizedClaimKeys.get(normalizedRequestedKey) ??
-      requestedKey
+    const rawValue = field
+      ? readPresentationFieldValue(claims, field)
+      : readClaimText(claims, lookupKeys)
+    const value =
+      isFirstPartyDrivingLicence(record) && field?.key === 'licenceClass'
+        ? formatDrivingLicenceVehicleTypeDisplay(rawValue) ?? rawValue
+        : rawValue
+    const present = value !== undefined || hasAnyClaimValue(claims, lookupKeys)
+    if (!present) continue
 
     disclosures.push({
-      key: matchedKey,
-      label: resolvePresentationDisclosureLabel(record.type, matchedKey),
-      value,
+      key: requestedKey,
+      label: resolvePresentationDisclosureLabel(record.type, requestedKey),
+      value: value ?? '',
     })
   }
 

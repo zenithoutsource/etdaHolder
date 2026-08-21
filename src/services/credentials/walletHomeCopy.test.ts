@@ -13,13 +13,45 @@ describe('walletHomeCopy', () => {
     expect(WALLET_HOME_COPY.emptyState).toBe(
       'ไม่มีบัตรหรือเอกสารดิจิทัลใน Wallet',
     )
-    expect(WALLET_HOME_COPY.pidRequiredTitle).toBe('ต้องมี ThaID ก่อน')
+    expect(WALLET_HOME_COPY.pidRequiredTitle).toBe('ต้องมี PID ก่อน')
     expect(WALLET_HOME_COPY.pidRequiredMessage).toBe(
-      'กรุณาขอ ThaID ก่อนขอเอกสารอื่น',
+      'กรุณาขอ PID ก่อนขอเอกสารอื่น',
+    )
+    expect(WALLET_HOME_COPY.pidRequiredToPresentMessage).toBe(
+      'กรุณาขอ PID ก่อนแสดงเอกสารอื่น',
+    )
+    expect(WALLET_HOME_COPY.pidExpiredTitle).toBe('ต้องมี PID ก่อน')
+    expect(WALLET_HOME_COPY.pidExpiredMessage).toBe(
+      'PID หมดอายุแล้ว กรุณาขอ PID ใหม่ก่อนขอเอกสารอื่น',
+    )
+    expect(WALLET_HOME_COPY.pidExpiredToPresentMessage).toBe(
+      'PID หมดอายุแล้ว กรุณาขอ PID ใหม่ก่อนแสดงเอกสารอื่น',
+    )
+    expect(WALLET_HOME_COPY.pidSuspendedTitle).toBe('PID ถูกระงับ')
+    expect(WALLET_HOME_COPY.pidSuspendedMessage).toBe(
+      'PID ถูกระงับแล้ว กรุณาขอ PID \n ใหม่ก่อนขอเอกสารอื่น',
+    )
+    expect(WALLET_HOME_COPY.pidSuspendedToPresentMessage).toBe(
+      'เอกสารอื่นไม่สามารถแสดงได้ \n จนกว่าจะมี PID ที่ใช้งานได้',
     )
     expect(WALLET_HOME_COPY.cancel).toBe('ยกเลิก')
+    expect(WALLET_HOME_COPY.expandDocument).toBe('ขยายเอกสาร')
+    expect(WALLET_HOME_COPY.collapseDocument).toBe('ย่อเอกสาร')
     expect(WALLET_HOME_COPY.requestCredential).toBe('ขอเอกสาร')
-    expect(WALLET_HOME_COPY.requestThaId).toBe('ขอ ThaID')
+    expect(WALLET_HOME_COPY.requestThaId).toBe('ขอ PID')
+    expect(WALLET_HOME_COPY.hardwarePidReissueRequiredTitle).toBe(
+      'ต้องขอ PID ใหม่ก่อน',
+    )
+    expect(WALLET_HOME_COPY.hardwarePidReissueRequiredMessage).toBe(
+      'กรุณาขอ PID ใหม่บนกุญแจฮาร์ดแวร์ก่อนขอเอกสารอื่น',
+    )
+    expect(WALLET_HOME_COPY.renewThaIdRequiredTitle).toBe('ต้องต่ออายุ PID ก่อน')
+    expect(WALLET_HOME_COPY.renewThaIdRequiredMessage).toBe(
+      'กรุณาขอและรับ PID ใหม่ให้เสร็จก่อนขอเอกสารอื่น',
+    )
+    expect(WALLET_HOME_COPY.portalPidVpRequiredTitle).toBe(
+      'ยืนยันตัวตนด้วย PID',
+    )
   })
 
   test('provides P3 wallet key expiry copy', () => {
@@ -38,6 +70,18 @@ describe('walletHomeCopy', () => {
   })
 
   test('provides P3 renewal dialog copy', () => {
+    expect(WALLET_HOME_COPY.renewalKeyUnavailableTitle).toBe(
+      'ไม่สามารถต่ออายุเอกสารนี้ได้',
+    )
+    expect(WALLET_HOME_COPY.renewalIssuerOfferFailedTitle).toBe(
+      'ไม่สามารถต่ออายุเอกสารได้',
+    )
+    expect(WALLET_HOME_COPY.renewalIssuerOfferFailedMessage).toContain(
+      'ผู้ออกเอกสารยังไม่สามารถสร้างข้อเสนอต่ออายุได้',
+    )
+    expect(WALLET_HOME_COPY.renewalRequestFailedTitle).toBe(
+      'ไม่สามารถขอเอกสารได้',
+    )
     expect(WALLET_HOME_COPY.renewalRevokedTitle).toBe('ถูกเพิกถอนแล้ว')
     expect(WALLET_HOME_COPY.renewalRevokedMessage).toBe(
       'เอกสารเดิมถูกเพิกถอนแล้ว เอกสารใหม่พร้อมใช้งาน',
@@ -63,6 +107,19 @@ describe('walletHomeCopy', () => {
     expect(WALLET_HOME_COPY.portalEmptyOfferRetry).toBe('ลองใหม่อีกครั้ง')
     expect(WALLET_HOME_COPY.portalEmptyOfferMessage).toContain('ผู้ออกเอกสาร')
     expect(WALLET_HOME_COPY.portalNoCallbackTitle).toBe('ไม่สามารถรับเอกสารได้')
+  })
+
+  test('provides My QR expired and create-error copy', () => {
+    expect(WALLET_HOME_COPY.myQrExpiredTitle).toBe('QR หมดอายุ')
+    expect(WALLET_HOME_COPY.myQrExpiredAction).toBe('สร้างใหม่')
+    expect(WALLET_HOME_COPY.myQrCreateErrorTitle).toBe('ไม่สามารถสร้าง QR ได้')
+    expect(WALLET_HOME_COPY.myQrCreateErrorAction).toBe('ลองอีกครั้ง')
+    expect(WALLET_HOME_COPY.myQrPidGateReason).toBe(
+      'ต้องมี PID ที่ใช้งานได้ก่อน ผู้ตรวจสอบจึงจะสแกน QR นี้ได้',
+    )
+    expect(WALLET_HOME_COPY.myQrPidGateNote).toBe(
+      'ต้องรับบัตรประชาชน (PID) ใน Wallet ก่อน',
+    )
   })
 
   test('provides P7 document expiry copy', () => {

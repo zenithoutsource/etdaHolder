@@ -12,11 +12,11 @@ The Holder's login identity in the Wallet Backend. Used for authentication, sess
 
 ## Wallet PIN
 
-A local 6-digit secret set by the Holder after first successful Wallet Account login. Used only to approve protected in-app actions. It is not a cold-start app unlock, not a resume-from-background lock, and not an Issuer transaction code.
+A unified 6-digit secret used for Wallet Account server authentication and local app lock. Set after first login; required on cold start and after a configurable background-idle grace period (`EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`). Distinct from Issuer `tx_code` and from the biometric sign-time gate on cryptographic operations.
 
 ## Issuer
 
-A government or institutional authority that issues Verifiable Credentials. Initial issuers: ThaID for national ID, DLT for driving licence, and Chulalongkorn University for transcript credentials. Issuers are identified by DIDs, initially `did:web`.
+A government or institutional authority that issues Verifiable Credentials. Initial issuers: PID for national ID, DLT for driving licence, and Chulalongkorn University for transcript credentials. Issuers are identified by DIDs, initially `did:web`.
 
 ## Verifier
 
@@ -38,17 +38,31 @@ The foundational personal identification credential in the Wallet. In this app i
 
 The app's local normalized credential record. It contains `id`, `type`, `rawVc`, decoded display `claims`, `issuedAt`, and optional `expiresAt`. It is the only credential shape the UI should read from local storage.
 
-## Wallet Signing Key
+## Wallet Attestation Key (`k_attest`)
 
-A single EC P-256 keypair scoped to the device, not per credential. Generated inside iOS Secure Enclave or Android Keystore via `@animo-id/expo-secure-environment`. Private key is non-extractable and never exists in JavaScript memory. Key alias: `etda_wallet_signing_key`.
+One hardware P-256 key per wallet (`wallet.p256.attest`) used for Wallet Provider attestation (WUA/WIA) at v2 crypto activation. The Wallet Provider receives `pub_k_attest` plus the Android attestation certificate chain; the key is not used for VC Proof of Possession or presentation signing.
+
+## Credential Signing Key (`k_cred`)
+
+One key per issued credential (ADR 0010 topology, ADR 0011 algorithm). Default on Android is hardware P-256 (`alg: ES256`, `did:key` multicodec `0x1200`). The flag-off path is a Keychain-protected Ed25519 seed (`alg: EdDSA`, multicodec `[0xed, 0x01]`). OID4VCI PoP JWTs, OID4VP presentation tokens, and SD-JWT KB-JWTs for that credential are signed with its key. Created at issuance without Wallet Provider WUA. Destroyed on P3 renewal or P6 lifecycle actions that remove the credential's cryptographic binding. Leftover Ed25519 cards while hardware signing is on must use Fresh reissue.
+
+## P3 renewal
+
+Continuity issuance of a replacement credential after that credential’s `k_cred` expires, while the old VC is still valid as a document. The Holder proves the old VC with the old `k_cred`, then a new `k_cred` binds the new VC. Not `k_attest` rotation and not a wallet-wide `did:key` rotate.
+_Avoid_: Fresh reissue; wallet-wide key rotation; destroying `k_attest` as part of this flow.
+
+## Fresh reissue
+
+Issuance without old-key proof. Used for leftover Ed25519 cards while hardware signing is on, and for documents that have already expired.
+_Avoid_: P3 renewal.
 
 ## Holder DID
 
-The Holder's decentralized identifier, derived deterministically from the Wallet Signing Key using the `did:key` method. Format: `did:key:z<base58btc(multicodec_prefix + compressed_P256_key)>`. Self-contained; no server is required for resolution.
+The Holder's decentralized identifier for a credential, derived from that credential's public key using `did:key` (P-256 multicodec `0x1200` on the hardware path; Ed25519 `[0xed, 0x01]` when the hardware flag is off). Self-contained; no server is required for resolution.
 
 ## Proof of Possession (PoP)
 
-A JWT signed with the Wallet Signing Key and sent to the Issuer during credential request. Uses `jwt` proof type per OID4VCI 1.0. Header contains `kid: "<holderDid>#<multibaseValue>"`, not `jwk`. Payload `iss` is the Holder DID. Biometric authentication fires on every sign operation.
+A JWT signed with the credential's `k_cred` and sent to the Issuer during credential request. Uses `jwt` proof type per OID4VCI 1.0 with `alg: ES256` (hardware) or `alg: EdDSA` (flag-off). Payload `iss`/`sub` is the credential's Holder DID. Biometric authentication fires on every sign operation (the single auth prompt for that action).
 
 ## Verifiable Presentation (VP)
 
@@ -56,7 +70,7 @@ A Holder-approved presentation response sent to a Verifier. Depending on the Ver
 
 ## Key Binding JWT (KB-JWT)
 
-A JWT signed by the Wallet Signing Key and appended to an SD-JWT VC presentation to prove cryptographic Holder Binding. It binds the presentation to the Verifier request using the request nonce, audience, and hash of the presented SD-JWT.
+A JWT signed by the credential's `k_cred` and appended to an SD-JWT VC presentation to prove cryptographic Holder Binding. It binds the presentation to the Verifier request using the request nonce, audience, and hash of the presented SD-JWT.
 
 ## Trusted Verifier
 
@@ -64,7 +78,7 @@ A Verifier allowed by local Wallet configuration. The current trust model requir
 
 ## Self-Sovereign Architecture
 
-The app runs the OID4VCI 1.0 protocol on-device. Keys never leave device hardware. The company backend authenticates the Holder and stores wallet-side backend state, but the app claims credentials directly from Issuers.
+The app runs OID4VCI and OID4VP protocol steps on-device. Production holder signing uses hardware-backed P-256 keys (ADR 0011); the flag-off Ed25519 seed is Keychain-protected and retrieved only at sign time under biometric/device authentication (ADR 0008). The company backend authenticates the Holder and stores wallet-side backend state, but the app claims credentials directly from Issuers and presents directly to Verifiers.
 
 ## Wallet Backend
 
@@ -74,9 +88,14 @@ A company-controlled service distinct from Issuers. Authenticates Holders, manag
 
 The development backend under `server/`. It mirrors the allowed Wallet Backend boundary for local XAMPP MySQL testing: register, login, logout, list wallets, and import finalized credentials.
 
+## Credential Offer Request
+
+The Wallet asking an Issuer to prepare a Credential Offer for the Holder (P2 sequence: Wallet → Issuer). Distinct from consuming a Credential Offer URL that already exists, and from the OID4VCI Credential Request that carries Proof of Possession after an offer exists.
+_Avoid_: Calling the PoP Credential Request a “credential offer request”; calling QR/deeplink intake a Credential Offer Request.
+
 ## Credential Offer URL
 
-A URL such as `openid-credential-offer://...` returned by the company backend, read from a QR code, or received via NFC. Consumed by `@sphereon/oid4vci-client` to run issuance.
+A URL such as `openid-credential-offer://...` returned by the company backend, read from a QR code, or received via NFC. Consumed by `@openid4vc/openid4vci` via `src/services/vci/oid4vc/` to run issuance.
 
 ## Credential Configuration ID
 
@@ -89,6 +108,22 @@ An OID4VCI 1.0 issuer-issued identifier returned after token exchange for a spec
 ## Holder Confirmation
 
 The Holder's explicit consent to acquire a credential from an Issuer after reviewing the resolved Credential Offer. It occurs before credential issuance, not merely before local wallet storage.
+_Avoid_: PID Presentation Consent; Wallet PIN unlock; the success screen after storage.
+
+## PID Presentation Consent
+
+The Holder's approval to present the PID VC in an OID4VP Authorization Request (Issuer or Verifier). Distinct from Holder Confirmation (issuance), from Wallet PIN, and from NFC Presentment Consent.
+_Avoid_: Treating DOPA / issuance confirm as this step; a second PIN prompt in front of the sign-time gate; NFC Presentment Consent.
+
+## Issuer identity verification
+
+The Issuer acting as Verifier, requesting a PID VP during P2 before issuing another VC.
+_Avoid_: Holder Confirmation; DOPA; Verifier QR presentation of PID.
+
+## NFC Presentment Consent
+
+The Holder's Accept of the reader-profile disclosure ceiling before the Wallet arms HCE for ISO 18013-5 presentment. Distinct from PID Presentation Consent (OID4VP) and from the sign-time biometric on DeviceResponse.
+_Avoid_: Calling the NFC DeviceResponse a Verifiable Presentation (VP); treating this as PID Presentation Consent; a second consent screen after DeviceRequest; Holder claim toggles or OID4VP selective-disclosure UI on NFC.
 
 ## Transaction Code (`tx_code`)
 
@@ -96,9 +131,37 @@ A Holder-entered code required by some Issuers during the OID4VCI 1.0 Pre-Author
 
 ## Offer Delivery Channels
 
+How a Credential Offer reaches the Wallet during issuance:
+
 1. QR Scan: camera reads a QR code containing the offer URL.
-2. NFC: NDEF tag read for issuance, or ISO 18013-5 proximity exchange for presentation.
-3. In-app SDK call: backend returns offer URL via the generated SDK.
+2. Deep link: `openid-credential-offer://` or issuer portal callback (`walletapp://callback`).
+3. NFC: NDEF tag read for issuance (Android, deferred full validation), or ISO 18013-5 proximity exchange for presentation.
+4. In-app SDK call: backend returns offer URL via the generated SDK.
+
+_Avoid_: Calling this the History protocol family (`oid4vci` / `oid4vp` / `wallet`); those name the protocol or initiator, not how the offer arrived.
+
+## History Channel Caption (ช่องทาง)
+
+Holder-facing hybrid label on a History Log detail: the delivery or presentation intake path (QR scan, deep link, NFC, etc.) together with the counterparty role (Issuer or Verifier). Answers “how did this enter the Wallet, and with whom?”
+
+Locked hybrid wording uses English role words and glossary “Deep link” spelling: `ผ่าน QR Verifier`, `ผ่าน Deep link Verifier`, `ผ่าน QR Issuer`, `ผ่าน Deep link Issuer`. Verify-failed adds failure sense: `ตรวจสอบเอกสารผ่าน QR Issuer ไม่ผ่าน`, `ตรวจสอบเอกสารผ่าน Deep link Issuer ไม่ผ่าน`.
+
+**History delivery path** (persisted on events when known): `qr` or `deep-link`. Maps from runtime flow origin at write time (e.g. QR scan → `qr`, same-device deep link → `deep-link`). Distinct from History protocol family (`channel`) and from presentation-only flow origins such as My QR or issuer renewal.
+
+**Issuance flow origin** (runtime, pre-history): `scan` or `same-device`, held in deeplink store as `pendingOfferFlowOrigin` / `activeOfferFlowOrigin` — mirrors presentation flow origin. Mapped to History `deliveryPath` (`qr` / `deep-link`) only when the history event is written.
+
+Verifier-initiated OID4VP **ช่องทาง** uses the same hybrid caption for success, failure, and decline when `deliveryPath` is known (`ผ่าน QR Verifier` / `ผ่าน Deep link Verifier`); outcome stays in status and action labels, not in ช่องทาง.
+
+**Legacy history rows** (no `deliveryPath` stored): Verifier-initiated OID4VP success keeps `ผ่าน QR Verifier`; failed/declined keep `ดำเนินการใน Wallet`. Issuance success without path keeps `รับเอกสารจาก Issuer`. Do not guess intake for old rows.
+
+**Unmapped delivery paths** (NFC, In-app SDK, or any intake without explicit origin tracking): omit `deliveryPath` on the history event and use legacy ช่องทาง captions until that path is wired.
+_Avoid_: Protocol-only captions that ignore intake; “Deeplink” as one word in this caption; storing raw `PresentationFlowOrigin` on history rows; treating ช่องทาง as a synonym for Offer Delivery Channel alone or for History protocol family alone.
+
+## History Display Name
+
+Holder-facing names shown on History Log for the counterparty (Verifier or Issuer) and the document type. Prefer the name the Issuer or Verifier actually sent. When the name is missing or is only a Wallet/config placeholder (for example a trusted-verifier default such as “Verifier API”, or a built-in English schema title such as “Thai National ID”), the Wallet may show a credential-type mock aligned with the demo UI reference until real metadata is available. An Issuer offer display name that was truly sent is kept even when it is English.
+
+_Avoid_: Treating History Channel Caption wording as the party or document name; inventing names when a real protocol/offer display name is present.
 
 ## NFC Presentation
 
@@ -106,7 +169,7 @@ Proximity credential presentation via ISO 18013-5. User taps phone to the Verifi
 
 ## Online Presentation
 
-Remote credential presentation via OID4VP 1.0. The current first slice supports cross-device QR Authorization Requests, Presentation Exchange birth-date disclosure, and the development Verifier API's `request_uri` JWT + DCQL IDCard request shape. Responses use `direct_post`.
+Remote credential presentation via OID4VP 1.0. Implemented paths: Verifier QR and same-device deeplink (`walletapp://callback`), JAR-signed Authorization Requests, DCQL `credential_sets`, `did:web` verifier trust, holder selective disclosure, and My QR broker engagement. Responses use `direct_post` or encrypted `direct_post.jwt` (JWE in form field `response`). SD-JWT credentials include a KB-JWT; mdoc credentials use proximity or dual-format VP assembly where configured.
 
 ## Generated SDK
 
@@ -114,4 +177,14 @@ TypeScript API client generated from the company's Swagger/OpenAPI spec via Orva
 
 ## Config-Driven UI
 
-Credential card rendering is controlled by `CardSchemaConfig` entries, not hardcoded screen components. Initial schemas cover ThaID, DLT Driving Licence, and Chulalongkorn University Transcript.
+Credential card rendering is controlled by `CardSchemaConfig` entries, not hardcoded screen components. Initial schemas cover PID, DLT Driving Licence, and Chulalongkorn University Transcript.
+
+## First-party credential type
+
+A Wallet-branded document type with a registered card schema: `ThaiNationalID`, `DLTDrivingLicence`, `ChulalongkornUniversityTranscript`, or `MedicalCertificate`. Identified by an exact allowlist of those types plus known portal configuration ids and the ISO mDL doctype `org.iso.18013.5.1.mDL`.
+_Avoid_: Folding any string that merely contains licence, license, mdl, or thai into these types.
+
+## Unregistered credential type
+
+Any claimed Verifiable Credential whose `vct`, doctype, or credential configuration id is not on the first-party allowlist. Stored and shown as its own extra Digital Document, not as a first-party card.
+_Avoid_: Third-party credential as a type name; mapping these onto DLTDrivingLicence, ThaiNationalID, or transcript chrome.

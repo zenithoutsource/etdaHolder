@@ -1,7 +1,9 @@
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
 import { isWalletKeyExpiredAt } from '@/src/config/walletKeyPolicy'
 
 import {
   clearPreviousWalletKey,
+  ensureWalletKeyRegisteredAtBackfill,
   forceRotateWalletKey,
   getHolderDid,
   getWalletKeyRegisteredAt,
@@ -9,6 +11,8 @@ import {
   refreshWalletKeyRegisteredAt,
 } from './crypto'
 import { isWalletCryptoV2Enabled } from './walletCryptoActivation'
+import { getCredentialKeyRecord, listCredentialKeyRecords } from './credentialKeyRegistry'
+import { listEncryptedCredentialKeyRecords } from './encryptedCredentialKeyRegistry'
 import { getMetaStorage } from '../storage/storage'
 import { readStoredCredentials } from '../credentials/storedCredentials'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
@@ -23,8 +27,28 @@ export type WalletKeyRotationRecord = {
   expiryPromptDismissedAt?: string
 }
 
+function hasHardwareCredentialKeys(): boolean {
+  try {
+    return listEncryptedCredentialKeyRecords().length > 0
+  } catch (error) {
+    if (error instanceof Error && error.message === 'StorageNotInitialized') return false
+    throw error
+  }
+}
+
 export function isWalletKeyExpired(now = new Date()): boolean {
-  const registeredAt = getWalletKeyRegisteredAt()
+  let registeredAt = getWalletKeyRegisteredAt()
+  // v2 wallets and hardware k_cred bind times anchor TTL; backfill on read so
+  // wallets created before registeredAt seeding still reach the expiry modal.
+  if (
+    !registeredAt &&
+    (isWalletCryptoV2Enabled() ||
+      listCredentialKeyRecords().length > 0 ||
+      hasHardwareCredentialKeys())
+  ) {
+    ensureWalletKeyRegisteredAtBackfill(now)
+    registeredAt = getWalletKeyRegisteredAt()
+  }
   if (!registeredAt) {
     return hasWalletKey()
   }
@@ -69,10 +93,11 @@ export async function rotateWalletKey(now = new Date()): Promise<{
   holderDid: string
   affectedCredentialIds: string[]
 }> {
-  if (isWalletCryptoV2Enabled()) {
+  if (isWalletCryptoV2Enabled() || isHardwareP256SigningEnabled()) {
     refreshWalletKeyRegisteredAt(now)
     logWalletStep('crypto', 'wallet-key-rotation-skipped-v2', {
       registeredAt: getWalletKeyRegisteredAt(),
+      hardwareEnabled: isHardwareP256SigningEnabled(),
     })
     return {
       holderDid: getHolderDid(),
@@ -110,6 +135,7 @@ export async function rotateWalletKey(now = new Date()): Promise<{
 
   const affectedCredentialIds: string[] = []
   for (const credential of readStoredCredentials()) {
+    if (getCredentialKeyRecord(credential.id)) continue
     const boundHolderDid = readCredentialHolderDid(credential)
     if (!boundHolderDid || boundHolderDid === holderDid) continue
 

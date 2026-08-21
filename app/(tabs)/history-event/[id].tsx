@@ -1,3 +1,11 @@
+/**
+ * Single history event detail and hide-from-history.
+ * Journey: P5 / P6 event audit.
+ * Layout: HistoryEventDetailPanel.
+ * Next: History with a kind-derived filter.
+ * Map: docs/CODEMAPS/frontend.md#history
+ */
+
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +15,7 @@ import { HistoryEventDetailPanel } from '@/src/components/HistoryEventDetailPane
 import { WalletHeader } from '@/src/components/WalletHeader';
 import { hideWalletHistoryEvent, readWalletHistoryEvent } from '@/src/services/history/walletEventLog';
 import { projectWalletHistoryRow } from '@/src/services/history/walletHistory';
+import { readWalletHistoryFilterForEventKind } from '@/src/services/history/walletHistoryFilters';
 
 export default function HistoryEventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,7 +54,10 @@ export default function HistoryEventDetailScreen() {
             row={row}
             onHide={() => {
               hideWalletHistoryEvent(event.id);
-              router.back();
+              router.replace({
+                pathname: '/(tabs)/history',
+                params: { filter: readWalletHistoryFilterForEventKind(event.kind) },
+              });
             }}
           />
         </ScrollView>

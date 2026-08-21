@@ -1,5 +1,5 @@
 import { WALLET_HISTORY_RETENTION_DAYS } from '../../config/walletHistoryPolicy'
-import { getCardSchema } from '../../config/cardSchemas'
+import { resolveCardSchema } from '../../config/cardSchemas'
 import { readCredentialLifecycleStatus } from '../credentials/credentialLifecycle'
 import { readStoredCredentials } from '../credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
@@ -41,6 +41,8 @@ export type WalletHistoryFailureReason =
   | 'holder-binding-mismatch'
   | 'unknown'
 
+export type WalletHistoryDeliveryPath = 'qr' | 'deep-link'
+
 export type WalletHistoryEvent = {
   id: string
   kind: WalletHistoryEventKind
@@ -51,6 +53,9 @@ export type WalletHistoryEvent = {
   partyName: string
   disclosedClaims: string[]
   channel: 'oid4vp' | 'oid4vci' | 'wallet' | 'nfc' | 'backend' | 'renewal'
+  deliveryPath?: WalletHistoryDeliveryPath
+  /** VC type key (e.g. ThaiNationalID) for presentation access-label projection */
+  credentialType?: string
   initiatedBy?: 'holder' | 'system'
   reasonCode?: WalletHistoryFailureReason
   relatedEventId?: string
@@ -64,6 +69,8 @@ export type AppendWalletHistoryEventInput = {
   partyName: string
   disclosedClaims?: string[]
   channel: WalletHistoryEvent['channel']
+  deliveryPath?: WalletHistoryDeliveryPath
+  credentialType?: string
   initiatedBy?: 'holder' | 'system'
   reasonCode?: WalletHistoryFailureReason
   relatedEventId?: string
@@ -122,6 +129,8 @@ export function appendWalletHistoryEvent(
       partyName: input.partyName,
       disclosedClaims: input.disclosedClaims ?? [],
       channel: input.channel,
+      ...(input.deliveryPath ? { deliveryPath: input.deliveryPath } : {}),
+      ...(input.credentialType ? { credentialType: input.credentialType } : {}),
       ...(input.initiatedBy ? { initiatedBy: input.initiatedBy } : {}),
       ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
       ...(input.relatedEventId ? { relatedEventId: input.relatedEventId } : {}),
@@ -243,7 +252,7 @@ export function ensureWalletHistoryBackfill(): void {
 export function readSuccessfullyPresentedCredentialIds(): string[] {
   const latestByCredential = new Map<string, WalletHistoryEvent>()
   for (const event of readWalletHistoryEvents()) {
-    if (event.kind !== 'presentation-success') continue
+    if (event.kind !== 'presentation-success' && event.kind !== 'nfc-presentation-success') continue
     if (!latestByCredential.has(event.credentialId)) {
       latestByCredential.set(event.credentialId, event)
     }
@@ -390,11 +399,11 @@ function backfillCredentialReceivedEvents(credentials: VerifiableCredentialRecor
   for (const record of credentials) {
     if (hasCredentialKindInLog(record.id, 'credential-received')) continue
 
-    const schema = getCardSchema(record.type)
+    const schema = resolveCardSchema(record)
     appendWalletHistoryEvent({
       kind: 'credential-received',
       credentialId: record.id,
-      documentType: schema.title,
+      documentType: record.credentialDisplayName?.trim() || schema.title,
       partyName: readCredentialIssuerName(record),
       channel: 'oid4vci',
       occurredAt: record.issuedAt,
@@ -415,11 +424,11 @@ function backfillLifecycleEvents(credentials: VerifiableCredentialRecord[]): voi
           : 'credential-used'
     if (hasCredentialKindInLog(record.id, kind)) continue
 
-    const schema = getCardSchema(record.type)
+    const schema = resolveCardSchema(record)
     appendWalletHistoryEvent({
       kind,
       credentialId: record.id,
-      documentType: schema.title,
+      documentType: record.credentialDisplayName?.trim() || schema.title,
       partyName: readCredentialIssuerName(record),
       channel: 'wallet',
       initiatedBy: 'holder',

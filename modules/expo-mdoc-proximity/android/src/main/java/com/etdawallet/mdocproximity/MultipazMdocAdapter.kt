@@ -1,75 +1,58 @@
 package com.etdawallet.mdocproximity
 
 import android.util.Log
-import java.util.concurrent.atomic.AtomicReference
+import org.multipaz.mdoc.transport.NfcTransportMdoc
 
 /**
- * Bridges armed consent + stored mDOC bytes to Multipaz [NfcTransportMdoc] for ISO AID
- * A0000002480400 NFC data retrieval.
+ * Bridges armed ISO AID A0000002480400 APDUs to Multipaz [NfcTransportMdoc].
  *
- * Multipaz responds asynchronously via [sendResponse]; this adapter buffers the last
- * response for synchronous HostApduService return (same pattern as [CombinedNfcService]).
+ * Multipaz 0.100 launches a coroutine and later invokes [sendResponse]. HostApduService
+ * must return null and complete via [android.nfc.cardemulation.HostApduService.sendResponseApdu],
+ * matching [org.multipaz.compose.mdoc.MdocNfcDataTransferService].
  */
 object MultipazMdocAdapter {
   private const val TAG = "MultipazMdocAdapter"
 
-  private val pendingResponse = AtomicReference<ByteArray?>(null)
+  // Mirrors NfcTransportMdoc's private applicationSelected. Multipaz 0.100 crashes
+  // the whole app on a duplicate SELECT: check(!applicationSelected) throws, the
+  // catch calls failTransport() without holding its mutex, and failTransport's own
+  // check() escapes a fire-and-forget coroutine ("failTransport called without
+  // holding lock"). The HCE layer must therefore know whether the current transport
+  // instance already consumed a SELECT and never forward a second one.
+  @Volatile
+  private var applicationSelected = false
+
+  fun isApplicationSelected(): Boolean = applicationSelected
+
+  fun markApplicationSelected() {
+    applicationSelected = true
+  }
 
   fun isAvailable(): Boolean = MdocEngineProbe.checkCapabilities().hasNfcDataTransfer
 
   fun deviceEngagementUri(): String? = MultipazPresentmentSession.deviceEngagementUri()
 
   fun resetSession() {
-    pendingResponse.set(null)
-    invokeNfcTransportOnDeactivated()
+    onNfcDeactivated()
   }
 
-  fun processApdu(commandApdu: ByteArray): ByteArray? {
-    if (!isAvailable()) return null
-
-    pendingResponse.set(null)
+  fun processApduAsync(commandApdu: ByteArray, sendResponse: (ByteArray) -> Unit) {
     try {
-      invokeNfcTransportProcessApdu(commandApdu) { responseApdu ->
-        pendingResponse.set(responseApdu)
+      NfcTransportMdoc.processCommandApdu(commandApdu) { responseApdu ->
+        sendResponse(responseApdu)
       }
     } catch (error: Exception) {
       Log.e(TAG, "[multipaz] processCommandApdu failed", error)
-      return null
+      sendResponse(byteArrayOf(0x6F.toByte(), 0x00))
     }
-
-    return pendingResponse.get()
   }
 
-  private fun invokeNfcTransportProcessApdu(
-    commandApdu: ByteArray,
-    sendResponse: (ByteArray) -> Unit,
-  ) {
-    val transportClass = Class.forName("org.multipaz.mdoc.transport.NfcTransportMdoc")
-    val callbackClass = Function1::class.java
-    val method = transportClass.getDeclaredMethod(
-      "processCommandApdu",
-      ByteArray::class.java,
-      callbackClass,
-    )
-    method.invoke(null, commandApdu, sendResponse)
-  }
-
-  private fun invokeNfcTransportOnDeactivated() {
-    if (!classExists("org.multipaz.mdoc.transport.NfcTransportMdoc")) return
+  fun onNfcDeactivated() {
+    applicationSelected = false
     try {
-      val transportClass = Class.forName("org.multipaz.mdoc.transport.NfcTransportMdoc")
-      val method = transportClass.getDeclaredMethod("onDeactivated")
-      method.invoke(null)
+      NfcTransportMdoc.onDeactivated()
     } catch (error: Exception) {
       Log.w(TAG, "[multipaz] onDeactivated failed", error)
     }
   }
-
-  private fun classExists(name: String): Boolean =
-    try {
-      Class.forName(name)
-      true
-    } catch (_: ClassNotFoundException) {
-      false
-    }
 }

@@ -295,6 +295,7 @@ async function initializeStorage(requireBiometric: boolean): Promise<void> {
       await migrateAndroidKeychainToNoAuthIfNeeded(encryptionKey)
     }
     syncWalletPinMetaFromCredentialStorage()
+    syncWalletPinRecordFromMeta()
     logWalletStep('storage', 'init-complete', { storageId: CREDENTIAL_STORAGE_ID })
   } catch (error) {
     if (credentialStorage === null) {
@@ -376,6 +377,22 @@ export function syncWalletPinMetaFromCredentialStorage(): void {
   }
 }
 
+export function syncWalletPinRecordFromMeta(): void {
+  if (!credentialStorage) return
+
+  const raw = metaStorage.getString(WALLET_PIN_META_KEY)
+  if (!raw) return
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<WalletPinMetaRecord>
+    if (typeof parsed.salt !== 'string' || typeof parsed.hash !== 'string') return
+    credentialStorage.set(WALLET_PIN_CREDENTIAL_KEY, JSON.stringify({ salt: parsed.salt, hash: parsed.hash }))
+    logWalletStep('storage', 'wallet-pin-record-synced-from-meta')
+  } catch {
+    return
+  }
+}
+
 export function provisionStoragePinFallback(pin: string): void {
   if (!isSixDigitPin(pin)) {
     throw new Error(`InvalidWalletPin: expected ${PIN_LENGTH} digits`)
@@ -452,6 +469,8 @@ export async function initStorageWithPin(pin: string): Promise<void> {
     }
 
     openCredentialStorage(encryptionKey)
+    syncWalletPinMetaFromCredentialStorage()
+    syncWalletPinRecordFromMeta()
     logWalletStep('storage', 'pin-fallback-init-complete', { storageId: CREDENTIAL_STORAGE_ID })
   } catch (error) {
     credentialStorage = null
@@ -473,6 +492,10 @@ export function getMetaStorage(): MMKV {
 export function getCredentialStorage(): MMKV {
   if (!credentialStorage) throw new Error('StorageNotInitialized')
   return credentialStorage
+}
+
+export function isCredentialStorageReady(): boolean {
+  return credentialStorage !== null
 }
 
 /** Wipes keychain entry and forgets the encrypted credential storage instance. */

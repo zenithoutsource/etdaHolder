@@ -56,7 +56,23 @@ Redirect:
 Wallet: parseIssuanceCallbackUrl → internal openid-credential-offer://?credential_offer_uri=...
   │
   ▼
-/(tabs)/credential-offer → resolveOffer → token → proof → save VC
+/(tabs)/credential-offer → resolveOffer
+  │
+  ▼
+dopaConfirm (กรมการปกครอง) → Holder ยืนยัน
+  │
+  ▼
+acquire (token + PoP / biometric once) → Credential Response
+  │
+  ▼
+preview document (ThaiIdReceivePanel / DL / Transcript panel)
+  │
+  │ DL / Transcript only: issuerConfirm (issuer trust card) → ยืนยัน
+  ▼
+save VC (encrypted MMKV) + เอกสารใหม่ badge
+  │
+  ▼
+ScanSuccessPanel (รับเอกสารสำเร็จ)
   │
   ▼
 Home shows new document card; history records issuance

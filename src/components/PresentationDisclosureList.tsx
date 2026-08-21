@@ -1,3 +1,5 @@
+/** Disclosure claim list (consent, review, selectable, and result variants). */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Pressable, Text, View } from 'react-native'
 
@@ -109,11 +111,13 @@ export function PresentationDisclosureList({
 
         const content = (
           <>
-            <MaterialCommunityIcons
-              name={readIconName(item, itemVariant)}
-              size={itemVariant === 'review' ? 22 : 24}
-              color={readIconColor(item, itemVariant)}
-            />
+            {itemVariant === 'consent' ? null : (
+              <MaterialCommunityIcons
+                name={readIconName(item, itemVariant)}
+                size={itemVariant === 'review' ? 22 : 24}
+                color={readIconColor(item, itemVariant)}
+              />
+            )}
             <View className="min-w-0 flex-1">
               <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
                 <Text className={`text-[14px] ${labelClassName}`}>
@@ -167,7 +171,8 @@ export function PresentationDisclosureList({
           >
             {content}
           </View>
-        )      })}
+        )
+      })}
     </View>
   )
 }

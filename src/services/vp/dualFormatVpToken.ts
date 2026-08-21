@@ -1,9 +1,10 @@
-import { readVerifierDcqlVpTokenShape } from '@/src/config/runtimeFlags'
 import { signSdJwtKbPresentationToken } from '../crypto/crypto'
 import { logWalletStep } from '../debug/walletLogger'
 import { isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
 import { isSdJwtDcqlFormat } from './dualFormatQuery'
 import { readMdocVpTokenEntry } from './mdocVpTokenEntry'
+import { formatDcqlVpTokenEnvelope } from './oid4vc/formatDcqlVpTokenEnvelope'
+import { parseDcqlVpTokenViaOid4vc } from './oid4vc/parseDcqlVpTokenViaOid4vc'
 import {
   readPresentationTokenAudience,
   type DcqlCredentialQuery,
@@ -27,12 +28,11 @@ export async function buildDualFormatDcqlVpToken(
 
   const signSdJwtKb = dependencies.signSdJwtKb ?? signSdJwtKbPresentationToken
   const readMdocEntry = dependencies.readMdocEntry ?? readMdocVpTokenEntry
-  const shape = readVerifierDcqlVpTokenShape()
   const audience = readPresentationTokenAudience(request)
-  const entries: Record<string, string | string[]> = {}
+  const entries: Record<string, string> = {}
 
   for (const credentialQuery of request.dcqlQuery.credentials) {
-    const token = await buildDcqlCredentialToken({
+    entries[credentialQuery.id] = await buildDcqlCredentialToken({
       request,
       credentialQuery,
       audience,
@@ -40,15 +40,16 @@ export async function buildDualFormatDcqlVpToken(
       readMdocEntry,
       selectedClaimKeys: dependencies.selectedClaimKeys,
     })
-    entries[credentialQuery.id] = shape === 'object_string' ? token : [token]
   }
+
+  const formatted = formatDcqlVpTokenEnvelope({ entries })
 
   logWalletStep('oid4vp', 'dual-format-vp-token-built', {
     queryIds: Object.keys(entries),
-    envelopeBytes: JSON.stringify(entries).length,
+    envelopeBytes: formatted.length,
   })
 
-  return JSON.stringify(entries)
+  return formatted
 }
 
 async function buildDcqlCredentialToken(input: {
@@ -68,6 +69,7 @@ async function buildDcqlCredentialToken(input: {
       sdJwt: selectSdJwtDisclosures(
         input.request.matchedCredential.rawVc,
         readDcqlPresentationClaimKeys(input),
+        { documentType: input.request.matchedCredential.type },
       ),
       credentialId: input.request.matchedCredential.id,
     })
@@ -96,5 +98,13 @@ export function isPreformattedDualFormatVpToken(
   request: ResolvedPresentationRequest,
   vpToken: string,
 ): boolean {
-  return Boolean(request.dcqlQuery && isDualFormatDcqlRequest(request.dcqlQuery) && vpToken.trimStart().startsWith('{'))
+  if (!request.dcqlQuery || !isDualFormatDcqlRequest(request.dcqlQuery)) return false
+  if (!vpToken.trimStart().startsWith('{')) return false
+
+  try {
+    parseDcqlVpTokenViaOid4vc(vpToken)
+    return true
+  } catch {
+    return false
+  }
 }

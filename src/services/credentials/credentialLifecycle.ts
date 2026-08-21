@@ -1,11 +1,18 @@
-import { getCardSchema } from '../../config/cardSchemas'
-import { destroyCredentialKey } from '../crypto/credentialSigningKey'
+import {
+  readHistoryDocumentLabel,
+  readHistoryIssuerPartyName,
+} from '../../config/historyDisplayNames'
+import { destroyIssuanceCredentialKey } from '../crypto/perCredentialSigning'
+import { logWalletError } from '../debug/walletLogger'
 import { appendWalletHistoryEvent } from '../history/walletEventLog'
 import { getCredentialStorage } from '../storage/storage'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
+import { isStoredCredentialKeyTtlExpired } from './credentialKeyExpiry'
 import { blocksCredentialPresentation, readCredentialRenewalStatuses } from './credentialKeyRenewal'
 import { readIssuerSuspensionStatuses } from './issuerSuspension'
+import { readCredentialIssuerName } from './credentialIssuer'
 import { readStoredCredentialById } from './storedCredentials'
 
 const LIFECYCLE_KEY_PREFIX = 'credential:lifecycle:'
@@ -49,17 +56,22 @@ export function recordCredentialLifecycleAction(
   }
   getCredentialStorage().set(`${LIFECYCLE_KEY_PREFIX}${credentialId}`, JSON.stringify(status))
 
-  void destroyCredentialKey(credentialId).catch(() => undefined)
+  void destroyIssuanceCredentialKey(credentialId).catch((error) => {
+    logWalletError('credential-lifecycle', 'destroy-credential-key-failed', error, { credentialId })
+  })
 
   const record = readStoredCredentialById(credentialId)
   if (record) {
-    const schema = getCardSchema(record.type)
     appendWalletHistoryEvent({
       kind: historyKindForLifecycleAction(action),
       credentialId,
-      documentType: schema.title,
-      partyName: schema.issuerName,
+      documentType: readHistoryDocumentLabel({ credentialType: record.type }),
+      partyName: readHistoryIssuerPartyName({
+        credentialType: record.type,
+        protocolIssuerName: readCredentialIssuerName(record),
+      }),
       channel: 'wallet',
+      credentialType: record.type,
       initiatedBy,
       occurredAt: status.occurredAt,
     })
@@ -127,7 +139,9 @@ export function filterPresentableCredentials(
       !lifecycleStatuses[record.id] &&
       !suspensionStatuses[record.id] &&
       !blocksCredentialPresentation(renewalStatuses[record.id]) &&
-      !isCredentialDocumentExpired(record),
+      !isCredentialDocumentExpired(record) &&
+      !isStoredCredentialKeyTtlExpired(record) &&
+      !credentialRequiresHardwareReissue(record.id),
   )
 }
 

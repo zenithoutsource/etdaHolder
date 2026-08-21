@@ -6,25 +6,31 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED": "true",
+        "EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND": "custom"
+      }
     },
     "preview": {
       "distribution": "internal",
       "env": {
+        "EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED": "true",
+        "EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND": "custom",
         "EXPO_PUBLIC_WALLET_API_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_WALLET_API_PINNED_CERTS": "sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4=",
         "EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_BROKER_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_VERIFIER_API_BASE_URL": "https://verifier.zenithcomp.co.th:455",
         "EXPO_PUBLIC_VERIFIER_NAME": "Verifier API",
-        "EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE": "raw",
-        "EXPO_PUBLIC_VERIFIER_KB_AUD": "response_uri",
         "EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST": "true"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
+        "EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED": "true",
+        "EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND": "custom",
         "EXPO_PUBLIC_WALLET_API_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_WALLET_API_PINNED_CERTS": "sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4=",
         "EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL": "https://wallet.zenithcomp.co.th:455",

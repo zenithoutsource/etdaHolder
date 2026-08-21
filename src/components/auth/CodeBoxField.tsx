@@ -1,3 +1,5 @@
+/** Boxed digit OTP / PIN input with paste and autofill. */
+
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, Text, TextInput, View } from 'react-native'
 

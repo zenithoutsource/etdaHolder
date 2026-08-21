@@ -5,51 +5,95 @@ import android.os.Bundle
 import android.util.Log
 
 class CompanionHostApduService : HostApduService() {
-  override fun processCommandApdu(commandApdu: ByteArray?, extras: Bundle?): ByteArray {
+  override fun processCommandApdu(commandApdu: ByteArray?, extras: Bundle?): ByteArray? {
     if (commandApdu == null || commandApdu.isEmpty()) {
-      return byteArrayOf(0x6F.toByte(), 0x00)
+      return sw(0x6F, 0x00)
     }
 
     return try {
+      if (isSelectAid(commandApdu, NdefType4Handler.NDEF_AID)) {
+        return NdefType4Handler.process(commandApdu)
+      }
+
       if (isSelectAid(commandApdu, ISO_MDOC_AID)) {
+        val rawArm = CompanionSession.peekArmState()
         if (CompanionSession.readArmState() == null) {
-          return byteArrayOf(0x6A.toByte(), 0x82.toByte())
+          val reason = if (rawArm == null) "no-arm-state" else "expired"
+          Log.w(TAG, "[hce] SELECT mdoc unarmed reason=$reason pid=${android.os.Process.myPid()}")
+          return sw(0x6A, 0x82)
         }
         if (!CompanionSession.isPresentationApproved()) {
-          return byteArrayOf(0x69.toByte(), 0x85.toByte())
+          Log.w(TAG, "[hce] SELECT mdoc not-approved pid=${android.os.Process.myPid()}")
+          return sw(0x69, 0x85)
         }
+        Log.i(TAG, "[hce] SELECT mdoc armed pid=${android.os.Process.myPid()}")
+        // Samsung HCE answers 6300 if processCommandApdu returns null for SELECT.
+        // Multipaz processes SELECT on Dispatchers.Default; ACR1311 cannot wait.
+        // Return 9000 here and still feed SELECT to Multipaz (swallow sendResponseApdu).
+        val gated = MdocApduHandler.beginProcess(commandApdu) { response ->
+          val sw = if (response.size >= 2) {
+            ((response[response.size - 2].toInt() and 0xFF) shl 8) or
+              (response[response.size - 1].toInt() and 0xFF)
+          } else {
+            -1
+          }
+          Log.i(TAG, "[hce] swallowed deferred SELECT response sw=0x${sw.toString(16)}")
+        }
+        if (gated != null) return gated
         CompanionSession.selectMdoc()
-        return byteArrayOf(0x90.toByte(), 0x00)
+        return sw(0x90, 0x00)
       }
 
       if (isSelectAid(commandApdu, COMPANION_AID)) {
         val armState = CompanionSession.readArmState()
         if (armState == null) {
-          return byteArrayOf(0x6A.toByte(), 0x82.toByte())
+          return sw(0x6A, 0x82)
         }
         if (armState.sharingMode == "mdoc-only") {
-          return byteArrayOf(0x69.toByte(), 0x85.toByte())
+          return sw(0x69, 0x85)
         }
         if (!CompanionSession.isMdocExchangeComplete()) {
-          return byteArrayOf(0x69.toByte(), 0x85.toByte())
+          return sw(0x69, 0x85)
         }
         CompanionSession.selectCompanion()
-        return byteArrayOf(0x90.toByte(), 0x00)
+        return sw(0x90, 0x00)
       }
 
       when (CompanionSession.readSelectedAid()) {
-        "mdoc" -> MdocApduHandler.process(commandApdu)
+        "ndef" -> NdefType4Handler.process(commandApdu)
+        "mdoc" -> dispatchMdoc(commandApdu)
         "companion" -> CompanionApduHandler.process(commandApdu)
-        else -> byteArrayOf(0x6D.toByte(), 0x00)
+        else -> sw(0x6D, 0x00)
       }
     } catch (error: Exception) {
       Log.e(TAG, "[hce] command failed", error)
-      byteArrayOf(0x6F.toByte(), 0x00)
+      sw(0x6F, 0x00)
     }
   }
 
   override fun onDeactivated(reason: Int) {
-    Log.d(TAG, "[hce] deactivated reason=$reason")
+    val selected = CompanionSession.readSelectedAid()
+    Log.i(TAG, "[hce] deactivated reason=$reason selected=$selected")
+    if (selected == "mdoc") {
+      MultipazMdocAdapter.onNfcDeactivated()
+    }
+    CompanionSession.clearSelectedAid()
+  }
+
+  private fun dispatchMdoc(commandApdu: ByteArray): ByteArray? {
+    logMdocApdu(commandApdu)
+    return MdocApduHandler.beginProcess(commandApdu) { response ->
+      sendResponseApdu(response)
+    }
+  }
+
+  private fun logMdocApdu(commandApdu: ByteArray) {
+    val ins = if (commandApdu.size > 1) commandApdu[1].toInt() and 0xFF else -1
+    val lc = if (commandApdu.size > 4) commandApdu[4].toInt() and 0xFF else -1
+    Log.i(
+      TAG,
+      "[hce] mdoc APDU ins=0x${ins.toString(16).padStart(2, '0')} len=${commandApdu.size} lc=$lc",
+    )
   }
 
   private fun isSelectAid(commandApdu: ByteArray, aid: ByteArray): Boolean {
@@ -69,5 +113,8 @@ class CompanionHostApduService : HostApduService() {
     private val COMPANION_AID = byteArrayOf(
       0xA0.toByte(), 0x00, 0x00, 0x04, 0x54, 0x44, 0x41, 0x01, 0x00,
     )
+
+    private fun sw(sw1: Int, sw2: Int): ByteArray =
+      byteArrayOf(sw1.toByte(), sw2.toByte())
   }
 }

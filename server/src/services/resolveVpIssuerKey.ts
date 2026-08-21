@@ -1,7 +1,10 @@
-import { readConfig, type Ed25519PublicJwk } from '../config'
+import { ECDH } from 'node:crypto'
+
+import { readConfig, type Ed25519PublicJwk, type P256PublicJwk } from '../config'
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const ED25519_MULTICODEC_PREFIX = Buffer.from([0xed, 0x01])
+const P256_MULTICODEC_PREFIX = Buffer.from([0x80, 0x24])
 
 export function decodeBase64UrlJson(part: string): Record<string, unknown> {
   const parsed = JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as unknown
@@ -67,6 +70,35 @@ export function didKeyToEd25519PublicJwk(didKey: string): Ed25519PublicJwk {
     kty: 'OKP',
     crv: 'Ed25519',
     x: publicKey.toString('base64url'),
+  }
+}
+
+export function didKeyToP256PublicJwk(didKey: string): P256PublicJwk {
+  const did = didKey.startsWith('did:key:') ? didKey.split('#')[0]! : `did:key:${didKey.split('#')[0]!}`
+  const multibase = did.slice('did:key:'.length)
+  if (!multibase.startsWith('z')) {
+    throw new Error('UnsupportedDidKeyEncoding')
+  }
+
+  const raw = base58Decode(multibase.slice(1))
+  if (
+    raw.length !== P256_MULTICODEC_PREFIX.length + 33 ||
+    !raw.subarray(0, P256_MULTICODEC_PREFIX.length).equals(P256_MULTICODEC_PREFIX)
+  ) {
+    throw new Error('UnsupportedDidKeyType')
+  }
+
+  const compressed = raw.subarray(P256_MULTICODEC_PREFIX.length)
+  const uncompressed = ECDH.convertKey(compressed, 'prime256v1', undefined, undefined, 'uncompressed') as Buffer
+  if (uncompressed.length !== 65 || uncompressed[0] !== 0x04) {
+    throw new Error('UnsupportedDidKeyType')
+  }
+
+  return {
+    kty: 'EC',
+    crv: 'P-256',
+    x: uncompressed.subarray(1, 33).toString('base64url'),
+    y: uncompressed.subarray(33, 65).toString('base64url'),
   }
 }
 

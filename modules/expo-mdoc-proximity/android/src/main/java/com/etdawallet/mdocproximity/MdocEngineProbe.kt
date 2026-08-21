@@ -1,8 +1,8 @@
 package com.etdawallet.mdocproximity
 
 /**
- * Compile-time / runtime probe for Multipaz ISO mdoc NFC data-transfer APIs.
- * Gate #2 for v1: [NfcTransportMdoc.processCommandApdu] + [MdocNfcDataTransferService].
+ * Runtime probe for Multipaz ISO mdoc NFC data-transfer APIs.
+ * Gate #2 for v1: [NfcTransportMdoc.processCommandApdu] on the HCE mdoc path.
  */
 data class MdocEngineProbeResult(
   val engine: String,
@@ -16,16 +16,15 @@ object MdocEngineProbe {
   private const val MULTIPAZ_VERSION = "0.100.0"
 
   fun checkCapabilities(): MdocEngineProbeResult {
+    // NfcTransportMdoc is referenced directly (compile-time) by MultipazMdocAdapter,
+    // so class presence is a reliable availability signal. The previous reflective
+    // processCommandApdu lookup targeted the outer class, but that method lives on
+    // the companion object (not @JvmStatic), so it always failed at runtime and made
+    // every armed mdoc APDU reject with adapter-unavailable (6A81).
     val hasNfcTransport = classExists("org.multipaz.mdoc.transport.NfcTransportMdoc")
     val hasDataTransferService = classExists("org.multipaz.compose.mdoc.MdocNfcDataTransferService")
-    val hasProcessApdu = hasNfcTransport && methodExists(
-      "org.multipaz.mdoc.transport.NfcTransportMdoc",
-      "processCommandApdu",
-      ByteArray::class.java,
-      Function1::class.java,
-    )
 
-    val hasNfcDataTransfer = hasNfcTransport && hasDataTransferService && hasProcessApdu
+    val hasNfcDataTransfer = hasNfcTransport
 
     return MdocEngineProbeResult(
       engine = "multipaz",
@@ -34,12 +33,11 @@ object MdocEngineProbe {
       hasNfcDataTransfer = hasNfcDataTransfer,
       notes = buildString {
         append("NfcTransportMdoc=$hasNfcTransport; ")
-        append("MdocNfcDataTransferService=$hasDataTransferService; ")
-        append("processCommandApdu=$hasProcessApdu. ")
+        append("MdocNfcDataTransferService=$hasDataTransferService. ")
         if (hasNfcDataTransfer) {
-          append("Delegate APDUs to NfcTransportMdoc.processCommandApdu from CompanionHostApduService mdoc path.")
+          append("CompanionHostApduService forwards mdoc APDUs asynchronously to NfcTransportMdoc.processCommandApdu.")
         } else {
-          append("Physical A26 spike required after dependency resolves in Android compile.")
+          append("NfcTransportMdoc missing on classpath.")
         }
       },
     )
@@ -50,14 +48,6 @@ object MdocEngineProbe {
       Class.forName(name)
       true
     } catch (_: ClassNotFoundException) {
-      false
-    }
-
-  private fun methodExists(className: String, methodName: String, vararg paramTypes: Class<*>): Boolean =
-    try {
-      Class.forName(className).getDeclaredMethod(methodName, *paramTypes)
-      true
-    } catch (_: Exception) {
       false
     }
 }

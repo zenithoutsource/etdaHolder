@@ -10,15 +10,18 @@ import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { getMetaStorage } from '../storage/storage'
 import {
   getCredentialKeyRecord,
+  listCredentialKeyRecords,
   registerCredentialKey,
   removeCredentialKeyRecord,
   type CredentialKeyRecord,
 } from './credentialKeyRegistry'
+import { seedInitialWalletKeyRegisteredAt } from './walletKeyRegistration'
 
 hashes.sha512 = sha512
 
 const CREDENTIAL_KEYCHAIN_PREFIX = 'wallet.ed25519_seed.cred.'
 const PENDING_META_PREFIX = 'wallet.pending_credential_keys.'
+const REPLACEMENT_PREFIX = 'wallet.ed25519.credential_key_replacements.'
 const KEYCHAIN_USERNAME = 'wallet-ed25519-credential-seed'
 
 const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01])
@@ -87,7 +90,7 @@ function base64ToUint8Array(b64: string): Uint8Array {
   return out
 }
 
-function getKeychainSetOptions(service: string): Keychain.SetOptions {
+function getKeychainSetOptions(service: string, promptTitle?: string): Keychain.SetOptions {
   if (isBiometricDisabledForTesting()) {
     return {
       service,
@@ -101,6 +104,10 @@ function getKeychainSetOptions(service: string): Keychain.SetOptions {
     accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
     securityLevel: Keychain.SECURITY_LEVEL.SECURE_HARDWARE,
     storage: Keychain.STORAGE_TYPE.AES_GCM,
+    authenticationPrompt: {
+      title: promptTitle ?? 'ยืนยันเพื่อบันทึกกุญแจเอกสาร',
+      cancel: 'ยกเลิก',
+    },
   }
 }
 
@@ -131,12 +138,16 @@ async function readStoredEd25519Seed(
   return seed
 }
 
-async function writeEd25519Seed(seed: Uint8Array, service: string): Promise<void> {
+async function writeEd25519Seed(
+  seed: Uint8Array,
+  service: string,
+  promptTitle?: string,
+): Promise<void> {
   assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
   const result = await Keychain.setGenericPassword(
     KEYCHAIN_USERNAME,
     uint8ArrayToBase64(seed),
-    getKeychainSetOptions(service),
+    getKeychainSetOptions(service, promptTitle),
   )
   if (!result) throw new Error('Ed25519SeedKeychainWriteFailed')
 }
@@ -208,6 +219,13 @@ export async function bindPendingKeyToCredential(
     throw new Error('PendingCredentialKeyNotFound')
   }
 
+  const existing = getCredentialKeyRecord(credentialId)
+  if (existing) {
+    getMetaStorage().set(`${REPLACEMENT_PREFIX}${credentialId}`, pendingId)
+    logWalletStep('crypto', 'credential-key-replacement-staged', { credentialId, credentialType })
+    return existing
+  }
+
   const pendingService = credentialKeychainService(pendingId)
   const seed = await readStoredEd25519Seed(pendingService)
   if (!seed) {
@@ -219,6 +237,60 @@ export async function bindPendingKeyToCredential(
   } finally {
     seed.fill(0)
   }
+}
+
+export async function commitSoftwareCredentialKeyReplacement(credentialId: string): Promise<void> {
+  const pendingId = getMetaStorage().getString(`${REPLACEMENT_PREFIX}${credentialId}`)
+  if (!pendingId) return
+
+  const previousRecord = getCredentialKeyRecord(credentialId)
+  const previousSnapshot = previousRecord ? { ...previousRecord } : undefined
+  const credentialService = credentialKeychainService(credentialId)
+  const previousSeed = previousRecord
+    ? await readStoredEd25519Seed(credentialService)
+    : undefined
+
+  const pendingService = credentialKeychainService(pendingId)
+  const seed = await readStoredEd25519Seed(pendingService)
+  if (!seed) {
+    throw new Error('PendingCredentialKeySeedMissing')
+  }
+
+  try {
+    await bindPendingKeyWithSeed(
+      pendingId,
+      credentialId,
+      previousRecord?.credentialType ?? 'unknown',
+      seed,
+      new Date(),
+    )
+    getMetaStorage().remove(`${REPLACEMENT_PREFIX}${credentialId}`)
+    logWalletStep('crypto', 'credential-key-replacement-committed', { credentialId })
+  } catch (error) {
+    if (previousSnapshot && previousSeed) {
+      try {
+        await writeEd25519Seed(previousSeed, credentialService, 'ยืนยันเพื่อบันทึกกุญแจเอกสาร')
+        registerCredentialKey(previousSnapshot)
+      } catch (restoreError) {
+        logWalletError('crypto', 'credential-key-replacement-restore-failed', restoreError, {
+          credentialId,
+        })
+      }
+    }
+    throw error
+  } finally {
+    seed.fill(0)
+    previousSeed?.fill(0)
+  }
+}
+
+export async function discardSoftwareCredentialKeyReplacement(credentialId: string): Promise<boolean> {
+  const pendingId = getMetaStorage().getString(`${REPLACEMENT_PREFIX}${credentialId}`)
+  if (!pendingId) return false
+  await discardPendingCredentialKey(pendingId)
+  getMetaStorage().remove(`${REPLACEMENT_PREFIX}${credentialId}`)
+  logWalletStep('crypto', 'credential-key-replacement-discarded', { credentialId })
+  return true
 }
 
 async function bindPendingKeyWithSeed(
@@ -245,8 +317,9 @@ async function bindPendingKeyWithSeed(
   }
 
   try {
-    await writeEd25519Seed(seed, credentialService)
+    await writeEd25519Seed(seed, credentialService, 'ยืนยันเพื่อบันทึกกุญแจเอกสาร')
     registerCredentialKey(record)
+    seedInitialWalletKeyRegisteredAt(record.createdAt)
     await Keychain.resetGenericPassword({ service: credentialKeychainService(pendingId) })
     removePendingKeyMeta(pendingId)
   } catch (error) {
@@ -296,6 +369,54 @@ export type CredentialKeySigningSession = {
   sign: (message: Uint8Array) => Uint8Array
   bindCredentialKey: (credentialId: string, credentialType: string) => Promise<CredentialKeyRecord>
   close: () => void
+}
+
+/**
+ * Pending credential key held only in memory until bind. No Keychain write
+ * until `bindCredentialKey` (single biometric set of the lasting service).
+ */
+export function createMemoryPendingCredentialKeySession(
+  now = new Date(),
+): CredentialKeySigningSession {
+  const pendingId = createPendingId()
+  const seed = randomBytes(32)
+  assertEd25519SeedLength(seed, 'InvalidGeneratedEd25519SeedLength')
+  writePendingKeyMeta({ pendingId, createdAt: now.toISOString() })
+
+  const publicKey = getPublicKey(seed)
+  assertEd25519PublicKeyLength(publicKey)
+  const holderDid = ed25519PublicKeyToDidKey(publicKey)
+  let closed = false
+
+  logWalletStep('crypto', 'credential-pending-key-memory-created', { pendingId })
+
+  return {
+    credentialKeyId: pendingId,
+    publicJwk: publicKeyToEd25519Jwk(publicKey),
+    holderDid,
+    sign: (message) => {
+      if (closed) throw new Error('CredentialKeySigningSessionClosed')
+      try {
+        const signature = sign(message, seed)
+        if (signature.length !== 64) {
+          throw new Error(`InvalidSignatureLength: expected 64 Ed25519 bytes, got ${signature.length}`)
+        }
+        return signature
+      } catch (error) {
+        logWalletError('crypto', 'credential-key-session-sign-failed', error, {
+          credentialKeyId: pendingId,
+        })
+        throw error
+      }
+    },
+    bindCredentialKey: (credentialId, credentialType) =>
+      bindPendingKeyWithSeed(pendingId, credentialId, credentialType, seed, new Date()),
+    close: () => {
+      if (closed) return
+      seed.fill(0)
+      closed = true
+    },
+  }
 }
 
 /**
@@ -426,6 +547,28 @@ export async function destroyCredentialKey(credentialId: string): Promise<void> 
   await Keychain.resetGenericPassword({ service: record.keychainService }).catch(() => undefined)
   removeCredentialKeyRecord(credentialId)
   logWalletStep('crypto', 'credential-key-destroyed', { credentialId })
+}
+
+/** After a hardware k_cred bind, drop Ed25519 material for that id and same type only. */
+export async function deleteLegacyEd25519KeysForCutover(input: {
+  credentialId: string
+  credentialType: string
+}): Promise<void> {
+  const records = listCredentialKeyRecords()
+  for (const record of records) {
+    const sameCredential = record.credentialId === input.credentialId
+    const sameType = record.credentialType === input.credentialType
+    if (!sameCredential && !sameType) {
+      continue
+    }
+    try {
+      await destroyCredentialKey(record.credentialId)
+    } catch (error) {
+      logWalletError('crypto', 'legacy-ed25519-cutover-delete-failed', error, {
+        credentialId: record.credentialId,
+      })
+    }
+  }
 }
 
 export function gcStalePendingKeys(now = new Date()): number {

@@ -12,9 +12,9 @@ Align wallet cryptography with P1/P2 sequence diagrams:
 - **`k_attest`** — one wallet attestation key for Wallet Provider (WUA/WIA).
 - **`k_cred`** — one Ed25519 seed (and `did:key`) **per credential**, created at issuance (P1 step 17, P2 step 12).
 
-v2 ships **both together** and remains **disabled** until a Wallet Provider API for WUA/WIA is defined and implemented. Storage follows **ADR 0008** (Keychain-protected software Ed25519, biometric sign-time gate) using **one Keychain service per key** (Approach A). WSCD / hardware non-extractable keys are out of scope until target hardware (Samsung Galaxy A26) proves Ed25519 in AndroidKeyStore.
+v2 ships **`k_cred` by default** (P2 journey step 12) without waiting on Wallet Provider. **`k_attest` / WUA** stays deferred until `EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED` is on. Storage follows **ADR 0008** (Keychain-protected software Ed25519, biometric sign-time gate) using **one Keychain service per key** (Approach A). WSCD / hardware non-extractable keys are out of scope until target hardware (Samsung Galaxy A26) proves Ed25519 in AndroidKeyStore.
 
-**Migration:** greenfield only — existing single-key wallets must re-issue all credentials; no in-place key rebinding.
+**Migration:** no in-place rebind — existing single-key credentials stay on the wallet-level `did:key` until re-issue; new claims use `k_cred`.
 
 ## Problem
 
@@ -41,7 +41,7 @@ Journey diagrams (P1, P2, P3, P6) require per-document `did:key` generation and 
 - Hardware WSCD / Secure Element key generation on device (logical lane only).
 - Play Integrity / DeviceCheck attestation tokens (optional field reserved on WP client).
 - In-place migration of credentials bound to the v1 wallet-level `did:key`.
-- Per-credential keys without Wallet Provider attestations (both ship together).
+- Wallet Provider WUA/WIA as a prerequisite for `k_cred` issuance (P2 Wallet Provider lane has no steps).
 
 ## Key model
 
@@ -91,7 +91,7 @@ PIN / biometric setup complete
   → set wallet.crypto.v2_enabled
 ```
 
-Wallet is not OPERATIONAL for issuance until attest succeeds.
+Wallet Provider attest remains optional. Issuance is OPERATIONAL with `k_cred` even when WUA is deferred. `wallet.crypto.v2_enabled` records successful WP attest only.
 
 ### Issuance (P1 step 17 / P2 step 12)
 

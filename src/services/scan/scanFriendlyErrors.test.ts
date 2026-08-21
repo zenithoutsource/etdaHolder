@@ -1,4 +1,5 @@
 import { toFriendlyError } from './scanFriendlyErrors'
+import { WALLET_HOME_COPY } from '../credentials/walletHomeCopy'
 import { PRESENTATION_REQUEST_ALREADY_USED_MESSAGE } from '../vp/presentationIntakeRejection'
 
 describe('toFriendlyError', () => {
@@ -8,12 +9,71 @@ describe('toFriendlyError', () => {
     )
   })
 
+  test('maps network issuer metadata failures to a connection message', () => {
+    expect(toFriendlyError('IssuerMetadataFetchFailed: Network request failed')).toBe(
+      'Could not reach the issuer. Check your connection and try again.',
+    )
+    expect(toFriendlyError('IssuerMetadataFetchFailed: Failed to fetch')).toBe(
+      'Could not reach the issuer. Check your connection and try again.',
+    )
+  })
+
+  test('maps HTTP issuer metadata failures away from the connection copy', () => {
+    expect(toFriendlyError('IssuerMetadataFetchFailed: HTTP 406')).toBe(
+      'The issuer configuration could not be loaded. Try again or contact the issuer.',
+    )
+  })
+
+  test('maps unsupported credential configurations to a document-type message', () => {
+    expect(toFriendlyError('CredentialConfigurationNotSupported: urn:example:doc:1')).toBe(
+      'This wallet could not match the offered document type.',
+    )
+  })
+
+  test('maps missing wallet attestation to an activation message', () => {
+    expect(toFriendlyError('WalletAttestationRequired: this issuer requires wallet attestation')).toBe(
+      'This issuer requires wallet attestation. Activate this wallet and try again.',
+    )
+    expect(toFriendlyError('token_endpoint_auth_methods_supported includes attest_jwt_client_auth')).toContain(
+      'wallet attestation',
+    )
+    expect(
+      toFriendlyError(
+        'CredentialTokenExchangeFailed: Error validating schema with data {"alg":"none","typ":"wallet-attestation+jwt"} Expected value to be "oauth-client-attestation+jwt" at "typ"',
+      ),
+    ).toBe('This issuer requires wallet attestation. Activate this wallet and try again.')
+  })
+
+  test('maps invalid_grant token errors to a fresh-offer message', () => {
+    expect(
+      toFriendlyError(
+        'CredentialTokenExchangeFailed: Unable to retrieve access token from \'https://issuer.example/token\'. Received token error response with status 400 { "error": "invalid_grant" }',
+      ),
+    ).toContain('already been used or has expired')
+  })
+
+  test('maps invalid_token credential request to a fresh-offer message', () => {
+    expect(
+      toFriendlyError('CredentialRequestFailed: invalid_token - Token is invalid or expired'),
+    ).toContain('do not reuse an old offer link')
+  })
+
   test('maps Issuer OID4VP untrusted error', () => {
     expect(toFriendlyError('IssuerOid4VpUntrusted: client_id not allowlisted')).toContain('Issuer is not trusted')
   })
 
   test('maps Issuer OID4VP submission failure', () => {
     expect(toFriendlyError('PresentationSubmissionFailed:issuer: HTTP 400')).toContain('Issuer rejected')
+    expect(toFriendlyError('PresentationSubmissionFailed:issuer: HTTP 400')).not.toContain('HTTP 400')
+  })
+
+  test('maps Verifier presentation submission failure without raw HTTP detail', () => {
+    const message = toFriendlyError(
+      'PresentationSubmissionFailed: HTTP 400: invalid_request. Presentation debug: kb_header_alg=ES256',
+    )
+    expect(message).toContain('Verifier rejected')
+    expect(message).not.toContain('Presentation debug')
+    expect(message).not.toContain('invalid_request')
   })
 
   test('maps missing PID for Issuer presentation', () => {
@@ -63,11 +123,49 @@ describe('toFriendlyError', () => {
     expect(message).toContain('Sign out of the Issuer website')
   })
 
+  test('maps hardware user authentication required to biometric guidance', () => {
+    expect(toFriendlyError('WalletHardwareUserAuthenticationRequired')).toContain('Biometric authentication is required')
+    expect(toFriendlyError('SignatureException: User not authenticated')).toContain('Biometric authentication is required')
+  })
+
   test('maps dual-format total failure with underlying causes', () => {
     const message = toFriendlyError(
       'DualFormatClaimFailed: neither format could be acquired (dc+sd-jwt: CredentialKeySigningSessionRequired; mso_mdoc: CredentialKeySigningSessionRequired)',
     )
 
     expect(message).toContain('Credential signing session failed')
+  })
+
+  test('maps unsupported issuer credential alg to a reissue message', () => {
+    expect(toFriendlyError('CredentialSignatureAlgUnsupported: issuer credential alg must be ES256 or EdDSA, got RS256')).toContain(
+      'signing algorithm this wallet does not accept',
+    )
+  })
+
+  test('maps invalid issuer credential signature to a reissue message', () => {
+    expect(toFriendlyError('CredentialIssuerSignatureInvalid: issuer JWT signature does not match did:web public key')).toContain(
+      'could not be verified',
+    )
+  })
+
+  test('maps PID-first cutover blocks to the hardware PID reissue message', () => {
+    expect(
+      toFriendlyError('Reissue your national ID (PID) on hardware P-256 before reissuing other credentials.'),
+    ).toBe(WALLET_HOME_COPY.hardwarePidReissueRequiredMessage)
+  })
+
+  test('maps legacy-key renewal blocks to the fresh-reissue message', () => {
+    expect(
+      toFriendlyError('Legacy key renewal presentation is unsupported; use fresh issuer reissue without old-key proof.'),
+    ).toBe(WALLET_HOME_COPY.legacyKeyRenewalUnsupportedMessage)
+  })
+
+  test('maps hardware cutover signing blocks to the reissue message', () => {
+    expect(toFriendlyError('LegacyHolderSigningUnsupported')).toBe(
+      WALLET_HOME_COPY.hardwareReissueRequiredMessage,
+    )
+    expect(toFriendlyError('ProximityHardwareDeviceAuthUnavailable')).toBe(
+      WALLET_HOME_COPY.hardwareReissueRequiredMessage,
+    )
   })
 })

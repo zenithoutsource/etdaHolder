@@ -1,3 +1,12 @@
+/**
+ * Credential detail — document view, My QR, NFC present, receive, portal reissue, revoke, delete.
+ * Journey: P3 receive/reissue; P4 My QR / NFC handoff; P6 revoke/delete.
+ * Copy: src/services/credentials/walletHomeCopy.ts
+ * Layout: CredentialDocumentDetailCard, CredentialActionMenu, VpQrModal.
+ * Next: app/(tabs)/present.tsx; history?filter=lifecycle
+ * Map: docs/CODEMAPS/frontend.md#wallet
+ */
+
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +20,7 @@ import { CredentialActionMenu } from "../../../src/components/CredentialActionMe
 import { PinEntrySurface } from "../../../src/components/PinEntrySurface";
 import { PresentationApprovalDeviceCard } from "../../../src/components/PresentationApprovalDeviceCard";
 import { PresentationPopCard } from "../../../src/components/PresentationPopCard";
+import { VpQrModal } from "../../../src/components/VpQrModal";
 import { WalletHeader } from "../../../src/components/WalletHeader";
 import { useScreenCaptureGuard } from "../../../src/hooks/useScreenCaptureGuard";
 import { useWalletKeyExpired } from "../../../src/hooks/useWalletKeyExpired";
@@ -33,21 +43,27 @@ import {
   claimReadyRenewal,
   confirmOldCredentialCleanup,
   refreshAndCompleteRenewals,
-  submitRenewalRequest,
 } from "../../../src/services/credentials/credentialRenewalService";
 import {
+  HolderRevokeHardwareKeyRequiredError,
   HolderRevokeSigningCancelledError,
   submitHolderRevokeRequest,
 } from "../../../src/services/credentials/holderRevokeService";
-import { canSubmitCredentialRenewal } from "../../../src/services/credentials/credentialGuard";
-import { isCredentialExpiringSoon } from "../../../src/services/credentials/credentialDocumentExpiry";
+import { readPidGateStatus } from "../../../src/services/credentials/credentialGuard";
+import {
+  isCredentialDocumentExpired,
+  isCredentialExpiringSoon,
+} from "../../../src/services/credentials/credentialDocumentExpiry";
+import { shouldBlockCredentialDetailPresentment } from "../../../src/services/credentials/credentialHomeNavigation";
 import {
   isRenewalAwaitingHolderCleanup,
 } from "../../../src/services/credentials/renewalCleanupNotification";
 import { WALLET_HOME_COPY, readWalletHomeBadgeLabel } from "../../../src/services/credentials/walletHomeCopy";
+import { resolveIssuerPortalCredentialTypeFromRecord } from "../../../src/config/issuerPortalUrls";
 import { shouldOfferDocumentReissueCta, shouldShowWalletKeyExpiredPrompt } from "../../../src/services/credentials/documentReissueCtaGate";
 import { requestCredentialViaPortalFlow } from "../../../src/services/credentials/requestCredentialViaPortalFlow";
 import { WalletKeyExpiredActionPanel } from "../../../src/components/WalletKeyExpiredActionPanel";
+import { usesWalletWideKeyRotation } from "../../../src/components/WalletKeyExpiryHost";
 import { performWalletKeyRotationWithDialog } from "../../../src/services/crypto/walletKeyRotationFlow";
 import { readWalletKeyExpiryLane } from "../../../src/services/crypto/walletKeyExpiryLane";
 import { readWalletKeyRotationRecord } from "../../../src/services/crypto/walletKeyRotation";
@@ -55,10 +71,14 @@ import {
   shouldHideCredentialActionMenu,
   shouldShowRenewedActiveBadge,
 } from "../../../src/services/credentials/credentialRenewalPresentation";
+import {
+  shouldShowHomePidGateDialog,
+  showPidGateDialog,
+} from "../../../src/services/credentials/pidGateDialog";
 import { logWalletError } from "../../../src/services/debug/walletLogger";
 import { isStaleDocumentExpiryNotification } from "../../../src/services/notifications/notificationDocumentExpiryRoute";
 import { resolveRenewalReadyReplacementRoute } from "../../../src/services/notifications/notificationRenewalRoute";
-import { readCredentialDetailDisplay, readCredentialHolderProfile } from "../../../src/services/credentials/credentialDisplay";
+import { readCredentialDetailDisplay, resolveDisplayHolderProfile } from "../../../src/services/credentials/credentialDisplay";
 import { shouldResetCredentialDetailSession } from "../../../src/services/credentials/credentialDetailSession";
 import {
   acknowledgeIssuerSuspension,
@@ -70,13 +90,14 @@ import {
   confirmCredentialDeletionBiometric,
   isCredentialDeletionBiometricCancellation,
 } from "../../../src/services/credentials/credentialDeletionBiometric";
+import {
+  confirmCredentialRevokeBiometric,
+  isCredentialRevokeBiometricCancellation,
+} from "../../../src/services/credentials/credentialRevokeBiometric";
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
-import { isProximityPresentationSupported } from "../../../src/services/proximity/proximityPresentation";
+import { canShowNfcPresentButton } from "../../../src/services/proximity/mdocCredential";
 import { hasStoredMdoc } from "../../../src/services/proximity/mdocStorage";
 import { readCompactTokenSignature } from "../../../src/services/vp/presentationEvidence";
-import { VpQrModal } from "../../../src/components/VpQrModal";
-import { isCredentialPresentable } from "../../../src/services/credentials/credentialLifecycle";
-import { isSdJwtCredential } from "../../../src/services/vp/sdJwtCredential";
 
 import { THEME } from '../../../src/config/themeColors'
 
@@ -104,8 +125,8 @@ export default function CredentialDetailScreen() {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [renewalRefreshTick, setRenewalRefreshTick] = useState(0);
-  const [vpQrVisible, setVpQrVisible] = useState(false);
   const [isRotatingWalletKey, setIsRotatingWalletKey] = useState(false);
+  const [vpQrVisible, setVpQrVisible] = useState(false);
   const previousCredentialIdRef = useRef<string | undefined>(id);
   const staleExpiryDialogShownRef = useRef(false);
   const credential = credentials.find((record) => record.id === id);
@@ -117,10 +138,14 @@ export default function CredentialDetailScreen() {
       return;
     }
 
+    if (credential.rawVc.startsWith("mdoc:")) {
+      setHasMdoc(true);
+    }
+
     let cancelled = false;
     void (async () => {
       const stored = await hasStoredMdoc(credential.id);
-      if (!cancelled) setHasMdoc(stored === true);
+      if (!cancelled) setHasMdoc(stored === true || credential.rawVc.startsWith("mdoc:"));
     })();
 
     return () => {
@@ -130,22 +155,9 @@ export default function CredentialDetailScreen() {
   const display = credential
     ? readCredentialDetailDisplay(credential)
     : undefined;
-  const isTranscript = credential?.type === "ChulalongkornUniversityTranscript";
-  const thaiIdCredential = credentials.find((record) => record.type === "ThaiNationalID");
-  const thaiIdHolderProfile = useMemo(
-    () => (thaiIdCredential ? readCredentialHolderProfile(thaiIdCredential) : undefined),
-    [thaiIdCredential],
-  );
-  const currentHolderProfile = useMemo(
-    () => (credential ? readCredentialHolderProfile(credential) : undefined),
-    [credential],
-  );
   const holderProfile = useMemo(
-    () => ({
-      ...currentHolderProfile,
-      ...thaiIdHolderProfile,
-    }),
-    [currentHolderProfile, thaiIdHolderProfile],
+    () => (credential ? resolveDisplayHolderProfile(credential, credentials) : undefined),
+    [credential, credentials],
   );
 
   const suspensionStatus = credential ? readIssuerSuspension(credential.id) : undefined;
@@ -172,34 +184,49 @@ export default function CredentialDetailScreen() {
     inactiveState,
     renewalState: showRenewedActiveBadge ? "renewed-active" : undefined,
   });
-  const canRequestRenewal = credential
-    ? canSubmitCredentialRenewal(credential.id, credentials, renewalStatuses)
-    : false;
-  const isRenewalBlocked =
-    inactiveState.kind === "renewal-required" ||
-    inactiveState.kind === "renewal-processing" ||
-    inactiveState.kind === "old-revoked" ||
-    inactiveState.kind === "cleanup-pending" ||
-    inactiveState.kind === "document-expired";
+  const isPresentmentBlocked =
+    shouldBlockCredentialDetailPresentment(inactiveState, credential) ||
+    (credential ? isCredentialDocumentExpired(credential) : false);
   const canRequestDocumentReissue =
-    inactiveState.kind === "document-expired" &&
-    shouldOfferDocumentReissueCta({
-      lane: walletKeyExpiryLane,
-      documentExpired: true,
-      renewalState: renewalStatus?.state,
-    });
+    inactiveState.kind === "hardware-reissue-required" ||
+    (inactiveState.kind === "document-expired" &&
+      shouldOfferDocumentReissueCta({
+        lane: walletKeyExpiryLane,
+        documentExpired: true,
+        renewalState: renewalStatus?.state,
+      }));
   const showWalletKeyExpiredPrompt =
     inactiveState.kind === "document-expired" &&
-    shouldShowWalletKeyExpiredPrompt(walletKeyExpiryLane);
+    shouldShowWalletKeyExpiredPrompt(
+      walletKeyExpiryLane,
+      usesWalletWideKeyRotation(),
+    );
   const showExpiringSoonBanner =
-    inactiveState.kind === "active" &&
     credential !== undefined &&
-    isCredentialExpiringSoon(credential);
+    isCredentialExpiringSoon(credential) &&
+    (inactiveState.kind === "active" || inactiveState.kind === "renewal-required");
   const showRenewalCleanupCta = isRenewalAwaitingHolderCleanup(renewalStatus);
-  const showVpQrButton =
-    credential !== undefined &&
-    isSdJwtCredential(credential) &&
-    isCredentialPresentable(credential);
+
+  const requestThaId = useCallback(() => {
+    void requestCredentialViaPortalFlow({
+      credentialType: "ThaiNationalID",
+      router,
+      showDialog,
+    });
+  }, [router, showDialog]);
+
+  const runPresentActionIfPidReady = useCallback(
+    (action: () => void) => {
+      if (!credential) return;
+      const gateStatus = readPidGateStatus(credentials, renewalStatuses);
+      if (shouldShowHomePidGateDialog(credential.type, gateStatus)) {
+        showPidGateDialog(showDialog, gateStatus, requestThaId, "present");
+        return;
+      }
+      action();
+    },
+    [credential, credentials, renewalStatuses, requestThaId, showDialog],
+  );
 
   useEffect(() => {
     if (hideCredentialActionMenu) {
@@ -239,28 +266,8 @@ export default function CredentialDetailScreen() {
     setIsActionMenuOpen(false);
     setPin("");
     setPinError(null);
+    setVpQrVisible(false);
   }, []);
-
-  const beginRenewalRequest = useCallback(async () => {
-    if (!credential) return;
-    setPhase({ tag: "renewalProcessing" });
-    try {
-      await submitRenewalRequest(credential.id);
-      setPhase({ tag: "detail" });
-      setRenewalRefreshTick((tick) => tick + 1);
-    } catch (renewalError) {
-      logWalletError("credential-detail", "renewal-request-failed", renewalError, {
-        credentialId: credential.id,
-      });
-      showDialog({
-        title: "ไม่สามารถขอเอกสารใหม่ได้",
-        message: "กรุณาลองใหม่อีกครั้ง",
-        icon: "danger",
-        actions: [{ label: WALLET_HOME_COPY.cancel, variant: "secondary" }],
-      });
-      setPhase({ tag: "detail" });
-    }
-  }, [credential, showDialog]);
 
   const syncLocalRenewalState = useCallback(() => {
     refresh();
@@ -383,11 +390,6 @@ export default function CredentialDetailScreen() {
       return;
     }
 
-    if (action === "Revoke") {
-      setPhase({ tag: "approve", action });
-      return;
-    }
-
     setPhase({
       tag: "security",
       action,
@@ -428,11 +430,11 @@ export default function CredentialDetailScreen() {
     }
   }
 
-  async function handleDeleteBiometric() {
+  async function handleLifecycleBiometric() {
     if (
       phase.tag !== "security" ||
-      phase.action !== "Delete" ||
-      phase.mode !== "verify"
+      phase.mode !== "verify" ||
+      (phase.action !== "Delete" && phase.action !== "Revoke")
     ) {
       return;
     }
@@ -444,10 +446,18 @@ export default function CredentialDetailScreen() {
     }
 
     try {
-      await confirmCredentialDeletionBiometric();
+      if (phase.action === "Revoke") {
+        await confirmCredentialRevokeBiometric();
+      } else {
+        await confirmCredentialDeletionBiometric();
+      }
       setPhase({ tag: "approve", action: phase.action });
     } catch (error) {
-      if (isCredentialDeletionBiometricCancellation(error)) return;
+      const cancelled =
+        phase.action === "Revoke"
+          ? isCredentialRevokeBiometricCancellation(error)
+          : isCredentialDeletionBiometricCancellation(error);
+      if (cancelled) return;
       setPinError("Biometric verification failed. Enter your PIN instead.");
     }
   }
@@ -459,7 +469,7 @@ export default function CredentialDetailScreen() {
       try {
         await submitHolderRevokeRequest(credential.id);
         recordCredentialLifecycleAction(credential.id, action);
-        router.push("/(tabs)/history");
+        router.push({ pathname: "/(tabs)/history", params: { filter: "lifecycle" } });
       } catch (error) {
         if (error instanceof HolderRevokeSigningCancelledError) {
           setPhase({ tag: "detail" });
@@ -469,6 +479,13 @@ export default function CredentialDetailScreen() {
           credentialId: credential.id,
         });
         setPhase({ tag: "detail" });
+        if (error instanceof HolderRevokeHardwareKeyRequiredError) {
+          showDialog({
+            title: "ไม่สามารถระงับเอกสารได้",
+            message: "เอกสารนี้ยังไม่ได้ผูกกับกุญแจฮาร์ดแวร์ P-256 กรุณาขอเอกสารใหม่ก่อนจึงจะระงับได้",
+          });
+          return;
+        }
         showDialog({
           title: "Unable to revoke document",
           message: "The issuer could not confirm this revoke request. Please try again.",
@@ -478,11 +495,11 @@ export default function CredentialDetailScreen() {
     }
     if (action === "Delete") {
       deleteStoredCredentialAfterHolderApproval(credential.id);
-      router.push("/(tabs)/history");
+      router.push({ pathname: "/(tabs)/history", params: { filter: "lifecycle" } });
       return;
     }
     recordCredentialLifecycleAction(credential.id, action);
-    router.push("/(tabs)/history");
+    router.push({ pathname: "/(tabs)/history", params: { filter: "lifecycle" } });
   }
 
   if (phase.tag === "revokeSubmitting") {
@@ -576,12 +593,13 @@ export default function CredentialDetailScreen() {
             pin={pin}
             error={pinError}
             showFingerprint={
-              phase.action === "Delete" && phase.mode === "verify"
+              (phase.action === "Delete" || phase.action === "Revoke") &&
+              phase.mode === "verify"
             }
             onDigit={handleKeyPress}
             onBackspace={() => setPin((value) => value.slice(0, -1))}
             onFingerprint={() => {
-              void handleDeleteBiometric();
+              void handleLifecycleBiometric();
             }}
           />
           <Text className="mt-8 text-xs text-blue-gray">ลืมรหัสผ่าน?</Text>
@@ -603,11 +621,7 @@ export default function CredentialDetailScreen() {
             <CredentialDocumentDetailCard
               display={display}
               record={credential}
-              holderProfile={
-                display.imageKey === "id" || display.imageKey === "car" || isTranscript
-                  ? holderProfile
-                  : undefined
-              }
+              holderProfile={holderProfile}
             />
 
             <View className="mt-4">
@@ -640,6 +654,26 @@ export default function CredentialDetailScreen() {
     );
   }
 
+  const credentialActionMenu = !hideCredentialActionMenu ? (
+    <View className="relative z-30">
+      <AppButton
+        variant="icon-circle"
+        iconName="dots-vertical"
+        iconSize={22}
+        iconColor={THEME.navy}
+        className="h-9 w-9 bg-white"
+        onPress={() => setIsActionMenuOpen((value) => !value)}
+        accessibilityLabel="Open credential actions"
+      />
+      {isActionMenuOpen ? (
+        <CredentialActionMenu
+          onRevoke={() => beginAction("Revoke")}
+          onDelete={() => beginAction("Delete")}
+        />
+      ) : null}
+    </View>
+  ) : undefined;
+
   return (
     <SafeAreaView className="flex-1 bg-wallet-navy" edges={["top"]}>
       <WalletHeader onBack={() => router.back()} />
@@ -655,32 +689,32 @@ export default function CredentialDetailScreen() {
               <CredentialDocumentDetailCard
                 display={display}
                 record={credential}
-                holderProfile={
-                  display.imageKey === "id" || display.imageKey === "car" || isTranscript
-                    ? holderProfile
-                    : undefined
-                }
+                holderProfile={holderProfile}
                 inactiveState={inactiveState}
                 renewalBadgeLabel={renewalBadgeLabel}
                 renewalState={showRenewedActiveBadge ? "renewed-active" : undefined}
+                bannerAction={credentialActionMenu}
                 onOpenQr={
-                  isRenewalBlocked
+                  isPresentmentBlocked
                     ? undefined
-                    : showVpQrButton
-                      ? () => setVpQrVisible(true)
-                      : () => {
-                          router.push({
-                            pathname: "/(tabs)/qr",
-                            params: { credentialId: credential!.id },
-                          });
-                        }
+                    : () => {
+                        runPresentActionIfPidReady(() => {
+                          setVpQrVisible(true);
+                        });
+                      }
                 }
                 onPresentViaNfc={
-                  !isRenewalBlocked && credential && hasMdoc && isProximityPresentationSupported()
+                  canShowNfcPresentButton({
+                    record: credential,
+                    hasNativeMdoc: hasMdoc,
+                    renewalBlocked: isPresentmentBlocked,
+                  })
                     ? () => {
-                        router.push({
-                          pathname: "/(tabs)/present",
-                          params: { credentialId: credential.id },
+                        runPresentActionIfPidReady(() => {
+                          router.push({
+                            pathname: "/(tabs)/present",
+                            params: { credentialId: credential!.id },
+                          });
                         });
                       }
                     : undefined
@@ -698,19 +732,6 @@ export default function CredentialDetailScreen() {
                   <Text className="text-center text-sm text-gray600">
                     {inactiveState.panelMessage}
                   </Text>
-                </View>
-              ) : null}
-              {canRequestRenewal ? (
-                <View className="mt-4">
-                  <AppButton
-                    variant="solid-block"
-                    label={WALLET_HOME_COPY.requestCredential}
-                    onPress={() => {
-                      void beginRenewalRequest();
-                    }}
-                    className="w-full rounded-xl py-3"
-                    textClassName="text-center text-sm font-bold"
-                  />
                 </View>
               ) : null}
               {showWalletKeyExpiredPrompt ? (
@@ -740,7 +761,9 @@ export default function CredentialDetailScreen() {
                     label={WALLET_HOME_COPY.requestNewCredential}
                     onPress={() => {
                       void requestCredentialViaPortalFlow({
-                        credentialType: credential?.type,
+                        credentialType: credential
+                          ? resolveIssuerPortalCredentialTypeFromRecord(credential)
+                          : undefined,
                         router,
                         showDialog,
                       });
@@ -774,25 +797,6 @@ export default function CredentialDetailScreen() {
                   />
                 </View>
               ) : null}
-              {!hideCredentialActionMenu ? (
-                <View className="absolute right-3 top-3 z-30">
-                  <AppButton
-                    variant="icon-circle"
-                    iconName="dots-vertical"
-                    iconSize={22}
-                    iconColor={THEME.navy}
-                    className="h-9 w-9 bg-white"
-                    onPress={() => setIsActionMenuOpen((value) => !value)}
-                    accessibilityLabel="Open credential actions"
-                  />
-                  {isActionMenuOpen ? (
-                    <CredentialActionMenu
-                      onRevoke={() => beginAction("Revoke")}
-                      onDelete={() => beginAction("Delete")}
-                    />
-                  ) : null}
-                </View>
-              ) : null}
             </View>
           ) : (
             <View className="rounded-[8px] bg-white px-5 py-6">
@@ -808,7 +812,7 @@ export default function CredentialDetailScreen() {
           )}
         </ScrollView>
       </View>
-      {credential && showVpQrButton ? (
+      {credential ? (
         <VpQrModal
           visible={vpQrVisible}
           credential={credential}

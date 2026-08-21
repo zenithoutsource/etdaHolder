@@ -1,3 +1,10 @@
+/**
+ * Modal wallet-key-expired prompt.
+ * Journey: P3 via WalletKeyExpiryHost.
+ * Copy: WALLET_HOME_COPY.
+ * Map: docs/CODEMAPS/frontend.md#global-hosts
+ */
+
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Modal, Pressable, Text, View } from "react-native";
 

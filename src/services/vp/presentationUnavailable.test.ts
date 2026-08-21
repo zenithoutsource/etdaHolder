@@ -13,7 +13,7 @@ describe('presentationUnavailable', () => {
 
     expect(readPresentationUnavailableDetails(error)).toEqual({
       reason: 'metadata-mismatch',
-      documentLabel: 'Academic Transcript',
+      documentLabel: 'ใบแสดงผลการเรียน',
       requestCredentialType: 'ChulalongkornUniversityTranscript',
     })
   })
@@ -27,7 +27,7 @@ describe('presentationUnavailable', () => {
 
     expect(readPresentationUnavailableDetails(error)).toEqual({
       reason: 'credential-missing',
-      documentLabel: 'Requested document',
+      documentLabel: 'เอกสารที่ร้องขอ',
     })
   })
 

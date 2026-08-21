@@ -1,5 +1,7 @@
 # Portal Issuance E2E Implementation Plan
 
+> **Superseded:** VCI now uses `@openid4vc/openid4vci` only (2026-08-06).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the portal-issuance milestone by validating IdCard, Transcript, and Driving Licence issuance on a physical device against `issuer.zenithcomp.co.th:455`, with Issuer redirect contract `walletapp://callback?credential_offer_uri=https://...`.
@@ -12,7 +14,7 @@
 
 ## Global Constraints
 
-- OID4VCI claim stays on-device via `@sphereon/oid4vci-client`; no mobile `/exchange/*`.
+- OID4VCI claim stays on-device via `@openid4vc/openid4vci`; no mobile `/exchange/*`.
 - Default `ReturnUrl`: `walletapp://callback` (`EXPO_PUBLIC_ISSUER_WALLET_RETURN_URL`).
 - Default login base: `https://issuer.zenithcomp.co.th:455/Account/Login` (`EXPO_PUBLIC_ISSUER_LOGIN_URL`).
 - Issuer `documentType` values: `IdCard`, `DriverLicense`, `Transcript`.

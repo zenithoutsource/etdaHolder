@@ -19,7 +19,7 @@
 - Preserve existing error prefixes for `scanFriendlyErrors.ts`.
 - No logging of vp_token, claims, VC payloads, or key material.
 - NativeWind only; no new UI screens.
-- Do not remove `@sphereon/*` in this plan (Phase 3).
+- Do not remove legacy VCI client packages in this plan (Phase 3 — complete in separate slice).
 - Run `yarn tsc --noEmit`, `yarn lint`, focused tests after each task; update `docs/TASKS.md` when complete.
 - Do not commit unless the user explicitly requests.
 
@@ -372,7 +372,7 @@ export function isOid4vcVpAdapterEnabled(
 | Parity + integration tests | Task 5, 8 |
 | `yarn lint` in gate | Task 11 |
 | `.env.example` + TASKS | Task 10 |
-| No Sphereon removal | Out of scope |
+| Legacy VCI client removal | Out of scope (Phase 3 complete separately) |
 
 **Placeholder scan:** none — spike outcome section filled during Task 0.
 

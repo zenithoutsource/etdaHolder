@@ -1,3 +1,10 @@
+/**
+ * Typed OID4VP failure UI (kind → icon, title, body, CTA).
+ * Journey: P4 / My QR.
+ * Copy: presentationFailureUi; inline mapping.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
@@ -18,10 +25,13 @@ const FAILURE_ICON: Record<PresentationFailureKind, keyof typeof MaterialCommuni
   'format-mismatch': 'file-code-outline',
   'not-presentable': 'file-clock-outline',
   'issuer-pid-missing': 'card-account-details-outline',
+  'pid-required': 'card-account-details-outline',
   'verifier-untrusted': 'shield-alert-outline',
   'issuer-untrusted': 'shield-alert-outline',
   'request-unsupported': 'file-cancel-outline',
   'request-invalid': 'file-remove-outline',
+  'request-expired': 'link-off',
+  'request-unreachable': 'cloud-off-outline',
   'holder-binding': 'link-variant-off',
   timeout: 'timer-sand',
   'biometric-cancelled': 'fingerprint-off',

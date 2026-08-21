@@ -39,11 +39,14 @@ Create three documentation sets separated by trust and ownership boundary:
 |---|---|---|---|
 | Wallet Backend | `/wallet-api/docs` | `/wallet-api/openapi.json` | All environments |
 | Presentation Gateway | `/v1/docs` | `/v1/openapi.json` | All environments |
-| Development APIs | `/dev/docs` | `/dev/openapi.json` | Non-production only |
+| Development APIs | `/wallet-api/dev/docs` (local alias `/dev/docs`) | `/wallet-api/dev/openapi.json` (local alias `/dev/openapi.json`) | When `NODE_ENV !== "production"` or `ENABLE_DEVELOPMENT_APIS=true` |
 
-The Development OpenAPI document covers both `/dev/*` and
-`/wallet-api/dev/*`. The documentation location does not change the runtime
-paths of the documented operations.
+The Development OpenAPI document covers `/wallet-api/dev/*` lifecycle simulation
+only. Those paths stay under `/wallet-api/` so shared HTTPS reverse proxies that
+only forward `/wallet-api/*` can reach them. There is no `/dev/vp-*` VP relay.
+
+When development APIs are enabled, `/wallet-api/docs` also merges those
+development operations so one Swagger UI can exercise the full Node surface.
 
 The existing Wallet Swagger paths remain stable. The implementation adds the
 missing Wallet Provider attestation operation and improves operation summaries,
@@ -52,12 +55,19 @@ descriptions, constraints, responses, and synthetic examples.
 ## Production Development-Route Gate
 
 Development documentation and the underlying development routers use the same
-environment gate. When `NODE_ENV === "production"`:
+environment gate. When `NODE_ENV === "production"` and `ENABLE_DEVELOPMENT_APIS`
+is not `true`/`1`:
 
 - `/dev/*` is not mounted.
 - `/wallet-api/dev/*` is not mounted.
-- `/dev/docs` and `/dev/openapi.json` are not mounted.
+- `/wallet-api/dev/docs`, `/wallet-api/dev/openapi.json`, `/dev/docs`, and
+  `/dev/openapi.json` are not mounted.
 - Requests to those paths return `404`.
+
+`ENABLE_DEVELOPMENT_APIS=true` keeps the development surface mounted even when
+`NODE_ENV === "production"`. Use that only on the shared staging Wallet host
+whose reverse proxy forwards `/wallet-api/*`. Never enable it on a true
+production Wallet Backend.
 
 Wallet Backend and Presentation Gateway routes remain available. The
 Wallet Provider attestation handler remains documented as a development mock:
@@ -73,9 +83,9 @@ OpenAPI source files remain under `server/src/openapi/`.
   registration, and Wallet Provider attestation.
 - The Presentation Gateway document covers presentation-session creation,
   presentation upload, status polling, and browser verification.
-- The Development document covers issuer-key resolution, development VP
-  sessions, suspension simulation, credential-use simulation, holder
-  revocation, lifecycle webhooks, and credential renewal workflows.
+- The Development document covers suspension simulation, credential-use
+  simulation, holder revocation, lifecycle webhooks, and credential renewal
+  workflows.
 
 Reusable Swagger installation logic serves each document without creating
 three divergent middleware implementations. Documentation middleware is

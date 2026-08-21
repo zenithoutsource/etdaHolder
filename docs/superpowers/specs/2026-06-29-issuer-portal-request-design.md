@@ -1,5 +1,7 @@
 # Issuer Portal Credential Request — Design Spec
 
+> **Superseded:** VCI now uses `@openid4vc/openid4vci` only (2026-08-06).
+
 > **Date:** 2026-06-29  
 > **Status:** Draft — pending user review  
 > **Author:** Brainstorming session (Wallet Home **ขอเอกสาร** flow)
@@ -29,7 +31,7 @@ The local dev environment already has an Issuer dashboard at `:3000` (`docs/ANDR
 
 ### Architecture constraints (unchanged)
 
-- OID4VCI claim stays on-device via `@sphereon/oid4vci-client`; no mobile `/exchange/*`.
+- OID4VCI claim stays on-device via `@openid4vc/openid4vci`; no mobile `/exchange/*`.
 - Deeplink handling stays in `app/_layout.tsx` + `deeplinkStore`; do not duplicate claim logic in the portal service.
 - Credential UI remains config-driven (`cardSchemas.ts`); portal URLs live in a separate config module.
 - Operational logs use `walletLogger`; never log full offer URIs, tokens, or PII.

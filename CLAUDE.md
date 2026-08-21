@@ -30,19 +30,26 @@ Primary references:
 
 When planning any new system, feature, or integration:
 
-1. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs.
-2. **Best practice before convenience** — prefer push notifications via APNs/FCM with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant flows over custom shortcuts.
-3. **Name the tradeoffs explicitly** — if recommending a simpler approach, state what production capability is deferred and when it must be addressed.
-4. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before implementation steps.
+1. **Read Cursor Canvas P1–P6 first** — before designing or implementing anything new, read the journey sequence canvases so the work matches the locked P1–P6 specs and step statuses. Do not invent divergent actors, steps, or outcomes. If a change would alter a P1–P6 sequence, update the relevant canvas (and related User Journey / specs) in the same change set. Canvas files live under the Cursor project `canvases/` directory:
+   - `canvases/p1-sequence-check.canvas.tsx`
+   - `canvases/p2-sequence-check.canvas.tsx`
+   - `canvases/p3-key-rotation-sequence-check.canvas.tsx`
+   - `canvases/p4-vp-presentation-sequence-check.canvas.tsx`
+   - `canvases/p5-vp-verification-audit.canvas.tsx`
+   - `canvases/p6-revocation-status-sequence-check.canvas.tsx`
+2. **Production-first** — default recommendation must be the production-grade approach (secure, observable, scalable). Present the dev/shortcut path only as a secondary option with explicit tradeoffs.
+3. **Best practice before convenience** — prefer push notifications via APNs/FCM with proper token lifecycle over polling; prefer hardware-backed key storage over software; prefer standards-compliant flows over custom shortcuts.
+4. **Name the tradeoffs explicitly** — if recommending a simpler approach, state what production capability is deferred and when it must be addressed.
+5. **Security gate first** — for any new service touching credentials, keys, or user identity, identify the security boundary and compliance requirement before implementation steps.
 
 ## Architecture Rules
 
 - Mobile code must never connect directly to MySQL.
 - Company backend calls must go through `src/sdk/walletApi.ts` and the `src/sdk/installWalletApiFetch.ts` base URL adapter.
-- OID4VCI protocol work must run on-device through `@sphereon/oid4vci-client`; do not call backend `/exchange/*` endpoints.
+- OID4VCI protocol work must run on-device through `@openid4vc/openid4vci`; do not call backend `/exchange/*` endpoints.
 - Credentials are normalized into `VerifiableCredentialRecord` before encrypted MMKV storage.
 - Dynamic credential UI must use `src/config/cardSchemas.ts` and generic components, not issuer-specific card screens.
-- Production signing uses a Keychain-protected Ed25519 seed with `@noble/ed25519` EdDSA signing because target AndroidKeyStore hardware generated EC keys for Ed25519 requests. This satisfies protocol-level EdDSA but is not hardware non-extractable.
+- Production holder signing uses hardware P-256 / ES256 `k_cred` in AndroidKeyStore (ADR 0011) when `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED` is on (default). Flag-off Ed25519 remains a Keychain-protected software seed (ADR 0008).
 - One biometric prompt per user action: a single user-initiated action (approve a presentation, claim a credential, rotate a key) must trigger exactly one authentication event. If the action requires a cryptographic sign call, that sign-time Keychain gate is the only prompt — do not add a separate app-level biometric/consent check in front of it for the same action. Only add a second, independent prompt when the action does no signing at all (so the sign-time gate never fires) and still needs its own auth.
 
 ## Master Branch Hygiene
@@ -113,6 +120,8 @@ yarn test
 - If new UI/behavior is reusable across screens (a panel shape, a gating flow, a card row), it must ship as a component/hook under `src/components/` or `src/hooks/`, not copy-pasted or reimplemented per screen.
 - When two pieces of code do the same job, they must be written the same way — same naming, same structure, same patterns — as if one person wrote the whole codebase. Diverging implementations of a shared concern (e.g. two slightly different biometric-gate call sites, two slightly different card-row renderers) are a defect: consolidate to one shared implementation instead of leaving near-duplicates that read as inconsistent.
 - When touching a feature area, check sibling files in the same directory for the established pattern first, and match it rather than inventing a new one.
+- New or touched files under `app/`, `src/screens/`, and `src/components/` must keep a file-top purpose comment (full header on screens/panels/cards: purpose, journey, copy/layout, next, map link; one-liner on primitives such as `AppButton`). English only. Do not add walkthrough comments next to obvious JSX or `setState`.
+- If a screen's files, copy home, or flow steps change, update [`docs/CODEMAPS/frontend.md`](docs/CODEMAPS/frontend.md) in the same change set.
 
 ## Skills and Routing Patterns
 
@@ -122,6 +131,7 @@ yarn test
 | `src/services/crypto/**` | Crypto and signing | Preserve EdDSA holder identity, Keychain seed protection, and biometric sign-time gate |
 | `src/services/storage/**` | Secure storage | Use encrypted MMKV and Keychain only |
 | `src/sdk/**` | Company backend SDK | Generated code only, plus the approved fetch adapter |
+| `docs/CODEMAPS/frontend.md`, `app/**`, `src/screens/**`, `src/components/**` | Frontend findability | Open the CODEMAP first; keep file-top headers in sync when screens, copy homes, or flow steps change |
 | `src/config/**`, `src/components/**`, `app/**` | UI and routing | Use config-driven card rendering and NativeWind patterns |
 | `src/store/**` | Zustand state | Keep slices thin and immutable |
 | `server/**` | Local development backend | Keep it separate from Issuer protocol execution |

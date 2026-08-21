@@ -2,7 +2,7 @@
 
 > **Status:** Implemented 2026-08-05
 
-**Goal:** Unblock driving-licence OID4VCI on device by acquiring `mso_mdoc` only via existing Sphereon path.
+**Goal:** Unblock driving-licence OID4VCI on device by acquiring `mso_mdoc` only via existing VCI exchange path.
 
 **Spec:** `docs/superpowers/specs/2026-08-05-driving-licence-mdoc-only-debug-design.md`
 

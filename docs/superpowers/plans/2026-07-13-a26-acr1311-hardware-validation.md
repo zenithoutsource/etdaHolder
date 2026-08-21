@@ -126,24 +126,33 @@ Sequence from spec §8/§11. SELECT uses the canonical 9-byte AID.
 
 **Spec:** [`2026-07-27-mdl-mdoc-only-nfc-v1-design.md`](../specs/2026-07-27-mdl-mdoc-only-nfc-v1-design.md)
 
-Prerequisites: Multipaz spike PASS; `presentationReady: true` on A26 dev build; reader profile `mdl-acr1311u-n2-mdoc-only`.
+**Host:** [`tools/acr1311u-n2/`](../../../tools/acr1311u-n2/) (Kotlin JVM, Multipaz `0.100.0`, PC/SC). Run `./gradlew run` and open `http://127.0.0.1:8787`. Full runbook: [`tools/acr1311u-n2/README.md`](../../../tools/acr1311u-n2/README.md). Do not use mdoc-web-verifier (BLE).
 
-1. Claim mDL `mso_mdoc` from customer issuer (`issuer.zenithcomp.co.th:455`).
-2. Wallet: DLT Driving Licence → NFC → consent (`family_name`, `given_name`, `birth_date`) → arm.
-3. Host: scan **Device Engagement QR** from `WaitingForTapPanel`.
-4. Tap A26 to ACR1311U-N2 (ISO mdoc AID `A0000002480400`).
-5. Reader sends `DeviceRequest` for the three fields.
-6. Verify encrypted `DeviceResponse`, issuer MSO signature, and device authentication (customer IACA on host).
-7. Negative: companion AID SELECT while `mdoc-only` armed → `6985`.
-8. Record PASS/FAIL below.
+Prerequisites: Multipaz spike PASS; `presentationReady: true` on A26 **debug** build; reader profile `mdl-acr1311u-n2-mdoc-only`; ACS CCID so ACR1311 enumerates over USB or Bluetooth **to the PC**.
+
+Credential source (either):
+
+- Production-like: claim mDL `mso_mdoc` from the customer issuer.
+- Offline tester: debug Home → **Add test mDL** (`__DEV__` + `FLAG_DEBUGGABLE`). That path binds MSO `DeviceKey` to this credential’s `k_cred` (or Ed25519 holder key when hardware signing is off). Do not import a PC-minted `generate-mdl` file that used a fresh software device key.
+
+1. Wallet: DLT Driving Licence → NFC → consent (`family_name`, `given_name`, `birth_date`) → arm. Keep the screen on (60s arm window).
+2. Host page: paste or scan the **Waiting for tap** Device Engagement QR (`mdoc:`). This is not a Scan-tab OID4VCI/OID4VP QR.
+3. Click **Wait for tap**, then tap A26 to ACR1311U-N2 (ISO mdoc AID `A0000002480400`).
+4. Host decrypts `DeviceResponse` and shows the three claims. Optional local `testdata/test-iaca.pem` (TEST IACA from `generate-mdl`) checks `x5chain`; if absent, claims still show with **issuer attestation not verified**.
+5. Negative: unarmed SELECT → `6A82`; not approved → `6985`; companion AID SELECT while `mdoc-only` armed → `6985`.
+6. Record PASS/FAIL below.
+
+**Pass:** page shows `family_name`, `given_name`, `birth_date` **and** wallet Success, plus logcat `[hce] mdoc APDU` / `[multipaz-session] NFC transport connected`. A reader beep alone is not pass. Rebuild native after HCE changes.
 
 | Field | Value |
 |---|---|
 | Wallet commit | |
 | Android version | |
 | Reader firmware | |
+| Credential source (issuer / test inject) | |
 | Engagement QR scanned | |
-| DeviceResponse verify | |
+| DeviceResponse claims shown | |
+| Issuer attestation (optional TEST IACA) | |
 | Companion blocked (`6985`) | |
 | **Overall PASS / FAIL** | |
 

@@ -2,6 +2,7 @@ import { isIssuerOid4VpClientId, isIssuerOid4VpResponseUri } from '@/src/config/
 import { isRecord, readString } from '@/src/utils/jwtUtils'
 import type { DcqlQuery } from '../presentationService'
 import { isDualFormatDcqlRequest } from '../dualFormatQuery'
+import { isSupportedOid4vpResponseMode } from '../oid4vpResponseEncryption'
 import { normalizeAuthorizationRequestForRouting } from './normalizeAuthorizationRequestForRouting'
 import type { PresentationFlowOrigin } from './types'
 
@@ -40,7 +41,7 @@ export function shouldUseOid4vcVpAdapter(input: {
   }
 
   if (!request.dcql_query) return false
-  if (readString(request.response_mode) !== 'direct_post') return false
+  if (!isSupportedOid4vpResponseMode(readString(request.response_mode) ?? '')) return false
 
   const clientId = readString(request.client_id)
   const responseUri = readString(request.response_uri)

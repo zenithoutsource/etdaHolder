@@ -1,5 +1,7 @@
 # OID4VC VP Adapter — `@openid4vc/openid4vp` Phase 1
 
+**Superseded (VCI):** VCI now uses `@openid4vc/openid4vci` only (2026-08-06).
+
 **Date:** 2026-07-31 (review patch 2026-08-05, round 4)  
 **Status:** Approved for implementation planning  
 **Related:** `docs/TASKS.md` (OID4VP local service boundary note), `docs/ARCHITECTURE.md` §3, `src/services/vp/presentationService.ts`, `src/services/vp/authorizationRequestJar.ts`, `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md`
@@ -8,12 +10,12 @@
 
 Introduce a **replaceable OID4VP protocol adapter** using `@openid4vc/openid4vp` (OpenWallet Foundation `oid4vc-ts`) behind a feature flag. Phase 1 migrates **protocol plumbing only** (authorization request fetch/parse and `direct_post` submission) for **Scan tab DCQL** and **same-device deeplink** flows. Wallet orchestration (trusted verifier checks, DCQL credential matching, disclosures, KB-JWT signing via Keychain, redirect handling) stays in `presentationService.ts` and existing VP modules.
 
-This is **Phase 1 of a 3-phase initiative** to align with the OWF stack and eventually replace `@sphereon/oid4vci-client` in Phase 2 and remove `@sphereon/*` in Phase 3.
+This is **Phase 1 of a 3-phase initiative** to align with the OWF stack and eventually replace the legacy VCI protocol client in Phase 2 and remove legacy VCI packages in Phase 3.
 
 ## Goals
 
 1. **Reduce maintenance** of hand-written OID4VP protocol code (`authorizationRequestJar`, fetch/submit HTTP details).
-2. **Ecosystem alignment** — same library family used by Credo and adopted by Sphereon VP (DCQL via `dcql-ts`).
+2. **Ecosystem alignment** — same library family used by Credo (DCQL via `dcql-ts`).
 3. **Safe rollout** — `EXPO_PUBLIC_OID4VC_VP_ADAPTER` is a **build-time kill switch** (embedded at Expo bundle time); legacy path remains default until a new build enables the flag.
 4. **Replaceable boundary** — fulfills the `docs/TASKS.md` note that `src/services/vp/` was designed to swap when a confirmed library exists.
 
@@ -23,28 +25,28 @@ This is **Phase 1 of a 3-phase initiative** to align with the OWF stack and even
 - Issuer OID4VP (renewal silent presentation, P2 PID auth via `EXPO_PUBLIC_ISSUER_OID4VP_*`).
 - Dual-format VP (`dc+sd-jwt` + `mso_mdoc` in one `vp_token`).
 - Presentation Exchange (`presentation_definition`) flows — **legacy parse/submit only**; adapter is not invoked for PEX until Phase 1.5.
-- `direct_post.jwt`, JARM, `dc_api` response modes.
+- `dc_api` response modes (`direct_post.jwt` implemented 2026-08-21 — see `docs/superpowers/specs/2026-08-21-oid4vp-direct-post-jwt-design.md`).
 - Phase 2 VCI migration (`exchangeService.ts` → `@openid4vc/openid4vci`).
-- Removing `@sphereon/*` dependencies.
+- Removing legacy VCI client packages.
 - UI changes beyond existing Scan error surfacing.
 
 ## Background
 
 | Layer | Today | Phase 1 target |
 |-------|-------|----------------|
-| VCI | `@sphereon/oid4vci-client` + `exchangeService.ts` | **No change** |
+| VCI | `@openid4vc/openid4vci` + `exchangeService.ts` | **No change** (Phase 2/3 complete) |
 | VP parse/submit | Custom `authorizationRequestJar.ts` + inline fetch/POST in `presentationService.ts` | `@openid4vc/openid4vp` adapter when flag on **and** request is in-scope |
 | VP orchestration | `presentationService.ts` (~1k lines) | **No change** |
 | Signing | Keychain Ed25519 via `crypto.ts` | **No change** — adapter does not sign VP tokens |
 
-`docs/TASKS.md` records that a Sphereon OID4VP package was not available at implementation time; the local `src/services/vp/` boundary was intentionally narrow and replaceable.
+`docs/TASKS.md` records that a third-party OID4VP package was not available at implementation time; the local `src/services/vp/` boundary was intentionally narrow and replaceable.
 
 ## Product decisions (locked)
 
 | Decision | Choice |
 |----------|--------|
 | Primary goals | Reduce protocol maintenance (A) + OWF ecosystem alignment (B) |
-| Overall plan | 3 phases: VP adapter → VCI migration → remove Sphereon |
+| Overall plan | 3 phases: VP adapter → VCI migration → remove legacy VCI client |
 | Phase 1 flows | Scan tab `openid4vp://` DCQL QR + same-device `walletapp://callback` VP deeplink |
 | Rollout | Build-time flag `EXPO_PUBLIC_OID4VC_VP_ADAPTER`, default `false` — toggling requires a new dev/staging/production build (not a runtime remote config) |
 | Success criteria | Automated tests pass + manual E2E on dev verifier (not production `did:web` gate) |
@@ -82,8 +84,8 @@ Phase 0 spike (pre-implementation): validate @openid4vc/openid4vp holder-side AP
 Phase 0 (within Phase 1 slice): oid4vcCallbacks.ts — RN/Hermes crypto + fetch callbacks
 Phase 1: VP protocol adapter — Scan + deeplink DCQL direct_post
 Phase 1.5 (defer): broker, issuer OID4VP, dual-format, PEX
-Phase 2: VCI protocol layer → @openid4vc/openid4vci (replace Sphereon in exchangeService)
-Phase 3: Remove @sphereon/* packages
+Phase 2: VCI protocol layer → @openid4vc/openid4vci (replace legacy client in exchangeService)
+Phase 3: Remove legacy VCI client packages
 ```
 
 ### Data flow (Phase 1)
@@ -244,7 +246,7 @@ Add `dcql-ts` only if required by `@openid4vc/openid4vp` peer dependency or adap
 
 If Phase 0 spike shows `@openid4vc/openid4vp` lacks holder-side parse/submit APIs, pivot to `@pagopa/io-wallet-oid4vp` for protocol plumbing only; keep this spec's adapter boundary unchanged.
 
-Retain all `@sphereon/*` until Phase 3.
+Legacy VCI client packages removed in Phase 3 (complete).
 
 ### Adapter scope (protocol plumbing)
 
@@ -409,7 +411,7 @@ Verifier: dev host (`verifier.zenithcomp.co.th` or local `/dev/vp-*`). Productio
 | Lib errors break `scanFriendlyErrors` | Adapter wrap layer with stable prefixes |
 | JAR `did:web` parity drift | Parity tests + fixtures from `authorizationRequestJar.test.ts` |
 | Tests never exercise adapter path | CI runs flag-on subset |
-| Dual dependency (@sphereon + @openid4vc) | Accepted until Phase 3; document in TASKS |
+| Dual dependency (legacy VCI client + @openid4vc) | Accepted until Phase 3; document in TASKS |
 | `request_uri` QR mis-routed before fetch | Mandatory Stage 1 fetch → classify; unit test `request_uri`-only input |
 | My QR incorrectly uses adapter | Require `presentationFlowOrigin`; broker/my-qr tests assert `protocolPath: 'legacy'` |
 | Lost authorization payload breaks lib submit | Persist `Oid4vcAdapterContext`; submit test asserts payload round-trip |
@@ -440,5 +442,5 @@ Verifier: dev host (`verifier.zenithcomp.co.th` or local `/dev/vp-*`). Productio
 | Phase | Scope |
 |-------|-------|
 | 1.5 | Broker My QR, issuer OID4VP, dual-format VP, PEX |
-| 2 | `@openid4vc/openid4vci` replaces Sphereon in `exchangeService.ts`; reuse `oid4vcCallbacks.ts` — **requires a separate Phase 2 design** (wallet attestations, per-credential keys, issuer verify, mdoc storage, proof retries not covered here) |
-| 3 | Remove `@sphereon/oid4vci-client` and `@sphereon/oid4vci-common` (e.g. `claimDisclosurePolicy.ts` types) |
+| 2 | `@openid4vc/openid4vci` replaces legacy VCI client in `exchangeService.ts`; reuse `oid4vcCallbacks.ts` — **complete** (see Phase 2 VCI design spec) |
+| 3 | Remove legacy VCI client packages (complete) |

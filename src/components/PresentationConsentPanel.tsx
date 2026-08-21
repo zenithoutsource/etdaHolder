@@ -1,9 +1,30 @@
+/**
+ * Claim disclosure consent (mandatory / toggleable) before present.
+ * Journey: P4 Oid4VpDisclosureFlow consent phase.
+ * Copy: cardSchemas labels; claimDisclosurePolicy; presentationVerifierMocks (party + hero icon). Issuer disclosure values first; PID fills empty name fields only. Holder lists hide religion; DL given name above family name. VP submit keys stay unfiltered.
+ * Layout: PresentationDisclosureList.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
+import { useMemo } from 'react'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import { ScrollView, Text, View } from 'react-native'
+import { Image, ScrollView, Text, View } from 'react-native'
 
 import type { PresentationDisclosure, ResolvedPresentationRequest } from '../services/vp/presentationService'
 import { resolvePresentationDisclosureLabel } from '../config/cardSchemas'
+import {
+  readPresentationConsentHeroIcon,
+  readPresentationConsentPartyLabel,
+  readPresentationVerifierLogoSource,
+} from '../config/presentationVerifierMocks'
+import { useStoredCredentials } from '../hooks/useStoredCredentials'
+import {
+  overlayPresentationDisclosureValue,
+  resolveDisplayHolderProfile,
+  type CredentialHolderProfile,
+} from '../services/credentials/credentialDisplay'
 import { resolveDisclosedClaimLabels, resolveEffectiveDisclosureKeys } from '../services/vp/claimDisclosurePolicy'
+import { prepareHolderFacingDisclosureItems } from '../services/vp/presentationDisclosureDisplay'
 import { AppButton } from './AppButton'
 import { PresentationDisclosureList } from './PresentationDisclosureList'
 
@@ -30,18 +51,21 @@ export function readConsentItems(
   disclosures: PresentationDisclosure[],
   selectedClaimKeys: ReadonlySet<string>,
   documentType?: string,
+  holderProfile?: CredentialHolderProfile,
 ) {
-  return disclosures.map((disclosure) => ({
-    key: disclosure.key,
-    label: documentType
-      ? resolvePresentationDisclosureLabel(documentType, disclosure.key)
-      : disclosure.label,
-    value: disclosure.value,
-    selected: isMandatoryPresentationDisclosure(disclosure) || disclosure.selective === false
-      ? true
-      : selectedClaimKeys.has(disclosure.key),
-    toggleable: isToggleablePresentationDisclosure(disclosure),
-  }))
+  return prepareHolderFacingDisclosureItems(
+    disclosures.map((disclosure) => ({
+      key: disclosure.key,
+      label: documentType
+        ? resolvePresentationDisclosureLabel(documentType, disclosure.key)
+        : disclosure.label,
+      value: overlayPresentationDisclosureValue(disclosure.key, disclosure.value, holderProfile),
+      selected: isMandatoryPresentationDisclosure(disclosure) || disclosure.selective === false
+        ? true
+        : selectedClaimKeys.has(disclosure.key),
+      toggleable: isToggleablePresentationDisclosure(disclosure),
+    })),
+  )
 }
 
 export function hasSelectedClaims(
@@ -54,16 +78,19 @@ export function hasSelectedClaims(
 function readReadOnlyConsentItems(
   disclosures: PresentationDisclosure[],
   documentType?: string,
+  holderProfile?: CredentialHolderProfile,
 ) {
-  return disclosures.map((disclosure) => ({
-    key: disclosure.key,
-    label: documentType
-      ? resolvePresentationDisclosureLabel(documentType, disclosure.key)
-      : disclosure.label,
-    value: disclosure.value,
-    selected: true,
-    toggleable: false as const,
-  }))
+  return prepareHolderFacingDisclosureItems(
+    disclosures.map((disclosure) => ({
+      key: disclosure.key,
+      label: documentType
+        ? resolvePresentationDisclosureLabel(documentType, disclosure.key)
+        : disclosure.label,
+      value: overlayPresentationDisclosureValue(disclosure.key, disclosure.value, holderProfile),
+      selected: true,
+      toggleable: false as const,
+    })),
+  )
 }
 
 export function PresentationConsentPanel({
@@ -72,22 +99,48 @@ export function PresentationConsentPanel({
   onReject,
   submitting,
 }: Props) {
+  const { credentials } = useStoredCredentials()
+  const holderProfile = useMemo(
+    () => resolveDisplayHolderProfile(request.matchedCredential, credentials),
+    [credentials, request.matchedCredential],
+  )
+  const consentPartyLabel = readPresentationConsentPartyLabel(
+    request.matchedCredential.type,
+    request.verifier.name,
+  )
+  const logoSource = readPresentationVerifierLogoSource(request.matchedCredential.type)
+  const heroIcon = readPresentationConsentHeroIcon(request.matchedCredential.type)
+
   return (
     <View className="flex-1 bg-white px-6 pt-8">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-8 items-center">
         <View className="h-[72px] w-[72px] items-center justify-center rounded-2xl bg-navy-muted">
-          <MaterialCommunityIcons name="glass-cocktail" size={36} color={THEME.white} />
+          {logoSource ? (
+            <Image
+              testID="presentation-consent-verifier-logo"
+              source={logoSource}
+              className="h-12 w-12"
+              resizeMode="contain"
+              accessibilityLabel={`${consentPartyLabel} โลโก้`}
+            />
+          ) : heroIcon ? (
+            <MaterialCommunityIcons name={heroIcon} size={36} color={THEME.white} />
+          ) : null}
         </View>
 
         <Text className="mt-5 text-center text-[18px] font-extrabold text-navy-deep">
-          ข้อมูลที่{request.verifier.name}ต้องการ
+          ข้อมูลที่{consentPartyLabel}ต้องการ
         </Text>
 
         <Text className="mt-1 text-[13px] text-gray500">ข้อมูลที่ร้องขอ</Text>
 
         <View className="mt-5 w-full">
           <PresentationDisclosureList
-            items={readReadOnlyConsentItems(request.disclosures, request.matchedCredential.type)}
+            items={readReadOnlyConsentItems(
+              request.disclosures,
+              request.matchedCredential.type,
+              holderProfile,
+            )}
             variant="consent"
           />
         </View>

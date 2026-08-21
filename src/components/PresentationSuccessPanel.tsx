@@ -1,3 +1,11 @@
+/**
+ * Reusable success checkmark panel (full-screen or card).
+ * Journey: P4 OID4VP and NFC result wrappers.
+ * Copy: props-driven title/message/button.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
+import type { ReactNode } from 'react'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
@@ -11,6 +19,7 @@ type PresentationSuccessPanelProps = {
   buttonLabel: string
   onDone: () => void
   fullScreen?: boolean
+  children?: ReactNode
 }
 
 export function PresentationSuccessPanel({
@@ -19,6 +28,7 @@ export function PresentationSuccessPanel({
   buttonLabel,
   onDone,
   fullScreen = false,
+  children,
 }: PresentationSuccessPanelProps) {
   return (
     <View className={fullScreen ? 'flex-1 items-center bg-green-50 px-6 pt-[100px]' : 'rounded-[12px] bg-white px-5 py-8'}>
@@ -32,12 +42,13 @@ export function PresentationSuccessPanel({
           color={fullScreen ? THEME.white : THEME.successDark}
         />
       </View>
-      <Text className={`${fullScreen ? 'mt-7 text-[18px] font-extrabold leading-6 text-black' : 'mt-4 text-lg font-semibold text-ink'} text-center`}>
+      <Text className={`${fullScreen ? 'mt-7 text-[18px] font-extrabold leading-[26px] text-black' : 'mt-4 text-lg font-semibold leading-[26px] text-ink'} text-center`}>
         {title}
       </Text>
-      <Text className={`${fullScreen ? 'mt-4 mb-4 text-[14px] leading-5 text-slate750' : 'mt-2 text-sm text-slate'} text-center`}>
+      <Text className={`${fullScreen ? 'mt-4 mb-4 text-[14px] leading-[22px] text-slate750' : 'mt-2 text-sm leading-[22px] text-slate'} text-center`}>
         {message}
       </Text>
+      {children}
 
       <AppButton
         variant="solid-block"

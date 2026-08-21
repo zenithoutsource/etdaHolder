@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+/**
+ * Wallet-initiated broker VP session for My QR (poll until request_ready / expired).
+ * Journey: P4 My QR tab and VpQrModal.
+ * Copy: none (UI copy lives in WalletInitiatedVpQrPanel / WALLET_HOME_COPY).
+ * Next: src/services/vp/brokerSessionClient.ts
+ * Map: docs/CODEMAPS/frontend.md#my-qr
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform } from 'react-native'
 
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
@@ -18,7 +26,8 @@ export type WalletInitiatedVpQrPhase =
   | 'error'
 
 type Options = {
-  credential: VerifiableCredentialRecord | undefined
+  /** @deprecated My QR no longer pre-selects a document; verifier DCQL chooses after scan. */
+  credential?: VerifiableCredentialRecord | undefined
   active: boolean
   resumeSessionId?: string
   client?: BrokerSessionClient
@@ -30,7 +39,6 @@ type Options = {
 const RESUMED_SESSION_FALLBACK_TTL_MS = 5 * 60_000
 
 export function useWalletInitiatedVpQrSession({
-  credential,
   active,
   resumeSessionId,
   client,
@@ -40,6 +48,8 @@ export function useWalletInitiatedVpQrSession({
 }: Options) {
   const authWalletId = useAuthStore((state) => state.walletId)
   const brokerClient = useMemo(() => client ?? createBrokerSessionClient(), [client])
+  const startedForActiveRef = useRef(false)
+  const startGenerationRef = useRef(0)
 
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
@@ -48,14 +58,21 @@ export function useWalletInitiatedVpQrSession({
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [authorizationRequestUri, setAuthorizationRequestUri] = useState<string | null>(null)
 
-  const startSession = useCallback(async () => {
-    if (!credential) return
+  const resetSessionState = useCallback(() => {
+    setPhase('idle')
+    setQrUrl(null)
+    setExpiresAt(null)
+    setSessionId(null)
+    setAuthorizationRequestUri(null)
+  }, [])
 
+  const startSession = useCallback(async () => {
+    const generation = ++startGenerationRef.current
     setPhase('loading')
     setQrUrl(null)
     setSessionId(null)
     setAuthorizationRequestUri(null)
-    logWalletStep('vp-broker', 'session-start', { credentialType: credential.type })
+    logWalletStep('vp-broker', 'session-start')
 
     try {
       const deviceToken = deviceTokenOverride ?? (await resolveDeviceTokenForBroker())
@@ -63,17 +80,20 @@ export function useWalletInitiatedVpQrSession({
       const walletId = walletIdOverride ?? authWalletId ?? ''
 
       const session = await brokerClient.createSession({ walletId, deviceToken, platform })
+      if (generation !== startGenerationRef.current) return
       setSessionId(session.session_id)
       setQrUrl(session.qr_payload)
       setExpiresAt(session.expires_at)
       setPhase('waiting_scan')
     } catch (error) {
+      if (generation !== startGenerationRef.current) return
       logWalletError('vp-broker', 'session-start-failed', error)
       setPhase('error')
     }
-  }, [credential, brokerClient, deviceTokenOverride, platformOverride, walletIdOverride, authWalletId])
+  }, [brokerClient, deviceTokenOverride, platformOverride, walletIdOverride, authWalletId])
 
   const resumeSession = useCallback(async (sessionIdToResume: string) => {
+    const generation = ++startGenerationRef.current
     setPhase('loading')
     setSessionId(sessionIdToResume)
     setQrUrl(null)
@@ -83,6 +103,7 @@ export function useWalletInitiatedVpQrSession({
 
     try {
       const uri = await brokerClient.fetchPresentationRequestUri(sessionIdToResume)
+      if (generation !== startGenerationRef.current) return
       if (uri) {
         setAuthorizationRequestUri(uri)
         setPhase('request_ready')
@@ -92,20 +113,22 @@ export function useWalletInitiatedVpQrSession({
 
       setPhase('waiting_scan')
     } catch (error) {
+      if (generation !== startGenerationRef.current) return
       logWalletError('vp-broker', 'session-resume-failed', error)
       setPhase('error')
     }
   }, [brokerClient])
 
   useEffect(() => {
-    if (!active || !credential) {
-      setPhase('idle')
-      setQrUrl(null)
-      setExpiresAt(null)
-      setSessionId(null)
-      setAuthorizationRequestUri(null)
+    if (!active) {
+      startedForActiveRef.current = false
+      startGenerationRef.current += 1
+      resetSessionState()
       return
     }
+
+    if (startedForActiveRef.current) return
+    startedForActiveRef.current = true
 
     const brokerSessionId = resumeSessionId?.trim()
     if (brokerSessionId) {
@@ -114,7 +137,7 @@ export function useWalletInitiatedVpQrSession({
     }
 
     void startSession()
-  }, [active, credential, resumeSession, resumeSessionId, startSession])
+  }, [active, resetSessionState, resumeSession, resumeSessionId, startSession])
 
   useEffect(() => {
     if (!expiresAt || (phase !== 'waiting_scan' && phase !== 'request_ready')) return undefined

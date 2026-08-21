@@ -1,33 +1,35 @@
 /* eslint-disable import/first */
 
-const createCredentialRequestMock = jest.fn()
-const acquireCredentialsUsingRequestMock = jest.fn()
-const acquireAccessTokenMock = jest.fn()
-const mockWithCredentialEndpoint = jest.fn()
-const mockWithToken = jest.fn()
-const mockBuild = jest.fn()
+const mockRetrievePreAuthorizedTokenViaOid4vc = jest.fn()
+const mockRetrieveCredentialViaOid4vc = jest.fn()
 
-jest.mock('@sphereon/oid4vci-client', () => ({
-  CredentialOfferClient: {
-    fromURI: jest.fn(),
-  },
-  CredentialRequestClientBuilder: {
-    fromCredentialIssuer: jest.fn(() => ({
-      withCredentialEndpoint: mockWithCredentialEndpoint,
-    })),
-  },
-  OpenID4VCIClient: {
-    fromURI: jest.fn(),
-  },
+jest.mock('./oid4vc/retrieveViaOid4vc', () => ({
+  ...jest.requireActual('./oid4vc/retrieveViaOid4vc'),
+  retrievePreAuthorizedTokenViaOid4vc: (...args: unknown[]) => mockRetrievePreAuthorizedTokenViaOid4vc(...args),
+  retrieveAuthorizationCodeTokenViaOid4vc: jest.fn(),
+  retrieveCredentialViaOid4vc: (...args: unknown[]) => mockRetrieveCredentialViaOid4vc(...args),
 }))
 
-import { acquireCredentialRecord, type ResolvedCredentialOffer } from './exchangeService'
-
-const { CredentialRequestClientBuilder } = jest.requireMock('@sphereon/oid4vci-client') as {
-  CredentialRequestClientBuilder: {
-    fromCredentialIssuer: jest.Mock
+jest.mock('../crypto/walletCryptoActivation', () => {
+  const actual = jest.requireActual('../crypto/walletCryptoActivation') as typeof import('../crypto/walletCryptoActivation')
+  return {
+    ...actual,
+    activateWalletCryptoV2: jest.fn(async () => undefined),
   }
-}
+})
+
+import {
+  acquireCredentialRecord,
+  InvalidProofError,
+  readCredentialIdentifierFromTokenResponse,
+  readTokenCredentialIdentifier,
+  type OfferedCredentialConfiguration,
+  type ResolvedCredentialOffer,
+} from './exchangeService'
+import * as credentialKeyRegistry from '../crypto/credentialKeyRegistry'
+import * as storedCredentials from '../credentials/storedCredentials'
+import type { Oid4vcVciAdapterContext } from './oid4vc/types'
+import { makeTestOid4vcContext } from './testFixtures'
 
 const originalFetch = global.fetch
 
@@ -38,7 +40,14 @@ function unsignedJwt(payload: Record<string, unknown>, alg = 'EdDSA'): string {
   return `${encode({ alg })}.${encode(payload)}.signature`
 }
 
-describe('OID4VCI 1.0 credential request', () => {
+function makeOid4vcContext(
+  configurationIds: string[],
+  issuer = 'https://issuer.example.com',
+): Oid4vcVciAdapterContext {
+  return makeTestOid4vcContext(issuer, configurationIds)
+}
+
+describe('OID4VCI 1.0 credential request (oid4vc path)', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     global.fetch = jest.fn(
@@ -62,12 +71,12 @@ describe('OID4VCI 1.0 credential request', () => {
         ),
     ) as typeof fetch
 
-    createCredentialRequestMock.mockResolvedValue({
-      credential_configuration_id: 'idcard',
-      proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
+    mockRetrievePreAuthorizedTokenViaOid4vc.mockResolvedValue({
+      access_token: 'access-token',
+      c_nonce: 'nonce',
     })
-    acquireCredentialsUsingRequestMock.mockResolvedValue({
-      successBody: {
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
         credential: unsignedJwt({
           jti: 'idcard-1',
           vct: 'https://issuer.example.com/vct/idcard',
@@ -76,13 +85,6 @@ describe('OID4VCI 1.0 credential request', () => {
         }),
       },
     })
-    mockBuild.mockReturnValue({
-      createCredentialRequest: createCredentialRequestMock,
-      acquireCredentialsUsingRequest: acquireCredentialsUsingRequestMock,
-    })
-    mockWithToken.mockReturnValue({ build: mockBuild })
-    mockWithCredentialEndpoint.mockReturnValue({ withToken: mockWithToken })
-    acquireAccessTokenMock.mockResolvedValue({})
   })
 
   afterAll(() => {
@@ -94,162 +96,236 @@ describe('OID4VCI 1.0 credential request', () => {
 
     const record = await acquireCredentialRecord(resolvedOffer, {
       dependencies: {
-        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
         signProof: async () => 'proof.jwt',
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
       },
     })
 
-    expect(CredentialRequestClientBuilder.fromCredentialIssuer).toHaveBeenCalledWith({
-      credentialIssuer: resolvedOffer.issuer,
-      version: 10015,
-      credentialConfigurationId: 'idcard',
-    })
-    expect(createCredentialRequestMock).toHaveBeenCalledWith({
-      proofInput: { proof_type: 'jwt', jwt: 'proof.jwt' },
-      format: 'dc+sd-jwt',
-      credentialConfigurationId: 'idcard',
-      version: 10015,
-    })
-    expect(acquireCredentialsUsingRequestMock).toHaveBeenCalledWith(
-      {
-        credential_configuration_id: 'idcard',
-        proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
-      },
-      'dc+sd-jwt',
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: 'access-token',
+        proofJwt: 'proof.jwt',
+        credentialConfigurationId: 'idcard',
+        oid4vcContext: resolvedOffer.oid4vcContext,
+      }),
     )
     expect(record.type).toBe('ThaiNationalID')
   })
 
   test('uses token-issued credential_identifier when the issuer returns one', async () => {
-    createCredentialRequestMock.mockResolvedValue({
-      credential_identifier: 'issuer-credential-id-1',
-      proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
+    mockRetrievePreAuthorizedTokenViaOid4vc.mockResolvedValue({
+      access_token: 'access-token',
+      c_nonce: 'nonce',
+      authorization_details: [
+        {
+          type: 'openid_credential',
+          credential_configuration_id: 'idcard',
+          credential_identifiers: ['issuer-credential-id-1'],
+        },
+      ],
     })
     const resolvedOffer = makeIdCardResolvedOffer()
 
     await acquireCredentialRecord(resolvedOffer, {
       dependencies: {
-        acquireAccessToken: async () => ({
-          accessToken: 'access-token',
-          cNonce: 'nonce',
-          credentialIdentifier: 'issuer-credential-id-1',
-        }),
         signProof: async () => 'proof.jwt',
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
       },
     })
 
-    expect(CredentialRequestClientBuilder.fromCredentialIssuer).toHaveBeenCalledWith({
-      credentialIssuer: resolvedOffer.issuer,
-      version: 10015,
-      credentialIdentifier: 'issuer-credential-id-1',
-    })
-    expect(createCredentialRequestMock).toHaveBeenCalledWith({
-      proofInput: { proof_type: 'jwt', jwt: 'proof.jwt' },
-      format: 'dc+sd-jwt',
-      credentialIdentifier: 'issuer-credential-id-1',
-      version: 10015,
-    })
-    expect(acquireCredentialsUsingRequestMock).toHaveBeenCalledWith(
-      {
-        credential_identifier: 'issuer-credential-id-1',
-        proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
-      },
-      'dc+sd-jwt',
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credentialIdentifier: 'issuer-credential-id-1',
+        credentialConfigurationId: 'idcard',
+      }),
     )
   })
 
   test('extracts credential_identifier from the default token response path', async () => {
-    createCredentialRequestMock.mockResolvedValue({
-      credential_identifier: 'issuer-credential-id-1',
-      proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
+    mockRetrievePreAuthorizedTokenViaOid4vc.mockResolvedValue({
+      access_token: 'access-token',
+      c_nonce: 'nonce',
+      authorization_details: [
+        {
+          type: 'openid_credential',
+          credential_configuration_id: 'idcard',
+          credential_identifiers: ['issuer-credential-id-1'],
+        },
+      ],
     })
     const resolvedOffer = makeIdCardResolvedOffer()
 
     await acquireCredentialRecord(resolvedOffer, {
       dependencies: {
         signProof: async () => 'proof.jwt',
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
       },
     })
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://issuer.example.com/token',
+    expect(mockRetrievePreAuthorizedTokenViaOid4vc).toHaveBeenCalledWith(
       expect.objectContaining({
-        method: 'POST',
+        oid4vcContext: resolvedOffer.oid4vcContext,
       }),
     )
-    expect(createCredentialRequestMock).toHaveBeenCalledWith({
-      proofInput: { proof_type: 'jwt', jwt: 'proof.jwt' },
-      format: 'dc+sd-jwt',
-      credentialIdentifier: 'issuer-credential-id-1',
-      version: 10015,
-    })
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credentialIdentifier: 'issuer-credential-id-1',
+        credentialConfigurationId: 'idcard',
+      }),
+    )
   })
 
   test('surfaces issuer credential endpoint error body', async () => {
-    acquireCredentialsUsingRequestMock.mockResolvedValue({
-      errorBody: {
-        error: 'invalid_proof',
-        error_description: 'proof JWT aud is invalid',
-      },
-    })
+    mockRetrieveCredentialViaOid4vc.mockRejectedValue(
+      new Error('CredentialRequestFailed: invalid_request - proof JWT aud is invalid'),
+    )
 
     await expect(
       acquireCredentialRecord(makeIdCardResolvedOffer(), {
         dependencies: {
-          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
           signProof: async () => 'proof.jwt',
+          getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
         },
       }),
-    ).rejects.toThrow('CredentialRequestFailed: invalid_proof - proof JWT aud is invalid')
+    ).rejects.toThrow('CredentialRequestFailed: invalid_request - proof JWT aud is invalid')
   })
 
-  test('surfaces non-standard issuer credential endpoint error body', async () => {
-    acquireCredentialsUsingRequestMock.mockResolvedValue({
-      errorBody: {
-        message: 'credential_definition not found',
-      },
-      origResponse: {
-        status: 400,
+  test('retries once when adapter maps invalid_proof to InvalidProofError', async () => {
+    let credentialRequestCalls = 0
+    const signedNonces: string[] = []
+
+    mockRetrieveCredentialViaOid4vc.mockImplementation(async () => {
+      credentialRequestCalls += 1
+      if (credentialRequestCalls === 1) {
+        throw new InvalidProofError('CredentialRequestFailed: invalid_proof', 'requested-nonce')
+      }
+      return {
+        credentialResponse: {
+          credential: unsignedJwt({
+            jti: 'idcard-1',
+            vct: 'https://issuer.example.com/vct/idcard',
+            iat: 1760000000,
+            givenName: 'Ada',
+          }),
+        },
+      }
+    })
+
+    await acquireCredentialRecord(makeIdCardResolvedOffer(), {
+      dependencies: {
+        signProof: async (cNonce) => {
+          signedNonces.push(cNonce)
+          return `proof-${cNonce}.jwt`
+        },
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
       },
     })
 
-    await expect(
-      acquireCredentialRecord(makeIdCardResolvedOffer(), {
-        dependencies: {
-          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
-          signProof: async () => 'proof.jwt',
-        },
-      }),
-    ).rejects.toThrow('CredentialRequestFailed: HTTP 400: unknown_error {"message":"credential_definition not found"}')
-  })
-
-  test('surfaces plain-text string errorBody from issuer HTTP 500', async () => {
-    acquireCredentialsUsingRequestMock.mockResolvedValue({
-      origResponse: { status: 500 },
-      successBody: undefined,
-      errorBody: 'The given key was not present in the dictionary.',
-      access_token: 'access-token',
-    })
-
-    await expect(
-      acquireCredentialRecord(makeIdCardResolvedOffer(), {
-        dependencies: {
-          acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
-          signProof: async () => 'proof.jwt',
-        },
-      }),
-    ).rejects.toThrow(
-      'CredentialRequestFailed: HTTP 500: The given key was not present in the dictionary.',
+    expect(credentialRequestCalls).toBe(2)
+    expect(signedNonces).toEqual(['nonce', 'requested-nonce'])
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ proofJwt: 'proof-requested-nonce.jwt' }),
     )
   })
 
-  test('sends format+doctype for mso_mdoc and maps org.iso.18013.5.1.mDL to DLTDrivingLicence', async () => {
-    createCredentialRequestMock.mockResolvedValue({
-      credential_configuration_id: 'TestMdocDrivingLicence',
-      proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
+  test('rejects mso_mdoc PoP JWT that omits the P-256 jwk header', async () => {
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'true'
+    const listLegacyKeys = jest.spyOn(credentialKeyRegistry, 'listCredentialKeyRecords').mockReturnValue([])
+    const readCredentials = jest.spyOn(storedCredentials, 'readStoredCredentials').mockReturnValue([])
+    try {
+      const kidOnlyProof = unsignedJwt(
+        { aud: 'https://issuer.example.com', iat: 1, nonce: 'nonce' },
+        'ES256',
+      )
+      const payloadB64 = kidOnlyProof.split('.')[1]
+      const signatureB64 = kidOnlyProof.split('.')[2]
+      const kidOnlyHeader = btoa(JSON.stringify({
+        alg: 'ES256',
+        typ: 'openid4vci-proof+jwt',
+        kid: 'did:key:zDnaezbiKRbKrJLK4dfi7KVpQCmGhoDdvuKTabAWQ2K7oQAnG#zDnaezbiKRbKrJLK4dfi7KVpQCmGhoDdvuKTabAWQ2K7oQAnG',
+      })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+      const kidOnlyJwt = `${kidOnlyHeader}.${payloadB64}.${signatureB64}`
+
+      await expect(
+        acquireCredentialRecord(makeMdlResolvedOffer(), {
+          dependencies: {
+            signProof: async () => kidOnlyJwt,
+            getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+          },
+        }),
+      ).rejects.toThrow(/jwk header \(P-256 device key\) is required for mso_mdoc/)
+      expect(mockRetrieveCredentialViaOid4vc).not.toHaveBeenCalled()
+    } finally {
+      listLegacyKeys.mockRestore()
+      readCredentials.mockRestore()
+      process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'false'
+    }
+  })
+
+  test('accepts mso_mdoc PoP JWT with Ed25519 jwk when hardware P-256 is off', async () => {
+    process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'false'
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
+        format: 'mso_mdoc',
+        credential: 'AQIDBA',
+      },
     })
-    acquireCredentialsUsingRequestMock.mockResolvedValue({
-      successBody: {
+    const unsigned = unsignedJwt(
+      { aud: 'https://issuer.example.com', iat: 1, nonce: 'nonce' },
+      'EdDSA',
+    )
+    const payloadB64 = unsigned.split('.')[1]
+    const signatureB64 = unsigned.split('.')[2]
+    const ed25519Header = btoa(JSON.stringify({
+      alg: 'EdDSA',
+      typ: 'openid4vci-proof+jwt',
+      kid: 'did:key:z6Mkg4tDVifmzHEP77oWM6SMBMDfr4eJiX9KuEqU7UKXpzGk',
+      jwk: { kty: 'OKP', crv: 'Ed25519', x: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' },
+    })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+    const ed25519Jwt = `${ed25519Header}.${payloadB64}.${signatureB64}`
+
+    await acquireCredentialRecord(makeMdlResolvedOffer(), {
+      dependencies: {
+        signProof: async () => ed25519Jwt,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalled()
+  })
+
+  test('accepts mso_mdoc PoP JWT with jwk and no kid', async () => {
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
+        format: 'mso_mdoc',
+        credential: 'AQIDBA',
+      },
+    })
+    const unsigned = unsignedJwt(
+      { aud: 'https://issuer.example.com', iat: 1, nonce: 'nonce' },
+      'ES256',
+    )
+    const payloadB64 = unsigned.split('.')[1]
+    const signatureB64 = unsigned.split('.')[2]
+    const jwkOnlyHeader = btoa(JSON.stringify({
+      alg: 'ES256',
+      typ: 'openid4vci-proof+jwt',
+      jwk: { kty: 'EC', crv: 'P-256', x: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', y: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' },
+    })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+    const jwkOnlyJwt = `${jwkOnlyHeader}.${payloadB64}.${signatureB64}`
+
+    await acquireCredentialRecord(makeMdlResolvedOffer(), {
+      dependencies: {
+        signProof: async () => jwkOnlyJwt,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalled()
+  })
+
+  test('sends OID4VCI 1.0 mso_mdoc request without doctype and maps org.iso.18013.5.1.mDL to DLTDrivingLicence', async () => {
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
         format: 'mso_mdoc',
         credential: 'AQIDBA',
       },
@@ -258,42 +334,36 @@ describe('OID4VCI 1.0 credential request', () => {
     const signProof = jest.fn(async () => 'proof.jwt')
     const record = await acquireCredentialRecord(makeMdlResolvedOffer(), {
       dependencies: {
-        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
         signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
       },
     })
 
-    expect(signProof).toHaveBeenCalledWith('nonce', 'https://issuer.example.com', {
-      keyBinding: 'jwk',
-    })
-    expect(createCredentialRequestMock).toHaveBeenCalledWith(
+    expect(signProof).toHaveBeenCalledWith(
+      'nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'jwk' }),
+    )
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalledWith(
       expect.objectContaining({
-        format: 'mso_mdoc',
         credentialConfigurationId: 'TestMdocDrivingLicence',
+        proofJwt: 'proof.jwt',
+        additionalRequestPayload: expect.objectContaining({
+          credential_configuration_id: 'TestMdocDrivingLicence',
+        }),
       }),
     )
-    expect(acquireCredentialsUsingRequestMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        doctype: 'org.iso.18013.5.1.mDL',
-        credential_configuration_id: 'TestMdocDrivingLicence',
-        proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
-      }),
-      'mso_mdoc',
-    )
-    expect(acquireCredentialsUsingRequestMock.mock.calls[0]?.[0]).not.toHaveProperty('proofs')
-    expect(acquireCredentialsUsingRequestMock.mock.calls[0]?.[0]).not.toHaveProperty('format')
+    const requestPayload = mockRetrieveCredentialViaOid4vc.mock.calls[0]?.[0]?.additionalRequestPayload as Record<string, unknown>
+    expect(requestPayload).not.toHaveProperty('doctype')
+    expect(requestPayload).not.toHaveProperty('format')
     expect(record.type).toBe('DLTDrivingLicence')
     expect(record.rawVc).toBe('mdoc:AQIDBA')
     expect(record.claims.doctype).toBe('org.iso.18013.5.1.mDL')
   })
 
-  test('sends OID4VCI doctype profile for direct org.iso.18013.5.1.mDL configuration keys', async () => {
-    createCredentialRequestMock.mockResolvedValue({
-      credential_configuration_id: 'org.iso.18013.5.1.mDL',
-      proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
-    })
-    acquireCredentialsUsingRequestMock.mockResolvedValue({
-      successBody: {
+  test('sends credential_configuration_id for direct org.iso.18013.5.1.mDL configuration keys', async () => {
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
         format: 'mso_mdoc',
         credential: 'AQIDBA',
       },
@@ -301,49 +371,198 @@ describe('OID4VCI 1.0 credential request', () => {
 
     const record = await acquireCredentialRecord(makeZenithcompMdlResolvedOffer(), {
       dependencies: {
-        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
         signProof: async () => 'proof.jwt',
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
       },
     })
 
-    expect(acquireCredentialsUsingRequestMock).toHaveBeenCalledWith(
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalledWith(
       expect.objectContaining({
-        format: 'mso_mdoc',
-        doctype: 'org.iso.18013.5.1.mDL',
-        proofs: { jwt: ['proof.jwt'] },
+        credentialConfigurationId: 'org.iso.18013.5.1.mDL',
+        proofJwt: 'proof.jwt',
+        additionalRequestPayload: expect.objectContaining({
+          credential_configuration_id: 'org.iso.18013.5.1.mDL',
+        }),
       }),
-      'mso_mdoc',
     )
-    const requestBody = acquireCredentialsUsingRequestMock.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(requestBody).not.toHaveProperty('credential_configuration_id')
-    expect(requestBody).not.toHaveProperty('proof')
+    const requestPayload = mockRetrieveCredentialViaOid4vc.mock.calls[0]?.[0]?.additionalRequestPayload as Record<string, unknown>
+    expect(requestPayload).not.toHaveProperty('doctype')
+    expect(requestPayload).not.toHaveProperty('format')
+    expect(requestPayload).not.toHaveProperty('proof')
+    expect(requestPayload).not.toHaveProperty('proofs')
     expect(record.rawVc).toBe('mdoc:AQIDBA')
   })
 
-  test('accepts OID4VCI 1.0 credentials array mso_mdoc response', async () => {
-    createCredentialRequestMock.mockResolvedValue({
-      credential_configuration_id: 'TestMdocDrivingLicence',
-      proof: { proof_type: 'jwt', jwt: 'proof.jwt' },
+  test('signs zenithcomp mso_mdoc PoP with jwk-kid so the issuer receives kid', async () => {
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
+        format: 'mso_mdoc',
+        credential: 'AQIDBA',
+      },
     })
-    acquireCredentialsUsingRequestMock.mockResolvedValue({
-      successBody: {
+
+    const signProof = jest.fn(async () => 'proof.jwt')
+    await acquireCredentialRecord(makeZenithcompMdlResolvedOffer(), {
+      dependencies: {
+        signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+
+    expect(signProof).toHaveBeenCalledWith(
+      'nonce',
+      'https://issuer.zenithcomp.co.th:455',
+      expect.objectContaining({ keyBinding: 'jwk-kid' }),
+    )
+  })
+
+  test('retries mso_mdoc invalid_proof kid-required with jwk-kid', async () => {
+    mockRetrieveCredentialViaOid4vc
+      .mockRejectedValueOnce(
+        new InvalidProofError('CredentialRequestFailed: invalid_proof - kid header is required', 'fresh-nonce'),
+      )
+      .mockResolvedValueOnce({
+        credentialResponse: {
+          format: 'mso_mdoc',
+          credential: 'AQIDBA',
+        },
+      })
+
+    const signProof = jest.fn(async () => 'proof.jwt')
+    await acquireCredentialRecord(makeMdlResolvedOffer(), {
+      dependencies: {
+        signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+
+    expect(signProof).toHaveBeenNthCalledWith(
+      1,
+      'nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'jwk' }),
+    )
+    expect(signProof).toHaveBeenNthCalledWith(
+      2,
+      'fresh-nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'jwk-kid' }),
+    )
+  })
+
+  test('accepts OID4VCI 1.0 credentials array mso_mdoc response', async () => {
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
         credentials: [{ credential: 'AQIDBAUG' }],
       },
     })
 
     const record = await acquireCredentialRecord(makeMdlResolvedOffer(), {
       dependencies: {
-        acquireAccessToken: async () => ({ accessToken: 'access-token', cNonce: 'nonce' }),
         signProof: async () => 'proof.jwt',
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
       },
     })
 
     expect(record.type).toBe('DLTDrivingLicence')
     expect(record.rawVc).toBe('mdoc:AQIDBAUG')
   })
+
+  test('uses did-kid PoP when SD-JWT metadata only supports did binding', async () => {
+    const signProof = jest.fn(async () => 'proof.jwt')
+    const resolved = makeIdCardResolvedOffer()
+    resolved.credentialConfigurations[0] = {
+      ...resolved.credentialConfigurations[0]!,
+      rawConfiguration: {
+        ...resolved.credentialConfigurations[0]!.rawConfiguration,
+        cryptographic_binding_methods_supported: ['did'],
+      },
+    }
+
+    await acquireCredentialRecord(resolved, {
+      dependencies: {
+        signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+
+    expect(signProof).toHaveBeenCalledWith(
+      'nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'did-kid' }),
+    )
+  })
+
+  test('uses did-kid PoP when SD-JWT metadata lists did:key', async () => {
+    const signProof = jest.fn(async () => 'proof.jwt')
+    const resolved = makeIdCardResolvedOffer()
+    resolved.credentialConfigurations[0] = {
+      ...resolved.credentialConfigurations[0]!,
+      rawConfiguration: {
+        ...resolved.credentialConfigurations[0]!.rawConfiguration,
+        cryptographic_binding_methods_supported: ['did:key'],
+      },
+    }
+
+    await acquireCredentialRecord(resolved, {
+      dependencies: {
+        signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+
+    expect(signProof).toHaveBeenCalledWith(
+      'nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'did-kid' }),
+    )
+  })
+
+  test('keeps jwk PoP for SD-JWT when binding methods are unrecognized', async () => {
+    const signProof = jest.fn(async () => 'proof.jwt')
+    const resolved = makeIdCardResolvedOffer()
+    resolved.credentialConfigurations[0] = {
+      ...resolved.credentialConfigurations[0]!,
+      rawConfiguration: {
+        ...resolved.credentialConfigurations[0]!.rawConfiguration,
+        cryptographic_binding_methods_supported: ['attestation'],
+      },
+    }
+
+    await acquireCredentialRecord(resolved, {
+      dependencies: {
+        signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+
+    expect(signProof).toHaveBeenCalledWith(
+      'nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'jwk' }),
+    )
+  })
+
+  test('keeps jwk PoP for SD-JWT when binding methods are omitted', async () => {
+    const signProof = jest.fn(async () => 'proof.jwt')
+
+    await acquireCredentialRecord(makeIdCardResolvedOffer(), {
+      dependencies: {
+        signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+
+    expect(signProof).toHaveBeenCalledWith(
+      'nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'jwk' }),
+    )
+  })
 })
 
 function makeIdCardResolvedOffer(): ResolvedCredentialOffer {
+  const oid4vcContext = makeOid4vcContext(['IdCard_dc+sd-jwt'])
   return {
     offerUri: 'openid-credential-offer://mock',
     issuer: 'https://issuer.example.com',
@@ -381,10 +600,13 @@ function makeIdCardResolvedOffer(): ResolvedCredentialOffer {
     preAuthorizedCode: 'preauth-code',
     supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
     version: 10015,
+    protocolPath: 'oid4vc',
+    oid4vcContext,
   }
 }
 
 function makeMdlResolvedOffer(): ResolvedCredentialOffer {
+  const oid4vcContext = makeOid4vcContext(['org.iso.18013.5.1.mDL'])
   return {
     offerUri: 'openid-credential-offer://mock',
     issuer: 'https://issuer.example.com',
@@ -423,24 +645,28 @@ function makeMdlResolvedOffer(): ResolvedCredentialOffer {
     preAuthorizedCode: 'preauth-code',
     supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
     version: 10015,
+    protocolPath: 'oid4vc',
+    oid4vcContext,
   }
 }
 
 function makeZenithcompMdlResolvedOffer(): ResolvedCredentialOffer {
+  const issuer = 'https://issuer.zenithcomp.co.th:455'
+  const oid4vcContext = makeOid4vcContext(['org.iso.18013.5.1.mDL'], issuer)
   return {
     offerUri: 'openid-credential-offer://mock',
-    issuer: 'https://issuer.zenithcomp.co.th:455',
+    issuer,
     credentialOffer: {
       credential_offer: {
-        credential_issuer: 'https://issuer.zenithcomp.co.th:455',
+        credential_issuer: issuer,
         credential_configuration_ids: ['org.iso.18013.5.1.mDL'],
       },
       supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
       version: 10015,
     } as unknown as ResolvedCredentialOffer['credentialOffer'],
     issuerMetadata: {
-      credential_issuer: 'https://issuer.zenithcomp.co.th:455',
-      credential_endpoint: 'https://issuer.zenithcomp.co.th:455/credential',
+      credential_issuer: issuer,
+      credential_endpoint: `${issuer}/credential`,
       credential_configurations_supported: {
         'org.iso.18013.5.1.mDL': {
           format: 'mso_mdoc',
@@ -464,5 +690,64 @@ function makeZenithcompMdlResolvedOffer(): ResolvedCredentialOffer {
     preAuthorizedCode: 'preauth-code',
     supportedFlows: ['urn:ietf:params:oauth:grant-type:pre-authorized_code'],
     version: 10015,
+    protocolPath: 'oid4vc',
+    oid4vcContext,
   }
 }
+
+function makeOfferedConfiguration(
+  id: string,
+  format: string,
+): OfferedCredentialConfiguration {
+  return {
+    id,
+    requestId: id,
+    format,
+    rawConfiguration: { format } as OfferedCredentialConfiguration['rawConfiguration'],
+  }
+}
+
+describe('credential_identifier selection', () => {
+  const sdJwt = makeOfferedConfiguration('TranscriptCredential_dc+sd-jwt', 'dc+sd-jwt')
+  const mdoc = makeOfferedConfiguration('TranscriptCredential_mso_mdoc', 'mso_mdoc')
+  const tokenResponse = {
+    authorization_details: [
+      {
+        type: 'openid_credential',
+        credential_configuration_id: 'TranscriptCredential_dc+sd-jwt',
+        credential_identifiers: ['sdjwt-identifier'],
+      },
+    ],
+  }
+
+  test('does not inherit another format credential_identifier when unmatched', () => {
+    expect(readCredentialIdentifierFromTokenResponse(tokenResponse, mdoc)).toBeUndefined()
+    expect(readCredentialIdentifierFromTokenResponse(tokenResponse, sdJwt)).toBe('sdjwt-identifier')
+  })
+
+  test('does not fall back to the shared token identifier for an unmatched configuration', () => {
+    expect(
+      readTokenCredentialIdentifier(
+        {
+          credentialIdentifier: 'sdjwt-identifier',
+          credentialIdentifiersByConfigurationId: {
+            'TranscriptCredential_dc+sd-jwt': 'sdjwt-identifier',
+          },
+        },
+        mdoc,
+      ),
+    ).toBeUndefined()
+  })
+
+  test('keeps the single-format token identifier when the per-config map is empty', () => {
+    expect(
+      readTokenCredentialIdentifier(
+        {
+          credentialIdentifier: 'only-identifier',
+          credentialIdentifiersByConfigurationId: {},
+        },
+        mdoc,
+      ),
+    ).toBe('only-identifier')
+  })
+})

@@ -1,9 +1,9 @@
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { getHolderDid } from '../crypto/crypto'
+import { logWalletError } from '../debug/walletLogger'
 import {
   base64UrlDecodeToString,
   readRecord,
-  toErrorMessage,
 } from '@/src/utils/jwtUtils'
 
 const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01])
@@ -59,6 +59,12 @@ function ed25519DidKeyFromX(x: string): string {
   return `did:key:z${base58btcEncode(multicodecBytes)}`
 }
 
+export function isJwtLikeCredentialRaw(rawVc: string): boolean {
+  if (!rawVc || rawVc.startsWith('mdoc:')) return false
+  const jwt = rawVc.split('~')[0] ?? rawVc
+  return jwt.split('.').length === 3
+}
+
 function decodeCredentialPayload(record: VerifiableCredentialRecord): Record<string, unknown> {
   const jwt = record.rawVc.split('~')[0] ?? record.rawVc
   const [, payload] = jwt.split('.')
@@ -77,6 +83,10 @@ function decodeCredentialPayload(record: VerifiableCredentialRecord): Record<str
 export function readCredentialHolderBinding(
   record: VerifiableCredentialRecord,
 ): CredentialHolderBinding | undefined {
+  if (!isJwtLikeCredentialRaw(record.rawVc)) {
+    return undefined
+  }
+
   try {
     const payload = decodeCredentialPayload(record)
     const cnf = readRecord(payload.cnf)
@@ -88,7 +98,12 @@ export function readCredentialHolderBinding(
     if (!kid && !jwk) return undefined
     return { kid, jwk }
   } catch (error) {
-    throw new Error(`CredentialHolderBindingReadFailed: ${toErrorMessage(error)}`)
+    logWalletError('credentials', 'holder-binding-read-failed', error, {
+      credentialId: record.id,
+      credentialType: record.type,
+      rawPrefix: record.rawVc.slice(0, 8),
+    })
+    return undefined
   }
 }
 

@@ -1,16 +1,18 @@
 # Driving Licence mDOC-Only Issuance Debug Slice
 
+**Superseded:** VCI now uses `@openid4vc/openid4vci` only (2026-08-06). This debug slice predates oid4vc-only VCI; references to the legacy protocol client below are historical.
+
 **Date:** 2026-08-05  
 **Status:** Approved for implementation planning  
 **Related:** `docs/superpowers/specs/2026-07-31-oid4vc-vp-adapter-design.md`, `docs/superpowers/specs/2026-07-27-my-qr-driving-licence-dual-format-design.md`, `src/services/credentials/dualFormatIssuance.ts`, `src/services/vci/exchangeService.ts`, `src/screens/CredentialOfferClaimScreen.tsx`, `docs/TASKS.md`
 
 ## Summary
 
-Temporary **debug slice** to unblock driving-licence OID4VCI on device: for dual-format offers (`dc+sd-jwt` + `mso_mdoc`), acquire **`mso_mdoc` only** via the existing `@sphereon/oid4vci-client` path — one token exchange, one proof (`jwk`), one credential request. Do **not** attempt SD-JWT in the same flow. Fail fast with the raw mDOC error when acquisition fails.
+Temporary **debug slice** to unblock driving-licence OID4VCI on device: for dual-format offers (`dc+sd-jwt` + `mso_mdoc`), acquire **`mso_mdoc` only** via the existing `@openid4vc/openid4vci` path — one token exchange, one proof (`jwk`), one credential request. Do **not** attempt SD-JWT in the same flow. Fail fast with the raw mDOC error when acquisition fails.
 
 This isolates whether failures are caused by dual-format orchestration (shared v2 key/session, `c_nonce`, `DualFormatClaimFailed` aggregation) versus Issuer/protocol issues on the mDOC wire path.
 
-**Library migration (`@openid4vc/openid4vci`) is explicitly out of scope for this slice.** If mDOC still fails on Sphereon with a clear error, a follow-up POC may compare `@openid4vc` for mDOC-only requests per the Phase 2 VCI plan in `2026-07-31-oid4vc-vp-adapter-design.md`.
+**Library migration (`@openid4vc/openid4vci`) is explicitly out of scope for this slice.** If mDOC still fails with a clear protocol-client error, a follow-up POC may compare `@openid4vc` for mDOC-only requests per the Phase 2 VCI plan in `2026-07-31-oid4vc-vp-adapter-design.md`.
 
 ## Problem
 
@@ -31,7 +33,7 @@ Recent work addressed v2 per-credential shared proof-session coupling, but physi
 
 - Production release with mDOC-only driving licence (SD-JWT deferred indefinitely).
 - My QR / OID4VP dual-format presentation (requires SD-JWT — unchanged).
-- Replacing `@sphereon/oid4vci-client` with `@openid4vc/openid4vci` in this slice.
+- Replacing the legacy VCI protocol client with `@openid4vc/openid4vci` in this slice.
 - Fixing Issuer portal callback delivery (`walletapp://callback`) — separate issue.
 - Transcript or Thai ID dual-format behavior changes.
 - NFC proximity presentation validation (follows after mDOC bytes are stored).
@@ -44,8 +46,8 @@ Recent work addressed v2 per-credential shared proof-session coupling, but physi
 | Activation | Automatic for driving licence dual-format offers only — no `EXPO_PUBLIC_*` flag |
 | Order | mDOC first; **stop on success** (do not attempt SD-JWT) |
 | On mDOC failure | Fail immediately — show mDOC error only; **no** SD-JWT fallback, **no** full dual-format retry |
-| VCI library | Keep `@sphereon/oid4vci-client` + `applyMsoMdocCredentialRequestFields` |
-| `@openid4vc` | Deferred — POC only if Slice 1 fails with Sphereon-specific errors |
+| VCI library | Keep `@openid4vc/openid4vci` + `applyMsoMdocCredentialRequestFields` |
+| `@openid4vc` | Deferred — POC only if Slice 1 fails with protocol-client-specific errors |
 
 ## Approaches considered
 
@@ -102,7 +104,7 @@ Preview → accept → finalize
 | `src/services/credentials/dualFormatIssuance.test.ts` | Happy path + fail-fast error propagation |
 | `src/services/scan/scanFriendlyErrors.ts` | Map raw mDOC/VCI errors (already partially improved for `DualFormatClaimFailed`) |
 
-No changes to `@sphereon/oid4vci-client` usage beyond reusing existing `acquireCredentialRecord`.
+No changes to `@openid4vc/openid4vci` usage beyond reusing existing `acquireCredentialRecord`.
 
 ### Save / storage model
 
@@ -165,7 +167,7 @@ Setup: dev build on Samsung A26, Metro connected, Thai ID (PID) in wallet if req
 | Trigger | Next step |
 |---------|-----------|
 | mDOC succeeds, dual-format fails | Fix dual-format shared v2 session / `c_nonce`; re-enable both formats |
-| mDOC fails with Sphereon-specific request shape errors | Narrow `@openid4vc/openid4vci` mDOC-only POC (compare errors) |
+| mDOC fails with protocol-client-specific request shape errors | Narrow `@openid4vc/openid4vci` mDOC-only POC (compare errors) |
 | Both paths work | Remove debug branch; update My QR dual-format VP validation per `2026-07-27-my-qr-driving-licence-dual-format-design.md` |
 | Long-term VCI | Phase 2 from `2026-07-31-oid4vc-vp-adapter-design.md` |
 

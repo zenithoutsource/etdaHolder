@@ -11,10 +11,10 @@
 | State | Zustand `^5.0.14` |
 | Server state / data fetching | TanStack React Query `^5.100.14` |
 | Backend SDK | Orval-generated client (`orval.config.ts`) via `src/sdk/walletApi.ts` |
-| OID4VCI transport | `@sphereon/oid4vci-client` (offer resolve / token / credential request) |
+| OID4VCI transport | `@openid4vc/openid4vci` (offer resolve / token / credential request via `src/services/vci/oid4vc/`) |
 | Crypto | `@noble/ed25519`, `@noble/hashes`, `react-native-quick-crypto`, `react-native-quick-base64` |
 | Secure storage | `react-native-mmkv` (encrypted) + `react-native-keychain` |
-| Biometrics | `react-native-keychain` sign-time gate + `expo-local-authentication` app-level gate for non-signing actions |
+| Biometrics | `react-native-keychain` sign-time gate (per action) + unified `biometricGate.ts` for non-signing unlock paths |
 | NFC (NDEF issuance offers) | `react-native-nfc-manager` |
 | NFC (ISO 18013-5 presentation) | Custom module `modules/expo-mdoc-proximity` (see below) |
 | Native modules bridge | `react-native-nitro-modules` |
@@ -35,7 +35,7 @@ Rule of thumb used across the codebase: **libraries for transport and platform p
 
 | Concern | Library | Scope of use |
 |---|---|---|
-| OID4VCI wire flow | `@sphereon/oid4vci-client` | Only in `src/services/vci/exchangeService.ts`: `CredentialOfferClient` (parse `openid-credential-offer://`, fetch issuer metadata) and `CredentialRequestClientBuilder` (token + credential request). Everything after the HTTP response is own code. |
+| OID4VCI wire flow | `@openid4vc/openid4vci` | `src/services/vci/oid4vc/` + `exchangeService.ts`: offer parse, token exchange, credential request. PoP signing and response normalization remain wallet-owned code. |
 | EdDSA sign/verify | `@noble/ed25519` + `@noble/hashes` | All Ed25519 operations (holder proof JWT, KB-JWT, JAR verification). |
 | Hashing / base64 | `react-native-quick-crypto`, `react-native-quick-base64` | SHA digests (SD-JWT disclosure hashing), fast base64 codecs. |
 | Seed storage + biometric gate | `react-native-keychain` | Ed25519 seed as Keychain generic-password entry: `SECURITY_LEVEL.SECURE_HARDWARE`, `STORAGE_TYPE.AES_GCM`, `ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE`. Seed read = the single biometric prompt per action (ADR 0008). |
@@ -55,7 +55,7 @@ Rule of thumb used across the codebase: **libraries for transport and platform p
 | Presentation Definition fetch | `src/services/vp/presentationDefinitionResolver.ts` + `src/config/presentationDefinitionFetchPolicy.ts` | Own fetch with env-tunable timeout/max-bytes policy. |
 | Dual-format credentials | `src/services/credentials/dualFormatIssuance.ts`, `logicalCredential*` | One logical document stored as linked `dc+sd-jwt` + `mso_mdoc` format records; grouping, consistency checks, and dual-format VP token assembly are all own code. |
 | Credential normalization + storage | `src/services/vci/exchangeService.ts`, `src/services/storage/` | Issuer responses (SD-JWT VC string, JWT VC, base64-CBOR mdoc issuerSigned) normalized into `VerifiableCredentialRecord { id, type, rawVc, claims, issuedAt, expiresAt }` before encrypted MMKV save. |
-| Holder signing | `src/services/crypto/crypto.ts` (+ ADR 0007/0008/0009) | Ed25519 seed generated once, stored in Keychain, signing done in JS with `@noble/ed25519`. Hardware-protected at rest, not hardware non-extractable (target AndroidKeyStore returned EC keys for Ed25519 requests during the superseded native-module probe). |
+| Holder signing | `src/services/crypto/crypto.ts` (+ ADR 0007/0008/0010) | **v2 crypto:** wallet attestation key (`k_attest`) + one Ed25519 seed per credential (`k_cred`). Seeds in Keychain, signing in JS with `@noble/ed25519`. Biometric gate on every sign call. Not hardware non-extractable (ADR 0008). |
 
 ### Custom native modules (Kotlin, Android)
 
@@ -77,8 +77,8 @@ Rule of thumb used across the codebase: **libraries for transport and platform p
 
 ## Protocols & Standards
 
-- **OID4VCI 1.0** — credential issuance, executed on-device (not via backend `/exchange/*`); transport via `@sphereon/oid4vci-client`, response handling own code
-- **OID4VP 1.0** — online presentation (JAR, client_id schemes, DCQL, credential_sets, `did:web` verifier trust) — fully own implementation, compliance tracked in `docs/SPEC_COMPLIANCE_OID4VC.md`
+- **OID4VCI 1.0** — credential issuance, executed on-device (not via backend `/exchange/*`); transport via `@openid4vc/openid4vci`, response handling own code
+- **OID4VP 1.0** — online presentation (JAR, client_id schemes, DCQL, credential_sets, `did:web` verifier trust, My QR broker) — primarily own implementation; optional `@openid4vc/openid4vp` adapter behind feature flag
 - **IETF SD-JWT / SD-JWT VC** (`dc+sd-jwt`) — selective disclosure + key binding, own implementation
 - **ISO 18013-5** — proximity presentation (mdoc) per ADR 0003, via `modules/expo-mdoc-proximity`; proprietary companion APDU extension for dual-format NFC transfer
 

@@ -3,12 +3,21 @@ import {
   readHiddenWalletHistoryEventIds,
   readWalletHistoryEvents,
   type WalletHistoryEvent,
+  type WalletHistoryEventKind,
   type WalletHistoryFailureReason,
 } from './walletEventLog'
 import {
   matchesWalletHistoryFilter,
   type WalletHistoryFilter,
 } from './walletHistoryFilters'
+import {
+  inferCredentialTypeFromDocumentType,
+  projectHistoryDisclosedClaims,
+  projectHistoryDocumentType,
+  projectHistoryInfoBoxValue,
+  projectHistoryPartyName,
+} from '../../config/historyDisplayNames'
+import { WALLET_HISTORY_COPY } from '../../config/walletHistoryCopy'
 
 export type WalletHistoryRow = {
   id: string
@@ -28,6 +37,7 @@ export type WalletHistoryRow = {
   infoBoxValue: string
   partyRoleLabel: string
   showSuspendAccessButton: boolean
+  credentialType?: string
   relatedEventId?: string
   reasonCode?: WalletHistoryFailureReason
 }
@@ -78,26 +88,50 @@ export function projectWalletHistoryRow(
   suspendedRelatedIds?: Set<string>,
 ): WalletHistoryRow {
   const isPresentation = event.kind.startsWith('presentation-') || event.kind.startsWith('nfc-')
-  const claimsText = event.disclosedClaims.join(', ')
+  const credentialType =
+    event.credentialType ?? inferCredentialTypeFromDocumentType(event.documentType)
+  const disclosedClaims = projectHistoryDisclosedClaims({
+    disclosedClaims: event.disclosedClaims,
+    credentialType,
+  })
+  const claimsText = disclosedClaims.join(', ')
+  const documentType = projectHistoryDocumentType({
+    documentType: event.documentType,
+    credentialType,
+  })
+  const partyName = projectHistoryPartyName({
+    partyName: event.partyName,
+    kind: event.kind,
+    channel: event.channel,
+    credentialType,
+  })
 
   return {
     id: event.id,
     credentialId: event.credentialId,
-    title: event.documentType,
-    subtitle: readSubtitle(event, claimsText),
-    partyName: event.partyName,
-    documentType: event.documentType,
+    title: documentType,
+    subtitle: readSubtitle({ ...event, partyName }, claimsText),
+    partyName,
+    documentType,
     actionLabel: readActionLabel(event),
     occurredAt: event.occurredAt,
     status: event.status,
     kind: event.kind,
     channel: event.channel,
-    disclosedClaims: event.disclosedClaims,
+    disclosedClaims,
     channelCaption: readChannelCaption(event),
-    infoBoxLabel: isPresentation ? 'ประเภทข้อมูลที่เข้าถึง' : 'เอกสาร',
-    infoBoxValue: readInfoBoxValue(event, claimsText),
+    infoBoxLabel: isPresentation
+      ? WALLET_HISTORY_COPY.infoBoxLabelPresentation
+      : WALLET_HISTORY_COPY.infoBoxLabelDocument,
+    infoBoxValue: projectHistoryInfoBoxValue({
+      kind: event.kind,
+      disclosedClaims,
+      documentType: event.documentType,
+      credentialType,
+    }),
     partyRoleLabel: readPartyRoleLabel(event),
     showSuspendAccessButton: readShowSuspendAccessButton(event, suspendedRelatedIds),
+    ...(credentialType ? { credentialType } : {}),
     relatedEventId: event.relatedEventId,
     reasonCode: event.reasonCode,
   }
@@ -121,87 +155,85 @@ function readShowSuspendAccessButton(
   return canRequestPresentationAccessSuspension(event)
 }
 
-function readInfoBoxValue(event: WalletHistoryEvent, claimsText: string): string {
-  if (event.kind.startsWith('presentation-') || event.kind.startsWith('nfc-')) {
-    return claimsText || event.documentType
-  }
-  return event.documentType
-}
-
 function readPartyRoleLabel(event: WalletHistoryEvent): string {
   if (event.kind.startsWith('presentation-') || event.kind.startsWith('nfc-')) {
-    return 'ผู้ตรวจสอบ'
+    return WALLET_HISTORY_COPY.partyRoleVerifier
   }
   if (event.kind.startsWith('backend-sync')) {
-    return 'Backend'
+    return WALLET_HISTORY_COPY.partyRoleBackend
   }
   if (event.kind === 'credential-renewal-completed') {
-    return 'Wallet'
+    return WALLET_HISTORY_COPY.partyRoleWallet
   }
-  return 'ผู้ออกเอกสาร'
+  return WALLET_HISTORY_COPY.partyRoleIssuer
 }
 
 function readActionLabel(event: WalletHistoryEvent): string {
   switch (event.kind) {
     case 'credential-received':
-      return 'รับเอกสารแล้ว'
+      return WALLET_HISTORY_COPY.actionReceived
     case 'credential-verify-failed':
-      return 'ตรวจสอบเอกสารไม่สำเร็จ'
+      return WALLET_HISTORY_COPY.actionVerifyFailed
     case 'presentation-success':
     case 'nfc-presentation-success':
-      return 'แสดงเอกสารสำเร็จ'
+      return WALLET_HISTORY_COPY.actionPresentationSuccess
     case 'presentation-declined':
-      return 'ปฏิเสธการแสดงเอกสาร'
+      return WALLET_HISTORY_COPY.actionPresentationDeclined
     case 'presentation-failed':
     case 'nfc-presentation-failed':
-      return 'แสดงเอกสารไม่สำเร็จ'
+      return WALLET_HISTORY_COPY.actionPresentationFailed
     case 'presentation-access-suspended':
-      return 'ขอระงับการเข้าถึงแล้ว'
+      return WALLET_HISTORY_COPY.actionAccessSuspended
     case 'credential-revoked':
-      return 'ระงับเอกสารแล้ว'
+      return WALLET_HISTORY_COPY.actionRevoked
     case 'credential-deleted':
-      return 'ลบเอกสารแล้ว'
+      return WALLET_HISTORY_COPY.actionDeleted
     case 'credential-used':
-      return 'ใช้งานเอกสารแล้ว'
+      return WALLET_HISTORY_COPY.actionUsed
     case 'credential-renewal-completed':
-      return 'ต่ออายุเอกสารสำเร็จ'
+      return WALLET_HISTORY_COPY.actionRenewal
     case 'backend-sync-success':
-      return 'ซิงค์ Backend สำเร็จ'
+      return WALLET_HISTORY_COPY.actionBackendSuccess
     case 'backend-sync-failed':
-      return 'ซิงค์ Backend ไม่สำเร็จ'
+      return WALLET_HISTORY_COPY.actionBackendFailed
     default:
-      return 'รายการประวัติ'
+      return WALLET_HISTORY_COPY.actionDefault
   }
 }
 
 function readFailureReasonLabel(reason?: WalletHistoryFailureReason): string {
   switch (reason) {
     case 'verifier-rejected':
-      return 'ผู้ตรวจสอบปฏิเสธ'
+      return WALLET_HISTORY_COPY.failureVerifierRejected
     case 'network-error':
-      return 'เครือข่ายขัดข้อง'
+      return WALLET_HISTORY_COPY.failureNetwork
     case 'biometric-cancel':
-      return 'ยกเลิกการยืนยันตัวตน'
+      return WALLET_HISTORY_COPY.failureBiometric
     case 'timeout':
-      return 'หมดเวลา'
+      return WALLET_HISTORY_COPY.failureTimeout
     case 'signature-invalid':
-      return 'ลายเซ็นไม่ถูกต้อง'
+      return WALLET_HISTORY_COPY.failureSignature
     case 'holder-binding-mismatch':
-      return 'ผูกกุญแจผู้ถือไม่ตรง'
+      return WALLET_HISTORY_COPY.failureHolderBinding
     default:
-      return 'เกิดข้อผิดพลาด'
+      return WALLET_HISTORY_COPY.failureUnknown
   }
 }
 
-function readSubtitle(event: WalletHistoryEvent, claimsText: string): string {
+function readSubtitle(
+  event: Pick<WalletHistoryEvent, 'kind' | 'partyName' | 'reasonCode' | 'initiatedBy'>,
+  claimsText: string,
+): string {
   switch (event.kind) {
     case 'credential-received':
-      return 'บันทึกเอกสารลง Wallet แล้ว'
+      return WALLET_HISTORY_COPY.subtitleReceived
     case 'credential-verify-failed':
       return `${readFailureReasonLabel(event.reasonCode)} — ${event.partyName}`
     case 'presentation-success':
     case 'nfc-presentation-success':
-      return claimsText ? `ข้อมูลที่เปิดเผย: ${claimsText}` : 'แสดงเอกสารสำเร็จ'
+      return claimsText
+        ? `ข้อมูลที่เปิดเผย: ${claimsText}`
+        : WALLET_HISTORY_COPY.subtitlePresentationSuccess
     case 'presentation-declined':
       return `ไม่ยินยอมส่งข้อมูลไปยัง ${event.partyName}`
     case 'presentation-failed':
@@ -210,17 +242,17 @@ function readSubtitle(event: WalletHistoryEvent, claimsText: string): string {
     case 'presentation-access-suspended':
       return `ส่งคำขอระงับการเข้าถึงไปยัง ${event.partyName}`
     case 'credential-revoked':
-      return 'ยืนยันการระงับเอกสารใน Wallet'
+      return WALLET_HISTORY_COPY.subtitleRevoked
     case 'credential-deleted':
       return event.initiatedBy === 'system'
-        ? 'เอกสารหมดอายุ — ระบบลบออกจาก Wallet อัตโนมัติ'
-        : 'ยืนยันการลบเอกสารใน Wallet'
+        ? WALLET_HISTORY_COPY.subtitleDeletedSystem
+        : WALLET_HISTORY_COPY.subtitleDeletedHolder
     case 'credential-used':
-      return 'เอกสารถูกใช้สิทธิ์แล้ว — ไม่สามารถแสดงซ้ำได้'
+      return WALLET_HISTORY_COPY.subtitleUsed
     case 'credential-renewal-completed':
-      return 'เอกสารใหม่พร้อมใช้งานหลังต่ออายุ'
+      return WALLET_HISTORY_COPY.subtitleRenewal
     case 'backend-sync-success':
-      return 'บันทึกเอกสารไปยัง Backend สำเร็จ'
+      return WALLET_HISTORY_COPY.subtitleBackendSuccess
     case 'backend-sync-failed':
       return readFailureReasonLabel(event.reasonCode)
     default:
@@ -228,30 +260,55 @@ function readSubtitle(event: WalletHistoryEvent, claimsText: string): string {
   }
 }
 
-function readChannelCaption(event: WalletHistoryEvent): string {
-  if (event.kind === 'presentation-success' && event.channel === 'oid4vp') {
-    return 'ผ่าน QR Verifier'
-  }
-  if (event.kind === 'presentation-success' && event.channel === 'wallet') {
-    return 'ผ่าน VP Relay (dev)'
-  }
-  if (event.kind.startsWith('nfc-') || event.channel === 'nfc') {
-    return 'ผ่าน NFC Proximity'
-  }
+function readOid4vpChannelCaption(event: WalletHistoryEvent): string | undefined {
+  const oid4vpKinds = new Set<WalletHistoryEventKind>([
+    'presentation-success',
+    'presentation-failed',
+    'presentation-declined',
+  ])
+  if (!oid4vpKinds.has(event.kind) || event.channel !== 'oid4vp') return undefined
+
+  if (event.deliveryPath === 'qr') return WALLET_HISTORY_COPY.channelQrVerifier
+  if (event.deliveryPath === 'deep-link') return WALLET_HISTORY_COPY.channelDeepLinkVerifier
+  if (event.kind === 'presentation-success') return WALLET_HISTORY_COPY.channelQrVerifier
+  return WALLET_HISTORY_COPY.channelInWallet
+}
+
+function readIssuanceChannelCaption(event: WalletHistoryEvent): string | undefined {
   if (event.kind === 'credential-received') {
-    return 'รับเอกสารจาก Issuer'
+    if (event.deliveryPath === 'qr') return WALLET_HISTORY_COPY.channelQrIssuer
+    if (event.deliveryPath === 'deep-link') return WALLET_HISTORY_COPY.channelDeepLinkIssuer
+    return WALLET_HISTORY_COPY.channelReceiveIssuer
   }
   if (event.kind === 'credential-verify-failed') {
-    return 'ตรวจสอบเอกสารจาก Issuer ไม่ผ่าน'
+    if (event.deliveryPath === 'qr') return WALLET_HISTORY_COPY.channelVerifyFailedQr
+    if (event.deliveryPath === 'deep-link') return WALLET_HISTORY_COPY.channelVerifyFailedDeepLink
+    return WALLET_HISTORY_COPY.channelVerifyFailedIssuer
+  }
+  return undefined
+}
+
+function readChannelCaption(event: WalletHistoryEvent): string {
+  const oid4vpCaption = readOid4vpChannelCaption(event)
+  if (oid4vpCaption) return oid4vpCaption
+
+  const issuanceCaption = readIssuanceChannelCaption(event)
+  if (issuanceCaption) return issuanceCaption
+
+  if (event.kind === 'presentation-success' && event.channel === 'wallet') {
+    return WALLET_HISTORY_COPY.channelVpRelay
+  }
+  if (event.kind.startsWith('nfc-') || event.channel === 'nfc') {
+    return WALLET_HISTORY_COPY.channelNfc
   }
   if (event.kind === 'credential-renewal-completed') {
-    return 'ต่ออายุใน Wallet'
+    return WALLET_HISTORY_COPY.channelRenewal
   }
   if (event.kind.startsWith('backend-sync')) {
-    return 'ซิงค์ Backend'
+    return WALLET_HISTORY_COPY.channelBackend
   }
   if (event.kind === 'presentation-access-suspended') {
-    return 'คำขอระงับการเข้าถึง'
+    return WALLET_HISTORY_COPY.channelAccessSuspended
   }
-  return 'ดำเนินการใน Wallet'
+  return WALLET_HISTORY_COPY.channelInWallet
 }

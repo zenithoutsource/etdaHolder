@@ -21,7 +21,7 @@ export const companionV1Plugin: CompanionTransportPlugin = {
   nonceBytes: COMPANION_NONCE_BYTES,
   encodeCapabilities: encodeCompanionCapabilities,
   decodeBeginRequest: decodeCompanionBeginRequest,
-  buildPresentation: async ({ sdJwt, nonceBytes }) => {
+  buildPresentation: async ({ sdJwt, nonceBytes, credentialId }) => {
     if (nonceBytes.length !== COMPANION_NONCE_BYTES) {
       throw new Error(`CompanionInvalid: nonce must be ${COMPANION_NONCE_BYTES} bytes`)
     }
@@ -30,6 +30,7 @@ export const companionV1Plugin: CompanionTransportPlugin = {
       sdJwt,
       audience: COMPANION_AUD,
       nonce: base64UrlEncodeBytes(nonceBytes),
+      credentialId,
     })
   },
 }

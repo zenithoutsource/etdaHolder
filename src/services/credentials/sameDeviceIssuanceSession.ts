@@ -1,4 +1,4 @@
-// Not used on portal offer-URI path — see docs/superpowers/specs/2026-07-22-portal-issuance-e2e-design.md
+// Not used on portal offer-URI path unless EXPO_PUBLIC_SAME_DEVICE_AUTH_CODE_ISSUANCE=true
 import type { IssuerPortalCredentialType } from '../../config/issuerPortalUrls'
 import { readIssuerPortalReturnUrl } from '../../config/issuerPortalUrls'
 import { sameDeviceIssuanceRequiresPidVp } from '../../config/sameDeviceIssuance'
@@ -13,10 +13,10 @@ function createSessionId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function beginSameDeviceIssuanceSession(
+export async function beginSameDeviceIssuanceSession(
   credentialType: IssuerPortalCredentialType,
-): SameDeviceIssuanceSession {
-  const { codeVerifier } = generatePkcePair()
+): Promise<SameDeviceIssuanceSession> {
+  const { codeVerifier } = await generatePkcePair()
   const session: SameDeviceIssuanceSession = {
     id: createSessionId(),
     credentialType,

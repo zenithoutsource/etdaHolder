@@ -6,7 +6,9 @@ import { getCredentialKeyRecord } from './credentialKeyRegistry'
 import {
   bindPendingKeyToCredential,
   createPendingCredentialKey,
+  commitSoftwareCredentialKeyReplacement,
   destroyCredentialKey,
+  deleteLegacyEd25519KeysForCutover,
   gcStalePendingKeys,
   getCredentialHolderDid,
   signWithCredentialKey,
@@ -88,6 +90,44 @@ describe('credentialSigningKey', () => {
     )
   })
 
+  test('destroyCredentialKey for C does not delete D', async () => {
+    const pendingC = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingC, 'cred-c', 'ThaiNationalID')
+    const pendingD = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingD, 'cred-d', 'ChulalongkornUniversityTranscript')
+
+    await destroyCredentialKey('cred-c')
+
+    expect(getCredentialKeyRecord('cred-c')).toBeUndefined()
+    expect(getCredentialKeyRecord('cred-d')?.credentialId).toBe('cred-d')
+    const remaining = await Keychain.getGenericPassword({
+      service: 'wallet.ed25519_seed.cred.cred-d',
+    })
+    expect(remaining).not.toBe(false)
+  })
+
+  test('deleteLegacyEd25519KeysForCutover removes same-id and same-type keys only', async () => {
+    const pendingSameId = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingSameId, 'cred-c', 'ThaiNationalID')
+    const pendingSameType = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingSameType, 'cred-c-old', 'ThaiNationalID')
+    const pendingOtherType = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(pendingOtherType, 'cred-d', 'ChulalongkornUniversityTranscript')
+
+    await deleteLegacyEd25519KeysForCutover({
+      credentialId: 'cred-c',
+      credentialType: 'ThaiNationalID',
+    })
+
+    expect(getCredentialKeyRecord('cred-c')).toBeUndefined()
+    expect(getCredentialKeyRecord('cred-c-old')).toBeUndefined()
+    expect(getCredentialKeyRecord('cred-d')?.credentialId).toBe('cred-d')
+    const remaining = await Keychain.getGenericPassword({
+      service: 'wallet.ed25519_seed.cred.cred-d',
+    })
+    expect(remaining).not.toBe(false)
+  })
+
   test('gcStalePendingKeys removes pending older than TTL', async () => {
     const staleTime = new Date('2026-07-24T00:00:00.000Z')
     const freshTime = new Date('2026-07-24T01:15:00.000Z')
@@ -115,5 +155,24 @@ describe('credentialSigningKey', () => {
     })
     expect(staleCredentials).toBe(false)
     expect(freshCredentials).toBeTruthy()
+  })
+
+  test('commitSoftwareCredentialKeyReplacement keeps the live key if the new bind fails', async () => {
+    const firstPending = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(firstPending, 'cred-replace', 'ThaiNationalID')
+    const firstDid = getCredentialHolderDid('cred-replace')
+
+    const secondPending = await createPendingCredentialKey()
+    await bindPendingKeyToCredential(secondPending, 'cred-replace', 'ThaiNationalID')
+
+    const originalSet = Keychain.setGenericPassword as jest.MockedFunction<typeof Keychain.setGenericPassword>
+    originalSet.mockImplementationOnce(async () => {
+      throw new Error('KeychainWriteFailed')
+    })
+
+    await expect(commitSoftwareCredentialKeyReplacement('cred-replace')).rejects.toThrow(
+      'KeychainWriteFailed',
+    )
+    expect(getCredentialHolderDid('cred-replace')).toBe(firstDid)
   })
 })

@@ -1,3 +1,11 @@
+/**
+ * Forgot-PIN recovery route.
+ * Journey: Auth and PIN (also from startup unlock and pin-lock).
+ * Layout: ForgotPinFlow.
+ * Next: logout then /auth.
+ * Map: docs/CODEMAPS/frontend.md#auth-and-pin
+ */
+
 import { useLocalSearchParams, useRouter } from 'expo-router'
 
 import { ForgotPinFlow } from '@/src/components/auth/ForgotPinFlow'

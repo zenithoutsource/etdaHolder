@@ -1,4 +1,10 @@
 import { getHolderDid, signHolderStatusChangePop } from '../crypto/crypto'
+import { getCredentialHolderDid } from '../crypto/credentialSigningKey'
+import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
+import {
+  hasHardwareCredentialKey,
+  readHardwareCredentialHolderDid,
+} from '../crypto/hardwareCredentialSigningKey'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 
 const DEV_HOLDER_REVOKE_NONCE_ENDPOINT = '/wallet-api/dev/issuer/holder-revoke/nonce'
@@ -25,6 +31,13 @@ export class HolderRevokeSigningCancelledError extends Error {
   }
 }
 
+export class HolderRevokeHardwareKeyRequiredError extends Error {
+  constructor(message = 'HolderRevokeHardwareKeyRequired') {
+    super(message)
+    this.name = 'HolderRevokeHardwareKeyRequiredError'
+  }
+}
+
 type HolderRevokeResponse = {
   status?: string
   credentialId?: string
@@ -39,7 +52,7 @@ type HolderRevokeNonceResponse = {
 
 type HolderRevokeDependencies = {
   fetchImpl: typeof fetch
-  getHolderDid: () => string
+  getHolderDid: (credentialId: string) => string
   signHolderStatusChangePop: typeof signHolderStatusChangePop
 }
 
@@ -48,7 +61,7 @@ function resolveDependencies(
 ): HolderRevokeDependencies {
   return {
     fetchImpl: fetch,
-    getHolderDid,
+    getHolderDid: resolveHolderDid,
     signHolderStatusChangePop,
     ...dependencies,
   }
@@ -57,6 +70,22 @@ function resolveDependencies(
 function isSigningCancellation(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return message === 'WalletKeySigningCancelled'
+}
+
+function isHardwareKeyRequiredError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message === 'LegacyHolderSigningUnsupported' || message === 'HardwareCredentialKeyRequired'
+}
+
+function resolveHolderDid(credentialId: string): string {
+  if (isHardwareP256SigningEnabled() && hasHardwareCredentialKey(credentialId)) {
+    return readHardwareCredentialHolderDid(credentialId)
+  }
+  try {
+    return getCredentialHolderDid(credentialId)
+  } catch {
+    return getHolderDid()
+  }
 }
 
 async function requestHolderRevokeNonce(
@@ -114,7 +143,18 @@ export async function submitHolderRevokeRequest(
 ): Promise<{ status: 'revoked'; confirmedAt: string }> {
   const { fetchImpl, getHolderDid: readHolderDid, signHolderStatusChangePop: signPop } =
     resolveDependencies(dependencies)
-  const holderDid = readHolderDid()
+
+  if (!hasHardwareCredentialKey(credentialId)) {
+    logWalletError(
+      'holder-revoke',
+      'hardware-key-required',
+      new Error('HolderRevokeHardwareKeyRequired'),
+      { credentialId },
+    )
+    throw new HolderRevokeHardwareKeyRequiredError()
+  }
+
+  const holderDid = readHolderDid(credentialId)
 
   const { nonce, audience } = await requestHolderRevokeNonce(credentialId, holderDid, fetchImpl)
 
@@ -125,6 +165,10 @@ export async function submitHolderRevokeRequest(
     if (isSigningCancellation(error)) {
       logWalletError('holder-revoke', 'signing-cancelled', error, { credentialId })
       throw new HolderRevokeSigningCancelledError()
+    }
+    if (isHardwareKeyRequiredError(error)) {
+      logWalletError('holder-revoke', 'hardware-key-required', error, { credentialId })
+      throw new HolderRevokeHardwareKeyRequiredError()
     }
     logWalletError('holder-revoke', 'signing-failed', error, { credentialId })
     throw new HolderRevokeRejectedError('HolderRevokeSigningFailed')

@@ -1,3 +1,4 @@
+import type { WalletHistoryDeliveryPath } from './walletEventLog'
 import { logWalletError } from '../debug/walletLogger'
 import { maybeConsumeSingleUseCredential } from '../credentials/singleUseCredentialConsumption'
 import {
@@ -14,6 +15,7 @@ export type RecordSuccessfulPresentationInput = {
   verifierName: string
   documentType: string
   disclosedClaims: string[]
+  deliveryPath?: WalletHistoryDeliveryPath
   now?: Date
 }
 
@@ -28,6 +30,8 @@ export function recordSuccessfulPresentation(
     partyName: input.verifierName,
     disclosedClaims: input.disclosedClaims,
     channel: 'oid4vp',
+    credentialType: input.credentialType,
+    ...(input.deliveryPath ? { deliveryPath: input.deliveryPath } : {}),
     occurredAt,
   })
 

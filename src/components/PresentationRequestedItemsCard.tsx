@@ -1,5 +1,13 @@
+/**
+ * Toggleable requested-claims list plus accept CTA on the info step.
+ * Journey: P4 PresentationInfoPanel.
+ * Layout: PresentationConsentPanel helpers, PresentationDisclosureList. Holder lists hide religion; DL given name above family name.
+ * Map: docs/CODEMAPS/frontend.md#oid4vp-request
+ */
+
 import { Text, View } from 'react-native'
 
+import type { CredentialHolderProfile } from '../services/credentials/credentialDisplay'
 import type { PresentationDisclosure } from '../services/vp/presentationService'
 import { AppButton } from './AppButton'
 import {
@@ -16,6 +24,7 @@ type Props = {
   onToggleClaim: (claimKey: string) => void
   onAccept: () => void
   submitting?: boolean
+  holderProfile?: CredentialHolderProfile
 }
 
 export function PresentationRequestedItemsCard({
@@ -25,8 +34,9 @@ export function PresentationRequestedItemsCard({
   onToggleClaim,
   onAccept,
   submitting,
+  holderProfile,
 }: Props) {
-  const consentItems = readConsentItems(disclosures, selectedClaimKeys, documentType)
+  const consentItems = readConsentItems(disclosures, selectedClaimKeys, documentType, holderProfile)
   const hasToggleableItems = consentItems.some((item) => item.toggleable === true)
 
   const handleToggle = (claimKey: string) => {

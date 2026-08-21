@@ -44,7 +44,7 @@ The generated file is committed so CI and team members do not need Orval at chec
 
 | Method | Path | Reason |
 |---|---|---|
-| `GET` | `/wallet-api/wallet/{walletId}/exchange/resolveCredentialOffer` | Offer resolution runs on-device via `@sphereon/oid4vci-client` |
+| `GET` | `/wallet-api/wallet/{walletId}/exchange/resolveCredentialOffer` | Offer resolution runs on-device via `@openid4vc/openid4vci` |
 | `POST` | `/wallet-api/wallet/{walletId}/exchange/useOfferRequest` | Token exchange, PoP signing, and credential request run on-device |
 
 Any PR that imports or calls forbidden exchange endpoints from app code must be rejected.
@@ -56,11 +56,14 @@ than the generated Orval SDK:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/wallet-api/wallet-attestations` | Exchange the Wallet attestation public JWK for WUA/WIA values |
+| `POST` | `/wallet-api/wallet-attestations/challenge` | Create single-use attestation challenge bytes for hardware `k_attest` |
+| `POST` | `/wallet-api/wallet-attestations` | Exchange P-256 `pub_k_attest`, attestation chain, challenge id, and idempotency key for WUA/WIA values |
 
 `EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL` supplies the origin. The current
-`server/` handler returns development mock attestations with `alg: none`; it is
-not a production Wallet Provider implementation.
+`server/` handler is a development mock: unsigned `alg: none` tokens, no
+Android attestation root/revocation/app-identity verification. Never point a
+production Wallet Provider URL at this mock. Zenith credential requests omit
+WUA/WIA unless `EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED` is on.
 
 ## SDK Base URL Adapter
 

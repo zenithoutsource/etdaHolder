@@ -16,9 +16,9 @@ export const walletOpenApiDocument = {
   openapi: '3.0.3',
   info: {
     title: 'Wallet Backend API',
-    version: '1.0.0',
+    version: '0.1.0',
     description:
-      'Normal Wallet account, session, wallet, credential import, and push-token operations.',
+      'Normal Wallet account, session, wallet, credential import, and push-token operations. Development simulation APIs live under /wallet-api/dev/* and are documented at /wallet-api/dev/docs when enabled.',
   },
   servers: [{ url: '/' }],
   tags: [
@@ -182,12 +182,26 @@ export const walletOpenApiDocument = {
         },
       },
     },
+    '/wallet-api/wallet-attestations/challenge': {
+      post: {
+        tags: ['Development'],
+        summary: 'Create a development attestation challenge',
+        description:
+          'Creates single-use development challenge state for hardware k_attest key generation. This unauthenticated local mock does not verify Android attestation roots, revocation, or app identity, returns unsigned alg: none tokens later in the flow, and must never be used as a production Wallet Provider.',
+        responses: {
+          201: {
+            description: 'Created',
+            ...jsonContent(schemaRef('WalletAttestationChallengeResponse')),
+          },
+        },
+      },
+    },
     '/wallet-api/wallet-attestations': {
       post: {
         tags: ['Development'],
         summary: 'Issue development Wallet attestations',
         description:
-          'Issues development-only Wallet attestation mocks for the supplied Ed25519 public JWK. This unauthenticated endpoint currently returns unsigned alg: none development mocks and must never be used in production.',
+          'Issues development-only Wallet attestation mocks for a hardware P-256 pub_k_attest JWK plus Android attestation certificate chain. The challengeId is consumed on first success; the same submissionIdempotencyKey may replay the 201. This unauthenticated endpoint does not verify attestation roots, revocation, or app identity, returns unsigned alg: none development mocks, and must never be used as a production Wallet Provider.',
         requestBody: {
           required: true,
           ...jsonContent(schemaRef('WalletAttestationRequest')),
@@ -330,18 +344,41 @@ export const walletOpenApiDocument = {
       },
       WalletAttestationJwk: {
         type: 'object',
-        required: ['kty', 'crv', 'x'],
+        required: ['kty', 'crv', 'x', 'y'],
         properties: {
-          kty: { type: 'string', enum: ['OKP'] },
-          crv: { type: 'string', enum: ['Ed25519'] },
-          x: { type: 'string', example: 'SyntheticEd25519PublicKey' },
+          kty: { type: 'string', enum: ['EC'] },
+          crv: { type: 'string', enum: ['P-256'] },
+          x: { type: 'string', example: 'SyntheticP256X' },
+          y: { type: 'string', example: 'SyntheticP256Y' },
+        },
+      },
+      WalletAttestationChallengeResponse: {
+        type: 'object',
+        required: ['challengeId', 'attestationChallengeBase64', 'expiresAt'],
+        properties: {
+          challengeId: { type: 'string', example: '0123456789abcdef0123456789abcdef' },
+          attestationChallengeBase64: { type: 'string', example: 'AQIDBAUGBwgJCgsMDQ4PEA==' },
+          expiresAt: { type: 'string', format: 'date-time' },
         },
       },
       WalletAttestationRequest: {
         type: 'object',
-        required: ['pubKAttestJwk'],
+        required: [
+          'challengeId',
+          'pubKAttestJwk',
+          'certificateChainDerBase64',
+          'submissionIdempotencyKey',
+        ],
         properties: {
+          challengeId: { type: 'string', example: '0123456789abcdef0123456789abcdef' },
           pubKAttestJwk: schemaRef('WalletAttestationJwk'),
+          certificateChainDerBase64: {
+            type: 'array',
+            minItems: 1,
+            items: { type: 'string' },
+            example: ['MAMBAgME'],
+          },
+          submissionIdempotencyKey: { type: 'string', example: 'idempotency-key' },
         },
       },
       WalletAttestationResponse: {

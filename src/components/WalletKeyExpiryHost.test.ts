@@ -63,6 +63,26 @@ describe('shouldShowWalletKeyExpiredModal', () => {
       }),
     ).toBe(false)
   })
+
+  test('hides create-key modal when wallet-wide rotation is retired', () => {
+    expect(
+      shouldShowWalletKeyExpiredModal({
+        lane: 'create-key',
+        isRotatingWalletKey: false,
+        usesWalletWideKeyRotation: false,
+      }),
+    ).toBe(false)
+  })
+
+  test('hides create-key modal while wallet PIN lock is required', () => {
+    expect(
+      shouldShowWalletKeyExpiredModal({
+        lane: 'create-key',
+        isRotatingWalletKey: false,
+        pinLockRequired: true,
+      }),
+    ).toBe(false)
+  })
 })
 
 describe('shouldShowPendingRenewalsDialog', () => {
@@ -75,11 +95,12 @@ describe('shouldShowPendingRenewalsDialog', () => {
     ).toBe(true)
   })
 
-  test('hides during quiet mid-renewal when key is not expired', () => {
+  test('hides pending-renewals dialog when wallet-wide rotation is retired', () => {
     expect(
       shouldShowPendingRenewalsDialog({
         lane: 'finish-renewals',
-        isExpired: false,
+        isExpired: true,
+        usesWalletWideKeyRotation: false,
       }),
     ).toBe(false)
   })

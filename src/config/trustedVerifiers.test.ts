@@ -79,6 +79,27 @@ describe('trustedVerifiers', () => {
     ])
   })
 
+  test('adds decentralized_identifier did:key verifier when env is configured', () => {
+    expect(
+      buildTrustedVerifiersFromEnv(
+        {
+          EXPO_PUBLIC_VERIFIER_API_BASE_URL: 'https://verifier.zenithcomp.co.th:455/',
+          EXPO_PUBLIC_VERIFIER_DID_KEY_CLIENT_ID:
+            'did:key:zDnaesfzUXzhHkdZvTWTQaZAZTFcXYZnMj5RroE9cSXcBkNb7',
+          EXPO_PUBLIC_VERIFIER_DID_KEY_NAME: 'Did Key Verifier',
+        },
+        false,
+      ),
+    ).toEqual([
+      {
+        clientId:
+          'decentralized_identifier:did:key:zDnaesfzUXzhHkdZvTWTQaZAZTFcXYZnMj5RroE9cSXcBkNb7',
+        name: 'Did Key Verifier',
+        allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
+      },
+    ])
+  })
+
   test('adds decentralized_identifier did:web issuer OID4VP relying party when env is configured', () => {
     expect(
       buildTrustedVerifiersFromEnv(

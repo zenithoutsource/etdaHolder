@@ -26,13 +26,32 @@ describe('DrivingLicencePreviewPanel', () => {
     expect(screen.getByTestId('driving-licence-preview-panel').props.className).toContain('items-center')
     expect(screen.getByTestId('driving-licence-preview-content').props.className).toContain('max-w-[380px]')
     expect(screen.getByTestId('driving-licence-card')).toBeTruthy()
-    expect(screen.getByText('DRIVING LICENSE')).toBeTruthy()
+    expect(screen.queryByTestId('document-detail-my-qr')).toBeNull()
+    expect(screen.queryByTestId('document-detail-present-nfc')).toBeNull()
+    expect(screen.getByText('DRIVER LICENSE')).toBeTruthy()
     expect(screen.getByText('สมชาย ใจดี')).toBeTruthy()
+    expect(screen.getByText('Ms. Thodsopp Eekkasandigital')).toBeTruthy()
     expect(screen.getByText('54002891')).toBeTruthy()
     expect(screen.getByTestId('driving-licence-expiry')).toHaveTextContent('20 มกราคม 2570')
 
     fireEvent.press(screen.getByText('ยอมรับ'))
 
     expect(onAccept).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps issuer Thai names and uses the mock English name', () => {
+    render(
+      <DrivingLicencePreviewPanel
+        record={drivingLicenceRecord}
+        holderProfile={{
+          thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishName: 'Pitchaya Rungruangkit',
+        }}
+        onAccept={() => undefined}
+      />,
+    )
+
+    expect(screen.getByText('สมชาย ใจดี')).toBeTruthy()
+    expect(screen.getByText('Ms. Thodsopp Eekkasandigital')).toBeTruthy()
   })
 })

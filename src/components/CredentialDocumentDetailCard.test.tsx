@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native'
-import { Image, StyleSheet } from 'react-native'
+import { Image, Text } from 'react-native'
 
 import { CredentialDocumentDetailCard } from './CredentialDocumentDetailCard'
 import type { CredentialDetailDisplay } from '../services/credentials/credentialDisplay'
@@ -7,6 +7,7 @@ import type { VerifiableCredentialRecord } from '../services/vci/exchangeService
 
 import { THEME } from '../config/themeColors'
 import { DRIVING_LICENCE_SAMPLE } from '../config/drivingLicenceSample'
+import { isStoredCredentialKeyTtlExpired } from '../services/credentials/credentialKeyExpiry'
 
 const drivingLicenceRecord: VerifiableCredentialRecord = {
   id: 'licence-1',
@@ -25,6 +26,14 @@ const drivingLicenceRecord: VerifiableCredentialRecord = {
 }
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => 'MaterialCommunityIcons')
+
+jest.mock('../services/credentials/credentialKeyExpiry', () => ({
+  isStoredCredentialKeyTtlExpired: jest.fn(() => false),
+}))
+
+const isStoredCredentialKeyTtlExpiredMock = isStoredCredentialKeyTtlExpired as jest.MockedFunction<
+  typeof isStoredCredentialKeyTtlExpired
+>
 
 const ReactNativeImage = Image as unknown as {
   resolveAssetSource: (source: unknown) => unknown
@@ -61,6 +70,10 @@ const display: CredentialDetailDisplay = {
 }
 
 describe('CredentialDocumentDetailCard', () => {
+  beforeEach(() => {
+    isStoredCredentialKeyTtlExpiredMock.mockReset()
+    isStoredCredentialKeyTtlExpiredMock.mockReturnValue(false)
+  })
   test('renders the wallet document detail structure from the HTML reference', () => {
     render(
       <CredentialDocumentDetailCard
@@ -119,7 +132,8 @@ describe('CredentialDocumentDetailCard', () => {
 
     expect(screen.getByTestId('document-detail-band')).toHaveTextContent('ID CARD')
     expect(screen.getByText('15 พฤษภาคม 2546')).toBeTruthy()
-    expect(screen.getByText('พุทธ')).toBeTruthy()
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('พุทธ')).toBeNull()
     expect(screen.getByText('8 กันยายน 2561')).toBeTruthy()
     expect(screen.getByText('27 สิงหาคม 2570')).toBeTruthy()
   })
@@ -132,7 +146,7 @@ describe('CredentialDocumentDetailCard', () => {
           primaryRows: [
             { key: 'holderCode', label: 'เลขบัตรประจำตัวประชาชน', value: '9-9999-99999-99-9' },
             { key: 'belief', label: 'ศาสนา', value: 'Buddhist' },
-            { key: 'home', label: 'ที่อยู่ตามทะเบียนบ้าน', value: 'Bangkok residence' },
+            { key: 'home', label: 'ที่อยู่ตามบัตรประชาชน', value: 'Bangkok residence' },
             { key: 'validUntil', label: 'วันหมดอายุ', value: '2030-11-28' },
           ],
           extraRows: [],
@@ -142,12 +156,13 @@ describe('CredentialDocumentDetailCard', () => {
     )
 
     expect(screen.getByTestId('document-detail-primary-id')).toHaveTextContent('9-9999-99999-99-9')
-    expect(screen.getByText('Buddhist')).toBeTruthy()
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('Buddhist')).toBeNull()
     expect(screen.getByText('Bangkok residence')).toBeTruthy()
     expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
   })
 
-  test('uses requested ID card mock fallbacks when VC omits EN name, address, and religion', () => {
+  test('hides religion and does not invent English name when PID claims omit them', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -163,8 +178,9 @@ describe('CredentialDocumentDetailCard', () => {
       />
     )
 
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Miss Pitchaya Rungruangkit')
-    expect(screen.getByText('พุทธ')).toBeTruthy()
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('-')
+    expect(screen.queryByText('ศาสนา')).toBeNull()
+    expect(screen.queryByText('พุทธ')).toBeNull()
     expect(screen.getByText('123/45 ถนนราชดำเนิน แขวงพระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200')).toBeTruthy()
   })
 
@@ -182,14 +198,12 @@ describe('CredentialDocumentDetailCard', () => {
       />
     )
 
-    expect(screen.getByTestId('document-detail-image').props.resizeMode).toBe('cover')
-    expect(StyleSheet.flatten(screen.getByTestId('document-detail-image').props.style)).toEqual(
-      expect.objectContaining({
-        height: '100%',
-        width: '100%',
-      })
-    )
-    expect(ReactNativeImage.resolveAssetSource(screen.getByTestId('document-detail-image').props.source)).toEqual(
+    const image = screen.getByTestId('document-detail-image')
+    expect(image.props.resizeMode).toBe('cover')
+    expect(image.props.className).toContain('h-[112px]')
+    expect(image.props.className).toContain('w-[88px]')
+    expect(image.props.className).toContain('rounded-lg')
+    expect(ReactNativeImage.resolveAssetSource(image.props.source)).toEqual(
       userProfileSource
     )
   })
@@ -233,6 +247,7 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
+    expect(screen.queryByText('วันเกิด / Date of Birth')).toBeNull()
   })
 
   test('resolves transcript values from Thai display labels when claim keys are unfamiliar', () => {
@@ -282,7 +297,7 @@ describe('CredentialDocumentDetailCard', () => {
     expect(screen.getByText('28 พฤศจิกายน 2573')).toBeTruthy()
   })
 
-  test('uses ID card holder profile as transcript name and birth date fallback', () => {
+  test('uses ID card holder profile as transcript Thai-name fallback and hides birth date', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -305,10 +320,40 @@ describe('CredentialDocumentDetailCard', () => {
 
     expect(screen.getByTestId('document-detail-name')).toHaveTextContent('นางสาว พิชญา รุ่งเรืองกิจ')
     expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
-    expect(screen.getByText('15 พฤษภาคม 2533')).toBeTruthy()
+    expect(screen.queryByText('วันเกิด / Date of Birth')).toBeNull()
+    expect(screen.queryByText('15 พฤษภาคม 2533')).toBeNull()
   })
 
-  test('shows English holder name on the primary name line when Thai name is unavailable', () => {
+  test('hides transcript birth date even when the issuer provided one', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Academic Transcript',
+          documentTitle: 'TRANSCRIPT',
+          imageKey: 'transcript',
+          primaryText: 'Academic Transcript',
+          primaryRows: [
+            { key: 'studentId', label: 'Student ID', value: '6304012022' },
+            { key: 'birthDate', label: 'Date of Birth', value: '1980-01-01' },
+          ],
+          extraRows: [],
+        }}
+        holderProfile={{
+          thaiName: 'นางสาว พิชญา รุ่งเรืองกิจ',
+          englishName: 'Ms. Thodsopp Eekkasandigital',
+          birthDate: '1990-05-15',
+        }}
+        onOpenQr={() => undefined}
+      />
+    )
+
+    expect(screen.queryByText('วันเกิด / Date of Birth')).toBeNull()
+    expect(screen.queryByText('1 มกราคม 2523')).toBeNull()
+    expect(screen.queryByText('15 พฤษภาคม 2533')).toBeNull()
+  })
+
+  test('keeps the transcript Thai line empty when Thai name is unavailable', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -327,11 +372,11 @@ describe('CredentialDocumentDetailCard', () => {
       />
     )
 
-    expect(screen.getByTestId('document-detail-name')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
-    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('-')
+    expect(screen.getByTestId('document-detail-name')).toHaveTextContent('-')
+    expect(screen.getByTestId('document-detail-name-en')).toHaveTextContent('Ms. Thodsopp Eekkasandigital')
   })
 
-  test('uses requested transcript English name mock when holder profile omits English name', () => {
+  test('uses the mock English name on the transcript card even when the holder profile omits it', () => {
     render(
       <CredentialDocumentDetailCard
         display={{
@@ -375,7 +420,7 @@ describe('CredentialDocumentDetailCard', () => {
 
     expect(screen.getByTestId('driving-licence-card')).toBeTruthy()
     expectSharedDocumentCardLayout()
-    expect(screen.getByText(DRIVING_LICENCE_SAMPLE.documentTitle)).toBeTruthy()
+    expect(screen.getByText('DRIVER LICENSE')).toBeTruthy()
     expect(screen.getByText(DRIVING_LICENCE_SAMPLE.thaiName)).toBeTruthy()
     expect(screen.getByText(DRIVING_LICENCE_SAMPLE.licenceNumber)).toBeTruthy()
     expect(screen.getByTestId('driving-licence-expiry')).toHaveTextContent(
@@ -387,5 +432,182 @@ describe('CredentialDocumentDetailCard', () => {
 
     expect(onOpenQr).toHaveBeenCalledTimes(1)
     expect(onPresentViaNfc).toHaveBeenCalledTimes(1)
+  })
+
+  test('uses generic detail rows for unregistered tonyhere driving licence, not DLT chrome', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Demo Driving License',
+          documentTitle: 'DIGITAL DOCUMENT',
+          imageKey: 'car',
+          primaryText: 'Ada',
+          primaryRows: [
+            { key: 'given_name', label: 'Given name', value: 'Ada' },
+            { key: 'issuing_authority', label: 'Issuing authority', value: 'Demo Transport' },
+          ],
+          extraRows: [],
+        }}
+        record={{
+          id: 'tonyhere-dl-1',
+          type: 'DLTDrivingLicence',
+          rawVc: 'header.payload.signature',
+          claims: {
+            vct: 'https://demo.tonyhere.work/credentials/DrivingLicense',
+            given_name: 'Ada',
+            issuing_authority: 'Demo Transport',
+          },
+          issuedAt: '2026-08-21T00:00:00.000Z',
+          issuerUrl: 'https://demo.tonyhere.work/',
+        }}
+        onOpenQr={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByTestId('driving-licence-card')).toBeNull()
+    expect(screen.getByTestId('document-detail-card')).toBeTruthy()
+    expect(screen.getByText('Issuing authority')).toBeTruthy()
+    expect(screen.getByText('Demo Transport')).toBeTruthy()
+  })
+
+  test('places a banner action on the driving-licence card header', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Driving Licence',
+          documentTitle: 'DRIVING LICENSE',
+          imageKey: 'car',
+          primaryColor: THEME.navyRoyal,
+        }}
+        record={drivingLicenceRecord}
+        bannerAction={<Text>Open credential actions</Text>}
+      />,
+    )
+
+    expect(screen.getByTestId('document-card-banner-action')).toBeTruthy()
+    expect(screen.getByText('Open credential actions')).toBeTruthy()
+  })
+
+  test('adds bottom clearance on suspended ID Card and Transcript but not Driving Licence', () => {
+    const suspended = {
+      kind: 'issuer-suspended' as const,
+      badgeLabel: 'ถูกระงับ',
+      badgeClassName: 'bg-danger',
+      panelMessage: 'เอกสารถูกระงับโดยผู้ออกเอกสาร',
+    }
+
+    const { unmount: unmountId } = render(
+      <CredentialDocumentDetailCard
+        display={display}
+        inactiveState={suspended}
+        onOpenQr={() => undefined}
+      />,
+    )
+    expect(screen.getByTestId('document-card-columns').props.className).toContain('pb-12')
+    unmountId()
+
+    const { unmount: unmountTranscript } = render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Academic Transcript',
+          documentTitle: 'TRANSCRIPT',
+          imageKey: 'transcript',
+        }}
+        inactiveState={suspended}
+        onOpenQr={() => undefined}
+      />,
+    )
+    expect(screen.getByTestId('document-card-columns').props.className).toContain('pb-12')
+    unmountTranscript()
+
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Driving Licence',
+          documentTitle: 'DRIVING LICENSE',
+          imageKey: 'car',
+          primaryColor: THEME.navyRoyal,
+        }}
+        record={drivingLicenceRecord}
+        inactiveState={suspended}
+        onOpenQr={() => undefined}
+      />,
+    )
+    expect(screen.getByTestId('document-card-columns').props.className).toBe(
+      'flex-row px-4 py-4',
+    )
+  })
+
+  test('hides My QR and NFC when the document is expired even if handlers are passed', () => {
+    const expired = {
+      kind: 'document-expired' as const,
+      badgeLabel: 'หมดอายุ',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+    }
+
+    render(
+      <CredentialDocumentDetailCard
+        display={display}
+        inactiveState={expired}
+        onOpenQr={() => undefined}
+        onPresentViaNfc={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByTestId('document-detail-my-qr')).toBeNull()
+    expect(screen.queryByTestId('document-detail-present-nfc')).toBeNull()
+  })
+
+  test('hides My QR on expired driving licence even if onOpenQr is passed', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Driving Licence',
+          documentTitle: 'DRIVING LICENSE',
+          imageKey: 'car',
+          primaryColor: THEME.navyRoyal,
+        }}
+        record={drivingLicenceRecord}
+        inactiveState={{
+          kind: 'document-expired',
+          badgeLabel: 'หมดอายุ',
+          badgeClassName: 'bg-gray-badge',
+          panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+        }}
+        onOpenQr={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByTestId('document-detail-my-qr')).toBeNull()
+  })
+
+  test('hides My QR and NFC when renewed-active k_cred TTL has elapsed', () => {
+    isStoredCredentialKeyTtlExpiredMock.mockReturnValue(true)
+
+    render(
+      <CredentialDocumentDetailCard
+        display={display}
+        record={{
+          id: 'transcript-new',
+          type: 'ChulalongkornUniversityTranscript',
+          rawVc: 'header.payload.signature',
+          claims: {},
+          issuedAt: '2026-08-19T10:00:00.000Z',
+          expiresAt: '2030-06-15T00:00:00.000Z',
+        }}
+        inactiveState={{ kind: 'active' }}
+        onOpenQr={() => undefined}
+        onPresentViaNfc={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByTestId('document-detail-my-qr')).toBeNull()
+    expect(screen.queryByTestId('document-detail-present-nfc')).toBeNull()
   })
 })

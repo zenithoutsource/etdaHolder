@@ -1,3 +1,5 @@
+/** Label/value row for issuance receive lists. */
+
 import { Text, View } from 'react-native'
 
 type Props = {

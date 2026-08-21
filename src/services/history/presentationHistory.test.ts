@@ -1,3 +1,22 @@
+jest.mock('../storage/storage', () => {
+  const { createMMKV: createTestMmkv } = jest.requireActual('react-native-mmkv')
+  const credentialStorage = createTestMmkv({ id: 'presentation-history-credential-test' })
+  const metaStorage = createTestMmkv({ id: 'presentation-history-meta-test' })
+  return {
+    getCredentialStorage: jest.fn(() => credentialStorage),
+    getMetaStorage: jest.fn(() => metaStorage),
+  }
+})
+
+jest.mock('../credentials/storedCredentials', () => ({
+  readStoredCredentials: jest.fn(() => []),
+  notifyCredentialsChanged: jest.fn(),
+}))
+
+jest.mock('../credentials/credentialLifecycle', () =>
+  jest.requireActual('../credentials/credentialLifecycle'),
+)
+
 import {
   clearSuccessfulPresentationBadge,
   readSuccessfullyPresentedCredentialIds,
@@ -7,10 +26,6 @@ import {
 import { readCredentialLifecycleStatus } from '../credentials/credentialLifecycle'
 import { getCredentialStorage } from '../storage/storage'
 import type { WalletHistoryEvent } from './walletEventLog'
-
-jest.mock('../storage/storage', () => ({
-  getCredentialStorage: jest.fn(),
-}))
 
 const getCredentialStorageMock = getCredentialStorage as jest.Mock
 
@@ -80,6 +95,25 @@ describe('presentationHistory', () => {
     expect(storage.set).toHaveBeenCalledWith('wallet:history:index', JSON.stringify([event.id]))
   })
 
+  test('persists deliveryPath on successful oid4vp presentation history', () => {
+    const storage = mockStorage()
+
+    recordSuccessfulPresentation({
+      credentialId: 'thai-id-1',
+      credentialType: 'ThaiNationalID',
+      verifierName: 'Entertainment Venue',
+      documentType: 'Thai National ID',
+      disclosedClaims: ['Date of Birth'],
+      deliveryPath: 'deep-link',
+      now: new Date('2026-06-09T10:00:00.000Z'),
+    })
+
+    expect(storage.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^wallet:history:event:/),
+      expect.stringContaining('"deliveryPath":"deep-link"'),
+    )
+  })
+
   test('reads presentation events newest first and skips malformed rows', () => {
     const first = walletPresentationEvent()
     const second = walletPresentationEvent({
@@ -136,6 +170,23 @@ describe('presentationHistory', () => {
     })
 
     expect(readSuccessfullyPresentedCredentialIds()).toEqual(['transcript-1', 'thai-id-1'])
+  })
+
+  test('includes nfc-presentation-success in the home verified badge ids', () => {
+    const nfc = walletPresentationEvent({
+      id: 'nfc-1',
+      kind: 'nfc-presentation-success',
+      credentialId: 'dl-1',
+      documentType: 'Driving Licence',
+      partyName: 'เครื่องอ่าน NFC',
+      channel: 'nfc',
+    })
+    mockStorage({
+      'wallet:history:index': JSON.stringify(['nfc-1']),
+      'wallet:history:event:nfc-1': JSON.stringify(nfc),
+    })
+
+    expect(readSuccessfullyPresentedCredentialIds()).toEqual(['dl-1'])
   })
 
   test('clears the current successful presentation badge but shows it again after a later presentation', () => {

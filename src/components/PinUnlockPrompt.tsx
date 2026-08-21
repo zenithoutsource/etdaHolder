@@ -1,3 +1,5 @@
+/** Stateful PIN unlock form wrapping PinEntrySurface plus forgot-PIN link. */
+
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
 

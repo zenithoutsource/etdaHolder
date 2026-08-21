@@ -1,3 +1,10 @@
+/**
+ * Post-claim “document received” confirmation.
+ * Journey: P1 CredentialOfferClaimScreen success phase.
+ * Copy: credentialDisplay summary.
+ * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
+ */
+
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
@@ -20,9 +27,9 @@ export function ScanSuccessPanel({ record }: Props) {
         className="h-[98px] w-[98px] items-center justify-center rounded-full bg-success-alt">
         <MaterialCommunityIcons name="check" size={72} color={THEME.white} />
       </View>
-      <Text className="mt-7 text-center text-[18px] font-extrabold leading-6 text-black">รับเอกสารสำเร็จ</Text>
-      <Text className="mt-3 text-center text-[14px] font-bold leading-5 text-black">เอกสาร : {display.title}</Text>
-      <Text className="mt-1 text-center text-[14px] font-bold leading-5 text-black">
+      <Text className="mt-7 text-center text-[18px] font-extrabold leading-[26px] text-black">รับเอกสารสำเร็จ</Text>
+      <Text className="mt-3 text-center text-[14px] font-bold leading-[22px] text-black">เอกสาร : {display.title}</Text>
+      <Text className="mt-1 text-center text-[14px] font-bold leading-[22px] text-black">
         หน่วยงานที่รับรอง : {display.issuerName}
       </Text>
     </View>

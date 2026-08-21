@@ -77,12 +77,41 @@ function matchesPinnedHost(input: FetchInput, backendHost: string): input is str
   }
 }
 
-async function toStandardResponse(pinned: Awaited<ReturnType<PinnedFetchModule['fetch']>>): Promise<Response> {
+type PinnedHttpResult = Awaited<ReturnType<PinnedFetchModule['fetch']>>
+
+async function toStandardResponse(pinned: PinnedHttpResult): Promise<Response> {
   const body = pinned.bodyString ?? (await pinned.text())
   return new Response(body, {
     status: pinned.status,
     headers: new Headers(pinned.headers),
   })
+}
+
+/**
+ * react-native-ssl-pinning rejects on HTTP 4xx/5xx with the response payload
+ * (plain object or Error + status/bodyString) instead of returning it.
+ * Treat those as fetch Responses so callers can handle expected API errors.
+ */
+function readPinnedHttpError(error: unknown): PinnedHttpResult | null {
+  if (!error || typeof error !== 'object') return null
+
+  const status = 'status' in error ? error.status : undefined
+  if (typeof status !== 'number' || status < 400 || status > 599) return null
+
+  const rawHeaders = 'headers' in error ? error.headers : undefined
+  const headers =
+    rawHeaders && typeof rawHeaders === 'object' && !Array.isArray(rawHeaders)
+      ? (rawHeaders as Record<string, string>)
+      : {}
+
+  const bodyString =
+    'bodyString' in error && typeof error.bodyString === 'string' ? error.bodyString : undefined
+  const text =
+    'text' in error && typeof error.text === 'function'
+      ? (error.text as () => Promise<string>)
+      : async () => bodyString ?? ''
+
+  return { status, headers, bodyString, text }
 }
 
 function readMethod(init?: FetchInit): 'DELETE' | 'GET' | 'POST' | 'PUT' {
@@ -95,8 +124,11 @@ function readHeaders(init?: FetchInit): Record<string, string> | undefined {
   return Object.fromEntries(new Headers(init.headers).entries())
 }
 
-function readBody(init?: FetchInit): string | undefined {
+function readBody(init: FetchInit | undefined, method: 'DELETE' | 'GET' | 'POST' | 'PUT'): string | undefined {
   if (typeof init?.body === 'string') return init.body
+  // OkHttp (react-native-ssl-pinning) throws IllegalArgumentException when POST/PUT
+  // have a null body — e.g. generated logoutUser() after PIN reset.
+  if (method === 'POST' || method === 'PUT') return ''
   return undefined
 }
 
@@ -138,14 +170,21 @@ export function createPinnedFetch(fallbackFetch: FetchFn, backendBaseUrl: string
 
     const { fetch: pinnedFetch } = loadPinnedFetchModule()
 
-    const pinnedResponse = await pinnedFetch(input, {
-      method: readMethod(init),
-      headers: readHeaders(init),
-      body: readBody(init),
-      pkPinning: true,
-      sslPinning: { certs: pinnedCertificateNames },
-    })
+    try {
+      const method = readMethod(init)
+      const pinnedResponse = await pinnedFetch(input, {
+        method,
+        headers: readHeaders(init),
+        body: readBody(init, method),
+        pkPinning: true,
+        sslPinning: { certs: pinnedCertificateNames },
+      })
 
-    return toStandardResponse(pinnedResponse)
+      return toStandardResponse(pinnedResponse)
+    } catch (error) {
+      const httpError = readPinnedHttpError(error)
+      if (httpError) return toStandardResponse(httpError)
+      throw error
+    }
   }) as FetchFn
 }

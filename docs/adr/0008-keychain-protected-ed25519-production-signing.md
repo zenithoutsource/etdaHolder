@@ -1,6 +1,6 @@
 # ADR 0008 - Keychain-Protected Ed25519 Production Signing
 
-Status: Accepted
+Status: Superseded by [ADR 0011](./0011-hardware-p256-es256-holder-keys.md) for holder algorithm and storage
 
 Date: 2026-06-16
 
@@ -30,3 +30,7 @@ Use a production Keychain-protected software Ed25519 signer:
 - Keychain biometric/device authentication remains the sign-time gate.
 - Existing credentials bound to old Holder keys must be reissued.
 - ADR 0007 is superseded for production signing on the current target hardware.
+
+## Supersession Note
+
+On 2026-08-13, ADR 0011 restored hardware P-256 / ES256 as the production holder algorithm and storage model (`k_attest` always; `k_cred` by default). Ed25519 `k_cred` remains only as the `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=false` path. This ADR no longer describes production holder signing.

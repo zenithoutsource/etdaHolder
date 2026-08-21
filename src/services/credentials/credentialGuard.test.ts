@@ -1,4 +1,5 @@
 import {
+  canPresentCredentialType,
   canRequestCredentialType,
   canSubmitCredentialRenewal,
   hasPidCredential,
@@ -8,7 +9,6 @@ import {
   readPidGateStatus,
 } from './credentialGuard'
 import {
-  readCredentialRenewal,
   type CredentialRenewalRecord,
 } from './credentialKeyRenewal'
 import {
@@ -17,24 +17,50 @@ import {
 } from './credentialLifecycle'
 import { writeIssuerSuspension } from './issuerSuspension'
 import { getCredentialStorage } from '../storage/storage'
+import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
+import { isStoredCredentialKeyTtlExpired } from './credentialKeyExpiry'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+
+jest.mock('../crypto/hardwareCredentialSigningKey', () => {
+  const actual = jest.requireActual('../crypto/hardwareCredentialSigningKey') as typeof import('../crypto/hardwareCredentialSigningKey')
+  return {
+    ...actual,
+    credentialRequiresHardwareReissue: jest.fn(() => false),
+  }
+})
+
+const credentialRequiresHardwareReissueMock = credentialRequiresHardwareReissue as jest.MockedFunction<
+  typeof credentialRequiresHardwareReissue
+>
+
+jest.mock('./credentialKeyExpiry', () => ({
+  isStoredCredentialKeyTtlExpired: jest.fn(() => false),
+}))
+
+const isStoredCredentialKeyTtlExpiredMock = isStoredCredentialKeyTtlExpired as jest.MockedFunction<
+  typeof isStoredCredentialKeyTtlExpired
+>
 
 jest.mock('../storage/storage', () => {
   const values = new Map<string, string>()
+  const storage = {
+    getString: (key: string) => values.get(key),
+    set: (key: string, value: string) => {
+      values.set(key, value)
+    },
+    delete: (key: string) => {
+      values.delete(key)
+    },
+    remove: (key: string) => {
+      values.delete(key)
+      return true
+    },
+    getAllKeys: () => [...values.keys()],
+    clearAll: () => values.clear(),
+  }
   return {
-    getCredentialStorage: () => ({
-      getString: (key: string) => values.get(key),
-      set: (key: string, value: string) => {
-        values.set(key, value)
-      },
-      delete: (key: string) => {
-        values.delete(key)
-      },
-      remove: (key: string) => {
-        values.delete(key)
-        return true
-      },
-    }),
+    getCredentialStorage: () => storage,
+    getMetaStorage: () => storage,
   }
 })
 
@@ -79,6 +105,11 @@ const renewalStatuses = {
 } satisfies Record<string, CredentialRenewalRecord>
 
 describe('credentialGuard', () => {
+  beforeEach(() => {
+    credentialRequiresHardwareReissueMock.mockReturnValue(false)
+    isStoredCredentialKeyTtlExpiredMock.mockReset()
+    isStoredCredentialKeyTtlExpiredMock.mockReturnValue(false)
+  })
   test('detects the foundational PID credential from stored records', () => {
     expect(hasPidCredential([])).toBe(false)
     expect(hasPidCredential([transcriptRecord])).toBe(false)
@@ -89,6 +120,9 @@ describe('credentialGuard', () => {
     expect(isPidCredentialOffer({ credentialConfigurations: [{ id: 'ThaiNationalID' }] })).toBe(true)
     expect(isPidCredentialOffer({ credentialConfigurations: [{ id: 'idcard' }] })).toBe(true)
     expect(isPidCredentialOffer({ credentialConfigurations: [{ id: 'TranscriptCredential_dc+sd-jwt' }] })).toBe(false)
+    expect(
+      isPidCredentialOffer({ credentialConfigurations: [{ id: 'urn:tonyhere:demo:pid-age:1' }] }),
+    ).toBe(false)
   })
 
   test('allows ThaiNationalID requests before PID and gates other requests until PID exists', () => {
@@ -99,10 +133,24 @@ describe('credentialGuard', () => {
     expect(canRequestCredentialType(undefined, [thaiIdRecord], {})).toBe(false)
   })
 
+  test('blocks presenting other credentials until a usable PID exists', () => {
+    expect(canPresentCredentialType('ThaiNationalID', [])).toBe(true)
+    expect(canPresentCredentialType('DLTDrivingLicence', [])).toBe(false)
+    expect(canPresentCredentialType('DLTDrivingLicence', [transcriptRecord])).toBe(false)
+    expect(canPresentCredentialType(undefined, [thaiIdRecord])).toBe(false)
+    expect(canPresentCredentialType('DLTDrivingLicence', [thaiIdRecord], {})).toBe(true)
+    expect(
+      canPresentCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], {}),
+    ).toBe(true)
+  })
+
   test('blocks other credentials until renewed-active ThaiNationalID exists', () => {
     expect(
       canRequestCredentialType('DLTDrivingLicence', [thaiIdRecord], renewalStatuses),
     ).toBe(false)
+    expect(canPresentCredentialType('DLTDrivingLicence', [thaiIdRecord], renewalStatuses)).toBe(
+      false,
+    )
     expect(readPidGateStatus([thaiIdRecord], renewalStatuses)).toBe('renewal-required')
 
     const renewedStatuses = {
@@ -115,7 +163,7 @@ describe('credentialGuard', () => {
     expect(hasUsablePidCredential([renewedThaiIdRecord], renewedStatuses)).toBe(true)
   })
 
-  test('allows other credential requests while ThaiNationalID is cleanup-pending', () => {
+  test('does not treat leftover cleanup-pending PID as usable for other documents', () => {
     const cleanupStatuses = {
       'id-card-1': {
         credentialId: 'id-card-1',
@@ -126,11 +174,64 @@ describe('credentialGuard', () => {
       },
     } satisfies Record<string, CredentialRenewalRecord>
 
-    expect(hasUsablePidCredential([thaiIdRecord], cleanupStatuses)).toBe(true)
-    expect(readPidGateStatus([thaiIdRecord], cleanupStatuses)).toBe('ready')
+    expect(hasUsablePidCredential([thaiIdRecord], cleanupStatuses)).toBe(false)
+    expect(readPidGateStatus([thaiIdRecord], cleanupStatuses)).toBe('renewal-required')
     expect(
       canRequestCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], cleanupStatuses),
-    ).toBe(true)
+    ).toBe(false)
+    expect(
+      canPresentCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], cleanupStatuses),
+    ).toBe(false)
+  })
+
+  test('keeps other documents usable while the replacement PID is still renewed-active', () => {
+    const pairedStatuses = {
+      'id-card-1': {
+        credentialId: 'id-card-1',
+        previousHolderDid: 'did:key:old',
+        replacementCredentialId: 'id-card-2',
+        state: 'cleanup-pending',
+        updatedAt: '2026-06-26T00:00:00.000Z',
+      },
+      'id-card-2': renewalStatuses['id-card-2'],
+    } satisfies Record<string, CredentialRenewalRecord>
+    const credentials = [thaiIdRecord, renewedThaiIdRecord]
+
+    expect(hasUsablePidCredential(credentials, pairedStatuses)).toBe(true)
+    expect(readPidGateStatus(credentials, pairedStatuses)).toBe('ready')
+    expect(canRequestCredentialType('ChulalongkornUniversityTranscript', credentials, pairedStatuses)).toBe(
+      true,
+    )
+    expect(canPresentCredentialType('ChulalongkornUniversityTranscript', credentials, pairedStatuses)).toBe(
+      true,
+    )
+  })
+
+  test('blocks other documents when the preferred PID shows หมดอายุ from k_cred TTL before old cleanup', () => {
+    const pairedStatuses = {
+      'id-card-1': {
+        credentialId: 'id-card-1',
+        previousHolderDid: 'did:key:old',
+        replacementCredentialId: 'id-card-2',
+        state: 'cleanup-pending',
+        updatedAt: '2026-06-26T00:00:00.000Z',
+      },
+      'id-card-2': renewalStatuses['id-card-2'],
+    } satisfies Record<string, CredentialRenewalRecord>
+    const credentials = [thaiIdRecord, renewedThaiIdRecord]
+    isStoredCredentialKeyTtlExpiredMock.mockImplementation(
+      (credential) => credential.id === renewedThaiIdRecord.id,
+    )
+
+    expect(hasUsablePidCredential(credentials, pairedStatuses)).toBe(false)
+    expect(readPidGateStatus(credentials, pairedStatuses)).toBe('renewal-required')
+    expect(canRequestCredentialType('ChulalongkornUniversityTranscript', credentials, pairedStatuses)).toBe(
+      false,
+    )
+    expect(canPresentCredentialType('ChulalongkornUniversityTranscript', credentials, pairedStatuses)).toBe(
+      false,
+    )
+    expect(canRequestCredentialType('DLTDrivingLicence', credentials, pairedStatuses)).toBe(false)
   })
 
   test('prevents duplicate ThaiNationalID renewal after renewed-active exists', () => {
@@ -138,6 +239,51 @@ describe('credentialGuard', () => {
 
     expect(canRequestCredentialType('ThaiNationalID', credentials, renewalStatuses)).toBe(false)
     expect(canSubmitCredentialRenewal('id-card-1', credentials, renewalStatuses)).toBe(false)
+  })
+
+  test('allows hardware P3 of another document while PID is only renewal-required', () => {
+    const drivingLicence: VerifiableCredentialRecord = {
+      id: 'dl-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'eyJhbGciOiJFZERTQSJ9.e30.sig',
+      claims: {},
+      issuedAt: '2026-03-01T00:00:00.000Z',
+    }
+    const statuses = {
+      ...renewalStatuses,
+      'dl-1': {
+        credentialId: 'dl-1',
+        previousHolderDid: 'did:key:dl',
+        state: 'renewal-required',
+        updatedAt: '2026-06-26T00:00:00.000Z',
+      },
+    } satisfies Record<string, CredentialRenewalRecord>
+
+    expect(readPidGateStatus([thaiIdRecord, drivingLicence], statuses)).toBe('renewal-required')
+    expect(canSubmitCredentialRenewal('dl-1', [thaiIdRecord, drivingLicence], statuses)).toBe(true)
+    expect(canRequestCredentialType('DLTDrivingLicence', [thaiIdRecord, drivingLicence], statuses)).toBe(
+      false,
+    )
+  })
+
+  test('does not submit P3 renewal for an mdoc card', () => {
+    const mdocLicence: VerifiableCredentialRecord = {
+      id: 'dlt-mdoc',
+      type: 'DLTDrivingLicence',
+      rawVc: 'mdoc:AQIDBA',
+      claims: { doctype: 'org.iso.18013.5.1.mDL' },
+      issuedAt: '2026-08-14T00:00:00.000Z',
+    }
+    const statuses = {
+      'dlt-mdoc': {
+        credentialId: 'dlt-mdoc',
+        previousHolderDid: 'did:key:zDnaMdoc',
+        state: 'renewal-required',
+        updatedAt: '2026-08-21T00:00:00.000Z',
+      },
+    } satisfies Record<string, CredentialRenewalRecord>
+
+    expect(canSubmitCredentialRenewal('dlt-mdoc', [mdocLicence], statuses)).toBe(false)
   })
 
   test('prefers renewed-active credential on home list', () => {
@@ -191,7 +337,8 @@ describe('credentialGuard', () => {
 
     try {
       expect(hasUsablePidCredential([thaiIdRecord], {})).toBe(false)
-      expect(readPidGateStatus([thaiIdRecord], {})).toBe('renewal-required')
+      expect(readPidGateStatus([thaiIdRecord], {})).toBe('suspended')
+      expect(canPresentCredentialType('DLTDrivingLicence', [thaiIdRecord], {})).toBe(false)
       expect(canRequestCredentialType('ThaiNationalID', [thaiIdRecord], {})).toBe(true)
       expect(
         canRequestCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], {}),
@@ -206,6 +353,8 @@ describe('credentialGuard', () => {
 
     try {
       expect(hasUsablePidCredential([thaiIdRecord], {})).toBe(false)
+      expect(readPidGateStatus([thaiIdRecord], {})).toBe('suspended')
+      expect(canPresentCredentialType('DLTDrivingLicence', [thaiIdRecord], {})).toBe(false)
       expect(canRequestCredentialType('ThaiNationalID', [thaiIdRecord], {})).toBe(true)
       expect(
         canRequestCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], {}),
@@ -222,7 +371,60 @@ describe('credentialGuard', () => {
     }
 
     expect(hasUsablePidCredential([expiredPid], {})).toBe(false)
+    expect(readPidGateStatus([expiredPid], {})).toBe('document-expired')
     expect(canRequestCredentialType('ThaiNationalID', [expiredPid], {})).toBe(true)
+  })
+
+  test('classifies calendar-expired PID plus expired driving licence as document-expired', () => {
+    const expiredPid: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      expiresAt: '2020-01-01T00:00:00.000Z',
+    }
+    const expiredDrivingLicence: VerifiableCredentialRecord = {
+      id: 'dl-expired',
+      type: 'DLTDrivingLicence',
+      rawVc: 'vc-dl',
+      claims: {},
+      issuedAt: '2020-01-01T00:00:00.000Z',
+      expiresAt: '2020-06-01T00:00:00.000Z',
+    }
+
+    expect(readPidGateStatus([expiredPid, expiredDrivingLicence], {})).toBe('document-expired')
+  })
+
+  test('does not treat leftover P3 renewal-required as the PID gate when the document is expired', () => {
+    const expiredPid: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      expiresAt: '2020-01-01T00:00:00.000Z',
+    }
+    const statuses = {
+      'id-card-1': {
+        credentialId: 'id-card-1',
+        previousHolderDid: 'did:key:old',
+        state: 'renewal-required',
+        updatedAt: '2026-06-26T00:00:00.000Z',
+      },
+    } satisfies Record<string, CredentialRenewalRecord>
+
+    expect(readPidGateStatus([expiredPid], statuses)).toBe('document-expired')
+  })
+
+  test('blocks P3 submit when the document is already expired', () => {
+    const expiredPid: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      expiresAt: '2020-01-01T00:00:00.000Z',
+    }
+    const statuses = {
+      'id-card-1': {
+        credentialId: 'id-card-1',
+        previousHolderDid: 'did:key:old',
+        state: 'renewal-required',
+        updatedAt: '2026-06-26T00:00:00.000Z',
+      },
+    } satisfies Record<string, CredentialRenewalRecord>
+
+    expect(canSubmitCredentialRenewal('id-card-1', [expiredPid], statuses)).toBe(false)
+    expect(canRequestCredentialType('ThaiNationalID', [expiredPid], statuses)).toBe(true)
   })
 
   test('prefers non-expired credential on home list', () => {
@@ -241,6 +443,26 @@ describe('credentialGuard', () => {
     expect(picked?.id).toBe('id-card-active')
   })
 
+  test('prefers an mdoc Driving Licence over a JWT Driving Licence of the same type', () => {
+    const jwtLicence: VerifiableCredentialRecord = {
+      id: 'dlt-jwt',
+      type: 'DLTDrivingLicence',
+      rawVc: 'eyJhbGciOiJFZERTQSJ9.e30.sig',
+      claims: {},
+      issuedAt: '2026-01-01T00:00:00.000Z',
+    }
+    const mdocLicence: VerifiableCredentialRecord = {
+      id: 'dlt-mdoc',
+      type: 'DLTDrivingLicence',
+      rawVc: 'mdoc:abc',
+      claims: { doctype: 'org.iso.18013.5.1.mDL' },
+      issuedAt: '2026-08-14T00:00:00.000Z',
+    }
+
+    const picked = pickPreferredHomeCredential([jwtLicence, mdocLicence], {})
+    expect(picked?.id).toBe('dlt-mdoc')
+  })
+
   test('prefers a new active PID over an issuer-suspended PID of the same type', () => {
     writeIssuerSuspension({
       credentialId: thaiIdRecord.id,
@@ -254,5 +476,27 @@ describe('credentialGuard', () => {
     } finally {
       getCredentialStorage().remove(`credential:suspension:${thaiIdRecord.id}`)
     }
+  })
+
+  test('treats Ed25519 PID as unusable and re-requestable when hardware reissue is required', () => {
+    credentialRequiresHardwareReissueMock.mockImplementation(
+      (credentialId) => credentialId === thaiIdRecord.id,
+    )
+
+    expect(hasUsablePidCredential([thaiIdRecord], {})).toBe(false)
+    expect(readPidGateStatus([thaiIdRecord], {})).toBe('renewal-required')
+    expect(canRequestCredentialType('ThaiNationalID', [thaiIdRecord], {})).toBe(true)
+    expect(
+      canRequestCredentialType('ChulalongkornUniversityTranscript', [thaiIdRecord], {}),
+    ).toBe(false)
+  })
+
+  test('prefers a hardware-keyed credential over a legacy Ed25519 card of the same type', () => {
+    credentialRequiresHardwareReissueMock.mockImplementation(
+      (credentialId) => credentialId === thaiIdRecord.id,
+    )
+
+    const picked = pickPreferredHomeCredential([thaiIdRecord, renewedThaiIdRecord], {})
+    expect(picked?.id).toBe('id-card-2')
   })
 })

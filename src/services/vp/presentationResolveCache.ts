@@ -1,4 +1,4 @@
-import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
+import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import type { PresentationFlowOrigin } from './oid4vc/types'
 import {
   resolvePresentationRequest,
@@ -22,6 +22,7 @@ export function resolvePresentationRequestCached(
   options: {
     trustedVerifiers: TrustedVerifier[]
     presentationFlowOrigin: PresentationFlowOrigin
+    walletCredentials?: VerifiableCredentialRecord[]
   },
 ): Promise<ResolvedPresentationRequest> {
   const cacheKey = buildPresentationResolveCacheKey(authorizationRequestUri, presentableCredentialKey)

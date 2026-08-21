@@ -48,6 +48,9 @@ Each item is tagged `[BLOCKING]`, `[GAP]`, or `[OK]`. Items already tracked in `
 ### [OK] `direct_post` response transport
 - `submitPresentationResponse()` posts `vp_token` (+ `presentation_submission` for PE, + `state`) as `application/x-www-form-urlencoded` to `response_uri` — matches OID4VP 1.0 §6.2.
 
+### [OK] `direct_post.jwt` encrypted response transport
+- When `response_mode` is `direct_post.jwt`, resolve requires `client_metadata.jwks` with an EC P-256 ECDH-ES encryption key; submit POSTs compact JWE as form field `response` (ECDH-ES + A128GCM/A256GCM). Spec: `docs/superpowers/specs/2026-08-21-oid4vp-direct-post-jwt-design.md`.
+
 ### [OK] DCQL `vp_token` response shape (production default)
 - `formatVpTokenForResponse()` defaults to the spec-correct object-keyed-by-credential-query-id, array-valued shape for DCQL responses (`readVerifierDcqlVpTokenShape()` returns `'object_array'` outside `__DEV__` regardless of env). The alternate shapes (`object_string`, `raw`) are explicitly development-only compatibility probes — fine as is, but **must not be left enabled via env in any release build** (already enforced by the `isDevelopment` gate in `runtimeFlags.ts`).
 

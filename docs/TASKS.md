@@ -1,5 +1,1403 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-21 (OID4VP direct_post.jwt)
+
+- Wallet accepts `response_mode=direct_post.jwt`, selects EC P-256 ECDH-ES key from
+  `client_metadata.jwks`, encrypts `{ vp_token, state, presentation_submission? }`
+  as compact JWE, and POSTs `response=` to `response_uri` on all OID4VP submit paths.
+  Plaintext `direct_post` unchanged. Spec:
+  `docs/superpowers/specs/2026-08-21-oid4vp-direct-post-jwt-design.md`.
+
+### Session 2026-08-21 (Host must not fill declined expiry from privileges)
+
+- ACR1311 extract no longer copies nested `issue_date` / `expiry_date` from
+  `driving_privileges` onto the top-level วันที่ออกใบอนุญาต / วันหมดอายุ rows.
+  Declining only วันหมดอายุ while still sending ประเภทใบอนุญาต was showing
+  `2033-01-01` as received.
+- Verification: host `MdocResponseClaimsTest` /
+  `HostClaimDisplayTest`. Restart the ACR1311 host and hard-refresh the web
+  page. Physical: turn only วันหมดอายุ off; that row must be
+  ไม่ได้ส่ง — ผู้ถือบัตรไม่ยินยอมเปิดเผย.
+
+### Session 2026-08-21 (First-party issuer host gate)
+
+- First-party chrome is only for `issuer.zenithcomp.co.th` (hostname from
+  `EXPO_PUBLIC_ISSUER_CREDENTIAL_ISSUER`). A tonyhere Driving License vct
+  last-segment no longer occupies the Home catalog Driving License slot.
+- Offer preview passes issuer into configuration-id schema lookup so a
+  third-party DrivingLicense offer is not branded as DLT.
+- Verification: `yarn test src/config/firstPartyCredential.test.ts
+  src/services/credentials/unregisteredHomeDocuments.test.ts
+  src/config/cardSchemas.test.ts --no-coverage`.
+
+### Session 2026-08-21 (First-party Driving License / Transcript VCTs)
+
+- Expanded the exact allowlist with last-segment ids `DrivingLicense`,
+  `DrivingLicence`, `Iso18013DriversLicenseCredential`, and
+  `TranscriptCredential`, plus format-suffix stripping on config ids.
+- First-party issuer URL VCTs under `.../credentials/DrivingLicense` and
+  `.../credentials/TranscriptCredential` map back to the Home catalog slots.
+  tonyhere and `TestMdocDrivingLicence` stay unregistered. No re-claim needed.
+- Verification: `yarn test src/config/firstPartyCredential.test.ts
+  src/services/credentials/unregisteredHomeDocuments.test.ts
+  src/config/cardSchemas.test.ts --no-coverage`.
+
+### Session 2026-08-21 (Unregistered issuer claim display)
+
+- Spec: `docs/superpowers/specs/2026-08-21-unregistered-issuer-claim-display-design.md`.
+- First-party chrome uses an exact allowlist (`firstPartyCredential.ts`). Unknown
+  `vct` / config ids are no longer folded into DLT / Thai ID / transcript via
+  `licence` / `mdl` / `thai` substrings.
+- Claim time persists `credentialDisplayName` and `claimDisplayLabels` from
+  OID4VCI metadata. Generic Digital Document lists received claims (humanized
+  keys when labels are missing).
+- Home keeps ID / Driving License / Transcript / Medical slots; unregistered
+  cards append as extra rows after those. Mis-folded stored `DLTDrivingLicence`
+  + tonyhere `vct` is generic at display time and does not get DLT NFC.
+- Verification: focused Jest on classifier, generic rows, Home extras, DCQL
+  type matching, NFC visibility; `yarn tsc --noEmit`.
+
+### Session 2026-08-21 (PID gate follows ID Card หมดอายุ)
+
+- `hasUsablePidCredential` no longer treats leftover `cleanup-pending` PID as
+  usable, and it excludes hardware `k_cred` TTL-elapsed PID even while storage
+  is still `renewed-active`. Other documents cannot present or portal-request
+  while Home still shows ID Card **หมดอายุ** and the old card is not deleted.
+- Hardware P3 **ขอเอกสาร** of another card stays allowed (`canSubmitCredentialRenewal`).
+- Verification: `yarn test src/services/credentials/credentialGuard.test.ts --no-coverage`.
+
+### Session 2026-08-21 (NFC Success has no claim list; host shows sent birth_date)
+
+- Wallet NFC Success (`proximity/PresentationResultPanel`) is verification-complete
+  only. It does not list sent or omitted claims. ACR1311 "Received mDL claims"
+  remains the place for received vs omitted.
+- Host extract now copies `birth_date` onto claims (and still derives
+  `age_over_18`). Omitted classification is requested identifiers missing from
+  that claims map, so a sent DOB is no longer shown as
+  ไม่ได้ส่ง — ผู้ถือบัตรไม่ยินยอมเปิดเผย. Declined `family_name` still is.
+- Verification: `yarn test src/components/proximity/PresentationResultPanel.test.tsx
+  --no-coverage`; host
+  `.\gradlew.bat test --tests org.wallet.mdocnfchost.MdocResponseClaimsTest
+  --tests org.wallet.mdocnfchost.HostClaimDisplayTest`. Restart host and
+  hard-refresh the web page. Physical A26 + ACR1311: all-on tap shows
+  วันเดือนปีเกิด value; turn นามสกุล off and that row stays omitted.
+
+### Session 2026-08-21 (mDL NFC holder selective disclosure)
+
+- Spec: `docs/superpowers/specs/2026-08-21-mdl-nfc-holder-selective-disclosure-design.md`.
+- Plan: `docs/superpowers/plans/2026-08-21-mdl-nfc-holder-selective-disclosure.md`.
+- Pre-tap consent toggles; arm sends profile ceiling + holder selection; tap omits
+  holder-declined fields (`DeviceRequest ∩` selection). Wallet Success is
+  verification-complete only (no claim list). ACR1311 page shows received vs
+  omitted + ผู้ถือบัตรไม่ยินยอมเปิดเผย.
+- Verification: focused Jest on consent, store, arm session, Success panel; host
+  `HostClaimDisplayTest` / `MdocResponseClaimsTest`. Physical A26 + ACR1311 still
+  required — one tap all-on, one tap with a field off. Native rebuild
+  (`npx expo run:android`) and host restart after Kotlin/JS.
+
+### Session 2026-08-21 (Freeze wallet actions while PIN lock is showing)
+
+- Idle-grace PIN lock (`EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`) was only a
+  route redirect to `/pin-lock`. `AppDialog` (RN Modal) and the in-flight
+  issuer-portal wait kept running, so "ไม่สามารถรับเอกสารได้" / ลองใหม่อีกครั้ง
+  could appear on top of PIN/biometrics and retry issuance while locked.
+- `isWalletPinLockRequired` / `readWalletPinLockRequired` is the shared lock
+  predicate. AppDialog hides and stashes while locked, then restores after
+  unlock unless a pending offer/VP should take over. Portal flow skips
+  `router.push` and no-ops a new request/retry while locked; empty-offer
+  dialogs are still shown so they can be deferred. Session expiry cancels the
+  portal wait without bumping capture generation. WalletKeyExpiredModal is
+  hidden while locked.
+- Verification: focused tests on `walletPinNavigation`, `AppDialog`,
+  `requestCredentialViaPortalFlow`, `portalReturnBridge`, `WalletKeyExpiryHost`.
+
+### Session 2026-08-20 (Open third-party OID4VCI/OID4VP for testing)
+
+- Added `EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER` (boolean string `'true'`, default **false**).
+  Local `.env` is on for this testing period. Customer production builds must leave it
+  unset/false.
+- When **true**: Scan/deeplink credential-offer claim skips the Thai National ID-first
+  gate for non-PID offers (Home portal request stays PID-gated). Unlisted HTTPS OID4VP
+  peers are trusted when `client_id` and `response_uri` share origin and already pass
+  the existing scheme matcher. Display name is the host, not “Trusted Verifier”.
+  Random `http:` hosts stay rejected outside existing allowlisted/dev LAN entries.
+- **Always on** (not a trust decision): same-origin issuer metadata walk (session path
+  → origin well-known); unknown `credential_configuration_ids` requested as advertised
+  when metadata has a single config (UI uses `FALLBACK_SCHEMA`); honest HTTP metadata
+  errors (not “connection”); token client attestation only when AS metadata advertises
+  `attest_jwt_client_auth` (do not flip `EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED`).
+  Cached Wallet Provider WUA that is `alg: none` / `typ: wallet-attestation+jwt` is **not**
+  sent as `attest_jwt_client_auth`. The wallet mints a spec-shaped
+  `oauth-client-attestation+jwt` (ES256, `k_attest`) plus PoP in one attest session.
+  A later AS `invalid_client` means that issuer pins a Wallet Provider JWKS and will not
+  accept a self-signed instance attestation.
+  Token `resource` is the **offer** `credential_issuer` (session path), not the origin
+  metadata identifier, so path-based issuers do not get `invalid_grant` from RFC 8707 mismatch.
+  OID4VCI 1.0 token bodies drop library `user_pin` dual-send (`tx_code` only) and set
+  `client_id=wallet-holder` for `attest_jwt_client_auth` so the grant is bound to the
+  attestation `sub`.
+  Path-based issuers (Procivis-style session `credential_issuer`) can publish origin
+  Credential Issuer metadata whose `authorization_servers` point at origin `/token`,
+  while the pre-authorized code is bound to the RFC 8414 insert AS
+  (`/.well-known/oauth-authorization-server/<offer-path>`). After origin CI metadata
+  resolves, the wallet overlays that session AS when it is same-origin.
+  Anonymous session token requests send only `grant_type`, `pre-authorized_code`, and
+  `tx_code` (no `client_id` / `resource` / `user_pin`). OID4VCI 1.0 says `client_id` is
+  only for client-auth methods that use it. On that token path, `invalid_grant` means
+  expired, already-used, or wrong `tx_code`; a wrong `tx_code` permanently fails the
+  offer. Generate a new QR and complete it on the first attempt. A correct `tx_code`
+  does not revive a consumed `pre-authorized_code`.
+  OID4VCI 1.0 Final token responses may omit `c_nonce` (nonce endpoint instead). When
+  the token has `access_token` but no `c_nonce`, the wallet POSTs the issuer
+  `nonce_endpoint`. Session overlays also replace origin-root `/credential` and
+  `/nonce` with the matching session-path endpoints so proof and credential requests
+  do not hit the host-level URLs from origin metadata.
+  Origin metadata can list a different `credential_configurations_supported` id
+  than the offer. Before `retrieveCredentials`, copy the offered/synthesized
+  configuration under the offered id so the library lookup of
+  `credential_configuration_id` succeeds. The HTTP body still sends that offered
+  id (OID4VCI 1.0), not the origin metadata key.
+  Hardware OID4VCI PoP JWTs with `keyBinding: jwk` send only `jwk` (not `kid`).
+  Procivis rejects both with `invalid_or_missing_proof`
+  ("Only kid or embedded jwk allowed in proof.jwt but not both").
+- **Still fail-closed:** ES256/EdDSA verify allowlist, holder `cnf` binding, backend-only
+  cert pinning (ADR 0005), no cross-host metadata/`presentation_definition_uri` fetch,
+  hardware/iOS cutover, unsupported `client_id` schemes, unsigned JAR/JWT signature checks.
+- **Tradeoff:** with the flag on, any HTTPS issuer can be claimed and any HTTPS verifier
+  can request disclosure of wallet contents. Turn the flag off for customer production
+  builds. P1 portal issuance stays PID-first; this is an interop Scan path, not a P1
+  canvas change.
+- Verification: focused tests on discovery, resolve, PID gate, VP matcher, token client
+  auth, and friendly errors; `yarn tsc --noEmit`.
+
+### Session 2026-08-20 (EAS compileReleaseKotlin: mdoc overlay types)
+
+- EAS `:expo-mdoc-proximity:compileReleaseKotlin` failed because
+  `MdocDisplayNameOverlay` returned Multipaz `buildCborMap()` as `CborMap`.
+  That helper is `DataItem` (same as `MdocIssuerSignedExtractor.replaceIssuerAuth`).
+- Overlay rebuild helpers now return `DataItem`; wrap lambdas accept `DataItem`.
+- Verification: JVM compile of overlay + extractor against
+  `org.multipaz:multipaz-jvm:0.100.0` (`compileKotlin` / `compileTestKotlin` succeeded).
+
+### Session 2026-08-20 (Back after claim/present success)
+
+- After OID4VCI **receive success** or OID4VP **present success**, Back was able to
+  land on stale DOPA confirm (`ThaiIdSuccessConfirmationPanel` / กรมการปกครอง).
+  Confirming that consumed offer then failed issuer auth and could hide the
+  mapped error behind “Opening Credential Offer”.
+- Claim success now dismisses the offer URI and clears the same-device session
+  immediately. Header / Android Back still `replace('/(tabs)')`. Remount of the
+  same dismissed offer does not restore DOPA. Consumed-offer acquire failures
+  keep `toFriendlyError` on screen even if the same URI is re-queued as pending.
+- Presentation success dismisses the VP URI immediately. Success header Back
+  calls `onCancel` (Wallet). **เสร็จสิ้น** still resumes in-progress same-device
+  claim after issuer PID VP.
+- Verification: `yarn test src/screens/CredentialOfferClaimScreen.test.tsx src/components/Oid4VpDisclosureFlow.test.tsx src/screens/PresentationRequestScreen.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (Hide religion on presentment lists; DL given name first)
+
+- OID4VP consent and info requested-item lists hide **ศาสนา / religion** even when
+  the verifier requested it (`prepareHolderFacingDisclosureItems`). Schema
+  `religion` stays for matching. `readInitialSelectedClaimKeys` still includes it
+  so the VP token can send the claim. NFC `PreTapConsentPanel` uses the same UI
+  filter.
+- Driving-licence consent/preview lists that show **ชื่อ** and **นามสกุล** as
+  separate rows put given name above family name. Display only; submit keys keep
+  match order. `full_name` stays one row.
+- Verification: `yarn test src/services/vp/presentationDisclosureDisplay.test.ts src/components/PresentationConsentPanel.test.tsx src/components/PresentationRequestedItemsCard.test.tsx src/components/PresentationInfoPanel.test.tsx src/components/proximity/PreTapConsentPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (DL/transcript mock English; hide transcript birth date)
+
+- Driving-licence and transcript **document cards** always show English
+  `MOCK_HOLDER_ENGLISH_NAME` (`Ms. Thodsopp Eekkasandigital`). Thai names stay
+  issuer-first with PID only if missing. PID ID card is unchanged. VP/NFC wire
+  is unchanged.
+- Transcript cards hide **วันเกิด / Date of Birth** (detail, receive, OID4VP info).
+  PID and driving-licence cards still show birth date.
+- Verification: `yarn test src/services/credentials/drivingLicenceDisplay.test.ts src/components/DrivingLicenceDocumentCard.test.tsx src/components/DrivingLicencePreviewPanel.test.tsx src/components/TranscriptPreviewPanel.test.tsx src/components/CredentialDocumentDetailCard.test.tsx src/components/PresentationInfoPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (รับเอกสารสำเร็จ Thai vowel clipping)
+
+- Scan success title/body used `leading-6` / `leading-5`, which clips Thai tone
+  marks on **รับเอกสารสำเร็จ**. Matched AppDialog / presentation success spacing:
+  18px → `leading-[26px]`, 14px → `leading-[22px]`.
+- Verification: `yarn test src/components/ScanSuccessPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (Issuer values first, PID fills gaps)
+
+- Non-PID documents (DL, transcript) show **issuer claims** for names, birth date, and
+  presentment disclosure values. Stored PID fills a UI field only when that document
+  omitted it (`resolveDisplayHolderProfile`, `overlayPresentationDisclosureValue`).
+  Missing English/Latin still shows `-` unless PID has a Latin name. VP tokens stay
+  the document claims. PID religion remains hidden.
+- NFC session overlay applies PID `given_name`/`family_name` only when the presenting
+  mDL omits those fields. Issuer names are not rewritten.
+- Receive still uses the same `CredentialDocumentDetailCard` as detail; DL licence
+  number stays above vehicle type; ISO `B` still maps on the card.
+- Verification: `yarn test src/services/credentials/credentialDisplay.test.ts src/services/credentials/drivingLicenceDisplay.test.ts src/services/proximity/proximityArmSession.test.ts src/components/CredentialDocumentDetailCard.test.tsx src/components/DrivingLicenceDocumentCard.test.tsx src/components/DrivingLicencePreviewPanel.test.tsx src/components/TranscriptPreviewPanel.test.tsx src/components/PresentationInfoPanel.test.tsx src/components/PresentationConsentPanel.test.tsx src/components/PresentationRequestedItemsCard.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (Presentment PID names, NFC session overlay, receive = detail)
+
+- Holder-facing presentment UIs overlay stored PID (`ThaiNationalID`) Thai + English
+  names via `resolveDisplayHolderProfile` / `overlayPresentationDisclosureValue`
+  (OID4VP info card, consent/requested-item **values**, issuer-PID panel). VP/sd-jwt
+  tokens still send the matched document claims. Missing Latin English shows `-`.
+- NFC lab DeviceResponse: session-only PID `given_name`/`family_name` overlay at
+  arm/presentment (`displayNameOverlay` → `MdocDisplayNameOverlay`). Stored mdoc is
+  not rewritten. Logs `fieldCount` only. `issuerAuth` digests will not match; the
+  ACR1311 lab extractor does not verify MSO.
+- VC receive previews use the same `CredentialDocumentDetailCard` as detail
+  (`CredentialReceiveCardPanel`); no My QR/NFC on receive.
+- Verification: `yarn test src/services/credentials/credentialDisplay.test.ts src/services/proximity/proximityArmSession.test.ts src/components/ThaiIdReceivePanel.test.tsx src/components/DrivingLicencePreviewPanel.test.tsx src/components/TranscriptPreviewPanel.test.tsx src/components/PresentationInfoPanel.test.tsx src/components/PresentationConsentPanel.test.tsx src/components/PresentationRequestedItemsCard.test.tsx src/components/IssuerPidPresentationPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (PID birth date overlay, DL licence number placement)
+
+- Holder-facing birth date on driving licence and transcript overlays stored PID
+  via `resolveDisplayHolderProfile` (same as Thai/English names). Display-only;
+  stored claims and VP/mdoc wire stay the document values.
+- Driving-licence card left column puts **เลขที่ใบอนุญาต** above **ประเภทยานพาหนะ**.
+- Verification: `yarn test src/services/credentials/credentialDisplay.test.ts src/services/credentials/drivingLicenceDisplay.test.ts src/components/CredentialDocumentDetailCard.test.tsx src/components/DrivingLicenceDocumentCard.test.tsx --no-coverage`.
+
+### Session 2026-08-20 (PID names, hide religion, DL OID4VP card)
+
+- Holder-facing names on driving licence and transcript (receive, detail, OID4VP info)
+  overlay stored PID (`ThaiNationalID`) Thai + English via `resolveDisplayHolderProfile`.
+  English is Latin-only; missing English shows `-` (no sample/mock names).
+- PID receive/detail hide ศาสนา because ThaID does not send religion. Schema still
+  has `religion` for Verifier matching.
+- OID4VP info uses the same document card as wallet detail for PID, DL, and
+  transcript. Driving-licence ประเภทยานพาหนะ maps ISO `B` on the card; VP token
+  still sends the raw claim.
+- Verification: `yarn test src/services/credentials/credentialDisplay.test.ts src/services/credentials/drivingLicenceDisplay.test.ts src/components/ThaiIdReceivePanel.test.tsx src/components/CredentialDocumentDetailCard.test.tsx src/components/DrivingLicenceDocumentCard.test.tsx src/components/DrivingLicencePreviewPanel.test.tsx src/components/TranscriptPreviewPanel.test.tsx src/components/PresentationInfoPanel.test.tsx --no-coverage`.
+
+### Session 2026-08-19 (Driving-licence OID4VP claim aliases)
+
+- Verifier paths `full_name`, `license_type`, and `photo` now match an issued
+  DLT driving licence that stores ISO/wallet names (`given_name`/`family_name`,
+  `licenceClass`/`driving_privileges`, `portrait`). Failure copy no longer
+  shows the generic **ข้อมูลที่ร้องขอ** for `license_type`.
+- Verification: `yarn test src/config/cardSchemas.test.ts src/services/vp/dcqlCredentialMatch.test.ts src/services/vp/presentationFailureUi.test.ts src/services/vp/presentationService.test.ts src/services/vp/sdJwtSelectiveDisclosure.test.ts --no-coverage`.
+
+### Session 2026-08-19 (Enforce k_cred TTL on presentment)
+
+- Hardware `k_cred` TTL is wallet policy, not Keystore death. `renewed-active` still
+  skips **writing** `renewal-required` so P3-6 pairing stays, but presentment and
+  the **หมดอายุ** badge no longer wait for old-VC delete.
+- OID4VP `filterPresentableCredentials`, credential-detail My QR/NFC, and Home/detail
+  badges call `isStoredCredentialKeyTtlExpired`. Silent old-VC renewal OID4VP is unchanged.
+- Verification: `yarn test src/services/credentials/credentialKeyExpiry.test.ts src/services/credentials/credentialLifecycle.test.ts src/services/credentials/credentialHomeNavigation.test.ts src/services/credentials/credentialStatusBadge.test.ts src/components/CredentialDocumentDetailCard.test.tsx --no-coverage`.
+
+### Session 2026-08-19 (Hide My QR on expired document detail)
+
+- Credential detail hides **My QR** (and NFC) when the card is calendar-expired
+  or otherwise not presentable. `VpQrModal` does not start a broker session or
+  offer **สร้างใหม่** for an expired document.
+- Verification: `yarn test src/screens/CredentialDetailMyQrModal.test.tsx src/components/CredentialDocumentDetailCard.test.tsx src/components/VpQrModal.test.tsx --no-coverage`.
+
+### Session 2026-08-19 (History agency logos)
+
+- History list and detail resolve agency logos from `credentialType` /
+  `issuerLogoKey` (`thaid.png`, `dltt.png`, `chulalongkorn.png`), not English
+  configuration-id matching on the Thai document title.
+- Verification: `yarn test src/components/HistoryItem.test.tsx src/components/HistoryEventDetailPanel.test.tsx src/services/history/walletHistory.test.ts --no-coverage`; `yarn tsc --noEmit`.
+
+### Session 2026-08-19 (Expiry badges หมดอายุ / ใกล้หมดอายุ)
+
+- Home/detail no longer use English **Inactive** for leftover P3 `renewal-required`.
+  The pill is **หมดอายุ**. Calendar warning window is **ใกล้หมดอายุ**, including when
+  leftover P3 is present. Suspended stays **ถูกระงับ**.
+- Verification: `yarn test src/services/credentials/credentialStatusBadge.test.ts src/services/credentials/credentialInactiveState.test.ts --no-coverage`.
+
+### Session 2026-08-19 (P3 ขอเอกสาร via portal or Scan)
+
+- Home Inactive **ขอเอกสาร** no longer POSTs zenithcomp `/wallet-api/dev/wallet/renewal-request`
+  (the HTTP 502 stub). It mints pending hardware `k_cred`, stays `renewal-required`,
+  then opens the Issuer portal. Holder can leave the portal and Scan an offer QR.
+- Same-type claim reuses that pending key and runs P3-6 pairing (`cleanup-pending` /
+  `renewed-active`). Portal dismiss / empty offer discards the pending key.
+- `submitRenewalRequest` remains for tests / leftover stub Receive. Silent old-VC
+  OID4VP stays peer until a working company `POST /wallet/renewal-request` exists.
+- Verification: `yarn test src/services/credentials/renewalIssuerIntake.test.ts src/services/credentials/requestCredentialViaPortalFlow.test.ts src/screens/CredentialOfferClaimScreen.test.tsx src/services/credentials/credentialRenewalService.test.ts --no-coverage`.
+
+### Session 2026-08-19 (P3 ขอเอกสาร Home expand only)
+
+- Credential detail no longer shows P3 **ขอเอกสาร** (`submitRenewalRequest`).
+  That CTA stays on Home expand (`showRenewalCta`). Detail still has portal
+  **ขอเอกสารใหม่** for `document-expired` / `hardware-reissue-required`, plus
+  Receive when a P3 offer is ready.
+- Home 502/503 from zenithcomp `/dev/wallet/renewal-request` is expected on that
+  stub. `handleRenewalRequest` still uses `buildRenewalRequestFailureDialog`
+  (cancel + **ขอเอกสารใหม่**). Do not auto-reroute Inactive P3 to portal.
+
+### Session 2026-08-19 (Expired PID My QR request gate)
+
+- Calendar-expired PID is `PidGateStatus` `document-expired`, not P3
+  `renewal-required`. My QR shows the same request-PID panel as missing PID,
+  with **ขอ PID**. Leftover P3 on an expired PID still uses this gate.
+- P3 `renewal-required` (document still in calendar, key expired) stays without
+  a portal CTA.
+- Verification: `yarn test src/services/credentials/credentialGuard.test.ts src/components/MyQrPidGatePanel.test.tsx src/services/credentials/pidGateDialog.test.ts --no-coverage`.
+
+### Session 2026-08-19 (Inactive Home like ถูกระงับ + P3 502 fallback)
+
+- P3 Inactive Home (`renewal-required` / processing / cleanup / old-revoked) splits
+  like ถูกระงับ: icon/label opens detail, chevron-**down** expands. Expand labels
+  are `ขยายเอกสาร` / `ย่อเอกสาร`. Expand **ขอเอกสาร** stays P3, not portal.
+- HTTP 502/503 on zenithcomp `/dev/wallet/renewal-request` is the Issuer stub
+  failing to create a renewal offer. Dialog copy is in `renewalRequestFailureUi`;
+  **ขอเอกสารใหม่** is an explicit portal Fresh-reissue fallback, not an auto-reroute.
+- Production `POST /wallet/renewal-request` remains peer. Local P3 golden path
+  still needs this repo `server/` + `ISSUER_BASE_URL`.
+
+### Session 2026-08-19 (Expired document ขอเอกสารใหม่ like P6)
+
+- Document-expired Home matches P6 revoke: split row, chevron expand **ขอเอกสารใหม่**
+  through `requestCredentialViaPortalFlow` (PID-gated). Do **not** run P3
+  `submitRenewalRequest` / local `renewal-request` on an expired card.
+- `document-expired` and leftover Ed25519 (`hardware-reissue-required`) beat leftover
+  `renewal-required`. In-flight P3 (`renewal-processing` / `cleanup-pending` /
+  `old-revoked`) still wins so Receive / P3-6 is not replaced.
+- `canSubmitCredentialRenewal` is false when the stored VC is document-expired, so
+  detail does not show P3 **ขอเอกสาร**. Detail still shows portal **ขอเอกสารใหม่**.
+- Out of scope: zenithcomp 502 on the dev renewal stub; `k_attest` TTL; restoring
+  wallet-wide P3-1.
+
+### Session 2026-08-19 (Remove Home P-256 test buttons)
+
+- Home `__DEV__` **P-256 checklist**, **P-256 capacity stress**, and **Arm gate 9**
+  are gone. Gate 9 pause / one-shot arm helpers went with them.
+- Interrupted-activation **retry** (`wallet-crypto-v2-resubmit-wp`) stays in
+  production activation. Slice B runner remains callable from
+  `hardwareEcdsaDiagnostics`, not from Home.
+
+### Session 2026-08-19 (Gate 9 interrupted activation PASS)
+
+- A26 relaunch claim after force-stop: `wallet-crypto-v2-resubmit-wp`
+  `{ phase: 'wp_submit_pending' }` → `wallet-attest-request-complete` →
+  `wallet-crypto-v2-activated`. No second `wallet-crypto-v2-create-attest-key`.
+  Then hardware `k_cred` ES256 PoP and PID save (`hardware-credential-key-bound`).
+- `wallet-attest-key-destroyed` is leftover Ed25519 attest Keychain cleanup, not
+  hardware `k_attest` delete. Issuer JWT still `issuer-resolve-did-*` (`did:key`
+  + EdDSA), not `did.json`. WP tokens remain the unsigned mock (`alg: none`).
+- Wallet-owned A26 gates 1–9 are recorded. Production WP root/revocation/app-identity
+  verify is still peer work.
+
+### Session 2026-08-19 (P3 hardware old-VC renewal)
+
+- Post-cutover hardware P3 matches the swimlane as **per-credential k_cred** continuity:
+  TTL on `k_cred.createdAt` (same `WALLET_KEY` env vars) marks `renewal-required`;
+  **ขอเอกสาร** mints a pending hardware key, silent old-VC OID4VP with the old
+  `k_cred`, Receive claims with that same pending key, P3-6 destroys the old alias.
+- Fresh reissue stays leftover Ed25519 and document-expired. Wallet-wide P3-1
+  is retired when hardware P-256 or crypto v2 is on. PID-first stays cutover /
+  portal issuance; hardware P3 of another card is not blocked by PID
+  `renewal-required`.
+- Physical-device golden path for this hardware P3 loop remains open.
+
+### Session 2026-08-19 (Gate 9 arm + 20s pause)
+
+- Claim activation was too fast to force-stop, and already-activated wallets skip
+  create (`wallet-crypto-v2-already-enabled`). Home `__DEV__` **Arm gate 9** now
+  deletes hardware `k_attest`, clears activation meta, and arms a one-shot 20s
+  pause after `wp_submit_pending` / before WP attest POST.
+- Device: Arm gate 9 → claim PID → wait for `wallet-crypto-v2-create-attest-key`
+  then `wallet-crypto-v2-post-create-delay` → force-stop during the wait →
+  relaunch → claim → expect `wallet-crypto-v2-resubmit-wp` (no second
+  `create-attest-key`). **Recorded PASS** on the later relaunch claim.
+
+### Session 2026-08-19 (A26 WP mock activation on claim)
+
+- PID portal claim hit the live challenge: `wallet-attest-challenge-complete` →
+  `wallet-crypto-v2-create-attest-key` → `wallet-attest-request-complete` →
+  `wallet-crypto-v2-activated` (`v2Enabled` on). Then `k_cred` ES256 PoP and save.
+  `wallet-attest-key-destroyed` is leftover Ed25519 attest Keychain cleanup, not
+  hardware `k_attest` delete.
+- Gate 3 on this host is a **mock WP pass** (unsigned `alg: none`, no root verify).
+  Issuer JWT still went `issuer-resolve-did-*` (HTTPS `iss` + `did:key` kid), not
+  `did.json`.
+- Gate 9 was still open after that first mock activation (too fast to kill). Later
+  **Arm gate 9** + force-stop recorded PASS (session note above).
+
+### Session 2026-08-19 (Zenith attest challenge is up)
+
+- Probed `https://wallet.zenithcomp.co.th:455/wallet-api/wallet-attestations/challenge`.
+  **POST 201** with `challengeId`, `attestationChallengeBase64`, `expiresAt` — wallet
+  parser shape. GET is 404 (wallet uses POST). `POST /wallet-api/wallet-attestations`
+  exists (400 on empty body).
+- OpenAPI tags it **Development**: unauthenticated mock, no root/revocation/app-identity
+  verify, later tokens `alg: none`. Usable for activation/retry tests; not a production WP.
+- Phone may still skip for up to 1 hour after the old 404
+  (`EXPO_PUBLIC_WALLET_ATTEST_CHALLENGE_UNSUPPORTED_TTL_MS`). Clear app data or wait,
+  then claim and look for `wallet-attest-challenge-complete`.
+
+### Session 2026-08-19 (A26 one biometric + OID4VP + NFC)
+
+- Dual-format licence claim: **one** biometric. OID4VP present succeeded.
+  NFC APDU succeeded. Spec gates 5 (prompt count) and 7 (issue/present/proximity)
+  are recorded on this A26. Residual auth window after `close()` was not measured.
+- Wallet-owned A26 path is done except WP-attested activation. Still blocked:
+  gates 3 and 9 on Zenith `/wallet-attestations/challenge` 404.
+
+### Session 2026-08-19 (A26 Slice B checklist evidence)
+
+- Device ran Home **P-256 checklist** then **P-256 capacity stress**. Backend
+  `custom`, `nativeProbeAvailable: true`, holder signs 64-byte ES256 on **TEE**.
+- Row 1 **FAIL** `Expected STRONGBOX` with `securityLevel=TEE` is the A26 SKU
+  (no public StrongBox), not a software-key miss. Sign/verify on that TEE key
+  passed. Record as TEE after StrongBox-unavailable, not a StrongBox pass.
+- Row 2 **PASS**, row 6 **PASS** (two signs, 64-byte, verify ok). Row 10 **PASS**
+  (`custom`). Row 3 **SKIPPED** (no WP challenge bytes).
+- Capacity: 48 TEE keys created, no `ERROR_TOO_MANY_KEYS`. Row 4 **SKIPPED**
+  (`probe-limit-reached=48`). Floor is **N ≥ 48**; OEM cap unknown unless
+  `EXPO_PUBLIC_HARDWARE_ECDSA_CAPACITY_PROBE_LIMIT` is raised.
+- Still open: one-biometric dual-format claim (manual count + residual), E2E
+  licence/OID4VP/NFC, WP gates 3 and 9.
+
+### Session 2026-08-19 (Slice B checklist never appeared in debugger)
+
+- `slice-b-checklist-complete` is not on claim, present, or startup. Startup only
+  runs the Knox/StrongBox mint probe. The checklist is a manual `__DEV__` runner.
+- Wallet logger prefix is `[wallet:hardware-ecdsa]`, not `[hardware-ecdsa]`.
+- Home now has a `__DEV__` panel: **P-256 checklist** (skip capacity) and
+  **P-256 capacity stress**. Reload Metro; approve biometric; result dialog plus
+  Metro `slice-b-checklist-complete`.
+
+### Session 2026-08-18 (frontend CODEMAP and file headers)
+
+- Added [`docs/CODEMAPS/frontend.md`](CODEMAPS/frontend.md): tab-first map of routes, panels, copy/layout homes, flow steps, and gotchas.
+- File-top English purpose comments on `app/**`, `src/screens/**` (non-test), `src/components/**` (non-test; one-liners on primitives), plus flow-owner extras (`useWalletInitiatedVpQrSession`, `cardSchemas`, `walletHomeCopy`, `deeplinkStore`, `proximityStore`).
+- Standing rule in `CLAUDE.md` / `AGENTS.md`: keep headers and the CODEMAP current when frontend screens change.
+- Did not extract leftover inline Thai strings.
+- Verification: every `app/` route listed in the CODEMAP; spot-check one file per tab has a header whose `#anchor` matches.
+
+### Session 2026-08-18 (rename ThaID → PID in Holder copy)
+
+- Remaining Holder-facing "ThaID" labels now say **PID** (dialogs, PID
+  presentation explanation, failure hints, verification provider label).
+- History rows that stored party name `ThaID` project to `PID`.
+- Verification: `yarn test src/services/credentials/walletHomeCopy.test.ts src/services/credentials/pidGateDialog.test.ts src/config/cardSchemas.test.ts src/components/IssuerPidPresentationPanel.test.tsx src/services/vp/presentationFailureUi.test.ts src/services/scan/scanFriendlyErrors.test.ts src/services/history/walletHistory.test.ts --no-coverage`; `yarn tsc --noEmit`.
+
+### Session 2026-08-18 (mDL History Thai disclosure labels)
+
+- History Log แสดงเอกสาร maps ISO mdoc keys (`org.iso.18013.5.1.family_name`)
+  to Thai `presentationLabel`s on read. NFC write stores those labels too.
+- Protocol `approvedMdocFields` / store `sharedFields` stay namespaced.
+- Verification: `yarn test src/config/cardSchemas.test.ts src/services/history/walletHistory.test.ts src/store/proximityStore.test.ts --no-coverage`; `yarn tsc --noEmit`.
+
+### Session 2026-08-18 (NFC Waiting for Tap Thai + Driver License)
+
+- Waiting for tap copy is Thai (title, hold instruction, Cancel).
+- NFC present screen shows schema title `Driver License` instead of raw
+  `DLTDrivingLicence`.
+- Verification: `yarn test src/components/proximity/WaitingForTapPanel.test.tsx src/config/cardSchemas.test.ts src/services/credentials/credentialDisplay.test.ts --runInBand`.
+
+### Session 2026-08-18 (History filter deep link)
+
+- History Log reads `filter` from the route (`issuance` | `presentation` |
+  `lifecycle`). Missing/invalid values keep the bottom-tab default **รับเอกสาร**.
+- Credential revoke / delete / used now push History with `filter=lifecycle`
+  so the Holder lands on **จัดการเอกสาร**. Hide-from-history returns to the
+  chip that matches the hidden event kind.
+- Verification: `yarn test src/services/history/walletHistoryFilters.test.ts src/screens/CredentialDetailDeleteBiometric.test.tsx src/screens/CredentialDetailRevokeBiometric.test.tsx --no-coverage`; `yarn tsc --noEmit`.
+
+### Session 2026-08-18 (view-only ถูกระงับ document detail)
+
+- Issuer-suspended and holder-revoked credential detail hides My QR, NFC, and
+  the ⋮ menu. The card, inactive ribbon, and status message stay visible.
+- Home expand still offers ขอเอกสารใหม่. Ack/delete are not started from detail.
+- Verification: `yarn test src/services/credentials/credentialRenewalPresentation.test.ts src/services/credentials/credentialHomeNavigation.test.ts --no-coverage`; `yarn tsc --noEmit`.
+
+### Session 2026-08-18 (PID suspended: block other docs, ถูกระงับ, split home tap)
+
+- `PidGateStatus` now includes `suspended` when PID is issuer-suspended or
+  holder-revoked. Other documents stay viewable but cannot be presented
+  (OID4VP / My QR / NFC) until a usable PID exists. Dialogs and My QR offer
+  **ขอ PID**.
+- OID4VP `hasPidPresentationAnchor` uses `hasUsablePidCredential` on the full
+  wallet list, not the filtered presentable array.
+- Wallet home ID Card hero shows the inactive ribbon / ถูกระงับ. Suspended
+  menu rows split tap: icon/label opens detail (inactive ribbon + action menu);
+  chevron expands/collapses the home panel.
+- Verification: `yarn test src/services/credentials/credentialGuard.test.ts src/services/credentials/pidGateDialog.test.ts src/services/credentials/credentialRenewalPresentation.test.ts src/services/credentials/credentialHomeNavigation.test.ts src/components/WalletDocumentMenuItem.test.tsx src/services/vp/presentationService.test.ts --no-coverage`; `yarn tsc --noEmit`.
+
+### Session 2026-08-18 (My QR expired UI polish)
+
+- Expired (and create-error) My QR states now match the failure-panel layout:
+  faded QR frame or compact modal icon, Thai title + body, and a primary
+  regenerate button. Copy lives in `WALLET_HOME_COPY`.
+- Verification: `yarn test src/components/WalletInitiatedVpQrPanel.test.tsx src/components/VpQrModal.test.tsx src/services/credentials/walletHomeCopy.test.ts --no-coverage`.
+
+### Session 2026-08-18 (Thai driving-licence presentation failure copy)
+
+- Presentation failure panel uses Thai document names from
+  `issuanceConfirmation.documentLabel` (`ใบอนุญาตขับขี่`, `บัตรประชาชน`,
+  `ใบแสดงผลการเรียน`) instead of English `schema.title`.
+- Missing-claim bullets for driving licence use Thai `presentationLabel`s
+  (including extra ISO mDL keys such as `age_over_18`). Unmapped keys show
+  `ข้อมูลที่ร้องขอ`, not English snake_case.
+- Card chrome `schema.title` / `DRIVING LICENSE` is unchanged.
+- Verification: `yarn test src/services/vp/presentationFailureUi.test.ts src/components/Oid4VpDisclosureFlow.test.tsx src/config/cardSchemas.test.ts src/services/vp/presentationUnavailable.test.ts --no-coverage`.
+
+### Session 2026-08-18 (NFC success while still on the reader)
+
+- `Iso18013Presentment` does not return until the NFC field drops, so completing
+  after that call left Waiting for tap until the phone was lifted (host already
+  had claims). JS success now fires from `onSendingResponse`.
+- HCE stays armed until presentment returns or the holder taps เสร็จสิ้น, so GET
+  RESPONSE can finish while the phone is still on the ACR1311.
+- NFC success screen reuses the OID4VP panel: ตรวจสอบสำเร็จ, เครื่องอ่าน NFC, เสร็จสิ้น.
+- Home ตรวจสอบสำเร็จ badge includes `nfc-presentation-success`.
+- Verification: `yarn test src/store/proximityStore.test.ts src/services/proximity/nfcPresentmentCompleteOnSend.test.ts src/components/proximity/PresentationResultPanel.test.tsx src/services/history/walletEventLog.test.ts src/services/history/presentationHistory.test.ts --no-coverage`.
+- Native rebuild required: `npx expo run:android` (Kotlin in `expo-mdoc-proximity`).
+  Metro reload is not enough for the timing fix.
+
+### Session 2026-08-18 (hide TEST IACA banner)
+
+- Host page no longer shows the issuer-attestation banner. The TEST IACA
+  `x5chain` check still runs on the server; the UI hides it for issued mDLs.
+- Restart host (`Ctrl+C`, `.\gradlew.bat run`) and hard-refresh the page.
+
+### Session 2026-08-18 (host licence class Thai + issue/expiry dates)
+
+- ACR1311 DeviceRequest / wallet ceiling: `family_name`, `given_name`,
+  `birth_date`, `driving_privileges`, `issue_date`, `expiry_date`.
+- Host page: ชื่อ, นามสกุล, อายุเกิน 18 (from `birth_date`), ประเภทใบอนุญาต
+  (first `vehicle_category_code` only, Thai map), วันที่ออกใบอนุญาต, วันหมดอายุ.
+- This issued mDL often stores issue/expiry on each driving-privilege entry,
+  not as top-level ISO elements. Host now copies those dates from the first
+  privilege when top-level `issue_date` / `expiry_date` are absent.
+- Do not request ISO `age_over_18` or `portrait` — Multipaz session status 20.
+- Verification: `yarn test src/config/readerProfiles.test.ts src/components/proximity/PreTapConsentPanel.test.tsx --runInBand`;
+  host `.\gradlew.bat test` in `tools/acr1311u-n2`.
+- Restart host (`Ctrl+C`, `.\gradlew.bat run`). Metro reload for consent.
+  Hard-refresh the verifier page.
+
+### Session 2026-08-18 (verifier shows name, over-18, licence class)
+
+- ACR1311 DeviceRequest / wallet ceiling: `family_name`, `given_name`,
+  `birth_date`, `driving_privileges`. Host page shows ชื่อ, นามสกุล,
+  อายุเกิน 18 (derived from `birth_date`), ประเภทใบขับขี่.
+- Do not request ISO `age_over_18` or `portrait` on this issued mDL — Multipaz
+  terminated with session status 20.
+- Restart host (`Ctrl+C`, `.\gradlew.bat run`). Metro reload for consent.
+  If tap returns status 20 again, the issued mDL lacks `driving_privileges`.
+
+### Session 2026-08-18 (restore 3-field ACR1311 DeviceRequest)
+
+- Host logs showed `EMPTY_RESPONSE` / session `status=20` (no DeviceResponse) in a
+  tight retry loop after expanding `MDL_REQUEST_FIELDS` to the full ISO 18013-5
+  mandatory set. Multipaz terminated the session when the issued mDL lacked
+  items such as `portrait`.
+- Restored ACR1311 request and wallet ceiling to `family_name`, `given_name`,
+  `birth_date`. Host retry delay is 1.5s to avoid a 2 Hz retry storm.
+- Restart the host (`Ctrl+C`, then `.\gradlew.bat run` in `tools/acr1311u-n2`).
+  Metro reload for the wallet consent list. No native wallet rebuild.
+
+### Session 2026-08-18 (mDL ISO mandatory NFC ceiling)
+
+- NFC presentment ceiling and ACR1311 `DeviceRequest` now use the ISO 18013-5
+  mandatory mDL set (`family_name`, `given_name`, `birth_date`, `issue_date`,
+  `expiry_date`, `issuing_country`, `issuing_authority`, `document_number`,
+  `portrait`, `driving_privileges`, `un_distinguishing_sign`). Extra identifiers
+  still fail closed. Missing elements on the issued mDL are omitted.
+- Consent lists Thai labels for that ceiling. Host page renders whatever claims
+  came back (portrait shown as byte-size, not raw bytes).
+- Verification: `yarn test src/config/readerProfiles.test.ts src/config/cardSchemas.test.ts src/store/proximityStore.test.ts src/components/proximity/PreTapConsentPanel.test.tsx --runInBand`.
+  Restart the ACR1311 host (`.\gradlew.bat run`) so `MDL_REQUEST_FIELDS` is picked up.
+  Metro reload is enough for JS; no native rebuild unless Kotlin wallet code changes (it did not).
+
+### Session 2026-08-18 (debug document JWT extract script)
+
+- Added `scripts/fetch-document-jwt.mjs` (`yarn jwt:fetch`) to extract a compact
+  document JWT / SD-JWT for local debugging: copied `/credential` JSON, a raw
+  token file, Issuer POST `/credential` with an access token + `c_nonce`, or
+  pre-authorized-code `/token` then `/credential`.
+- Default request is driving-licence `dc+sd-jwt`. Long base64 claims (portrait)
+  are truncated unless `--full`. Dumps go to stdout or `--out`; `tmp/` is gitignored.
+- `--from-json` resolves against yarn `INIT_CWD` and `scripts/` so PowerShell
+  `yarn jwt:fetch --from-json=credential-response.json` works from `scripts/`.
+  PowerShell stdin: `Get-Content .\credential-response.json -Raw | yarn jwt:fetch --from-json=-`.
+- Verification: `yarn test scripts/fetch-document-jwt.test.js --no-coverage`.
+
+### Session 2026-08-18 (Swagger document mount isolation)
+
+- Fixed the Wallet and Development Swagger UI mounts sharing
+  `swagger-ui-express` initialization state. `/wallet-api/docs/` now loads the
+  Wallet Backend document while `/wallet-api/dev/docs/` loads Development API.
+- Added a regression test for the Wallet Swagger initialization script.
+- Verification: server focused Swagger tests pass (7 tests); server TypeScript
+  compilation passes.
+
+### Session 2026-08-17 (driving licence display from mdoc)
+
+- Dual-format driving licence preview/home/detail now overlay ISO 18013-5 mdoc
+  claims onto `VerifiableCredentialRecord` (mdoc wins; SD-JWT kept if parse is empty).
+- `cbor-x` is a real dependency; parser unwraps DeviceResponse, issuerSigned-as-root,
+  NameSpaces map keys, CBOR tag 24 items, and structured `driving_privileges`.
+- Licence class is joined vehicle category codes (`A, B`). Portrait stays the sample
+  image. English name stays `-` when mdoc has Thai names only.
+- Already-saved empty driving-licence cards keep old claims until the holder
+  claims a new mDL; overlay runs at preview and MMKV finalize, not as a storage
+  migration.
+
+### Session 2026-08-17 (tap-only static NFC handover)
+
+- Holder golden path no longer shows DeviceEngagement QR or Add test mDL.
+- Physical gate: three tap-only runs on A26 + ACR1311 with an issued mDL.
+- Runbook: [`tools/acr1311u-n2/README.md`](../tools/acr1311u-n2/README.md). Spec: [`docs/superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md`](./superpowers/specs/2026-08-17-mdl-nfc-static-handover-tap-only-design.md).
+
+#### Physical gate — tap-only static NFC handover
+
+**Status:** pending operator
+
+Operator checklist (three issued-mDL taps on Samsung Galaxy A26 + ACR1311U-N2):
+
+- [ ] Rebuild wallet: `npx expo run:android`. Restart host: `.\gradlew.bat run` from `tools/acr1311u-n2/`.
+- [ ] Run 1: host **Wait for tap** with **empty** engagement field; wallet Waiting for tap (**no** holder QR); hold on reader until host claims + wallet Success.
+- [ ] Run 2: same (empty host engagement; no holder QR).
+- [ ] Run 3: same.
+
+Rules: a second hold after NDEF→mdoc field drop is allowed; requiring a holder QR is not.
+
+| Field | Value |
+|---|---|
+| Credential source | Issued mDL (OID4VCI), not Add test mDL |
+| Host engagement field | Empty on all three runs |
+| Holder DeviceEngagement QR | Not used (must not be required for pass) |
+| Field drop retry | Second hold allowed after NDEF→mdoc drop |
+| **Overall** | **pending operator** |
+
+### Session 2026-08-17 (removed Development presentation sessions)
+
+- Deleted the `/dev/vp-session` and `/dev/vp-verify` VP relay, its OpenAPI tag,
+  and unused session/HTML/gateway helper modules. Wallet-initiated QR stays on
+  Broker `/broker/session`.
+- Development Swagger canonical paths remain `/wallet-api/dev/docs` and
+  `/wallet-api/dev/openapi.json` (`/dev/docs` is a local alias).
+- When development APIs are enabled, `/wallet-api/docs` merges lifecycle
+  simulation operations under `/wallet-api/dev/*`.
+- `ENABLE_DEVELOPMENT_APIS=true` keeps that surface mounted if the shared host
+  runs `NODE_ENV=production`. Leave it unset/false on a true production Wallet
+  Backend.
+
+### Session 2026-08-17 (P6 holder revoke PIN/biometric + ES256-only PoP)
+
+- P6 Holder-initiated step **7**: Revoke uses the same PIN verify/setup + optional
+  biometric security phase as Delete (`credential/[id].tsx`).
+- P6 Holder-initiated step **10**: holder revoke PoP is **ES256-only** via hardware
+  `k_cred` (ADR 0011). Credentials without a hardware P-256 key cannot revoke;
+  Wallet shows a blocking dialog before the nonce request.
+- Intentional two-auth-event exception for revoke: step 7 app PIN/biometric, then
+  the hardware sign-time gate on `signHolderStatusChangePop`.
+- DEV Issuer `verifyHolderRevokePop` accepts ES256 only (EdDSA PoP is rejected).
+
+### Session 2026-08-17 (PID-first presentation gate)
+
+- P1 Valid / P2 PID-first: without a usable `ThaiNationalID`, the wallet no longer
+  presents other documents. Issuance was already gated; presentation was not.
+- OID4VP resolve throws `PresentationPidRequired` when a driving licence or
+  transcript matches but no usable PID is stored. My QR, NFC Present, and
+  credential-detail My QR/NFC show the ThaID-first dialog instead of continuing.
+- `canPresentCredentialType` is the shared predicate (PID itself stays presentable).
+
+### Session 2026-08-17 (My QR engagement QR is document-agnostic)
+
+- My QR no longer pre-selects driving licence (or ThaID). Broker `POST /broker/session`
+  starts without a credential type; Verifier `docType` + DCQL choose the document
+  after scan. Hint copy is generic (`สแกน QR Code ของฉัน`).
+- Fixed double `create-session` on tab open: credentials refresh was flipping the
+  resolver and starting a second broker session. Session now starts once per focus.
+- Document-detail My QR opens `VpQrModal` for every document (ThaID, driving
+  licence, transcript). Broker session stays document-agnostic; the My QR tab
+  remains the disclosure host after scan.
+
+### Session 2026-08-17 (historical — A26 + ACR1311 QR-then-tap NFC lab path PASSED; not tap-only gate)
+
+- **Not the tap-only static-handover gate.** This records the superseded holder
+  flow (engagement QR → tap). The current physical gate is the tap-only checklist
+  at the top of this file (**pending operator**).
+- End-to-end ISO 18013-5 NFC presentment verified on the physical Samsung Galaxy
+  A26 + ACR1311U-N2 pairing: wallet armed → engagement QR → tap → DeviceRequest →
+  silent consent (ceiling) → DeviceResponse → host page decrypted and displayed
+  all three mDL claims (family_name / given_name / birth_date); wallet showed
+  Success after the drain grace window. This was the release-gate scenario from
+  ADR 0003 / ADR 0006.
+- Fix stack that got here (all this date): arm window starts at QR + refresh;
+  keep-listening retry loop with stable eDeviceKey; MdocEngineProbe companion-
+  object reflection fix; host tap-window retry; Multipaz failTransport crash
+  shield (duplicate-SELECT guard); DeviceResponse drain grace before Success.
+- Remaining cosmetic item: host banner "TEST IACA did not match x5chain" — the
+  `testdata/test-iaca.pem` on disk is from a different generator run than the test
+  mDL stored in the wallet. Regenerate + reinstall the test mDL (or point
+  `MDOC_TEST_IACA_PEM` at the matching cert) to see the verified banner. Not a
+  wallet defect; production uses real issuer IACA trust anchors.
+
+### Session 2026-08-17 (wallet Success but host page empty)
+
+- Wallet showed "Success! Shared 3 fields" while the host web page showed nothing.
+  Root cause: `onSendingResponse` fires when the first response chunk is queued;
+  the reader drains the rest via ~249-byte GET RESPONSE rounds
+  (`PcscNfcIsoTag.maxTransceiveLength=256`). A mid-drain failure still looked like
+  success — the loop completed and the host retries hit a finished session.
+- Fix: after a DeviceResponse is sent the session now grace-listens
+  (`EXPO_PUBLIC_HCE_RESPONSE_DRAIN_GRACE_MS`, default 5000 ms, plumbed
+  JS→`ProximityArmConfig`→`ProximityArmState`) for a reader reconnect. Reconnect →
+  serve the same approved fields again (silent consent, signing session still
+  covers the arm window). No reconnect → drain succeeded →
+  `completePresentation` fires once (JS then disarms). Success on the wallet is
+  now delayed ~5 s but truthful. Rebuild (`npx expo run:android`).
+
+- App crashed after "device engaged": `IllegalStateException: failTransport called
+  without holding lock`. Multipaz 0.100 bug (still present on `main`): every
+  `processApdu` error path calls `failTransport()` outside `mutex.withLock`, and
+  its `check(mutex.isLocked)` escapes the fire-and-forget APDU coroutine, killing
+  the process. Trigger here was almost certainly a duplicate SELECT — host tap
+  retry with the phone still in the field hits `check(!applicationSelected)`.
+- Shield (native module, `npx expo run:android` required): `MultipazMdocAdapter`
+  mirrors `applicationSelected`; `MdocApduHandler.guardAgainstMultipazCrash`
+  answers dangerous APDUs locally (duplicate SELECT → recycle transport + `6F00`;
+  ENVELOPE/GET RESPONSE before SELECT → `6985`; non-mdoc SELECT → `6A82`; bad
+  ENVELOPE CLA → `6F00`; unsupported INS → `6D00`);
+  `MultipazPresentmentSession.isTransportListening()` returns `6A81` during the
+  re-advertise gap so the reader never stalls waiting on a response.
+- Residual unguarded Multipaz paths (low risk with the Multipaz reader on the host
+  side): non-last ENVELOPE with LE≠0, GET RESPONSE with no pending chunks, DO'53'
+  parse errors.
+
+### Session 2026-08-17 (PR 11 review fixes)
+
+- Merged `master` into `dev` and rewrote README Current Status to ADR 0011
+  (hardware P-256 default; NFC DeviceResponse still ungated).
+- Production builds refuse `EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND=mock|animo`
+  (`HardwareEcdsaBackendNotAllowed`); only `custom` is allowed outside `__DEV__`.
+- Hardware flag treats `FALSE` / `0` as off (same true/1 enable pattern as other
+  opt-in booleans; unset still defaults on).
+- Same-device issuance continuation failures now `logWalletError` before Home.
+- VP disclosure UI test no longer identity-mocks `filterPresentableCredentials`.
+- CLAUDE.md / CONTEXT.md / AGENTS.md / ARCHITECTURE.md aligned with ADR 0011.
+
+### Session 2026-08-17 (mid-exchange NFC field drop)
+
+- After the probe fix, a tap connected then `NfcTransportMdoc.onDeactivated` fired
+  (`ClosedReceiveChannelException`); the reader logged "Failed while waiting for
+  message". Physical NFC coupling drop mid-exchange, not a wallet bug — the wallet
+  retry loop logged `listening again` and stayed armed.
+- Host `MdocNfcReaderSession.present` now retries within the tap window: one "Wait
+  for tap" tolerates re-taps until a full DeviceResponse or window expiry, matching
+  the wallet. `INVALID_QR` fails fast. Restart `gradlew run`.
+- Remaining is physical: place the A26 NFC antenna (upper-center back) flat on the
+  reader and hold still through the whole exchange; do not tap-and-lift.
+
+### Session 2026-08-17 (6A81 root cause: capability probe)
+
+- Logcat showed routing fine (`setPreferredService claimed=true`) but every armed
+  mdoc APDU logged `[hce] reject APDU adapter-unavailable`, so `MdocApduHandler`
+  returned `6A81` on every tap regardless of arm/QR state.
+- Root cause: `MdocEngineProbe` reflectively looked up `processCommandApdu` on the
+  outer `NfcTransportMdoc` class, but Multipaz declares it on the companion object
+  (not `@JvmStatic`), so the lookup always failed. The direct Kotlin call in
+  `MultipazMdocAdapter` was always fine.
+- Fix: probe gates on `NfcTransportMdoc` class presence only (compile-time dep of
+  the adapter), dropping the brittle signature reflection. Rebuild
+  (`npx expo run:android`).
+
+### Session 2026-08-17 (HCE 6A81 after a missed tap)
+
+- Host `6A81` with a live QR meant SELECT reached this app (armed) but native
+  presentment had stopped: a missed tap fails Multipaz NFC, and
+  `TimeoutCancellationException` (a `CancellationException`) aborted the session
+  job, whose `finally` cleared the engagement URI while JS still showed the QR.
+- Listen loop now retries until Cancel or DeviceResponse, keeps the same
+  `eDeviceKey` QR, deactivates-then-delays before re-advertising, and does not
+  clear the URI while still armed.
+
+### Session 2026-08-17 (HCE arm window starts at QR)
+
+- Arm clock now starts when the engagement QR is produced (default
+  `EXPO_PUBLIC_HCE_ARM_WINDOW_MS=180000`); Waiting for tap refreshes the window
+  while open. Unarmed SELECT logs `no-arm-state` vs `expired`. Host tap wait 180s.
+
+### Session 2026-08-14 (hard hardware P-256 holder-signing cutover)
+
+- When `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED` is on (production default), holder
+  signing no longer falls back to Ed25519. Missing `k_cred` fails closed
+  (`HardwareCredentialKeyRequired` / `LegacyHolderSigningUnsupported`).
+- Binding a hardware replacement deletes Ed25519 Keychain+registry rows for that
+  credential id and the same document type only; other types stay. MMKV credential
+  records remain for display/history until the Holder requests a fresh issuer reissue.
+- Ed25519 cards show `hardware-reissue-required`, are excluded from OID4VP / My QR /
+  NFC, and get a portal **ขอเอกสารใหม่** CTA. Jest keeps the flag off unless a test
+  opts in.
+- Left unchanged: flag-off Ed25519 path, production WP attestation verify, A26
+  device-gate, NFC negotiated handover.
+
+### Session 2026-08-14 (SELECT 6985 after consent)
+
+- Host `6985` after Allow was not skipped consent. HCE used `6985` for engine/URI
+  not ready, and Waiting for tap appeared before the QR. SELECT now returns `6A82`
+  until Multipaz is listening; `selectMdoc()` only after async dispatch; arm fails
+  closed without a URI; start waits 150ms after transport reset. Rebuild native
+  (`npx expo run:android`) before the next ACR1311 tap. Tap only after the QR
+  is on screen.
+
+### Session 2026-08-14 (host maps Multipaz open-transport wrapper)
+
+- `tools/acr1311u-n2` page copy "Failed while opening transport" is Multipaz wrapping
+  SELECT. The host now walks the cause chain so `6A82` / `6985` show the armed/consent
+  copy. Restart `gradlew run` before the next tap.
+
+### Session 2026-08-14 (hardware P-256 spec remaining gaps)
+
+- Spec `2026-08-04-hardware-p256-es256-signing-design.md` is already the production
+  holder path (ADR 0011, custom `expo-wallet-hardware-ecdsa`, flag default on,
+  PID-first cutover, opaque-handle mdoc, encrypted `k_cred` registry, activation tx).
+- Closed remaining wallet-owned gaps: verify allowlist now **narrows only** from
+  Issuer/Verifier metadata (`issuerJwtVerifyPolicy`); P3 journey docs note cutover
+  fresh-reissue supersession; SECURITY.md documents residual auth window, encrypted
+  registry, native mdoc handle, WP `k_attest` checklist, and PID-first cutover.
+  Destroying credential C still must not delete D (regression tests).
+- Still not this slice: production WP root/revocation/app-identity verify (peer WP);
+  removing the flag-off Ed25519 `k_cred` path; A26 device-gate rows (StrongBox,
+  capacity, WP chain accept, residual window); NFC negotiated handover.
+
+### Session 2026-08-14 (proximity DeviceAuthBridge wiped on Multipaz start)
+
+- `PROXIMITY_NOT_READY: Device authentication is not pre-authorized` was caused by
+  `MultipazPresentmentSession.start()` calling `stop()`, which cleared the
+  hardware handle / Ed25519 seed JS had just installed. Native error disarmed
+  the session, so consent `approve` then failed with `PRESENTATION_INACTIVE`.
+- `start()` now resets transport only. `DeviceAuthBridge.clear()` stays on
+  explicit `stop()` / disarm. Approve skips restarting Multipaz when the
+  engagement QR already exists. Rebuild the Android native module before retest.
+
+### Session 2026-08-14 (offline mdoc NFC host + test mDL inject)
+
+- Added `tools/acr1311u-n2/` Kotlin JVM host (Multipaz `0.100.0`, PC/SC, `127.0.0.1:8787`).
+  Paste/scan the wallet **Waiting for tap** `mdoc:` QR, then tap A26 to ACR1311.
+  Runbook: `tools/acr1311u-n2/README.md`. Pass = three mDL claims on the page **and**
+  wallet Success; a reader beep alone is not pass.
+- `__DEV__` Home **Add test mDL** creates `k_cred`, native TEST IssuerSigned bound to
+  that DeviceKey, `storeMdoc` + `DLTDrivingLicence`. Skips PID gate for this inject
+  only. Release / non-debug native rejects generate. JVM `generate-mdl` without
+  `--device-jwk` is inspect-only — do not inject that file into the wallet.
+- Part G physical run is still manual: inject or real claim → `gradlew run` → rebuilt
+  debug wallet. See `docs/superpowers/plans/2026-07-13-a26-acr1311-hardware-validation.md`.
+
+### Session 2026-08-14 (iOS out of scope)
+
+- Do **not** implement iOS Secure Enclave, iOS HCE/BLE proximity, or iOS
+  issuance/presentation unblocking. v1 remains Android Galaxy A26 + ACR1311U-N2.
+  iOS stays fail-closed (ADR 0011). Do not pick iOS up as “next code.”
+
+### Session 2026-08-14 (mdoc consent ceiling)
+
+- Native Multipaz consent now fail-closes when `DeviceRequest` asks for any
+  element outside `approvedMdocFields` (`DISCLOSURE_CEILING_EXCEEDED`).
+  Pre-tap consent stays the only biometric. Field identifiers are matched as
+  `namespace.identifier` or `namespace:identifier`; claim values are not logged.
+- UI copy is `Presentation failed — try again`. Rebuild native before the
+  Part G negative case (out-of-ceiling DeviceRequest).
+
+### Session 2026-08-14 (HCE async Multipaz APDU bridge)
+
+- `CompanionHostApduService` now forwards ISO mdoc APDUs **including SELECT**
+  to `NfcTransportMdoc.processCommandApdu` and returns `null`, completing via
+  `sendResponseApdu`. Companion AID stays synchronous.
+- Removed the sync `pendingResponse.get()` adapter (it always returned null
+  because Multipaz 0.100 answers from a coroutine). Unarmed SELECT is still
+  `6A82`; not approved is still `6985`. NFC field drop calls
+  `NfcTransportMdoc.onDeactivated()` and does **not** stop the presentment
+  session from HCE.
+- Native rebuild required. Validate: credential → NFC → consent → biometric →
+  Waiting for Tap + QR → host scans QR → tap ACR1311U. Pass = wallet Success
+  plus host `DeviceResponse`, with logcat `[hce] mdoc APDU` and
+  `[multipaz-session] NFC transport connected`. A reader beep alone is not pass.
+  After DeviceResponse, a reader field drop is treated as success (typical ACR1311
+  behavior) instead of a presentation error.
+
+### Session 2026-08-14 (proximity opaque-handle mdoc signing)
+
+- Hardware-on proximity arm opens a `purpose: mdoc` session and passes only
+  `opaqueNativeHandle` into native (`installMdocSigningHandle`). Biometric runs
+  at arm (`FragmentActivity`); APDU signs with `signMdocWithoutPrompt`.
+- Flag-off still installs the Ed25519 seed via `installMdocDeviceKey`. Hardware
+  on without a bound `k_cred` still fail-closes (`ProximityHardwareDeviceAuthUnavailable`)
+  — no seed handoff.
+- Native rebuild required before Galaxy A26 + ACR1311U-N2 tap validation.
+  Existing keys created with a 30s auth-validity window need a fresh hardware
+  `k_cred` (reissue) to cover the 60s HCE arm window.
+- Still out of slice: production WP attestation verify, removing Ed25519 `k_cred`,
+  iOS Secure Enclave.
+
+### Session 2026-08-14 (Swagger PoP: nonce is single-use)
+
+- Issuer `invalid_proof` / "nonce is invalid, expired, or already used" means the
+  `c_nonce` was stale or already consumed — not a bad jwk/kid header.
+- After a full Swagger retry this is usually a burned nonce: POST /nonce after
+  /token invalidates the token `c_nonce`, or Execute ran twice. Use one unused
+  nonce; on this error regenerate from the error body's `c_nonce` without /token.
+- Generate script defaults to one mso_mdoc body. Swagger auth is the
+  `access_token` from `POST /token` (Authorize). The script only needs `c_nonce`.
+
+### Session 2026-08-14 (holder-revoke ES256 PoP)
+
+- Dev issuer holder-revoke PoP verify accepts `alg: ES256` for P-256 `did:key`
+  (hardware `k_cred`) and still accepts `alg: EdDSA` for Ed25519. Hardware-bound
+  revoke was failing with `Holder PoP verification failed: invalid-alg`.
+- Wallet revoke DID lookup now follows the same hardware-vs-software key routing
+  as `signHolderStatusChangePop`.
+
+### Session 2026-08-13 (hardware P-256 default on)
+
+- Standing default is now `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED=true` and
+  `EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND=custom` (code, `.env.example`, EAS
+  development/preview/production). Set the flag to `false` to use Ed25519 `k_cred`.
+- Jest still forces the flag off per test unless a case opts in, so Ed25519 unit
+  tests stay isolated.
+- Proximity mdoc device-auth now installs an opaque native `mdoc` handle when a
+  hardware `k_cred` exists; otherwise it fail-closes without Ed25519 seed handoff.
+  Real WP attestation verify and removing Ed25519 `k_cred` remain follow-on.
+
+### Session 2026-08-13 (PID-first cutover review P1/P2)
+
+- Cutover wallet-state lookup fail-closes when credential storage cannot be read
+  (`hasLegacyEd25519Credentials: true`, `hasHardwarePidCredential: false`). PID
+  reissue still proceeds; non-PID stays blocked. Injectable readers are wrapped
+  the same way as production lookups.
+- `hasHardwarePidCredential` now requires a usable hardware PID
+  (`hasUsablePidCredential`): expired, revoked, or withdrawn PIDs no longer
+  unlock non-PID reissue.
+
+### Session 2026-08-13 (PID-first cutover gate)
+
+- Wired `cutoverMigrationPolicy` into claim, dual-format preview/claim, and P3
+  old-key renewal. When hardware P-256 signing is on and legacy Ed25519 credentials
+  remain, non-PID reissue is blocked until a hardware P-256 ThaiNationalID exists.
+  PID reissue stays allowed. Flag-off Ed25519 path is unchanged.
+- Claim screen surfaces Thai copy (`hardwarePidReissueRequiredMessage`) before
+  token exchange; `toFriendlyError` maps the same block and legacy-renewal errors.
+
+### Session 2026-08-13 (ตรวจสอบสำเร็จ Thai vowel clipping)
+
+- Presentation success title/body used `leading-6` / `leading-5`, which clips Thai
+  tone marks on **ตรวจสอบสำเร็จ**. Matched AppDialog spacing: 18px → `leading-[26px]`,
+  14px → `leading-[22px]`.
+
+### Session 2026-08-13 (device: rebuild, claim, presentation)
+
+- Native rebuild on device, then a fresh claim and presentation, succeeded.
+- This closes the standing “Kotlin TEE/StrongBox/receiver/biometric-cancel still
+  needs a native rebuild” gate from the 2:54 PM review slice.
+- Still out of slice: real WP attestation verify, default hardware flag on,
+  PID-first cutover, removing Ed25519 `k_cred`, native mdoc P-256 device-auth
+  (`ProximityHardwareDeviceAuthUnavailable` until an opaque session handle exists).
+
+### Session 2026-08-13 (review 2:54 PM remaining P1/P2)
+
+- HTTPS issuer JWTs without a `did:key` kid fail closed (`CredentialIssuerSignatureInvalid`).
+- Wallet-level `getHolderDid` / `getPublicKeyJwk` stay on the Ed25519 wallet key when a
+  hardware credential also exists.
+- Software and hardware replacement commit keep the live key until the new mapping is
+  durable; a failed hardware alias delete is queued for GC instead of rolling back.
+- Dual-format proximity arm runs the same hardware mdoc fail-closed gate as mdoc-only.
+- mso_mdoc PoP requires a P-256 `jwk` only when hardware P-256 is on; Ed25519 `jwk`+`kid`
+  remains valid with the flag off.
+- Dual-format finalize commits a staged replacement only after logical save is durable.
+- Unmatched `credential_identifier` no longer inherits another format's identifier.
+- Wallet attest activation is single-flight; WP challenge/attest POSTs time out
+  (`EXPO_PUBLIC_WALLET_ATTEST_FETCH_TIMEOUT_MS`, default 15s).
+- Native `createKey` rolls back the alias if attestation-chain retrieval throws.
+
+### Session 2026-08-13 (review P1/P2 remaining fixes)
+
+- Reissuance cancel no longer destroys the live `k_cred`: preview bind stages a
+  replacement; save commits it; cancel discards only the staged alias.
+- Signing routes by stored key backend: hardware flag plus a bound hardware key.
+  Legacy Ed25519 credentials still sign EdDSA when the flag is on.
+- Ambiguous WP submit failures (no status, 5xx, 409) keep `wp_submit_pending` and
+  the idempotency key so retry resubmits the same challenge.
+- Dual-format token exchange forwards `authorizationCodeExchange`, reuses one DPoP
+  session, and selects a per-format `credential_identifier`.
+- HTTPS ES256 issuer JWTs with `did:key` kids must match Issuer `/resolveDID`
+  (no local-only trust). Hardware mdoc device-auth fails closed
+  (`ProximityHardwareDeviceAuthUnavailable`) until a native P-256 session handle exists.
+- Lifecycle revoke/delete calls `destroyIssuanceCredentialKey` (hardware or Ed25519).
+- Manual `credential_identifier` requests retry once on `DPoP-Nonce`.
+- Local WP mock binds idempotent replay to challenge+JWK+chain and prunes expired state.
+- Kotlin TEE/StrongBox/receiver/biometric-cancel needed a native rebuild
+  (device claim + presentation succeeded after rebuild; see session above).
+
+### Session 2026-08-13 (SD-JWT binding methods + keep unused nonce)
+
+- Dual-format SD-JWT failed locally with `CredentialProofUnsupported` before any PoP.
+  Issuer lists DID methods as `did:key` (OID4VCI 1.0), not the bare `did` string.
+- `readProofKeyBinding` now treats `did` / `did:*` as DID binding, `did:jwk` as JWK,
+  and falls back to `jwk` for SD-JWT when methods are unrecognized.
+- Nonce Endpoint refresh runs only after SD-JWT actually consumed the token nonce.
+  If SD-JWT fails before signing, mDOC keeps the original token nonce.
+
+### Session 2026-08-13 (dual-format: rotate c_nonce before mDOC)
+
+- Dual-format SD-JWT succeeded; first mDOC proof reused the token `c_nonce`
+  (`invalid_proof`: nonce already used). The one invalid_proof retry then got
+  `credential_request_denied`.
+- After a successful credential response, propagate `c_nonce` via `onCNonceUpdated`.
+- Before the second format, fetch a fresh nonce from the Nonce Endpoint when the
+  token nonce was not rotated. Do not spend the invalid_proof retry on a used nonce.
+- Reload and retry. Look for `dual-format-nonce-refreshed` then mDOC request.
+  If mDOC is still `credential_request_denied` with a fresh nonce, that is Issuer-side.
+
+### Session 2026-08-13 (review P1/P2 hardware trust fixes)
+
+- Remaining review findings from high to low, except the intentional mDL PoP `jwk`+`kid` exception.
+- Default hardware ECDSA backend is `custom` (Animo remains explicit opt-in).
+- Keystore software/unknown levels fail closed (`KeyNotHardwareBacked`); StrongBox fallback is typed `StrongBoxUnavailableException` only.
+- JAR verify uses the trusted verifier key / JWKS, not an embedded attacker JWK.
+- Preview cancel and MMKV save-fail destroy hardware `k_cred`; pending-key delete failures go on a GC queue; rebind deletes the previous alias.
+- SD-JWT PoP follows `cryptographic_binding_methods_supported` (DID-only → `did-kid`).
+- Companion KB and mdoc device auth require `credentialId`; `credential_identifier` requests send DPoP when enabled.
+- StrongBox probe receiver is no longer exported. Native rebuild + device claim
+  and presentation succeeded later the same day.
+
+### Session 2026-08-13 (dev PoP JWT script matches driving-licence wallet)
+
+- `scripts/generate-oid4vci-pop-jwt.mjs` now defaults to the current driving-licence
+  hardware PoP: ES256, P-256 `jwk` + `kid`, payload `{ aud, iat, nonce }`, no `cose_key`.
+- Output also includes the OID4VCI 1.0 bodies the wallet posts (SD-JWT then mDOC):
+  `{ credential_configuration_id, proofs.jwt }` with no `doctype` / `format`.
+
+### Session 2026-08-13 (mDL claim: 1.0 request still credential_request_denied)
+
+- After dropping body `doctype`, wire is OID4VCI 1.0: `proofs` + `credential_configuration_id`.
+- PoP remains ES256 P-256 `jwk`+`kid`, no `cose_key`. Issuer returns HTTP 400
+  `credential_request_denied` (not `invalid_proof`) — processing denial, not a
+  malformed proof/request the wallet can repair.
+- Driving-licence claim no longer uses the mDOC-only debug slice. Next retry uses
+  production dual-format (SD-JWT then mDOC, shared token) so logs split
+  `dual-format-sd-jwt-failed` vs `dual-format-mdoc-failed`.
+- Do not flip PoP headers or request body again without the Issuer inner exception.
+
+### Session 2026-08-13 (mDL 1.0 request: drop body doctype)
+
+- After jwk+kid PoP (no `cose_key`), Issuer still returned `credential_request_denied`.
+- Wire body was `proofs` + `credential_configuration_id` + `doctype`. OID4VCI 1.0 puts
+  `doctype` in metadata, not the credential request.
+- mso_mdoc additional payload now sends only `credential_configuration_id`.
+- Reload and retry; `bodyKeysOnWire` should be `proofs`, `credential_configuration_id`.
+
+### Session 2026-08-13 (P2 canvas 31: Issuer JWT ES256/EdDSA verify)
+
+- Holder signing stays hardware P-256 / `alg: ES256`. Issuer VC verify no longer requires EdDSA-only.
+- Trusted allowlist is `ES256` | `EdDSA` (`src/config/issuerJwtVerifyPolicy.ts`). `RS256` / `none` still fail closed.
+- `assertIssuerDidWebCredentialSignature` verifies ES256 (`did:web` JWK or local P-256 `did:key`) and EdDSA (`did:web` or `/resolveDID`).
+- P2 canvas 31 is **match**. Trust Registry accreditation on receive remains peer (journey 21, no API).
+
+### Session 2026-08-13 (WP challenge 404 must not block Zenith claim)
+
+- Device POSTed `https://wallet.zenithcomp.co.th:455/wallet-api/wallet-attestations/challenge`
+  and the peer WP returned Express 404 (`Cannot POST`). That is not the local mock.
+- Hardware `k_attest` activation now **skips** on challenge 404 when WUA is not requested
+  (default), caches the skip for `EXPO_PUBLIC_WALLET_ATTEST_CHALLENGE_UNSUPPORTED_TTL_MS`
+  (default 1 hour), and continues `k_cred` claim.
+- Still fail-closed on 404 when `EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED`
+  is on, and on any other WP error (503/400/network).
+- Reload Metro and retry the claim; no native rebuild.
+
+### Session 2026-08-13 (hardware k_attest activation)
+
+- Replaced Ed25519 Keychain `k_attest` with hardware P-256 `wallet.p256.attest`.
+- Activation: POST `/wallet-api/wallet-attestations/challenge`, `createKey` with challenge,
+  POST P-256 JWK + chain + idempotency. Skip only when alias exists and tx phase is `activated`.
+- After WP 201, `destroyWalletAttestKey()` removes leftover Ed25519 attest seed (reset only).
+- Local mock: single-use challenge, idempotent replay, unsigned `alg: none`. Does not verify
+  Android roots/revocation/app identity. Never a production WP.
+- Spec `2026-08-13-hardware-k-attest-activation-design.md`; ADR 0011; P1 canvas steps 6/8 done
+  against mock (step 9 still peer).
+- Device: point `EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL` at the updated mock or claim fail-closes.
+  Second claim should skip activation. One biometric remains `k_cred` PoP.
+
+### Session 2026-08-13 (mDL PoP: jwk+kid, no cose_key header)
+
+- After jwk+kid were accepted, Issuer returned HTTP 400 `credential_request_denied`
+  (`the credential request could not be processed`) — not `invalid_proof`.
+- OID4VCI proof headers are `kid` | `jwk` | `x5c`. Extra `cose_key` is non-IANA and
+  previously produced .NET "key not present in the dictionary" on this stack.
+- Hardware mDOC PoP now sends P-256 `jwk` + `kid` only. Device COSE binding stays
+  Issuer-side from the JWK.
+- `doctype` on the 1.0 credential request body is unchanged this slice.
+
+### Session 2026-08-13 (P2 journey 12 / canvas 20: k_cred default)
+
+- Amended ADR 0010: `k_cred` is the default issuance path (new `did:key` per document) without Wallet Provider WUA.
+- `usesPerCredentialSigning()` is on unless `EXPO_PUBLIC_PER_CREDENTIAL_SIGNING_ENABLED=false`.
+- Claim no longer calls WP attest unless `EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED` is on.
+- Legacy v1 credentials (no registry row) still present with the wallet-level key; startup no longer throws `WalletCryptoLegacyWallet`.
+
+### Session 2026-08-13 (P2 step 18 canvas match)
+
+- P2 step 18 (Display error) is **match**: Wallet already surfaces OID4VP / PID-gate / claim errors via `toFriendlyError`, including Issuer reject on VP submit.
+- Later Issuer-side PID verify failure still needs peer step 17 (notify). No fake PID-fail screen and no new notify channel.
+
+### Session 2026-08-13 (review P2: destroy retry + biometric cancel)
+
+- `destroyEncryptedCredentialKey` is retry-safe when the Keystore alias is already gone:
+  skip `deleteKey` if `hasKey` is false; if `deleteKey` throws, remove the registry row
+  when the alias is gone instead of leaving a stuck row.
+- Hardware biometric cancel (Android codes 5 / 10 / 13) now maps to
+  `WalletHardwareEcdsaSigningCancelled` → `WalletKeySigningCancelled` so UI treats it as
+  cancel, not a signing failure. Native rebuild required for the Kotlin mapping.
+- Left unchanged: SD-JWT force-`jwk`, hardware `k_attest` cutover.
+  mDL PoP now sends P-256 `jwk` and `kid` together (see session note above).
+
+### Session 2026-08-13 (IdCard claim preview after DOPA)
+
+- IdCard after acquire no longer skips to a leftover `receive` phase (which would
+  also re-show DOPA if routed through `preview`).
+- Flow: DOPA confirm → acquire (one biometric at `signProof`) → `ThaiIdReceivePanel`
+  preview → save → `ScanSuccessPanel`. DL/Transcript still add issuerConfirm after preview.
+- Claim-screen tests cover DOPA gone after acquire, save only on document confirm,
+  and success copy `รับเอกสารสำเร็จ`.
+
+### Session 2026-08-11 (Verifier missing_holder_binding_key → PoP jwk)
+
+- Verifier error: `reason: missing_holder_binding_key` with credential `cnf: { kid only }`.
+- Cause: SD-JWT PoP used `did-kid`; Issuer stored only `cnf.kid`. This Verifier requires
+  `cnf.jwk` in the issued credential.
+- Fix: `readProofKeyBinding` uses `jwk` for `dc+sd-jwt` / `vc+sd-jwt` (and when methods
+  include `jwk`). Hardware PoP `jwk` mode also keeps `kid` alongside `jwk`.
+- **Must re-issue** Transcript (and any SD-JWT) after reload — old credentials stay kid-only.
+
+### Session 2026-08-11 (KB header embed jwk for did:key-only cnf)
+
+- After KB `aud=client_id`, wallet diagnostics still healthy but Verifier returns
+  `Present VP is invalid`. Credential `cnf` is kid-only; KB header was kid-only.
+- **Fix:** hardware SD-JWT KB now embeds P-256 `jwk` in KB header alongside `kid`, so
+  Verifiers can verify ES256 without resolving `did:key`.
+- **Verify:** reload, re-present; debug should show `kb_header_jwk=EC/P-256/…` not `none`.
+  If still 400, next A/B: `EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE=raw`.
+
+### Session 2026-08-11 (JAR verify fail on prefixed did:key ES256)
+
+- **Symptom:** After Verifier fixed `client_id` to `decentralized_identifier:did:key:…`,
+  resolve failed with `Error during verification of jwt.`
+- **Likely cause:** Wallet ES256 verify required 64-byte JOSE + low-S; Java-style JARs often
+  use DER ECDSA and/or high-S. Both failed silently → generic openid4vc verify error.
+- **Fix:** `verifyEs256Prehash` accepts DER→JOSE and verifies with `lowS: false`. Adapter
+  logs jar verify failures under `[wallet:oid4vp]`.
+- **Verify on device:** reload Metro, re-scan. If still fails, check Metro for
+  `jar_verify_signature_failed` / `jar_verify_exception`.
+
+### Session 2026-08-11 (OID4VP 1.0 only — reject bare did: client_id)
+
+- **Decision:** No wallet shim for bare `did:key:` + `vp_formats_supported` version clash.
+  Wallet accepts OID4VP 1.0 `client_id: decentralized_identifier:did:…` (signed JAR) only.
+- **Reject:** bare `did:` client ids with
+  `OID4VP 1.0 requires client_id "decentralized_identifier:did:…"; bare did: is not supported`.
+- **Verifier action:** send `client_id: decentralized_identifier:did:key:<multibase>…` in the
+  authorization request / JAR payload (keep `vp_formats_supported` as-is).
+- **Trust pin:** `EXPO_PUBLIC_VERIFIER_DID_KEY_CLIENT_ID` may still be bare `did:key:…` in env;
+  wallet stores it as `decentralized_identifier:did:key:…`.
+
+### Session 2026-08-11 (hardware SD-JWT KB stripped disclosures → Verifier 400)
+
+- **Symptom:** After Verifier allowed ES256 KB + unsigned JAR, Scan Transcript VP still
+  `HTTP 400`. Wallet token was `issuerJwt~kbJwt` with `sdjwt_disclosure_count=0`.
+- **Cause:** `signHardwareSdJwtKbPresentationToken` used a broken
+  `normalizeSdJwtWithoutKb` that kept only `issuerJwt~` (first `~`), dropping all
+  selective-disclosure segments before appending the KB-JWT. EdDSA path in `crypto.ts`
+  preserved disclosures.
+- **Fix:** Shared `sdJwtNormalize.ts` — ensure trailing `~` only; do not truncate
+  disclosures. Regression test in `hardwareJwtSigner.test.ts`.
+- **Verify on device:** reload app, re-present Transcript; token should include
+  `~disclosure~…~kbJwt`.
+
+### Session 2026-08-11 (Verifier ES256 JAR + adapter unwrap)
+
+- **Symptom:** After Issuer/Verifier ES256 cutover, Scan Verifier QR failed at resolve with
+  `Unable to extract signer method from jwt... 'custom' signer method is not allowed`.
+- **Cause:** Verifier now signs `redirect_uri` request objects with `alg: ES256` + `kid`
+  only. `@openid4vc/openid4vp` forbids signed JARs for `redirect_uri` (empty allowed
+  signer methods). Wallet verify path was EdDSA-only and had no JWKS fetch for
+  `redirect_uri`.
+- **Fix:** `verifyEs256CompactJwt`; fetch `{response_uri origin}/openid4vc/jwks` (path via
+  `EXPO_PUBLIC_VERIFIER_JWKS_PATH`); verify trusted signed `redirect_uri` JARs; unwrap
+  verified payload before openid4vc resolve. EdDSA/ES256 both accepted for JAR verify.
+- **Verification:** focused `es256JwtVerify` / `verifierJwks` / `authorizationRequestJar` /
+  `parseAuthorizationRequestViaOid4vc` tests pass (17). Re-scan Verifier QR on device to
+  confirm resolve proceeds (holder KB/metadata allowlists are a separate gate).
+
+### Session 2026-08-11 (VP exit smoke + first-install biometric — device done)
+
+- **VP deeplink exit (A26):** expired link → failure UI → Back → Wallet; re-tap after
+  grace reopens failure UI; Wallet land uses `router.replace('/(tabs)')` (not
+  `/(tabs)/index`); Metro `presentationVerifierMocks` import path fixed.
+- **First-install biometric (A26):** fresh install = no fingerprint; first claim =
+  exactly one fingerprint at bind (defer-first-install Keychain path).
+- **VP adapter checklist:** row **7** pass; row **4** waived (adapter-only path);
+  rows **3** (synthetic untrusted deeplink) and **6** still open. Hardware Slice B
+  A26 rows 1+6 still gate staging hardware flag.
+
+### VP deeplink exit / intake contract (locked — read before changing nav)
+
+Five rules. Do not invent parallel exit paths.
+
+1. **Open:** only `_layout` / Scan / callback may queue a VP URI via `tryQueueDeeplinkUri`
+   (checks `dismissedUri` *before* store write). Scan may `clearDismissedDeeplinkUri()` first
+   for intentional same-QR reopen; Linking redelivery must not.
+2. **Show failure in-place:** expired/unreachable VP stays on `PresentationFailurePanel` —
+   no auto-dismiss, no intake modal, no auto Wallet jump.
+3. **Leave only via `exitPresentationFlow` / `finish`:** Back/Cancel → dismiss current URI →
+   `useReturnToWallet` once (`router.replace('/(tabs)')`). Never notify intake modal
+   for dismissed redelivery.
+4. **Intent redelivery after dismiss:** silent ignore for
+   `EXPO_PUBLIC_DEEPLINK_DISMISS_REDELIVERY_GRACE_MS` (default 1500ms). After grace,
+   the same URI may open again (intentional re-tap). Intake modal only for
+   **consumed/replay**. Scan may still `clearDismissedDeeplinkUri()` immediately.
+5. **Wallet land:** only `router.replace('/(tabs)')` (typed href; **not** `/(tabs)/index`,
+   which shows Unmatched Route). Never `CommonActions.reset` with incomplete tab routes.
+
+Golden tests in `PresentationRequestScreen.test.tsx` + `deeplinkStore.test.ts` are merge
+blockers for deeplink/nav changes.
+
+### Session 2026-08-10 (Slice C core — hardware P-256 signing router)
+
+- **Scope:** Core holder-signing router behind `EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED`
+  (default `false`). When enabled on Android, per-credential P-256 keys use
+  `hardwareCredentialSigningKey` + `hardwareJwtSigner` (ES256 PoP/KB/VP/revoke) via
+  `crypto.ts` branches; `exchangeService`, `issuanceKeySession`, and `dualFormatIssuance`
+  create/bind/discard hardware pending keys instead of Ed25519 credential keys.
+- **Deferred:** `k_attest` / wallet activation transaction, cutover portal UI,
+  `cutoverMigrationPolicy` wiring, ADR + SECURITY.md cutover section, proximity mdoc native
+  signing, removing Ed25519 paths, defaulting the hardware flag on in any build flavor.
+- **Verification:** `hardwareCredentialSigningKey.test.ts`, `hardwareJwtSigner.test.ts`,
+  `crypto.hardwareP256.test.ts`, extended `exchangeService.perCredential.test.ts`
+  (hardware pending-key path); run `yarn test` + `yarn tsc --noEmit` before merge.
+- **Device gate:** Do not enable the flag in staging until Slice B A26 checklist rows 1+6 pass.
+
+### Session 2026-08-07 (verifier deeplink repeat → Wallet remount flash)
+
+- **Symptom:** Tapping a used/closed verifier deeplink while already on the Wallet tab
+  briefly behaved like switching back to Wallet.
+- **Root cause:** `+native-intent` always routed `openid4vp://` / VP callbacks into the
+  presentation flow (or `/callback` → `replace('/(tabs)')`), then rejection called
+  `returnToWallet` / tabs replace and remounted Wallet.
+- **Fix:** `redirectWalletSystemPath` returns `null` for consumed VP on warm app (stay
+  put; dialog only); cold start lands on `/(tabs)`. VP callbacks go straight to
+  `presentation-request`. Layout allows dismissed reopen via store-before-dismissed
+  checks; callback prefers `router.back()` over tabs replace when rejecting.
+- **Verification:** 50/50 focused tests; `yarn tsc --noEmit` clean.
+
+### Session 2026-08-07 (portal retry race — stale empty-offer dialog)
+
+- **Symptom:** Holder taps ขอเอกสาร (looks stuck) → taps again → credential arrives →
+  later dialog ยังไม่ได้รับเอกสาร / ไม่สามารถรับเอกสารได้.
+- **Root cause:** Android portal wait (`waitForPortalReturnNotification`, up to 3 min)
+  from the first open kept running after a second `beginPortalReturnCapture()`; when the
+  first wait timed out it returned `empty_offer` and showed the dialog after success.
+- **Fix:** Capture generations in `portalReturnBridge`; newer begin supersedes older waits;
+  `openCredentialRequestPortal` returns `{ status: 'superseded' }`; flow exits silently.
+- **Verification:** 23/23 focused tests (`portalReturnBridge`, `openCredentialRequestPortal`,
+  `requestCredentialViaPortalFlow`).
+
+### Session 2026-08-07 (Galaxy A26 — portal VCI + VP device E2E)
+
+Device: Samsung Galaxy A26, Hermes dev build. Issuer: `issuer.zenithcomp.co.th:455`.
+Required env: `EXPO_PUBLIC_OID4VC_DPOP_ENABLED=false` (issuer `/credential` 401 with DPoP on).
+
+| Flow | Result | Notes |
+|------|--------|-------|
+| Wallet home + credential storage | Pass | ThaID visible after issuance; survives relaunch |
+| Portal → ThaID (IDCard) | Pass | OID4VCI pre-authorized + PoP |
+| Portal → Transcript | Pass | Requires usable PID |
+| Portal → Driving licence (mDL) | Fail | Issuer `/credential` 400 — *file not found* / dictionary errors; curl reproduces |
+| Scan → Verifier VP | Pass | **`EXPO_PUBLIC_OID4VC_VP_ADAPTER=true`**; oid4vc adapter Scan path |
+| Same-device VP deeplink (`walletapp://callback`) | Pass | Galaxy A26 2026-08-07 |
+| Backend credential sync | Not tested | — |
+| My QR (wallet-initiated VP) | Not tested | — |
+| Issuer ops (DPoP + mDL backend) | Waiting | Peer-owned |
+
+**Next from this session:** optional backend sync + My QR smoke; finish VP adapter checklist rows not covered by Scan golden path (untrusted verifier, legacy regression flag-off, same-device callback, remount origin, bad `request_uri`); DLT blocked on issuer.
+
+**VP adapter checklist (2026-08-07):** Scan golden path validated with flag `true` on Galaxy A26. Mark rows 1 and 5 pass; row 4 (legacy `false`) and rows 2–3, 6–8 still open unless explicitly exercised.
+
+### Session 2026-08-07 (Windows CMake MAX_PATH / stale `.ninja_deps`)
+
+- Root cause: Cursor sandbox sets a long `GRADLE_USER_HOME` under
+  `Temp/cursor-sandbox-cache/.../gradle`. Even after `scripts/gradle-env.js`
+  remaps to `C:\gradle`, Ninja's binary `.ninja_deps` kept absolute sandbox
+  prefab include paths (266 chars > 260), so
+  `:expo-modules-core:buildCMakeDebug[arm64-v8a]` failed on `Stat(.../expr_iif.hpp)`.
+- Fix: `yarn android` wrapper now purges `android/.cxx` trees (and matching
+  `build/intermediates/cxx`) that still mention `cursor-sandbox-cache` before
+  `expo run:android`.
+- Verification: `scripts/gradle-env.test.js` + `scripts/android-build-script.test.js`
+  (4/4); `app:assembleDebug` arm64-v8a **BUILD SUCCESSFUL** (~5m27s) with
+  `GRADLE_USER_HOME=C:\gradle`. APK at `android/app/build/outputs/apk/debug/app-debug.apk`.
+- Note: OS `LongPathsEnabled=1` does not help here — Ninja still enforces 260.
+
+### Session 2026-08-07 (VP adapter P1 blocker fixes + re-E2E gate)
+
+- Closed four implementation-review findings from conversation d796fc28 that blocked real
+  `EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` use on Hermes:
+  - Hermes-safe JWT routing preview (`decodeJsonBase64Url`, no `Buffer`) in
+    `fetchAuthorizationRequestMaterial.ts`
+  - DID signer support via exported `resolveRequestObjectVerificationJwk()` +
+    `verifyJwtImpl` in `parseAuthorizationRequestViaOid4vc.ts` / `oid4vcCallbacks.ts`
+  - Transport fetch failures mapped to `PresentationRequestFetchFailed`
+  - `activePresentationFlowOrigin` persisted when VP pending URI moves to active URI
+    (`deeplinkStore.ts`, `PresentationRequestScreen.tsx`)
+- Bonus: signed request-object JWTs wrapped as JAR by-value `{ request, client_id }` before
+  `@openid4vc/openid4vp` parse so `decentralized_identifier` client IDs enter the signed-JAR path.
+- Automated verification: 58/58 focused tests
+  (`src/services/vp/oid4vc`, `deeplinkStore.test.ts`, `PresentationRequestScreen.test.tsx`);
+  `yarn tsc --noEmit` clean; `yarn lint` 0 errors (pre-existing warnings).
+- **Re-E2E gate (pending Galaxy A26 Hermes dev build):** prior flag-on manual E2E (2026-08-06)
+  predates these fixes and may have silently used legacy routing. Run checklist in
+  `docs/GETTING_STARTED.md` § VP adapter re-E2E before enabling flag in staging builds.
+
+| # | Check | Flag | Status |
+|---|-------|------|--------|
+| 1 | Scan `request_uri` JWT → consent → biometric → `direct_post` success | `true` | [x] pass Galaxy A26 2026-08-07 (flag on) |
+| 2 | Same-device callback → `PresentationRequestScreen` completes | `true` | [x] pass Galaxy A26 2026-08-07 |
+| 3 | Untrusted verifier → friendly error (no hang) | `true` | [ ] pending — use synthetic deeplink (no live untrusted host); see 2026-08-11 note |
+| 4 | Legacy Scan + callback regression | `false` | [~] **waived** 2026-08-11 — product keeps oid4vc adapter path only (`true`) |
+| 5 | Logs show oid4vc `protocolPath` (not silent legacy fallback) | `true` | [x] pass Galaxy A26 2026-08-07 (flag on; confirm `[wallet:oid4vp]` / protocolPath oid4vc in logs if auditing) |
+| 6 | Scan-origin survives remount (`scan`, not `same-device`) | `true` | [ ] pending device |
+| 7 | Offline / bad `request_uri` → fetch-failed UX | `true` | [x] pass Galaxy A26 2026-08-11 |
+| 8 | Signed `decentralized_identifier:did:web:` JAR (optional) | `true` | [ ] pending customer Verifier host |
+
+**Close-out (2026-08-11):** Row 7 passed on device. Row 4 waived — keep
+`EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` as the supported path (no legacy `false` rebuild).
+Row 3: no live untrusted Verifier QR; use synthetic `did:web:evil.untrusted.example`
+by-value deeplink (adb / QR generator). Row 6 still open.
+
+**Close-out (2026-08-07):** Code + docs committed (`9df4f4e`). Dev-build env and checklist:
+`docs/GETTING_STARTED.md` § VP adapter re-E2E; set `EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` in
+`.env.development.local`, rebuild dev client on Galaxy A26, then mark table rows pass/fail.
+Adapter default remains `false` in repo until rows 1–7 are green on device (row 8 optional).
+Rows 1 + 5 passed Galaxy A26 2026-08-07 with flag `true`; staging may enable flag when product accepts partial checklist.
+
+### Session 2026-08-07 (Defer first-install Keychain biometric)
+
+- Blank cold start no longer creates wallet seed / `k_attest` or activates crypto
+  v2 (avoids "Authenticate to retrieve secret" on fresh install).
+- New `withIssuanceKeySession`: pending credential seed stays in memory through
+  PoP; one biometric Keychain write at bind to `cred.{credentialId}`; `k_attest`
+  is device-bound and cache-first (reuse, never overwrite on retry).
+- Push registers under the first credential Holder DID after claim (or on startup
+  when a credential DID already exists).
+- Follow-up hardening: dual-format binds the shared credential key immediately
+  after SD-JWT MMKV save (rollback VC on bind failure); mdoc-only bind failure
+  deletes the staged native mDOC; single-format `claimCredential` destroys the
+  bound key if persist/save fails after acquire.
+- Spec/plan:
+  `docs/superpowers/specs/2026-08-07-defer-first-install-keychain-biometric-design.md`,
+  `docs/superpowers/plans/2026-08-07-defer-first-install-keychain-biometric.md`.
+- Claim-screen preview acquire also opens `withIssuanceKeySession` (fixes
+  `WalletKeyNotInitialized` on fresh install when pressing request/receive).
+- Device check **passed** Galaxy A26 2026-08-11: fresh install → no fingerprint;
+  first claim → exactly one fingerprint at bind.
+
 ### Session 2026-08-05 (PIN session: background-idle grace)
 
 - Wallet PIN session grace (`EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`, default
@@ -11,11 +1409,11 @@
 - Verification: `walletPinSession` / `walletPinNavigation` / `walletPinPolicy`
   focused tests pass (27).
 
-### Session 2026-08-05 (ETDA demo learning web)
+### Session 2026-08-05 (Wallet Holder learning web)
 
-- **Guide:** `docs/demo/etda-demo-learning.html` — standalone Thai tutorial for demo
-  prep (flows, P-256/StrongBox, My QR checklist, demo script, FAQ, quiz). Open
-  directly in a browser; no build required.
+- **Guide:** `docs/demo/etda-demo-learning.html` — standalone Thai explainer with
+  **★ สรุปทั้งหมด** one-pager (flows, Orval, openid4vc, walletApi vs issuerApi,
+  P-256/StrongBox). Docs only — no demo checklist. Open in a browser directly.
 
 ### Session 2026-08-03 (Android flow Back navigation)
 
@@ -253,7 +1651,7 @@
 
 - **Spec:** `docs/superpowers/specs/2026-07-24-same-device-vp-wallet-callback-design.md` (approved 2026-07-24)
 - **Goal:** Verifier portal → `walletapp://callback?authorization_request_uri=…` → `/(tabs)/presentation-request` (no camera) → reuse `Oid4VpDisclosureFlow` + existing panels; Scan hands off VP QR to same route.
-- **Status:** Implemented (2026-07-24). Verifier portal → `walletapp://callback` → `/(tabs)/presentation-request` → `Oid4VpDisclosureFlow` (`historyChannel: oid4vp`). Scan VP QR hands off to same route.
+- **Status:** Implemented (2026-07-24; hardened 2026-08-07). Intake: (1) `walletapp://callback` with `authorization_request_uri` / embedded `openid4vp://…` query; (2) direct `openid4vp://authorize?…` (`+native-intent` → `/(tabs)/presentation-request`, no camera). Both → `Oid4VpDisclosureFlow` (`historyChannel: oid4vp`). Scan VP QR hands off to same route. `redirectWalletSystemPath` + `PresentationRequestScreen` (`Linking.useURL` / `getInitialURL`); consumed or dismissed VP links stay-put on warm app (see Session 2026-08-07 verifier deeplink).
 - **Related:** VC callback pattern (`2026-07-20-same-device-authorization-code-issuance-design.md`), VP selective disclosure (`2026-07-20` / `2026-07-23` specs).
 
 ### Session 2026-07-24 (v2 per-credential signing keys — in progress)
@@ -616,7 +2014,7 @@ Status: Complete (core flow). Spec compliance gaps tracked below.
 
 [x] Orval SDK generation setup
 [x] Generated SDK endpoint filtering
-[x] `resolveOffer(offerUri)` through `@sphereon/oid4vci-client`
+[x] `resolveOffer(offerUri)` through `@openid4vc/openid4vci` (`src/services/vci/oid4vc/`)
 [x] Issuer metadata extraction for UI branding
 [x] Pre-Authorized Code credential acquisition
 [x] `tx_code` required when declared by offer
@@ -670,7 +2068,7 @@ Source: `docs/User_Journey/id_card/P1.md`. After PIN setup the Wallet is "Operat
 
 [x] **P1-2.2** After idcard QR resolves, show "ยืนยันตัวตนผ่าน ThaID" interstitial screen (ThaID logo, "ยืนยัน" button) before credential acquisition — represents LoA High identity verification redirect to ThaID app; simulate with a proceed button that continues the OID4VCI flow (`app/(tabs)/scan.tsx` new `thaIdVerify` phase or separate screen)
 [x] **P1-2.3** After ThaID verification returns, show Holder Confirmation matching `P1-2.3-ThaID_success_page.png`: issuer seal/logo (กรมการปกครอง), document name (บัตรประชาชน), receiving unit, green checkmark ribbon, "ยืนยัน" button — replaces generic preview for ThaiNationalID offers
-[x] **P1-3** After tapping ยืนยัน on P1-2.3, show full credential data preview before final save — reference `P1-3-Receive_page.png` / `P1-2.5-idcard_vc.png`: ID CARD header band, holder photo, ชื่อ-นามสกุล (Thai + English romanised), เลขบัตรประจำตัวประชาชน (masked), วันเดือนปีเกิด, ศาสนา, ที่อยู่ตามทะเบียนบ้าน, "ยืนยัน" button that triggers `saveCredentialRecord()` and navigates to Wallet home
+[x] **P1-3** After tapping ยืนยัน on P1-2.3, show full credential data preview before final save — reference `P1-3-Receive_page.png` / `P1-2.5-idcard_vc.png`: ID CARD header band, holder photo, ชื่อ-นามสกุล (Thai + English romanised), เลขบัตรประจำตัวประชาชน (masked), วันเดือนปีเกิด, ศาสนา, ที่อยู่ตามบัตรประชาชน, "ยืนยัน" button that triggers `saveCredentialRecord()` and navigates to Wallet home
 [x] **P1-2.4** History Log screen lists issuance/presentation events; each row: issuer logo, issuer name, document type, date/time, status badge, action label — reference `P1-2.4-history_log_page.png` (10 records: ธนาคาร, โรงพยาบาล, 7-Eleven, Central/Driving License)
 
 ### 3.3 QR Scanner and NFC
@@ -696,8 +2094,9 @@ Source: `docs/User_Journey/id_card/P3.md`, `docs/superpowers/specs/2026-06-25-p3
 [x] Wallet home expiry modal (`WalletKeyExpiredModal`) and renewal badges on document rows (`app/(tabs)/index.tsx`)
 [x] Credential detail inactive/active overlay (`ribbon_badge.png`), renewal CTA (renewal-required only), P3-6 cleanup dialog (`app/(tabs)/credential/[id].tsx`)
 [x] Scan-tab renewal deep link via `?renew=<credentialId>` submits only, then routes to old credential detail (`app/(tabs)/scan.tsx`)
-[x] Key+document expiry deadlock lane (`walletKeyExpiryLane`) — create-key first per sequence, then holder **ขอเอกสาร**; `finish-renewals` steers while rotation record exists (spec/plan 2026-07-17)
-[ ] Physical-device validation: rotate key → submit renewal (silent old-VC OID4VP biometric) → wait/poll → green Active on new VC → P3-6 delete old VC on hardware
+[x] Key+document expiry deadlock lane (`walletKeyExpiryLane`) — create-key first per sequence, then holder **ขอเอกสาร**; `finish-renewals` steers while rotation record exists (spec/plan 2026-07-17). Hardware/v2: P3-1 retired; per-credential `k_cred` TTL + mint-on-ขอเอกสาร (2026-08-19)
+[x] Hardware post-cutover P3 old-VC: pending `k_cred` on **ขอเอกสาร**, silent old-VC OID4VP with this card’s key, Receive reuses pending key, P3-6 destroys old alias
+[ ] Physical-device validation: k_cred TTL → **ขอเอกสาร** (silent old-VC OID4VP biometric) → Receive → green Active on new VC → P3-6 delete old VC on hardware
 
 ### 3.6 P6 Case 2: Issuer-Initiated Suspension + Unified Holder Actions
 
@@ -762,7 +2161,7 @@ Resolved decisions:
 
 [x] Request transport: cross-device QR Authorization Request
 [x] Query language: Presentation Exchange
-[x] Response mode: `direct_post`
+[x] Response mode: `direct_post` and `direct_post.jwt` (encrypted JWE `response=` via `client_metadata.jwks`)
 [x] Verifier trust model: local `did:web` allowlist with response-origin allowlist
 [x] First claim scope: ThaiNationalID birth date disclosure so the Verifier computes age over 20
 [x] Entry point: Scan tab
@@ -777,14 +2176,15 @@ Implemented:
 [x] Verifier API `request_uri` JWT + DCQL IDCard compatibility
 [x] Verifier API Transcript DCQL `dc+sd-jwt` compatibility
 [x] Hardware-signed JWT VP token via `src/services/crypto`
-[x] Device-to-Verifier `direct_post` transport
+[x] Device-to-Verifier `direct_post` / `direct_post.jwt` transport
 [x] Scan tab Holder consent/result flow for OID4VP QR
 [x] Local encrypted history for successful presentations
-[x] Phase 1 `@openid4vc/openid4vp` adapter behind `EXPO_PUBLIC_OID4VC_VP_ADAPTER` (default false, build-time) — Scan + same-device DCQL `direct_post` parse/submit via `src/services/vp/oid4vc/`; legacy path retained for My QR, issuer renewal, PEX, and dual-format. Spec: `docs/superpowers/specs/2026-07-31-oid4vc-vp-adapter-design.md`; plan: `docs/superpowers/plans/2026-08-05-oid4vc-vp-adapter.md`. Manual E2E with flag-on dev build pending.
+[x] Phase 1 `@openid4vc/openid4vp` adapter behind `EXPO_PUBLIC_OID4VC_VP_ADAPTER` (default false, build-time) — Scan + same-device DCQL `direct_post` parse/submit via `src/services/vp/oid4vc/`; legacy path retained for My QR, issuer renewal, PEX, and dual-format. Spec: `docs/superpowers/specs/2026-07-31-oid4vc-vp-adapter-design.md`; plan: `docs/superpowers/plans/2026-08-05-oid4vc-vp-adapter.md`. Manual E2E with flag-on dev build: **passed** (2026-08-06).
+[x] Phase 2/3 `@openid4vc/openid4vci` VCI adapter — Pre-Authorized Code + Authorization Code + dual-format offer parse/token/credential request via `src/services/vci/oid4vc/`; legacy VCI client packages removed (Phase 3: oid4vc-only VCI complete). Spec: `docs/superpowers/specs/2026-08-06-oid4vc-vci-adapter-design.md`; plan: `docs/superpowers/plans/2026-08-06-oid4vc-vci-adapter.md`. Automated tests PASS; manual E2E with dev build recommended after rebuild.
 
 Remaining:
 
-[x] Signed Request Object (JAR) signature verification — `authorizationRequestJar.ts` verifies `typ: oauth-authz-req+jwt`; `decentralized_identifier` requires EdDSA signature (pinned JWK or `did:web` document fetch); `redirect_uri` stays unsigned per OID4VP §5.9.3.
+[x] Signed Request Object (JAR) signature verification — `authorizationRequestJar.ts` verifies `typ: oauth-authz-req+jwt`; `decentralized_identifier` requires EdDSA/ES256 signature (pinned JWK or `did:web` document fetch); trusted `redirect_uri` signed JARs verify via Verifier JWKS (`EXPO_PUBLIC_VERIFIER_JWKS_PATH`, default `/openid4vc/jwks`) then unwrap before `@openid4vc/openid4vp` (library forbids signed `redirect_uri` JARs per OID4VP §5.9.3).
 [x] `client_id_scheme` enforcement — `clientIdScheme.ts` + scheme-aware `findTrustedVerifier()` for `redirect_uri`, `decentralized_identifier`, and legacy pre-registered `did:web` allowlist entries.
 [ ] Replace development `redirect_uri:` Verifier with registered production `did:web` Verifier entries — spec: `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md` (gate dev `redirect_uri` to `__DEV__`; require `EXPO_PUBLIC_VERIFIER_DID_WEB_*` in production; DID fetch timeout/size). **Env checklist:** `docs/GETTING_STARTED.md` § Production Verifier OID4VP checklist + `.env.example`; E2E pending customer Verifier host.
 [x] `presentation_definition_uri` fetch support — `presentationDefinitionResolver.ts`; fetch after trust gate; AbortController timeout + max-bytes cap; PE/DCQL mutually exclusive in v1; P5 birth-date scope unchanged.
@@ -799,16 +2199,16 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 ### Buildable now (wallet-side)
 
-[x] P6 Case 1 Issuer round-trip for holder revoke (v1 dev): `POST /wallet-api/dev/issuer/holder-revoke` + `holderRevokeService`; credential detail awaits Issuer `201` before `recordCredentialLifecycleAction('Revoke')`. Keeps credential record for history; no per-credential key destruction (ADR 0009). v1: no PoP JWT — Wallet PIN approve unchanged.
-[x] P6 Case 3 Single-Use credential self-cleanup (v1): `CredentialLifecycleAction` `'Used'` via `recordCredentialLifecycleAction`, parser whitelist, `credential-used` history event, inactive badge, dev `POST /wallet-api/dev/wallet/mark-used`. Presentation blocked through existing lifecycle filter. No per-credential key destruction (ADR 0009).
-[x] P6 Slice 1 auto single-use consumption: `MedicalCertificate` schema (`singleUse: true` in `cardSchemas.ts`); `maybeConsumeSingleUseCredential()` after OID4VP and My QR presentation success (`presentationHistory.ts`, `walletInitiatedPresentation.ts`). Transcript/ThaID/DL not auto-consumed. Spec: `docs/superpowers/specs/2026-07-13-p6-wallet-gap-closure-design.md`.
-[x] P6 Slice 2 holder revoke PoP: `POST /dev/issuer/holder-revoke/nonce` + `signHolderStatusChangePop` + DEV Issuer PoP verify; Revoke skips PIN (biometric sign gate only). `holderRevokeService.ts`, `server/src/services/holderRevokePopVerifier.ts`.
+[x] P6 Case 1 Issuer round-trip for holder revoke: `POST /wallet-api/dev/issuer/holder-revoke` + `holderRevokeService`; credential detail awaits Issuer `201` before `recordCredentialLifecycleAction('Revoke')`. Lifecycle revoke/delete/used calls `destroyIssuanceCredentialKey` (ADR 0010/0011). Holder revoke PoP is ES256-only; Revoke uses PIN/biometric (step 7) then hardware sign gate (step 10).
+[x] P6 Case 3 Single-Use credential self-cleanup: `CredentialLifecycleAction` `'Used'` via `recordCredentialLifecycleAction`, parser whitelist, `credential-used` history event, inactive badge, dev `POST /wallet-api/dev/wallet/mark-used`. Presentation blocked through existing lifecycle filter. `Used` destroys the per-credential key via `destroyIssuanceCredentialKey` (ADR 0010/0011).
+[x] P6 Slice 1 auto single-use consumption: `MedicalCertificate` schema (`singleUse: true` in `cardSchemas.ts`); `maybeConsumeSingleUseCredential()` after OID4VP and My QR presentation success (`presentationHistory.ts`, `Oid4VpDisclosureFlow.tsx`). Transcript/ThaID/DL not auto-consumed. Spec: `docs/superpowers/specs/2026-07-13-p6-wallet-gap-closure-design.md`.
+[x] P6 Slice 2 holder revoke PoP: `POST /dev/issuer/holder-revoke/nonce` + `signHolderStatusChangePop` (ES256 hardware `k_cred` only) + DEV Issuer ES256 PoP verify; Revoke uses PIN/biometric (step 7) + ES256 PoP (step 10). `holderRevokeService.ts`, `server/src/services/holderRevokePopVerifier.ts`.
 [x] OID4VP same-device link intake: `openid4vp` scheme in `app.json`, `readPendingPresentationRoute` + `vpGeneration` in `deeplinkStore`, Scan dismiss/remount parity, tests in `deeplinkStore.test.ts` and `ScanScreenDeeplink.test.tsx`. Manual: `adb shell am start -a android.intent.action.VIEW -d "openid4vp://authorize?..."` after `npx expo prebuild --platform android`.
 [x] ADR: single wallet-level Ed25519 key vs journey's per-credential `did:key` (P2 step 12) — accepted for v1 in `docs/adr/0009-wallet-level-holder-signing-key.md`: one Keychain Ed25519 seed; P3 rotation marks all credentials; P6 per-document key destruction deferred (lifecycle markers gate presentation instead).
 
 ### Blocked on the customer ecosystem services (external)
 
-[ ] Trust Registry integration: wallet-side Issuer accreditation check on credential receive (P2 journey step 21) and Verifier trust check before presenting (P4 steps 6–7). Blocked: no Trust Registry service/API exists. Note: Issuer `did:web` document resolve + EdDSA signature verify on receive is implemented (`issuerDidWebVerify.ts`) when VC `iss` is `did:web:` — that is crypto verify, not Trust Registry accreditation.
+[ ] Trust Registry integration: wallet-side Issuer accreditation check on credential receive (P2 journey step 21) and Verifier trust check before presenting (P4 steps 6–7). Blocked: no Trust Registry service/API exists. Note: Issuer JWT signature verify on receive is implemented (`issuerDidWebVerify.ts`, ES256 / EdDSA allowlist) when VC `iss` is `did:web:` or `kid` is `did:key:` — that is crypto verify, not Trust Registry accreditation.
 [ ] DID Resolver integration: resolve Verifier public key (P4 steps 4–5) and Issuer public key for wallet-side verification. Partially overlaps the open JAR signature-verification item above; production resolution mechanism blocked on ecosystem DID method decision.
 [ ] VC Status Registry checking: wallet-side credential status refresh (suspended/revoked/used) from a central registry instead of dev polling endpoints. Blocked: no registry exists; current P6 Case 2 dev polling is the stand-in.
 [ ] P2 identity verification via real PID VC presentation to Issuer (journey steps 3–10): **Wallet handler shipped** (Scan OID4VP path + `EXPO_PUBLIC_ISSUER_OID4VP_*` trust env; spec `2026-07-10-p2-issuer-oid4vp-pid-auth-design.md`). E2E blocked until customer Issuer sends live `openid4vp` Authorization Request and `response_uri`. P1 ThaID interstitial remains until Issuer drives real OID4VP. Issuer-side Trust Registry + VC Status Registry checks (steps 8–17) remain peer-owned.
@@ -822,6 +2222,35 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 5. Session notes below are updated.
 
 ## Active Session Notes and Blockers
+
+### Session 2026-08-19 (PIN-reset OTP 400 looked like a fetch crash)
+
+- `POST /wallet-api/auth/pin-reset/verify` returned `400 Invalid or expired OTP` (wrong/stale 6-digit code; a later verify on the same OTP record succeeded).
+- `react-native-ssl-pinning` rejects HTTP 4xx/5xx instead of returning them, so the wallet fetch wrapper logged `[wallet:sdk] fetch-failed` via `console.error` (red LogBox) with the raw pinned response object.
+- `createPinnedFetch` now converts those HTTP error payloads into `Response` objects; real TLS/pinning failures still throw.
+- Expected PIN-reset `400`/`429` now log as `pin-reset-*-rejected` (`console.info`) instead of `logWalletError`, so Metro no longer shows a red stack for a wrong OTP. The Reset PIN screen still shows the server message.
+- After a successful PIN reset, `POST /auth/logout` has no body; OkHttp via `react-native-ssl-pinning` threw `IllegalArgumentException: method POST must have a request body` and Expo showed "There was a problem loading the project". Pinned POST/PUT now send an empty string body when none is provided.
+- PIN reset no longer wipes credential MMKV (`resetStorage` removed from startup forgot-PIN complete). Confirm persists the new local PIN/fallback like login; copy says documents stay and the holder signs in again. Already-lost cards from the previous wipe cannot be restored in-app.
+- After forgot-PIN logout, RootLayout called `hasWalletPin()` while credential MMKV was still locked (`StorageNotInitialized` during render). PIN reads now use always-available PIN meta when storage is unready; `setWalletPin` writes meta without opening MMKV; login skips credential-owner reset until storage is open.
+
+### Session 2026-08-07 (History Log delivery-path captions)
+
+- Fixed History Log detail **ช่องทาง** showing protocol-only labels instead of intake path: QR scan vs deep link for issuance and Verifier-initiated OID4VP (success/fail/decline).
+- Added optional `deliveryPath` (`qr` | `deep-link`) on `WalletHistoryEvent`; Thai projection via `readChannelCaption()` in `walletHistory.ts`.
+- Runtime intake: `pendingOfferFlowOrigin` / `activeOfferFlowOrigin` on `deeplinkStore` (mirror VP flow origin); VP writes map `PresentationFlowOrigin` at history record time.
+- Legacy rows without `deliveryPath` keep prior captions (VP success → `ผ่าน QR Verifier`; VP fail/decline → `ดำเนินการใน Wallet`; issuance → `รับเอกสารจาก Issuer`).
+
+### Session 2026-08-07 (OID4VP verifier display mocks)
+
+- Until Verifiers send `client_name`, presentation UI and History Log use credential-type mocks in `src/config/presentationVerifierMocks.ts` (ThaiNationalID → ร้านอาหาร / สถานบันเทิง / Verified Age; DLT → Central; CU transcript → จุฬาฯ; Medical → โรงพยาบาล).
+- Wired through consent title, success panel, OID4VP history `partyName`, and History detail **ประเภทข้อมูลที่เข้าถึง** via `credentialType` on presentation events.
+- Remove mocks when OID4VP request metadata includes trusted verifier display names.
+
+### Session 2026-08-11 (History Log Thai + display-name fallback)
+
+- Wallet-authored History copy centralized in `walletHistoryCopy.ts`; OID4VP/OID4VCI **ช่องทาง** stays hybrid per CONTEXT.md.
+- Display names: protocol/offer first → mock when missing/generic (`historyDisplayNames.ts` + `presentationVerifierMocks.ts`); ThaiNationalID consent/history unified to ร้านอาหาร; access labels Thai-only; MedicalCertificate `issuanceConfirmation` added.
+- Re-project party/document/info box at read time (no MMKV migrate). Hide-from-history navigates with `router.replace('/(tabs)/history')` + list refresh on focus.
 
 ### Session 2026-07-14 (Wave 1 claims/errors/msw/verifier docs)
 
@@ -929,7 +2358,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Fixed OID4VCI 1.0 credential identifier handling: if token exchange returns `authorization_details[].credential_identifiers`, the Wallet now sends `credential_identifier` in the Credential Request instead of `credential_configuration_id`.
 - Hardened ID card QR resolution for issuer metadata that uses a non-identical configuration key: `IdCard_dc+sd-jwt` offers can now match a compatible `dc+sd-jwt` metadata entry by `vct`, credential definition type, or display name, while still sending the issuer metadata key in the Credential Request.
 - Fixed the current ID card issuer shape: `IDCard_dc+sd-jwt` offers now resolve to metadata key `IDCardCredential_dc+sd-jwt` and request that exact issuer key.
-- Credential response parsing now accepts direct issuer response bodies and nested `credential_response` wrappers, not only Sphereon `successBody`, and reports response-shape failures separately from unsupported credential formats.
+- Credential response parsing now accepts direct issuer response bodies and nested `credential_response` wrappers, not only protocol client `successBody`, and reports response-shape failures separately from unsupported credential formats.
 - Credential endpoint failures now surface issuer `errorBody.error` / `error_description` in Scan instead of collapsing every request failure to a generic issuer-declined message.
 - Non-standard credential endpoint errors now include HTTP status and serialized `errorBody` when issuer response has no standard OAuth `error` field.
 - Credential Request client now builds from the matched issuer metadata configuration ID instead of the original Credential Offer, preventing `IDCard_dc+sd-jwt` from leaking into the request when the issuer metadata key is `IDCardCredential_dc+sd-jwt`.
@@ -944,7 +2373,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Transcript detail now pulls holder Thai/English name and birth date from stored ThaiNationalID when the transcript credential omits them; name renders Thai on the first line and English on the second line instead of falling back to `Academic Transcript`.
 - ID Card Credential Detail now follows `docs/ui-reference/idcard_document.png` with an ID-card-specific blue card layout, portrait, Thai/English holder name, national ID, birth date, address, religion, issue date, expiry date, and existing My QR action.
 - Development Issuer proxy added for physical Android testing when the PC reaches the Issuer through VPN but the phone cannot join office Wi-Fi/VPN: matching Issuer fetches are rewritten through `/dev-issuer-proxy/*` on the local backend while OID4VCI protocol execution remains on-device. Documented USB `adb reverse` setup in `server/README.md` and `docs/API.md`.
-- Fixed the physical Android VPN proxy scan timeout: remote `credential_offer_uri` resolution and Pre-Authorized Code token exchange now use proxy-aware fetch before Sphereon handles the inline offer / credential request, avoiding Sphereon's internal `cross-fetch` direct calls to VPN-only Issuer URLs.
+- Fixed the physical Android VPN proxy scan timeout: remote `credential_offer_uri` resolution and Pre-Authorized Code token exchange now use proxy-aware fetch before the on-device OID4VCI client handles the inline offer / credential request, avoiding the legacy client's internal `cross-fetch` direct calls to VPN-only Issuer URLs.
 - Added `docs/ANDROID_NETWORK_TESTING.md` with physical Android runbooks for USB + PC VPN proxy mode and direct office Wi-Fi mode, including `.env`, `server/.env`, ADB, Expo, and quick-check commands.
 
 ### Session 2026-06-11
@@ -952,7 +2381,7 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 - Implemented the first OID4VP P5 slice for ThaiNationalID age-over-20 checks: the Scan tab now accepts `openid4vp://` QR Authorization Requests, validates local `did:web` Verifier allowlist entries, supports Presentation Exchange birth-date disclosure, shows native Holder consent, signs a JWT VP token with the hardware Wallet Signing Key, and submits `vp_token` / `presentation_submission` through `direct_post`.
 - Added compatibility for the supplied Verifier API at `http://verifier.zenithcomp.co.th:455`: `POST /generate-vp-qr` returns an `openid4vp://` QR with `request_uri`; `GET /openid4vc/request/{id}` returns a JWT request object using DCQL for `IDCardCredential`; `POST /openid4vc/verify/{id}` accepts `vp_token` and `state`.
 - Successful Verifier responses are now recorded in encrypted local presentation history and displayed in History Log. `src/config/trustedVerifiers.ts` contains the development `redirect_uri:` Verifier entry and must be replaced for production.
-- Attempted to add a Sphereon OID4VP package, but the expected package name was not available from the registry in this environment; the implementation uses a narrow local service boundary under `src/services/vp/` that can be replaced or adapted when the correct library is confirmed.
+- Attempted to add a third-party OID4VP package, but the expected package name was not available from the registry in this environment; the implementation uses a narrow local service boundary under `src/services/vp/` that can be replaced or adapted when the correct library is confirmed.
 - Added a development Verifier proxy for USB + PC VPN testing: matching Verifier calls are rewritten through `/dev-verifier-proxy/*` so the phone can scan Verifier QR codes even when only the PC can reach `http://verifier.zenithcomp.co.th:455`.
 - Hardened Verifier submission after `Present VP is invalid`: DCQL `vp_token` is now encoded as a credential-query-id response object, Verifier error descriptions surface in Scan, JWT VP tokens include `jti`/`nbf`/`exp`, and the Wallet blocks submission when the stored ThaiNationalID format does not match the Verifier's requested DCQL format. Current known mismatch: the Issuer flow in this repo uses `IDCard_dc+sd-jwt`, while the supplied Verifier requests `jwt_vc_json`; the Verifier should request `format: "dc+sd-jwt"` with `meta.vct_values: ["IDCardCredential"]`.
 - Wallet DCQL parsing now supports `meta.vct_values` for SD-JWT VC requests, so it accepts the corrected `dc+sd-jwt` Verifier request against a stored SD-JWT ThaiNationalID.
@@ -1129,10 +2558,10 @@ Gap analysis of P0–P6 journey diagrams against implemented flows. Wallet-side 
 
 ### Session 2026-07-08 (User Journey gap sprint — slices 1–4)
 
-- **Slice 1:** ADR 0009 (`docs/adr/0009-wallet-level-holder-signing-key.md`) — single wallet Ed25519 key accepted for v1; per-document key destruction deferred.
+- **Slice 1:** ADR 0009 (`docs/adr/0009-wallet-level-holder-signing-key.md`) — single wallet Ed25519 key accepted for v1; per-document key destruction deferred. **Superseded:** ADR 0010/0011 + `destroyIssuanceCredentialKey` on lifecycle.
 - **Slice 2:** OID4VP same-device deeplink — `openid4vp` in `app.json`; `isPresentationRequestDeeplink`, `readPendingPresentationRoute`, `vpGeneration` in `deeplinkStore`; Scan dismiss/remount parity; tests pass.
 - **Slice 3:** P6 Case 3 Used — `CredentialLifecycleAction` `'Used'` through `recordCredentialLifecycleAction`; `credential-used` history kind; inactive badge; dev `POST /wallet-api/dev/wallet/mark-used`.
-- **Slice 4:** P6 Case 1 dev holder revoke — `POST /wallet-api/dev/issuer/holder-revoke`, `holderRevokeService`, credential detail `revokeSubmitting` phase; local revoke only after Issuer `201`; credential record retained (no key destruction). v1: no PoP — PIN flow unchanged.
+- **Slice 4:** P6 Case 1 dev holder revoke — `POST /wallet-api/dev/issuer/holder-revoke`, `holderRevokeService`, credential detail `revokeSubmitting` phase; local revoke only after Issuer `201`; credential record retained. **Superseded (2026-08-17):** PIN/biometric step 7 + ES256-only PoP step 10; key destroy on lifecycle.
 - Verification: `yarn test` on touched suites pass; root `yarn tsc --noEmit` still reports pre-existing `server/src/config.test.ts` `NODE_ENV` read-only assignment (unchanged by this sprint).
 
 ### Session 2026-07-17 (History Log issuer logos)

@@ -19,12 +19,26 @@ describe('clientIdScheme', () => {
     })
   })
 
-  test('treats bare did:web values as pre-registered client identifiers', () => {
+  test('rejects bare did: values (OID4VP 1.0 requires decentralized_identifier prefix)', () => {
     expect(parseClientId('did:web:verifier.example.com')).toEqual({
-      scheme: 'pre_registered',
+      scheme: 'unknown',
       originalClientId: 'did:web:verifier.example.com',
       clientId: 'did:web:verifier.example.com',
     })
+    expect(parseClientId('did:key:zDnaesfzUXzhHkdZvTWTQaZAZTFcXYZnMj5RroE9cSXcBkNb7')).toEqual({
+      scheme: 'unknown',
+      originalClientId: 'did:key:zDnaesfzUXzhHkdZvTWTQaZAZTFcXYZnMj5RroE9cSXcBkNb7',
+      clientId: 'did:key:zDnaesfzUXzhHkdZvTWTQaZAZTFcXYZnMj5RroE9cSXcBkNb7',
+    })
+  })
+
+  test('matches prefixed did:key client_id without binding response_uri to the DID string', () => {
+    expect(
+      readResponseUriMatchesClientId(
+        'decentralized_identifier:did:key:zDnaesfzUXzhHkdZvTWTQaZAZTFcXYZnMj5RroE9cSXcBkNb7',
+        'https://verifier.zenithcomp.co.th:455/openid4vc/verify/session',
+      ),
+    ).toBe(true)
   })
 
   test('requires signed request objects for decentralized_identifier', () => {

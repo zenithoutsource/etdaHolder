@@ -73,3 +73,8 @@ export function sameDeviceIssuanceRequiresPidVp(
 ): boolean {
   return credentialType !== 'ThaiNationalID'
 }
+
+/** When true, Wallet Home ขอเอกสาร opens lib-built OAuth authorize URL instead of portal offer-URI login. */
+export function readSameDeviceAuthCodeIssuanceEnabled(): boolean {
+  return process.env.EXPO_PUBLIC_SAME_DEVICE_AUTH_CODE_ISSUANCE === 'true'
+}

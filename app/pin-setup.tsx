@@ -1,3 +1,11 @@
+/**
+ * First-time 6-digit Wallet PIN setup (enter then confirm).
+ * Journey: Auth and PIN after first login.
+ * Layout: PinEntrySurface.
+ * Next: pending offer route or Wallet tabs.
+ * Map: docs/CODEMAPS/frontend.md#auth-and-pin
+ */
+
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { Platform, View } from 'react-native'

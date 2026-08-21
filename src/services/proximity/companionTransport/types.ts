@@ -16,6 +16,7 @@ export type CompanionBeginRequest = {
 export type CompanionPresentationInput = {
   sdJwt: string
   nonceBytes: Uint8Array
+  credentialId: string
 }
 
 /**

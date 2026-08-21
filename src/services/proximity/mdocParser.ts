@@ -20,30 +20,76 @@ function decodeCborMap(value: unknown): CborMap | undefined {
   return undefined
 }
 
-export type ParsedMdocNamespaces = Record<string, Record<string, string | number | boolean>>
+export type MdocNamespaceValue = string | number | boolean | unknown
+
+export type ParsedMdocNamespaces = Record<string, Record<string, MdocNamespaceValue>>
 
 export type ParsedMdocDocument = {
   docType: string
   namespaces: ParsedMdocNamespaces
 }
 
-function readIssuerSignedItemValue(item: unknown): { namespace: string; identifier: string; value: string | number | boolean } | undefined {
-  const map = decodeCborMap(item)
+function readTagNumber(item: unknown): number | undefined {
+  if (isMap(item)) {
+    const tag = item.get('tag')
+    return typeof tag === 'number' ? tag : undefined
+  }
+  if (typeof item === 'object' && item !== null && 'tag' in item) {
+    const tag = (item as { tag?: unknown }).tag
+    return typeof tag === 'number' ? tag : undefined
+  }
+  return undefined
+}
+
+function readTagValue(item: unknown): unknown {
+  if (isMap(item)) return item.get('value')
+  if (typeof item === 'object' && item !== null && 'value' in item) {
+    return (item as { value?: unknown }).value
+  }
+  return undefined
+}
+
+function unwrapTaggedItem(item: unknown, decode: (input: Uint8Array) => unknown): unknown {
+  let current = item
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (current instanceof Uint8Array) {
+      current = decode(current)
+      continue
+    }
+    const tag = readTagNumber(current)
+    const value = readTagValue(current)
+    if (tag === 24 && value instanceof Uint8Array) {
+      current = decode(value)
+      continue
+    }
+    break
+  }
+  return current
+}
+
+function readIssuerSignedItemValue(
+  item: unknown,
+  namespaceFromKey: string,
+  decode: (input: Uint8Array) => unknown,
+): { namespace: string; identifier: string; value: unknown } | undefined {
+  const unwrapped = unwrapTaggedItem(item, decode)
+  const map = decodeCborMap(unwrapped)
   if (!map) return undefined
 
-  const namespace = readString(map.get('namespace'))
+  const namespace = readString(map.get('namespace')) ?? namespaceFromKey
   const identifier = readString(map.get('elementIdentifier'))
-  const value = map.get('elementValue')
+  if (!identifier) return undefined
 
-  if (!namespace || !identifier) return undefined
-  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
-    return undefined
-  }
+  const value = map.get('elementValue')
+  if (value === undefined) return undefined
 
   return { namespace, identifier, value }
 }
 
-function readIssuerSignedNamespaces(nameSpaces: unknown): ParsedMdocNamespaces {
+function readIssuerSignedNamespaces(
+  nameSpaces: unknown,
+  decode: (input: Uint8Array) => unknown,
+): ParsedMdocNamespaces {
   const namespaces: ParsedMdocNamespaces = {}
   const map = decodeCborMap(nameSpaces)
   if (!map) return namespaces
@@ -52,10 +98,9 @@ function readIssuerSignedNamespaces(nameSpaces: unknown): ParsedMdocNamespaces {
     const namespace = readString(namespaceKey)
     if (!namespace || !Array.isArray(items)) continue
 
-    const claims: Record<string, string | number | boolean> = {}
+    const claims: Record<string, MdocNamespaceValue> = {}
     for (const item of items) {
-      const tagged = item as { value?: unknown }
-      const decoded = readIssuerSignedItemValue(tagged?.value ?? item)
+      const decoded = readIssuerSignedItemValue(item, namespace, decode)
       if (!decoded) continue
       claims[decoded.identifier] = decoded.value
     }
@@ -68,21 +113,56 @@ function readIssuerSignedNamespaces(nameSpaces: unknown): ParsedMdocNamespaces {
   return namespaces
 }
 
-export function parseMdocDocument(mdocBytes: Uint8Array, decode: (input: Uint8Array) => unknown): ParsedMdocDocument {
+function readIssuerSignedNameSpaces(root: CborMap): unknown {
+  const documents = root.get('documents')
+  if (Array.isArray(documents) && documents[0]) {
+    const firstDocument = decodeCborMap(documents[0])
+    if (firstDocument) {
+      const nestedIssuerSigned = decodeCborMap(firstDocument.get('issuerSigned'))
+      return nestedIssuerSigned?.get('nameSpaces') ?? firstDocument.get('nameSpaces')
+    }
+  }
+
+  const issuerSigned = decodeCborMap(root.get('issuerSigned'))
+  if (issuerSigned) {
+    return issuerSigned.get('nameSpaces')
+  }
+
+  return root.get('nameSpaces')
+}
+
+function readDocType(root: CborMap): string | undefined {
+  const direct = readString(root.get('docType'))
+  if (direct) return direct
+
+  const documents = root.get('documents')
+  if (Array.isArray(documents) && documents[0]) {
+    const firstDocument = decodeCborMap(documents[0])
+    const nested = readString(firstDocument?.get('docType'))
+    if (nested) return nested
+  }
+
+  return undefined
+}
+
+function inferDocType(docType: string | undefined, namespaces: ParsedMdocNamespaces): string {
+  if (docType) return docType
+  if (namespaces['org.iso.18013.5.1']) return 'org.iso.18013.5.1.mDL'
+  throw new Error('MdocParseFailed: docType is missing')
+}
+
+export function parseMdocDocument(
+  mdocBytes: Uint8Array,
+  decode: (input: Uint8Array) => unknown,
+): ParsedMdocDocument {
   const decoded = decode(mdocBytes)
   const root = decodeCborMap(decoded)
   if (!root) {
     throw new Error('MdocParseFailed: root document is not a CBOR map')
   }
 
-  const docType = readString(root.get('docType'))
-  if (!docType) {
-    throw new Error('MdocParseFailed: docType is missing')
-  }
-
-  const issuerSigned = decodeCborMap(root.get('issuerSigned'))
-  const nameSpaces = issuerSigned?.get('nameSpaces')
-  const namespaces = readIssuerSignedNamespaces(nameSpaces)
+  const namespaces = readIssuerSignedNamespaces(readIssuerSignedNameSpaces(root), decode)
+  const docType = inferDocType(readDocType(root), namespaces)
 
   return { docType, namespaces }
 }

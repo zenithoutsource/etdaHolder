@@ -1,8 +1,8 @@
 # Getting Started (30 minutes)
 
-First-run guide for a new developer on **Windows + XAMPP + physical Android**. Goal: register, set a PIN, and reach **Wallet home** (empty credentials are fine).
+First-run guide for a new developer on **Windows + XAMPP + physical Android**. Goal: register, set a PIN, unlock the app, and reach **Wallet home** (empty credentials are fine).
 
-OID4VCI issuance, OID4VP presentation, NFC, and VPN proxies are **not** required for this path.
+OID4VCI issuance, OID4VP presentation, NFC proximity, and production Verifier trust configuration are **advanced paths** documented separately — not required for this 30-minute setup.
 
 ## Prerequisites
 
@@ -96,11 +96,11 @@ If the app cannot reach the backend, re-run `yarn setup` and confirm `EXPO_PUBLI
 
 ## Advanced configuration (not needed for first run)
 
-- **Optional mobile overrides:** copy `.env.development.local.example` → `.env.development.local`
+- **Optional mobile overrides:** copy `.env.development.local.example` → `.env.development.local` (issuer/verifier URLs, OID4VP trust, SSL pins, broker base URL)
 - **Optional server overrides:** copy `server/.env.development.local.example` → `server/.env.development.local`
-- **Office VPN / issuer / verifier proxies:** `docs/ANDROID_NETWORK_TESTING.md`
-- **Full backend docs:** `server/README.md`
-- **Architecture:** `docs/ARCHITECTURE.md`
+- **Full backend docs:** [server/README.md](../server/README.md) (Wallet Swagger at `/wallet-api/docs`, development APIs at `/wallet-api/dev/docs`)
+- **Architecture & channels:** [ARCHITECTURE.md](./ARCHITECTURE.md)
+- **Production OID4VP verifier trust:** checklist below and `docs/superpowers/specs/2026-07-09-oid4vp-production-did-web-verifier-design.md`
 
 ## Production Verifier OID4VP checklist
 
@@ -111,6 +111,29 @@ Use this before a release build that must present to a customer Verifier over OI
 3. Scan a signed JAR Authorization Request QR from the production Verifier; confirm trust resolution and `direct_post` submission succeed on a physical device.
 
 E2E validation still requires a live customer Verifier host — env configuration alone is not sufficient.
+
+## VP adapter re-E2E (dev build)
+
+Use this after the 2026-08-07 P1 blocker fixes (`docs/TASKS.md` session entry) before treating
+`EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` as validated on Hermes. Jest runs on Node and does not
+catch Hermes-only routing issues.
+
+1. Copy `.env.development.local.example` → `.env.development.local` if needed.
+2. Set `EXPO_PUBLIC_OID4VC_VP_ADAPTER=true` (build-time — requires rebuild to toggle).
+3. Keep `EXPO_PUBLIC_VERIFIER_API_BASE_URL` for dev `redirect_uri` Scan golden path in `__DEV__`.
+4. Build and install a development client on target hardware (Samsung Galaxy A26):
+
+   ```powershell
+   npx expo prebuild --clean   # only if native deps changed
+   yarn start --reset-cache
+   ```
+
+   Or use an EAS development profile with the flag baked into env.
+
+5. Run checklist items 1–7 in `docs/TASKS.md` (Session 2026-08-07 VP adapter P1 table); record pass/fail there.
+6. Rebuild with `EXPO_PUBLIC_OID4VC_VP_ADAPTER=false` and repeat Scan + callback (item 4).
+
+Adapter remains **default false** in `.env.example` until staging rollout decision after re-E2E passes.
 
 ## Verification commands
 

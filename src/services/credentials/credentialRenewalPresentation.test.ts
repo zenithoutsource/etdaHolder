@@ -106,6 +106,9 @@ describe('shouldShowCredentialRenewalRibbon', () => {
   'old-revoked',
   'cleanup-pending',
   'document-expired',
+  'hardware-reissue-required',
+  'issuer-suspended',
+  'revoked',
 ] as const)('shows inactive ribbon for %s', (kind) => {
     expect(
       shouldShowCredentialRenewalRibbon({
@@ -115,25 +118,6 @@ describe('shouldShowCredentialRenewalRibbon', () => {
         panelMessage: 'message',
       }),
     ).toBe(true)
-  })
-
-  test('does not show ribbon for issuer-suspended or lifecycle inactive states', () => {
-    expect(
-      shouldShowCredentialRenewalRibbon({
-        kind: 'issuer-suspended',
-        badgeLabel: 'ถูกระงับ',
-        badgeClassName: 'bg-danger',
-        panelMessage: 'message',
-      }),
-    ).toBe(false)
-    expect(
-      shouldShowCredentialRenewalRibbon({
-        kind: 'revoked',
-        badgeLabel: 'ถูกระงับ',
-        badgeClassName: 'bg-danger',
-        panelMessage: 'message',
-      }),
-    ).toBe(false)
   })
 })
 
@@ -191,6 +175,31 @@ describe('shouldHideCredentialActionMenu', () => {
       shouldHideCredentialActionMenu(undefined, {
         inactiveState: { kind: 'active' },
         renewalState: 'renewed-active',
+      }),
+    ).toBe(true)
+  })
+
+  test('hides the action menu for issuer-suspended and revoked credentials', () => {
+    mockStorage()
+
+    expect(
+      shouldHideCredentialActionMenu(undefined, {
+        inactiveState: {
+          kind: 'issuer-suspended',
+          badgeLabel: 'ถูกระงับ',
+          badgeClassName: 'bg-danger',
+          panelMessage: 'message',
+        },
+      }),
+    ).toBe(true)
+    expect(
+      shouldHideCredentialActionMenu(undefined, {
+        inactiveState: {
+          kind: 'revoked',
+          badgeLabel: 'ถูกระงับ',
+          badgeClassName: 'bg-danger',
+          panelMessage: 'message',
+        },
       }),
     ).toBe(true)
   })

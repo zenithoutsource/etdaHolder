@@ -1,14 +1,40 @@
+import { WALLET_HOME_COPY } from '../credentials/walletHomeCopy'
 import { PRESENTATION_REQUEST_ALREADY_USED_MESSAGE } from '../vp/presentationIntakeRejection'
 
 export function toFriendlyError(raw: string): string {
 
   if (raw.includes('ScanTimeout')) return 'Request timed out. Check your connection and try again.'
 
+  if (
+    raw.includes('WalletAttestationRequired')
+    || raw.includes('attest_jwt_client_auth')
+    || raw.includes('oauth-client-attestation+jwt')
+    || raw.includes('wallet-attestation+jwt')
+  ) {
+    return 'This issuer requires wallet attestation. Activate this wallet and try again.'
+  }
+
+  if (raw.includes('CredentialConfigurationNotSupported')) {
+    return 'This wallet could not match the offered document type.'
+  }
+
+  if (raw.includes('IssuerMetadataFetchFailed: HTTP') || /IssuerMetadataFetchFailed:[\s\S]*HTTP\s+\d{3}/.test(raw)) {
+    return 'The issuer configuration could not be loaded. Try again or contact the issuer.'
+  }
+
   if (raw.includes('IssuerMetadataFetchFailed')) return 'Could not reach the issuer. Check your connection and try again.'
 
   if (raw.includes('CredentialOfferParseFailed') || raw.includes('CredentialOfferInvalid') || raw.includes('CredentialOfferIssuerMissing')) return 'Invalid credential offer. Try scanning again.'
 
+  if (raw.includes('invalid_grant')) {
+    return 'This issuance link has already been used or has expired, or the transaction code is incorrect. Request a new document from the issuer (do not reuse an old offer link).'
+  }
+
   if (raw.includes('CredentialTokenExchangeFailed')) return 'Authentication with the issuer failed. The transaction code may be incorrect or may belong to another request.'
+
+  if (raw.includes('invalid_token')) {
+    return 'This issuance link or access token has expired. Request the document again from the issuer (do not reuse an old offer link).'
+  }
 
   if (raw.includes('CredentialHolderBindingMissing')) return formatHolderBindingMissingFriendlyError('issuance')
 
@@ -24,6 +50,29 @@ export function toFriendlyError(raw: string): string {
 
     return formatHolderBindingMismatchFriendlyError(raw, 'issuance')
 
+  }
+
+  if (raw.includes('Reissue your national ID')) {
+    return WALLET_HOME_COPY.hardwarePidReissueRequiredMessage
+  }
+
+  if (raw.includes('Legacy key renewal presentation is unsupported')) {
+    return WALLET_HOME_COPY.legacyKeyRenewalUnsupportedMessage
+  }
+
+  if (
+    raw.includes('LegacyHolderSigningUnsupported') ||
+    raw.includes('ProximityHardwareDeviceAuthUnavailable')
+  ) {
+    return WALLET_HOME_COPY.hardwareReissueRequiredMessage
+  }
+
+  if (raw.includes('CredentialSignatureAlgUnsupported')) {
+    return 'This credential uses a signing algorithm this wallet does not accept. Request a new document from the issuer.'
+  }
+
+  if (raw.includes('CredentialIssuerSignatureInvalid')) {
+    return 'This credential could not be verified. Request a new document from the issuer.'
   }
 
   if (raw.includes('CredentialResponseUnsupported')) return 'The issuer response did not include a compact credential.'
@@ -80,7 +129,13 @@ export function toFriendlyError(raw: string): string {
 
   if (raw.includes('PresentationCredentialMissing:issuer-pid')) {
 
-    return 'Store Thai National ID (ThaID) before presenting to the Issuer.'
+    return 'Store Thai National ID (PID) before presenting to the Issuer.'
+
+  }
+
+  if (raw.includes('PresentationPidRequired')) {
+
+    return 'Store Thai National ID (PID) before presenting other documents.'
 
   }
 
@@ -98,6 +153,14 @@ export function toFriendlyError(raw: string): string {
 
   }
 
+  if (raw.includes('WalletHardwareUserAuthenticationRequired') || raw.toLowerCase().includes('user not authenticated')) {
+    return 'Biometric authentication is required to sign. Confirm with fingerprint or device PIN and try again.'
+  }
+
+  if (raw.includes('WalletHardwareEcdsaActivityUnavailable')) {
+    return 'The Wallet screen was not ready for biometric authentication. Return to the home screen and scan again.'
+  }
+
   if (raw.includes('PresentationBiometricUnavailable')) return 'Biometric authentication is not available on this device. Enroll biometrics in device settings and try again.'
 
   if (raw.includes('WalletKeySigningCancelled')) return 'Biometric authentication was cancelled. Try again when you are ready to continue.'
@@ -107,23 +170,11 @@ export function toFriendlyError(raw: string): string {
   if (raw.includes('PresentationBiometricFailed')) return 'Biometric authentication failed. Please try again.'
 
   if (raw.includes('PresentationSubmissionFailed:issuer')) {
-
-    const detail = raw.replace(/^PresentationSubmissionFailed:issuer:\s*/, '')
-
-    return detail
-
-      ? `The Issuer rejected the PID presentation. ${detail}`
-
-      : 'The Issuer rejected the PID presentation. Try again or contact the Issuer.'
-
+    return 'The Issuer rejected the presentation response. Try again or contact the Issuer.'
   }
 
   if (raw.includes('PresentationSubmissionFailed')) {
-
-    const detail = raw.replace(/^PresentationSubmissionFailed:\s*/, '')
-
-    return detail ? `The Verifier rejected the presentation response. ${detail}` : 'The Verifier rejected the presentation response.'
-
+    return 'The Verifier rejected the presentation response. Try again or contact the Verifier.'
   }
 
   if (raw.includes('PresentationRequestInvalid')) return 'Invalid presentation request. Try scanning again.'
