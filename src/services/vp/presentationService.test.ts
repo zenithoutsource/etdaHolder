@@ -1211,6 +1211,66 @@ describe('presentationService', () => {
     ).rejects.toThrow('VerifierUntrusted')
   })
 
+  test('resolves an unlisted HTTPS Verifier when the interop flag is on', async () => {
+    const originalFlag = process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER
+    process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER = 'true'
+    const params = new URLSearchParams({
+      client_id: 'redirect_uri:https://unlisted.example/oid4vp/direct-post',
+      response_uri: 'https://unlisted.example/oid4vp/direct-post',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      state: 'state-123',
+      presentation_definition: JSON.stringify(presentationDefinition),
+    })
+
+    try {
+      const request = await resolvePresentationRequest(
+        `openid4vp://authorize?${params.toString()}`,
+        [thaiIdRecord],
+        {
+          presentationFlowOrigin: 'scan',
+          trustedVerifiers: [],
+        },
+      )
+      expect(request.verifier.name).toBe('unlisted.example')
+      expect(request.verifier.allowedOrigins).toEqual(['https://unlisted.example'])
+    } finally {
+      if (originalFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER
+      } else {
+        process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER = originalFlag
+      }
+    }
+  })
+
+  test('rejects an unlisted HTTP Verifier even when the interop flag is on', async () => {
+    const originalFlag = process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER
+    process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER = 'true'
+    const params = new URLSearchParams({
+      client_id: 'redirect_uri:http://evil.example/callback',
+      response_uri: 'http://evil.example/callback',
+      response_mode: 'direct_post',
+      nonce: 'nonce-123',
+      state: 'state-123',
+      presentation_definition: JSON.stringify(presentationDefinition),
+    })
+
+    try {
+      await expect(
+        resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [thaiIdRecord], {
+          presentationFlowOrigin: 'scan',
+          trustedVerifiers: [],
+        }),
+      ).rejects.toThrow('VerifierUntrusted')
+    } finally {
+      if (originalFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER
+      } else {
+        process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER = originalFlag
+      }
+    }
+  })
+
   test('rejects unsupported requested claim sets', async () => {
     await expect(
       resolvePresentationRequest(

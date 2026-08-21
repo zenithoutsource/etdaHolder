@@ -7,6 +7,7 @@ import {
   requireNativeProximityModule,
   subscribeToProximityEvents,
   type ProximityAvailability,
+  type ProximityNativeEvents,
 } from './nativeProximityModule'
 
 export type ProximityPresentationErrorCode =
@@ -32,7 +33,7 @@ export class ProximityPresentationError extends Error {
 export type ProximityPresentationCallbacks = {
   onDeviceEngaged?: () => void
   onRequestReceived?: (requestedFields: string[]) => void
-  onPresentationComplete?: (sharedFields: string[]) => void
+  onPresentationComplete?: (event: ProximityNativeEvents['onPresentationComplete']) => void
   onError?: (error: ProximityPresentationError) => void
 }
 
@@ -123,8 +124,11 @@ export async function startProximityPresentation(
       callbacks.onRequestReceived?.(event.requestedFields)
     },
     onPresentationComplete: (event) => {
-      logWalletStep('proximity-engagement', 'presentation complete', { fieldCount: event.sharedFields.length })
-      callbacks.onPresentationComplete?.(event.sharedFields)
+      logWalletStep('proximity-engagement', 'presentation complete', {
+        fieldCount: event.sharedFields.length,
+        omittedCount: event.omittedFields?.length ?? 0,
+      })
+      callbacks.onPresentationComplete?.(event)
       activeUnsubscribe?.()
       activeUnsubscribe = null
     },

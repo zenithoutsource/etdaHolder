@@ -1,5 +1,7 @@
 import {
   isIssuerPortalCredentialType,
+  resolveIssuerPortalCredentialType,
+  resolveIssuerPortalCredentialTypeFromRecord,
   resolveIssuerPortalUrl,
 } from './issuerPortalUrls'
 
@@ -25,8 +27,42 @@ describe('issuerPortalUrls', () => {
 
   test('narrows portal credential types', () => {
     expect(isIssuerPortalCredentialType('ThaiNationalID')).toBe(true)
+    expect(isIssuerPortalCredentialType('DLTDrivingLicence')).toBe(true)
     expect(isIssuerPortalCredentialType('ChulalongkornUniversityTranscript')).toBe(true)
     expect(isIssuerPortalCredentialType('UnknownType')).toBe(false)
     expect(isIssuerPortalCredentialType(undefined)).toBe(false)
+  })
+
+  test('maps stored wire ids and vct URLs to portal credential types', () => {
+    expect(
+      resolveIssuerPortalCredentialType(
+        'https://issuer.zenithcomp.co.th:455/credentials/DrivingLicense',
+      ),
+    ).toBe('DLTDrivingLicence')
+    expect(resolveIssuerPortalCredentialType('TranscriptCredential')).toBe(
+      'ChulalongkornUniversityTranscript',
+    )
+    expect(resolveIssuerPortalCredentialType('Iso18013DriversLicenseCredential_dc+sd-jwt')).toBe(
+      'DLTDrivingLicence',
+    )
+    expect(resolveIssuerPortalCredentialType('MedicalCertificate')).toBeUndefined()
+    expect(resolveIssuerPortalCredentialType('UnknownType')).toBeUndefined()
+  })
+
+  test('maps a stored first-party record whose type is a wire id', () => {
+    expect(
+      resolveIssuerPortalCredentialTypeFromRecord({
+        type: 'Iso18013DriversLicenseCredential_dc+sd-jwt',
+        claims: { vct: 'https://issuer.zenithcomp.co.th:455/credentials/DrivingLicense' },
+        issuerUrl: 'https://issuer.zenithcomp.co.th:455/',
+      }),
+    ).toBe('DLTDrivingLicence')
+    expect(
+      resolveIssuerPortalCredentialTypeFromRecord({
+        type: 'TranscriptCredential',
+        claims: { vct: 'https://issuer.zenithcomp.co.th:455/credentials/TranscriptCredential' },
+        issuerUrl: 'https://issuer.zenithcomp.co.th:455/',
+      }),
+    ).toBe('ChulalongkornUniversityTranscript')
   })
 })

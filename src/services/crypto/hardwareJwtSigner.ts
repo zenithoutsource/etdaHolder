@@ -68,16 +68,17 @@ export async function signEs256Jwt(
 export type HardwareSignProofInput = {
   nonce: string
   audience: string
-  keyBinding?: 'did-kid' | 'jwk'
+  keyBinding?: 'did-kid' | 'jwk' | 'jwk-kid'
   publicJwk: EcP256Jwk
   holderDid: string
   sign: (message: Uint8Array) => Promise<Uint8Array>
 }
 
 export async function signHardwareProofJwt(input: HardwareSignProofInput): Promise<string> {
-  // Default jwk: this Issuer requires a P-256 device key in the PoP header AND kid.
-  // Do not attach non-IANA `cose_key` — OID4VCI proof headers are kid | jwk | x5c,
-  // and extra JOSE params previously produced issuer dictionary misses.
+  // OID4VCI proof JWT allows exactly one of kid | jwk | x5c. Procivis maps
+  // both kid and jwk to invalid_or_missing_proof, so default mdoc PoP is jwk-only.
+  // Some issuers (zenithcomp mDL) still require a kid header while binding the
+  // ISO device key from jwk — use jwk-kid only for that path.
   const keyBinding = input.keyBinding ?? 'jwk'
   const publicJwk = {
     kty: input.publicJwk.kty,
@@ -88,17 +89,17 @@ export async function signHardwareProofJwt(input: HardwareSignProofInput): Promi
   const kid = `${input.holderDid}#${input.holderDid.slice('did:key:'.length)}`
 
   const header =
-    keyBinding === 'jwk'
+    keyBinding === 'did-kid'
       ? {
           alg: 'ES256' as const,
           typ: 'openid4vci-proof+jwt' as const,
-          jwk: publicJwk,
           kid,
         }
       : {
           alg: 'ES256' as const,
           typ: 'openid4vci-proof+jwt' as const,
-          kid,
+          jwk: publicJwk,
+          ...(keyBinding === 'jwk-kid' ? { kid } : {}),
         }
 
   const payload = {

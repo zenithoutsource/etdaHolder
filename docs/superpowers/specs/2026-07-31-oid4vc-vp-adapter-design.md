@@ -25,7 +25,7 @@ This is **Phase 1 of a 3-phase initiative** to align with the OWF stack and even
 - Issuer OID4VP (renewal silent presentation, P2 PID auth via `EXPO_PUBLIC_ISSUER_OID4VP_*`).
 - Dual-format VP (`dc+sd-jwt` + `mso_mdoc` in one `vp_token`).
 - Presentation Exchange (`presentation_definition`) flows — **legacy parse/submit only**; adapter is not invoked for PEX until Phase 1.5.
-- `direct_post.jwt`, JARM, `dc_api` response modes.
+- `dc_api` response modes (`direct_post.jwt` implemented 2026-08-21 — see `docs/superpowers/specs/2026-08-21-oid4vp-direct-post-jwt-design.md`).
 - Phase 2 VCI migration (`exchangeService.ts` → `@openid4vc/openid4vci`).
 - Removing legacy VCI client packages.
 - UI changes beyond existing Scan error surfacing.

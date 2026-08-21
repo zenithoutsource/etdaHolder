@@ -284,7 +284,7 @@ object MultipazPresentmentSession {
       documentTypeRepository = documentTypeRepository,
       showConsentPromptFn = { requester, trustedRequesterIdentity, consentData, preselected, onFocus ->
         enforceConsentCeiling(
-          approvedFields = state.approvedMdocFields,
+          state = state,
           requester = requester,
           trustedRequesterIdentity = trustedRequesterIdentity,
           consentData = consentData,
@@ -376,9 +376,13 @@ object MultipazPresentmentSession {
             timeoutSubsequentRequests = null,
             onSendingResponse = {
               deviceResponseSent = true
-              sharedFields.set(state.approvedMdocFields)
+              val outcome = CompanionSession.readDisclosureOutcome()
+              sharedFields.set(outcome?.sharedFields ?: state.approvedMdocFields)
               Log.i(TAG, "[multipaz-session] DeviceResponse sending, notifying JS complete")
-              StoredMdocPresentationEngine.notifyPresentationComplete(sharedFields.get())
+              StoredMdocPresentationEngine.notifyPresentationComplete(
+                sharedFields.get(),
+                outcome?.omittedFields.orEmpty(),
+              )
             },
           )
         } catch (error: Throwable) {
@@ -447,7 +451,7 @@ object MultipazPresentmentSession {
   }
 
   private suspend fun enforceConsentCeiling(
-    approvedFields: List<String>,
+    state: ProximityArmState,
     requester: Requester,
     trustedRequesterIdentity: TrustedRequesterIdentity?,
     consentData: ConsentData,
@@ -465,7 +469,7 @@ object MultipazPresentmentSession {
     val requestedKeys = ApprovedMdocFieldCeiling.requestedFieldKeys(selection)
     ProximityEventDispatcher.sendRequestReceived(requestedKeys)
 
-    val extraCount = ApprovedMdocFieldCeiling.extraFieldCount(approvedFields, selection)
+    val extraCount = ApprovedMdocFieldCeiling.extraFieldCount(state.profileCeiling, selection)
     if (extraCount > 0) {
       Log.w(TAG, "[proximity-policy] DeviceRequest exceeds consent ceiling extraFields=$extraCount")
       throw MdocProximityException(
@@ -474,6 +478,12 @@ object MultipazPresentmentSession {
       )
     }
 
-    return selection
+    val (disclosed, omitted) = ApprovedMdocFieldCeiling.disclosedAndOmitted(
+      requestedKeys,
+      state.approvedMdocFields,
+      state.profileCeiling,
+    )
+    CompanionSession.storeDisclosureOutcome(disclosed, omitted)
+    return ApprovedMdocFieldCeiling.filterToApproved(selection, state.approvedMdocFields)
   }
 }

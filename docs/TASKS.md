@@ -1,5 +1,175 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-21 (OID4VP direct_post.jwt)
+
+- Wallet accepts `response_mode=direct_post.jwt`, selects EC P-256 ECDH-ES key from
+  `client_metadata.jwks`, encrypts `{ vp_token, state, presentation_submission? }`
+  as compact JWE, and POSTs `response=` to `response_uri` on all OID4VP submit paths.
+  Plaintext `direct_post` unchanged. Spec:
+  `docs/superpowers/specs/2026-08-21-oid4vp-direct-post-jwt-design.md`.
+
+### Session 2026-08-21 (Host must not fill declined expiry from privileges)
+
+- ACR1311 extract no longer copies nested `issue_date` / `expiry_date` from
+  `driving_privileges` onto the top-level วันที่ออกใบอนุญาต / วันหมดอายุ rows.
+  Declining only วันหมดอายุ while still sending ประเภทใบอนุญาต was showing
+  `2033-01-01` as received.
+- Verification: host `MdocResponseClaimsTest` /
+  `HostClaimDisplayTest`. Restart the ACR1311 host and hard-refresh the web
+  page. Physical: turn only วันหมดอายุ off; that row must be
+  ไม่ได้ส่ง — ผู้ถือบัตรไม่ยินยอมเปิดเผย.
+
+### Session 2026-08-21 (First-party issuer host gate)
+
+- First-party chrome is only for `issuer.zenithcomp.co.th` (hostname from
+  `EXPO_PUBLIC_ISSUER_CREDENTIAL_ISSUER`). A tonyhere Driving License vct
+  last-segment no longer occupies the Home catalog Driving License slot.
+- Offer preview passes issuer into configuration-id schema lookup so a
+  third-party DrivingLicense offer is not branded as DLT.
+- Verification: `yarn test src/config/firstPartyCredential.test.ts
+  src/services/credentials/unregisteredHomeDocuments.test.ts
+  src/config/cardSchemas.test.ts --no-coverage`.
+
+### Session 2026-08-21 (First-party Driving License / Transcript VCTs)
+
+- Expanded the exact allowlist with last-segment ids `DrivingLicense`,
+  `DrivingLicence`, `Iso18013DriversLicenseCredential`, and
+  `TranscriptCredential`, plus format-suffix stripping on config ids.
+- First-party issuer URL VCTs under `.../credentials/DrivingLicense` and
+  `.../credentials/TranscriptCredential` map back to the Home catalog slots.
+  tonyhere and `TestMdocDrivingLicence` stay unregistered. No re-claim needed.
+- Verification: `yarn test src/config/firstPartyCredential.test.ts
+  src/services/credentials/unregisteredHomeDocuments.test.ts
+  src/config/cardSchemas.test.ts --no-coverage`.
+
+### Session 2026-08-21 (Unregistered issuer claim display)
+
+- Spec: `docs/superpowers/specs/2026-08-21-unregistered-issuer-claim-display-design.md`.
+- First-party chrome uses an exact allowlist (`firstPartyCredential.ts`). Unknown
+  `vct` / config ids are no longer folded into DLT / Thai ID / transcript via
+  `licence` / `mdl` / `thai` substrings.
+- Claim time persists `credentialDisplayName` and `claimDisplayLabels` from
+  OID4VCI metadata. Generic Digital Document lists received claims (humanized
+  keys when labels are missing).
+- Home keeps ID / Driving License / Transcript / Medical slots; unregistered
+  cards append as extra rows after those. Mis-folded stored `DLTDrivingLicence`
+  + tonyhere `vct` is generic at display time and does not get DLT NFC.
+- Verification: focused Jest on classifier, generic rows, Home extras, DCQL
+  type matching, NFC visibility; `yarn tsc --noEmit`.
+
+### Session 2026-08-21 (PID gate follows ID Card หมดอายุ)
+
+- `hasUsablePidCredential` no longer treats leftover `cleanup-pending` PID as
+  usable, and it excludes hardware `k_cred` TTL-elapsed PID even while storage
+  is still `renewed-active`. Other documents cannot present or portal-request
+  while Home still shows ID Card **หมดอายุ** and the old card is not deleted.
+- Hardware P3 **ขอเอกสาร** of another card stays allowed (`canSubmitCredentialRenewal`).
+- Verification: `yarn test src/services/credentials/credentialGuard.test.ts --no-coverage`.
+
+### Session 2026-08-21 (NFC Success has no claim list; host shows sent birth_date)
+
+- Wallet NFC Success (`proximity/PresentationResultPanel`) is verification-complete
+  only. It does not list sent or omitted claims. ACR1311 "Received mDL claims"
+  remains the place for received vs omitted.
+- Host extract now copies `birth_date` onto claims (and still derives
+  `age_over_18`). Omitted classification is requested identifiers missing from
+  that claims map, so a sent DOB is no longer shown as
+  ไม่ได้ส่ง — ผู้ถือบัตรไม่ยินยอมเปิดเผย. Declined `family_name` still is.
+- Verification: `yarn test src/components/proximity/PresentationResultPanel.test.tsx
+  --no-coverage`; host
+  `.\gradlew.bat test --tests org.wallet.mdocnfchost.MdocResponseClaimsTest
+  --tests org.wallet.mdocnfchost.HostClaimDisplayTest`. Restart host and
+  hard-refresh the web page. Physical A26 + ACR1311: all-on tap shows
+  วันเดือนปีเกิด value; turn นามสกุล off and that row stays omitted.
+
+### Session 2026-08-21 (mDL NFC holder selective disclosure)
+
+- Spec: `docs/superpowers/specs/2026-08-21-mdl-nfc-holder-selective-disclosure-design.md`.
+- Plan: `docs/superpowers/plans/2026-08-21-mdl-nfc-holder-selective-disclosure.md`.
+- Pre-tap consent toggles; arm sends profile ceiling + holder selection; tap omits
+  holder-declined fields (`DeviceRequest ∩` selection). Wallet Success is
+  verification-complete only (no claim list). ACR1311 page shows received vs
+  omitted + ผู้ถือบัตรไม่ยินยอมเปิดเผย.
+- Verification: focused Jest on consent, store, arm session, Success panel; host
+  `HostClaimDisplayTest` / `MdocResponseClaimsTest`. Physical A26 + ACR1311 still
+  required — one tap all-on, one tap with a field off. Native rebuild
+  (`npx expo run:android`) and host restart after Kotlin/JS.
+
+### Session 2026-08-21 (Freeze wallet actions while PIN lock is showing)
+
+- Idle-grace PIN lock (`EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`) was only a
+  route redirect to `/pin-lock`. `AppDialog` (RN Modal) and the in-flight
+  issuer-portal wait kept running, so "ไม่สามารถรับเอกสารได้" / ลองใหม่อีกครั้ง
+  could appear on top of PIN/biometrics and retry issuance while locked.
+- `isWalletPinLockRequired` / `readWalletPinLockRequired` is the shared lock
+  predicate. AppDialog hides and stashes while locked, then restores after
+  unlock unless a pending offer/VP should take over. Portal flow skips
+  `router.push` and no-ops a new request/retry while locked; empty-offer
+  dialogs are still shown so they can be deferred. Session expiry cancels the
+  portal wait without bumping capture generation. WalletKeyExpiredModal is
+  hidden while locked.
+- Verification: focused tests on `walletPinNavigation`, `AppDialog`,
+  `requestCredentialViaPortalFlow`, `portalReturnBridge`, `WalletKeyExpiryHost`.
+
+### Session 2026-08-20 (Open third-party OID4VCI/OID4VP for testing)
+
+- Added `EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER` (boolean string `'true'`, default **false**).
+  Local `.env` is on for this testing period. Customer production builds must leave it
+  unset/false.
+- When **true**: Scan/deeplink credential-offer claim skips the Thai National ID-first
+  gate for non-PID offers (Home portal request stays PID-gated). Unlisted HTTPS OID4VP
+  peers are trusted when `client_id` and `response_uri` share origin and already pass
+  the existing scheme matcher. Display name is the host, not “Trusted Verifier”.
+  Random `http:` hosts stay rejected outside existing allowlisted/dev LAN entries.
+- **Always on** (not a trust decision): same-origin issuer metadata walk (session path
+  → origin well-known); unknown `credential_configuration_ids` requested as advertised
+  when metadata has a single config (UI uses `FALLBACK_SCHEMA`); honest HTTP metadata
+  errors (not “connection”); token client attestation only when AS metadata advertises
+  `attest_jwt_client_auth` (do not flip `EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED`).
+  Cached Wallet Provider WUA that is `alg: none` / `typ: wallet-attestation+jwt` is **not**
+  sent as `attest_jwt_client_auth`. The wallet mints a spec-shaped
+  `oauth-client-attestation+jwt` (ES256, `k_attest`) plus PoP in one attest session.
+  A later AS `invalid_client` means that issuer pins a Wallet Provider JWKS and will not
+  accept a self-signed instance attestation.
+  Token `resource` is the **offer** `credential_issuer` (session path), not the origin
+  metadata identifier, so path-based issuers do not get `invalid_grant` from RFC 8707 mismatch.
+  OID4VCI 1.0 token bodies drop library `user_pin` dual-send (`tx_code` only) and set
+  `client_id=wallet-holder` for `attest_jwt_client_auth` so the grant is bound to the
+  attestation `sub`.
+  Path-based issuers (Procivis-style session `credential_issuer`) can publish origin
+  Credential Issuer metadata whose `authorization_servers` point at origin `/token`,
+  while the pre-authorized code is bound to the RFC 8414 insert AS
+  (`/.well-known/oauth-authorization-server/<offer-path>`). After origin CI metadata
+  resolves, the wallet overlays that session AS when it is same-origin.
+  Anonymous session token requests send only `grant_type`, `pre-authorized_code`, and
+  `tx_code` (no `client_id` / `resource` / `user_pin`). OID4VCI 1.0 says `client_id` is
+  only for client-auth methods that use it. On that token path, `invalid_grant` means
+  expired, already-used, or wrong `tx_code`; a wrong `tx_code` permanently fails the
+  offer. Generate a new QR and complete it on the first attempt. A correct `tx_code`
+  does not revive a consumed `pre-authorized_code`.
+  OID4VCI 1.0 Final token responses may omit `c_nonce` (nonce endpoint instead). When
+  the token has `access_token` but no `c_nonce`, the wallet POSTs the issuer
+  `nonce_endpoint`. Session overlays also replace origin-root `/credential` and
+  `/nonce` with the matching session-path endpoints so proof and credential requests
+  do not hit the host-level URLs from origin metadata.
+  Origin metadata can list a different `credential_configurations_supported` id
+  than the offer. Before `retrieveCredentials`, copy the offered/synthesized
+  configuration under the offered id so the library lookup of
+  `credential_configuration_id` succeeds. The HTTP body still sends that offered
+  id (OID4VCI 1.0), not the origin metadata key.
+  Hardware OID4VCI PoP JWTs with `keyBinding: jwk` send only `jwk` (not `kid`).
+  Procivis rejects both with `invalid_or_missing_proof`
+  ("Only kid or embedded jwk allowed in proof.jwt but not both").
+- **Still fail-closed:** ES256/EdDSA verify allowlist, holder `cnf` binding, backend-only
+  cert pinning (ADR 0005), no cross-host metadata/`presentation_definition_uri` fetch,
+  hardware/iOS cutover, unsupported `client_id` schemes, unsigned JAR/JWT signature checks.
+- **Tradeoff:** with the flag on, any HTTPS issuer can be claimed and any HTTPS verifier
+  can request disclosure of wallet contents. Turn the flag off for customer production
+  builds. P1 portal issuance stays PID-first; this is an interop Scan path, not a P1
+  canvas change.
+- Verification: focused tests on discovery, resolve, PID gate, VP matcher, token client
+  auth, and friendly errors; `yarn tsc --noEmit`.
+
 ### Session 2026-08-20 (EAS compileReleaseKotlin: mdoc overlay types)
 
 - EAS `:expo-mdoc-proximity:compileReleaseKotlin` failed because
@@ -1991,7 +2161,7 @@ Resolved decisions:
 
 [x] Request transport: cross-device QR Authorization Request
 [x] Query language: Presentation Exchange
-[x] Response mode: `direct_post`
+[x] Response mode: `direct_post` and `direct_post.jwt` (encrypted JWE `response=` via `client_metadata.jwks`)
 [x] Verifier trust model: local `did:web` allowlist with response-origin allowlist
 [x] First claim scope: ThaiNationalID birth date disclosure so the Verifier computes age over 20
 [x] Entry point: Scan tab
@@ -2006,7 +2176,7 @@ Implemented:
 [x] Verifier API `request_uri` JWT + DCQL IDCard compatibility
 [x] Verifier API Transcript DCQL `dc+sd-jwt` compatibility
 [x] Hardware-signed JWT VP token via `src/services/crypto`
-[x] Device-to-Verifier `direct_post` transport
+[x] Device-to-Verifier `direct_post` / `direct_post.jwt` transport
 [x] Scan tab Holder consent/result flow for OID4VP QR
 [x] Local encrypted history for successful presentations
 [x] Phase 1 `@openid4vc/openid4vp` adapter behind `EXPO_PUBLIC_OID4VC_VP_ADAPTER` (default false, build-time) — Scan + same-device DCQL `direct_post` parse/submit via `src/services/vp/oid4vc/`; legacy path retained for My QR, issuer renewal, PEX, and dual-format. Spec: `docs/superpowers/specs/2026-07-31-oid4vc-vp-adapter-design.md`; plan: `docs/superpowers/plans/2026-08-05-oid4vc-vp-adapter.md`. Manual E2E with flag-on dev build: **passed** (2026-08-06).

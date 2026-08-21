@@ -75,6 +75,28 @@ test('readOfferConfirmationPreview uses English fallback copy for unknown offer 
   expect(preview.informationItems).toEqual([{ key: 'credential', label: 'Credential to receive' }])
 })
 
+test('readOfferConfirmationPreview does not brand a third-party DrivingLicense offer as first-party', () => {
+  const preview = readOfferConfirmationPreview(
+    makeResolvedOffer({
+      issuer: 'https://demo.tonyhere.work/',
+      issuerDisplay: { name: 'tonyhere' },
+      credentialConfigurations: [
+        {
+          id: 'Iso18013DriversLicenseCredential_dc+sd-jwt',
+          requestId: 'Iso18013DriversLicenseCredential_dc+sd-jwt',
+          format: 'dc+sd-jwt',
+          rawConfiguration: ({
+            format: 'dc+sd-jwt',
+          } as unknown) as ResolvedCredentialOffer['credentialConfigurations'][number]['rawConfiguration'],
+        },
+      ],
+    }),
+  )
+
+  expect(preview.issuerName).toBe('tonyhere')
+  expect(preview.credentialName).toBe('Digital Document')
+})
+
 test('readOfferConfirmationPreview falls back to claim keys for placeholder display names', () => {
   const preview = readOfferConfirmationPreview(
     makeResolvedOffer({

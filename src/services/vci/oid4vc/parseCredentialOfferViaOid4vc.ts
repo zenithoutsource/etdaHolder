@@ -2,6 +2,12 @@ import type { CredentialOfferObject } from '@openid4vc/openid4vci'
 
 import { toErrorMessage } from '@/src/utils/jwtUtils'
 
+import { overlayOfferAuthorizationServer } from '../discoverAuthorizationServer'
+import {
+  issuerIdentifiersCompatible,
+  listIssuerIdentifierCandidates,
+  mapIssuerMetadataClientError,
+} from '../discoverIssuerMetadata'
 import { createOid4vcVciClient } from './createOid4vcVciClient'
 import type { Oid4vcVciAdapterContext } from './types'
 
@@ -37,12 +43,30 @@ export async function resolveIssuerMetadataViaOid4vc(
 ): Promise<{
   issuerMetadataResult: Oid4vcVciAdapterContext['issuerMetadataResult']
 }> {
-  const client = createOid4vcVciClient({ fetchImpl: options?.fetchImpl })
+  const fetchImpl = options?.fetchImpl ?? fetch
+  const client = createOid4vcVciClient({ fetchImpl })
+  let lastError: unknown
 
-  try {
-    const issuerMetadataResult = await client.resolveIssuerMetadata(issuer)
-    return { issuerMetadataResult }
-  } catch (error) {
-    throw new Error(`IssuerMetadataFetchFailed: ${toErrorMessage(error)}`)
+  for (const candidate of listIssuerIdentifierCandidates(issuer)) {
+    try {
+      const issuerMetadataResult = await client.resolveIssuerMetadata(candidate)
+      const metadataIssuer = issuerMetadataResult.credentialIssuer.credential_issuer
+      if (typeof metadataIssuer === 'string' && issuerIdentifiersCompatible(issuer, metadataIssuer)) {
+        return {
+          issuerMetadataResult: await overlayOfferAuthorizationServer(
+            issuer,
+            issuerMetadataResult,
+            fetchImpl,
+          ),
+        }
+      }
+      lastError = new Error(
+        'IssuerMetadataMismatch: credential_issuer does not match the credential offer issuer',
+      )
+    } catch (error) {
+      lastError = error
+    }
   }
+
+  throw mapIssuerMetadataClientError(lastError)
 }

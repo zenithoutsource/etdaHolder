@@ -2,17 +2,20 @@
  * Global host for key-expiry modal and pending-renewal dialogs/rotation.
  * Journey: P3 (tab shell).
  * Copy: WALLET_HOME_COPY.
- * Layout: WalletKeyExpiredModal; useWalletKeyExpired.
+ * Layout: WalletKeyExpiredModal (hidden while PIN lock is required); useWalletKeyExpired.
  * Map: docs/CODEMAPS/frontend.md#global-hosts
  */
 
 import { isHardwareP256SigningEnabled } from '@/src/config/hardwareSigningPolicy'
 import { router } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
+import { Platform } from 'react-native'
 
 import { useAppDialog, type AppDialogAction } from '@/src/components/AppDialog'
 import { WalletKeyExpiredModal } from '@/src/components/WalletKeyExpiredModal'
 import { useWalletKeyExpired } from '@/src/hooks/useWalletKeyExpired'
+import { hasWalletPin } from '@/src/services/auth/walletPin'
+import { isWalletPinLockRequired } from '@/src/services/auth/walletPinNavigation'
 import { readFirstPendingRenewalCredentialId } from '@/src/services/credentials/pendingRenewalNavigation'
 import { WALLET_HOME_COPY } from '@/src/services/credentials/walletHomeCopy'
 import { logWalletStep } from '@/src/services/debug/walletLogger'
@@ -23,6 +26,7 @@ import {
 } from '@/src/services/crypto/walletKeyExpiryLane'
 import { performWalletKeyRotationWithDialog } from '@/src/services/crypto/walletKeyRotationFlow'
 import { readWalletKeyRotationRecord } from '@/src/services/crypto/walletKeyRotation'
+import { useAuthStore } from '@/src/store/authStore'
 
 export function readWalletKeyRotationFailureDialog(error: unknown): {
   title: string
@@ -56,12 +60,15 @@ export function shouldShowWalletKeyExpiredModal({
   lane,
   isRotatingWalletKey,
   usesWalletWideKeyRotation = true,
+  pinLockRequired = false,
 }: {
   lane: WalletKeyExpiryLane
   isRotatingWalletKey: boolean
   usesWalletWideKeyRotation?: boolean
+  pinLockRequired?: boolean
 }): boolean {
   if (!usesWalletWideKeyRotation) return false
+  if (pinLockRequired) return false
   return lane === 'create-key' && !isRotatingWalletKey
 }
 
@@ -113,6 +120,14 @@ export function WalletKeyExpiryHost() {
   const [isRotatingWalletKey, setIsRotatingWalletKey] = useState(false)
   const pendingRenewalsDialogShownRef = useRef(false)
   const walletWideRotation = usesWalletWideKeyRotation()
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const isPinVerified = useAuthStore((state) => state.isPinVerified)
+  const pinLockRequired = isWalletPinLockRequired({
+    platform: Platform.OS,
+    isAuthenticated,
+    isPinVerified,
+    hasWalletPin: Platform.OS !== 'web' && hasWalletPin(),
+  })
 
   const lane = readWalletKeyExpiryLane({
     keyExpired: isExpired,
@@ -122,6 +137,7 @@ export function WalletKeyExpiryHost() {
     lane,
     isRotatingWalletKey,
     usesWalletWideKeyRotation: walletWideRotation,
+    pinLockRequired,
   })
 
   useEffect(() => {

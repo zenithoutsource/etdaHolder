@@ -8,10 +8,16 @@ data class ProximityArmState(
   val sharingMode: String,
   val profileId: String,
   val approvedMdocFields: List<String>,
+  val profileCeiling: List<String> = approvedMdocFields,
   val companionSdJwt: String?,
   val armedUntilMs: Long,
   val responseDrainGraceMs: Long = 5_000L,
   val displayNameOverlay: Map<String, String> = emptyMap(),
+)
+
+data class ProximityDisclosureOutcome(
+  val sharedFields: List<String>,
+  val omittedFields: List<OmittedMdocField>,
 )
 
 object CompanionSession {
@@ -23,6 +29,7 @@ object CompanionSession {
   private val presentationApproved = AtomicReference(false)
   private val ndefMessage = AtomicReference<ByteArray?>(null)
   private val ndefSelectedFile = AtomicReference<Int?>(null)
+  private val disclosureOutcome = AtomicReference<ProximityDisclosureOutcome?>(null)
   var onCompanionSignRequested: ((ByteArray) -> Unit)? = null
 
   fun arm(state: ProximityArmState) {
@@ -32,6 +39,7 @@ object CompanionSession {
     ndefMessage.set(null)
     ndefSelectedFile.set(null)
     mdocExchangeComplete.set(false)
+    disclosureOutcome.set(null)
     presentationApproved.set(state.approvedMdocFields.isNotEmpty())
     Log.d(TAG, "[companion-arm] profile=${state.profileId} mode=${state.sharingMode}")
   }
@@ -43,6 +51,7 @@ object CompanionSession {
     ndefMessage.set(null)
     ndefSelectedFile.set(null)
     mdocExchangeComplete.set(false)
+    disclosureOutcome.set(null)
     presentationApproved.set(false)
     onCompanionSignRequested = null
     MultipazPresentmentSession.stop()
@@ -123,6 +132,12 @@ object CompanionSession {
     }
     presentationApproved.set(true)
   }
+
+  fun storeDisclosureOutcome(sharedFields: List<String>, omittedFields: List<OmittedMdocField>) {
+    disclosureOutcome.set(ProximityDisclosureOutcome(sharedFields, omittedFields))
+  }
+
+  fun readDisclosureOutcome(): ProximityDisclosureOutcome? = disclosureOutcome.get()
 
   fun storeCompanionResponse(bytes: ByteArray) {
     pendingCompanionResponse.set(bytes)

@@ -276,9 +276,13 @@ export async function parseAuthorizationRequestViaOid4vc(
     })
     const parsed = parseOpenid4vpAuthorizationRequest({ authorizationRequest: authorizationRequestInput })
 
+    const responseModeRaw = readString(parsed.params.response_mode)
+    const responseModeType =
+      responseModeRaw === 'direct_post.jwt' ? 'direct_post.jwt' : 'direct_post'
+
     const resolved = await resolveOpenid4vpAuthorizationRequest({
       authorizationRequestPayload: parsed.params as Record<string, unknown>,
-      responseMode: { type: 'direct_post' },
+      responseMode: { type: responseModeType },
       callbacks,
     })
 

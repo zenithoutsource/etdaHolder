@@ -104,6 +104,8 @@ describe('armProximityPresentation', () => {
     expect(mockArmProximitySession).toHaveBeenCalledWith(
       expect.objectContaining({
         credentialId: 'licence-1',
+        approvedMdocFields: ['org.iso.18013.5.1.given_name'],
+        profileCeiling: ['org.iso.18013.5.1.given_name'],
       }),
     )
     expect(mockArmProximitySession.mock.calls[0]?.[0]).not.toHaveProperty('displayNameOverlay')
@@ -142,6 +144,38 @@ describe('armProximityPresentation', () => {
           given_name: 'นางสาว พิชญา',
           family_name: 'รุ่งเรืองกิจ',
         },
+      }),
+    )
+  })
+
+  test('passes profileCeiling from the reader profile and selected approvedMdocFields', async () => {
+    mockPrepareMdocDeviceAuthForArm.mockResolvedValue(undefined)
+    mockReadStoredCredentialById.mockReturnValue({
+      id: 'licence-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'dl',
+      claims: { givenName: 'สมชาย', familyName: 'ใจดี' },
+      issuedAt: '2026-01-01T00:00:00.000Z',
+    })
+
+    await armProximityPresentation({
+      credentialId: 'licence-1',
+      approvedMdocFields: ['org.iso.18013.5.1.given_name'],
+      profileCeiling: [
+        'org.iso.18013.5.1.family_name',
+        'org.iso.18013.5.1.given_name',
+      ],
+      sharingMode: 'mdoc-only',
+      mdocPayloadBytes: 10,
+    })
+
+    expect(mockArmProximitySession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approvedMdocFields: ['org.iso.18013.5.1.given_name'],
+        profileCeiling: [
+          'org.iso.18013.5.1.family_name',
+          'org.iso.18013.5.1.given_name',
+        ],
       }),
     )
   })

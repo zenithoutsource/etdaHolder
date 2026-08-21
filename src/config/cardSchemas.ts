@@ -6,6 +6,14 @@
  */
 
 import { THEME } from './themeColors'
+import {
+  canonicalFirstPartyType,
+  isFirstPartyCredential,
+  isFirstPartyIssuerOrigin,
+  resolveFirstPartyType,
+  type FirstPartyRecordLike,
+} from './firstPartyCredential'
+
 export type DisplayField = {
   key: string;
   label: string;
@@ -598,42 +606,25 @@ export function getCardSchema(type: string): CardSchemaConfig {
   return SCHEMA_MAP.get(type) ?? FALLBACK_SCHEMA;
 }
 
+export function resolveCardSchema(record: FirstPartyRecordLike): CardSchemaConfig {
+  const firstPartyType = resolveFirstPartyType(record);
+  if (firstPartyType) return getCardSchema(firstPartyType);
+  return FALLBACK_SCHEMA;
+}
+
 export function getAllCardSchemas(): CardSchemaConfig[] {
   return SCHEMAS;
 }
 
 export function getCardSchemaForConfigurationId(
   configurationId?: string,
+  issuer?: string,
 ): CardSchemaConfig {
   if (!configurationId) return FALLBACK_SCHEMA;
-
-  const normalized = configurationId.toLowerCase();
-  if (normalized.includes("transcript"))
-    return getCardSchema("ChulalongkornUniversityTranscript");
-  if (
-    normalized.includes("medical") ||
-    normalized.includes("medicine") ||
-    normalized.includes("medcert")
-  ) {
-    return getCardSchema("MedicalCertificate");
-  }
-  if (
-    normalized.includes("driving") ||
-    normalized.includes("licence") ||
-    normalized.includes("license") ||
-    normalized.includes("mdl") ||
-    normalized.includes("1801351mdl")
-  ) {
-    return getCardSchema("DLTDrivingLicence");
-  }
-  if (
-    normalized.includes("thai") ||
-    normalized.includes("national") ||
-    normalized.includes("idcard") ||
-    normalized.includes("id_card")
-  ) {
-    return getCardSchema("ThaiNationalID");
-  }
-
+  if (issuer && !isFirstPartyIssuerOrigin(issuer)) return FALLBACK_SCHEMA;
+  const firstPartyType = canonicalFirstPartyType(configurationId);
+  if (firstPartyType) return getCardSchema(firstPartyType);
   return FALLBACK_SCHEMA;
 }
+
+export { isFirstPartyCredential, resolveFirstPartyType };

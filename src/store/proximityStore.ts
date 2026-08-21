@@ -27,7 +27,7 @@ import {
   denyProximityPresentation,
   ProximityPresentationError,
 } from '@/src/services/proximity/proximityPresentation'
-import { requireNativeProximityModule, subscribeToProximityEvents } from '@/src/services/proximity/nativeProximityModule'
+import { requireNativeProximityModule, subscribeToProximityEvents, type OmittedMdocField } from '@/src/services/proximity/nativeProximityModule'
 
 export type ProximityStatus =
   | 'idle'
@@ -45,6 +45,7 @@ type ProximityState = {
   sharingMode: ReaderSharingMode
   approvedMdocFields: string[] | null
   sharedFields: string[] | null
+  omittedFields: OmittedMdocField[] | null
   deviceEngagementUri: string | null
   error: string | null
 }
@@ -62,6 +63,7 @@ const initialState: ProximityState = {
   sharingMode: 'mdoc-only',
   approvedMdocFields: null,
   sharedFields: null,
+  omittedFields: null,
   deviceEngagementUri: null,
   error: null,
 }
@@ -97,12 +99,18 @@ function mapProximityDisclosureLabels(credentialType: string, fieldKeys: string[
   return fieldKeys.map((key) => resolvePresentationDisclosureLabel(credentialType, key))
 }
 
-function readProximityDisclosureLabels(credentialId: string, sharingMode: ReaderSharingMode): string[] {
+function readProximityProfileCeiling(credentialId: string, sharingMode: ReaderSharingMode): string[] {
   const record = readStoredCredentialById(credentialId)
   if (!record) return []
   const profile = getReaderProfileForDocumentType(record.type, sharingMode)
   if (!profile) return []
-  return mapProximityDisclosureLabels(record.type, listMdocFieldKeysFromProfile(profile))
+  return listMdocFieldKeysFromProfile(profile)
+}
+
+function readProximityDisclosureLabels(credentialId: string, sharingMode: ReaderSharingMode): string[] {
+  const record = readStoredCredentialById(credentialId)
+  if (!record) return []
+  return mapProximityDisclosureLabels(record.type, readProximityProfileCeiling(credentialId, sharingMode))
 }
 
 export const useProximityStore = create<ProximityState & ProximityActions>((set, get) => ({
@@ -123,6 +131,7 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
         sharingMode,
         approvedMdocFields: [],
         sharedFields: null,
+        omittedFields: null,
         deviceEngagementUri: null,
         error: 'No reader profile is configured for this document type.',
       })
@@ -134,6 +143,7 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
       sharingMode,
       approvedMdocFields,
       sharedFields: null,
+      omittedFields: null,
       deviceEngagementUri: null,
       error: null,
     })
@@ -176,7 +186,7 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
             set({ status: 'error', error: toUserFacingError(error) })
           }
         },
-        onPresentationComplete: (event: { sharedFields: string[] }) => {
+        onPresentationComplete: (event: { sharedFields: string[]; omittedFields?: OmittedMdocField[] }) => {
           const credentialId = get().selectedCredentialId
           const sharingMode = get().sharingMode
           if (credentialId) {
@@ -190,7 +200,11 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
               )
             }
           }
-          set({ status: 'complete', sharedFields: event.sharedFields })
+          set({
+            status: 'complete',
+            sharedFields: event.sharedFields,
+            omittedFields: event.omittedFields ?? [],
+          })
           activeUnsubscribe?.()
           activeUnsubscribe = null
           // Keep HCE armed so GET RESPONSE can finish while the phone stays on
@@ -222,6 +236,7 @@ export const useProximityStore = create<ProximityState & ProximityActions>((set,
       await armProximityPresentation({
         credentialId: selectedCredentialId,
         approvedMdocFields,
+        profileCeiling: readProximityProfileCeiling(selectedCredentialId, sharingMode),
         sharingMode,
         mdocPayloadBytes: 0,
       })

@@ -16,6 +16,7 @@ import type { CredentialInactiveState } from '@/src/services/credentials/credent
 import type { VerifiableCredentialRecord } from '@/src/services/vci/exchangeService'
 
 import { CredentialRenewalOverlay } from './CredentialRenewalOverlay'
+import { isFirstPartyDrivingLicence } from '../config/firstPartyCredential'
 import { THEME } from '../config/themeColors'
 
 const credentialImages: Record<string, ImageSourcePropType> = {
@@ -34,7 +35,7 @@ export function WalletCredentialSummaryCard({
 }) {
   const display = readCredentialSummaryDisplay(record)
   const profile = readCredentialHolderProfile(record)
-  const isDrivingLicence = record.type === 'DLTDrivingLicence'
+  const isDrivingLicence = isFirstPartyDrivingLicence(record)
   const identifierRow = isDrivingLicence
     ? display.rows.find((row) => row.key === 'licenceNumber')
     : display.rows.find((row) => row.key === 'nationalId')

@@ -59,7 +59,6 @@ export default function PresentScreen() {
     (credential ? !isCredentialPresentable(credential) : false)
   const status = useProximityStore((state) => state.status)
   const sharingMode = useProximityStore((state) => state.sharingMode)
-  const approvedMdocFields = useProximityStore((state) => state.approvedMdocFields)
   const error = useProximityStore((state) => state.error)
   const openPresentation = useProximityStore((state) => state.openPresentation)
   const approvePresentation = useProximityStore((state) => state.approvePresentation)
@@ -121,10 +120,10 @@ export default function PresentScreen() {
 
   const exitFlow = useAndroidBackNavigation(handleDone)
 
-  const handleAccept = useCallback(() => {
-    if (!approvedMdocFields || approvedMdocFields.length === 0) return
-    void approvePresentation(approvedMdocFields)
-  }, [approvePresentation, approvedMdocFields])
+  const handleAccept = useCallback((selectedKeys: string[]) => {
+    if (selectedKeys.length === 0) return
+    void approvePresentation(selectedKeys)
+  }, [approvePresentation])
 
   const handleDecline = useCallback(() => {
     denyPresentation()

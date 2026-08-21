@@ -31,3 +31,12 @@ export function readWalletAttestChallengeUnsupportedTtlMs(): number {
 export function readWalletAttestFetchTimeoutMs(): number {
   return Number(process.env.EXPO_PUBLIC_WALLET_ATTEST_FETCH_TIMEOUT_MS) || 15_000
 }
+
+/**
+ * Lifetime of a minted OAuth Client Attestation JWT used for
+ * `attest_jwt_client_auth` when cached WP WUA is not that profile.
+ * Unit: ms. Default: 3600000 (1 hour).
+ */
+export function readOid4vcClientAttestationTtlMs(): number {
+  return Number(process.env.EXPO_PUBLIC_OID4VC_CLIENT_ATTESTATION_TTL_MS) || 3_600_000
+}

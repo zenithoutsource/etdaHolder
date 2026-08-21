@@ -1,7 +1,10 @@
-import { getCardSchema, type CardSchemaConfig, type DisplayField, collectDisplayFieldMatchKeys } from '../../config/cardSchemas'
+import { resolveCardSchema, type CardSchemaConfig, type DisplayField, collectDisplayFieldMatchKeys } from '../../config/cardSchemas'
+import { isFirstPartyCredential } from '../../config/firstPartyCredential'
 import { normalizeClaimKey, readMdocElementIdentifier } from '@/src/utils/claimKeyNormalization'
-import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { readCredentialClaimMap, type VerifiableCredentialRecord } from '../vci/exchangeService'
 import { hasAnyClaimValue, isHiddenClaimKey, readClaimText, stringifyClaim } from './claimFormatting'
+import { readGenericClaimRows } from './genericClaimDisplay'
+import { readCredentialIssuerName } from './credentialIssuer'
 
 const PID_CREDENTIAL_TYPE = 'ThaiNationalID'
 const LATIN_NAME_PATTERN = /[A-Za-z]/
@@ -42,6 +45,7 @@ export type CredentialDetailDisplay = CredentialSummaryDisplay & {
   extraRows: CredentialDisplayRow[]
   issuedAt: string
   expiresAt?: string
+  photoUri?: string
 }
 
 export type CredentialHolderProfile = {
@@ -56,23 +60,45 @@ export type PidMdocNameOverlay = {
 }
 
 export function readCredentialSummaryDisplay(record: VerifiableCredentialRecord): CredentialSummaryDisplay {
-  const schema = getCardSchema(record.type)
+  const schema = resolveCardSchema(record)
   const holderName = readHolderName(record)
+  const firstParty = isFirstPartyCredential(record)
+  const claimMap = firstParty ? record.claims : readCredentialClaimMap(record)
+  const generic = firstParty ? undefined : readGenericClaimRows(claimMap, record.claimDisplayLabels)
+  const title = firstParty
+    ? schema.title
+    : (record.credentialDisplayName?.trim() || schema.title)
+  const issuerName = firstParty ? schema.issuerName : readCredentialIssuerName(record)
 
   return {
-    title: schema.title,
+    title,
     documentTitle: schema.documentTitle,
-    issuerName: schema.issuerName,
+    issuerName,
     primaryColor: schema.primaryColor,
     imageKey: schema.imageKey,
-    primaryText: holderName || schema.title,
-    rows: readRows(record.claims, schema.summaryFields ?? schema.displayFields),
+    primaryText: holderName || title,
+    rows: firstParty
+      ? readRows(record.claims, schema.summaryFields ?? schema.displayFields)
+      : (generic?.rows.slice(0, 3) ?? []),
   }
 }
 
 export function readCredentialDetailDisplay(record: VerifiableCredentialRecord): CredentialDetailDisplay {
   const summary = readCredentialSummaryDisplay(record)
-  const schema = getCardSchema(record.type)
+  const schema = resolveCardSchema(record)
+
+  if (!isFirstPartyCredential(record)) {
+    const generic = readGenericClaimRows(readCredentialClaimMap(record), record.claimDisplayLabels)
+    return {
+      ...summary,
+      primaryRows: generic.rows,
+      extraRows: [],
+      issuedAt: record.issuedAt,
+      ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
+      ...(generic.photoUri ? { photoUri: generic.photoUri } : {}),
+    }
+  }
+
   const primaryRows = readRows(record.claims, schema.displayFields)
   const configuredKeys = new Set(schema.displayFields.flatMap((field) => [field.key, ...(field.aliases ?? [])]))
   const extraRows = Object.entries(record.claims)

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native'
 
+import { resolvePresentationDisclosureLabel } from '@/src/config/cardSchemas'
 import { getReaderProfileById } from '@/src/config/readerProfiles'
 
 import { PreTapConsentPanel } from './PreTapConsentPanel'
@@ -33,7 +34,7 @@ describe('PreTapConsentPanel', () => {
     expect(screen.queryByTestId('presentation-consent-verifier-logo')).toBeNull()
   })
 
-  test('Accept and Decline fire without a field list for waiting copy', () => {
+  test('Accept passes selected keys and is disabled when none remain on', () => {
     expect(profile).toBeDefined()
     if (!profile) return
 
@@ -42,8 +43,28 @@ describe('PreTapConsentPanel', () => {
     render(<PreTapConsentPanel profile={profile} onAccept={onAccept} onDecline={onDecline} />)
 
     fireEvent.press(screen.getByText('รับทราบและยินยอมส่งข้อมูล'))
-    fireEvent.press(screen.getByText('ไม่ยินยอม'))
     expect(onAccept).toHaveBeenCalledTimes(1)
+    const initialKeys = onAccept.mock.calls[0][0] as string[]
+    const profileKeys = profile.mdocFields.map((field) => `${field.namespace}.${field.identifier}`)
+    expect(initialKeys).toHaveLength(profileKeys.length)
+    expect(new Set(initialKeys)).toEqual(new Set(profileKeys))
+
+    fireEvent.press(screen.getByLabelText('วันหมดอายุ'))
+    onAccept.mockClear()
+    fireEvent.press(screen.getByText('รับทราบและยินยอมส่งข้อมูล'))
+    expect(onAccept.mock.calls[0][0]).not.toContain('org.iso.18013.5.1.expiry_date')
+    expect(onAccept.mock.calls[0][0]).toHaveLength(profile.mdocFields.length - 1)
+
+    for (const field of profile.mdocFields) {
+      if (field.identifier === 'expiry_date') continue
+      const label = resolvePresentationDisclosureLabel(profile.documentType, field.identifier)
+      fireEvent.press(screen.getByLabelText(label))
+    }
+    onAccept.mockClear()
+    fireEvent.press(screen.getByText('รับทราบและยินยอมส่งข้อมูล'))
+    expect(onAccept).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('ไม่ยินยอม'))
     expect(onDecline).toHaveBeenCalledTimes(1)
   })
 

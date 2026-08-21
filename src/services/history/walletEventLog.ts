@@ -1,5 +1,5 @@
 import { WALLET_HISTORY_RETENTION_DAYS } from '../../config/walletHistoryPolicy'
-import { getCardSchema } from '../../config/cardSchemas'
+import { resolveCardSchema } from '../../config/cardSchemas'
 import { readCredentialLifecycleStatus } from '../credentials/credentialLifecycle'
 import { readStoredCredentials } from '../credentials/storedCredentials'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
@@ -399,11 +399,11 @@ function backfillCredentialReceivedEvents(credentials: VerifiableCredentialRecor
   for (const record of credentials) {
     if (hasCredentialKindInLog(record.id, 'credential-received')) continue
 
-    const schema = getCardSchema(record.type)
+    const schema = resolveCardSchema(record)
     appendWalletHistoryEvent({
       kind: 'credential-received',
       credentialId: record.id,
-      documentType: schema.title,
+      documentType: record.credentialDisplayName?.trim() || schema.title,
       partyName: readCredentialIssuerName(record),
       channel: 'oid4vci',
       occurredAt: record.issuedAt,
@@ -424,11 +424,11 @@ function backfillLifecycleEvents(credentials: VerifiableCredentialRecord[]): voi
           : 'credential-used'
     if (hasCredentialKindInLog(record.id, kind)) continue
 
-    const schema = getCardSchema(record.type)
+    const schema = resolveCardSchema(record)
     appendWalletHistoryEvent({
       kind,
       credentialId: record.id,
-      documentType: schema.title,
+      documentType: record.credentialDisplayName?.trim() || schema.title,
       partyName: readCredentialIssuerName(record),
       channel: 'wallet',
       initiatedBy: 'holder',

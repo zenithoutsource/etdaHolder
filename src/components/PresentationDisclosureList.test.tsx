@@ -7,8 +7,9 @@ jest.mock('react-native-gesture-handler', () => {
 })
 
 jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => {
-  return function MockMaterialCommunityIcons() {
-    return null
+  const { Text } = require('react-native') as typeof import('react-native')
+  return function MockMaterialCommunityIcons({ name }: { name: string }) {
+    return <Text>{name}</Text>
   }
 })
 
@@ -43,6 +44,21 @@ describe('PresentationDisclosureList', () => {
 
     fireEvent.press(screen.getByText('รหัสนักศึกษา'))
     expect(onToggle).toHaveBeenCalledTimes(1)
+  })
+
+  test('read-only consent rows have no check-circle and no checkbox role', () => {
+    render(
+      <PresentationDisclosureList
+        variant="consent"
+        items={[
+          { key: 'national_id', label: 'เลขบัตรประชาชน', value: '123', selected: true, toggleable: false },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('เลขบัตรประชาชน')).toBeTruthy()
+    expect(screen.queryByText('check-circle')).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
   })
 
   test('review variant toggles selectable rows without changing row chrome', () => {

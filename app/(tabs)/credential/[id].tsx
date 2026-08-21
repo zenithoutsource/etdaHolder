@@ -59,6 +59,7 @@ import {
   isRenewalAwaitingHolderCleanup,
 } from "../../../src/services/credentials/renewalCleanupNotification";
 import { WALLET_HOME_COPY, readWalletHomeBadgeLabel } from "../../../src/services/credentials/walletHomeCopy";
+import { resolveIssuerPortalCredentialTypeFromRecord } from "../../../src/config/issuerPortalUrls";
 import { shouldOfferDocumentReissueCta, shouldShowWalletKeyExpiredPrompt } from "../../../src/services/credentials/documentReissueCtaGate";
 import { requestCredentialViaPortalFlow } from "../../../src/services/credentials/requestCredentialViaPortalFlow";
 import { WalletKeyExpiredActionPanel } from "../../../src/components/WalletKeyExpiredActionPanel";
@@ -760,7 +761,9 @@ export default function CredentialDetailScreen() {
                     label={WALLET_HOME_COPY.requestNewCredential}
                     onPress={() => {
                       void requestCredentialViaPortalFlow({
-                        credentialType: credential?.type,
+                        credentialType: credential
+                          ? resolveIssuerPortalCredentialTypeFromRecord(credential)
+                          : undefined,
                         router,
                         showDialog,
                       });

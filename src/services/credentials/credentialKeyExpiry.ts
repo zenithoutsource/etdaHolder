@@ -4,8 +4,9 @@ import { getEncryptedCredentialKeyRecord } from '../crypto/encryptedCredentialKe
 import { logWalletStep } from '../debug/walletLogger'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
-import { readCredentialHolderDid } from './credentialHolderBinding'
+import { isJwtLikeCredentialRaw, readCredentialHolderDid } from './credentialHolderBinding'
 import {
+  clearCredentialRenewal,
   readCredentialRenewal,
   upsertCredentialRenewal,
   type CredentialRenewalState,
@@ -42,10 +43,13 @@ function isStorageNotInitialized(error: unknown): boolean {
  * Does not rewrite renewal state. Calendar-expired documents stay on ขอเอกสารใหม่.
  */
 export function isStoredCredentialKeyTtlExpired(
-  credential: Pick<VerifiableCredentialRecord, 'id' | 'expiresAt' | 'claims' | 'type'>,
+  credential: Pick<VerifiableCredentialRecord, 'id' | 'expiresAt' | 'claims' | 'type'> & {
+    rawVc?: string
+  },
   now = new Date(),
 ): boolean {
   if (!isHardwareP256SigningEnabled()) return false
+  if (credential.rawVc !== undefined && !isJwtLikeCredentialRaw(credential.rawVc)) return false
   if (isCredentialDocumentExpired(credential, now)) return false
 
   try {
@@ -65,6 +69,18 @@ export function syncCredentialKeyTtlRenewals(now = new Date()): number {
   for (const credential of readStoredCredentials()) {
     const keyRecord = getEncryptedCredentialKeyRecord(credential.id)
     const renewal = readCredentialRenewal(credential.id)
+
+    if (!isJwtLikeCredentialRaw(credential.rawVc)) {
+      if (renewal?.state === 'renewal-required' || renewal?.state === 'renewal-processing') {
+        logWalletStep('renewal', 'k-cred-ttl-renewal-cleared-non-jwt', {
+          credentialId: credential.id,
+          credentialType: credential.type,
+        })
+        clearCredentialRenewal(credential.id)
+      }
+      continue
+    }
+
     if (
       !shouldMarkCredentialKeyRenewalRequired({
         hasHardwareKCred: Boolean(keyRecord),
@@ -107,6 +123,7 @@ export function readNearestCredentialKeyExpiryBoundaryMs(
   for (const credential of readStoredCredentials()) {
     const keyRecord = getEncryptedCredentialKeyRecord(credential.id)
     if (!keyRecord) continue
+    if (!isJwtLikeCredentialRaw(credential.rawVc)) continue
     if (isCredentialDocumentExpired(credential)) continue
     if (readCredentialRenewal(credential.id)) continue
 

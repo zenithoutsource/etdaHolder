@@ -169,7 +169,7 @@ Proximity credential presentation via ISO 18013-5. User taps phone to the Verifi
 
 ## Online Presentation
 
-Remote credential presentation via OID4VP 1.0. Implemented paths: Verifier QR and same-device deeplink (`walletapp://callback`), JAR-signed Authorization Requests, DCQL `credential_sets`, `did:web` verifier trust, holder selective disclosure, and My QR broker engagement. Responses use `direct_post`. SD-JWT credentials include a KB-JWT; mdoc credentials use proximity or dual-format VP assembly where configured.
+Remote credential presentation via OID4VP 1.0. Implemented paths: Verifier QR and same-device deeplink (`walletapp://callback`), JAR-signed Authorization Requests, DCQL `credential_sets`, `did:web` verifier trust, holder selective disclosure, and My QR broker engagement. Responses use `direct_post` or encrypted `direct_post.jwt` (JWE in form field `response`). SD-JWT credentials include a KB-JWT; mdoc credentials use proximity or dual-format VP assembly where configured.
 
 ## Generated SDK
 
@@ -178,3 +178,13 @@ TypeScript API client generated from the company's Swagger/OpenAPI spec via Orva
 ## Config-Driven UI
 
 Credential card rendering is controlled by `CardSchemaConfig` entries, not hardcoded screen components. Initial schemas cover PID, DLT Driving Licence, and Chulalongkorn University Transcript.
+
+## First-party credential type
+
+A Wallet-branded document type with a registered card schema: `ThaiNationalID`, `DLTDrivingLicence`, `ChulalongkornUniversityTranscript`, or `MedicalCertificate`. Identified by an exact allowlist of those types plus known portal configuration ids and the ISO mDL doctype `org.iso.18013.5.1.mDL`.
+_Avoid_: Folding any string that merely contains licence, license, mdl, or thai into these types.
+
+## Unregistered credential type
+
+Any claimed Verifiable Credential whose `vct`, doctype, or credential configuration id is not on the first-party allowlist. Stored and shown as its own extra Digital Document, not as a first-party card.
+_Avoid_: Third-party credential as a type name; mapping these onto DLTDrivingLicence, ThaiNationalID, or transcript chrome.

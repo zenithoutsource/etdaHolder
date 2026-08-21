@@ -64,6 +64,7 @@ describe('mdocWalletClaims', () => {
       }),
     ).toEqual({
       licenceClass: 'B',
+      driving_privileges: [{ vehicle_category_code: 'B' }],
     })
   })
 
@@ -79,6 +80,28 @@ describe('mdocWalletClaims', () => {
       }),
     ).toEqual({
       licenceClass: 'B',
+      driving_privileges: [
+        { vehicle_category_code: 'B' },
+        { vehicle_category_code: 'A' },
+      ],
+    })
+  })
+
+  test('maps document_number to licenceNumber and keeps leftover ISO keys', () => {
+    expect(
+      mapIso18013NamespaceClaims({
+        [ISO_NS]: {
+          document_number: '54002891',
+          sex: '1',
+          nationality: 'THA',
+          issuing_authority: 'Department of Land Transport',
+        },
+      }),
+    ).toEqual({
+      licenceNumber: '54002891',
+      sex: '1',
+      nationality: 'THA',
+      issuing_authority: 'Department of Land Transport',
     })
   })
 
@@ -104,6 +127,10 @@ describe('mdocWalletClaims', () => {
       issuanceDate: '2023-01-01',
       expiryDate: '2033-01-01',
       licenceClass: 'B',
+      driving_privileges: [
+        { vehicle_category_code: 'B' },
+        { vehicle_category_code: 'A' },
+      ],
     })
   })
 
@@ -130,6 +157,33 @@ describe('mdocWalletClaims', () => {
     expect(overlaid.claims.familyName).toBe('ใจดี')
     expect(overlaid.claims.licenceNumber).toBe('123456789')
     expect(overlaid.claims.licenceClass).toBe('A')
+    expect(overlaid.claims.driving_privileges).toEqual([{ vehicle_category_code: 'A' }])
+  })
+
+  test('keeps first-party SD-JWT driving privileges when leftover ISO copy is not an array', () => {
+    const bytes = encodeIssuerSignedDocument({
+      sex: '1',
+      nationality: 'THA',
+      driving_privileges: { vehicle_category_code: 'B' },
+    })
+    const record: VerifiableCredentialRecord = {
+      id: 'dl-zenith',
+      type: 'DLTDrivingLicence',
+      rawVc: 'header.payload.signature',
+      issuerUrl: 'https://issuer.zenithcomp.co.th:455/',
+      claims: {
+        vct: 'https://issuer.zenithcomp.co.th:455/credentials/DrivingLicense',
+        driving_privileges: [{ vehicle_category_code: 'B' }],
+        license_type: 'รถยนต์ส่วนบุคคล',
+      },
+      issuedAt: '2026-01-01T00:00:00.000Z',
+    }
+
+    const overlaid = overlayDrivingLicenceMdocClaims(record, base64UrlEncodeBytes(bytes))
+    expect(overlaid.claims.driving_privileges).toEqual([{ vehicle_category_code: 'B' }])
+    expect(overlaid.claims.license_type).toBe('รถยนต์ส่วนบุคคล')
+    expect(overlaid.claims.sex).toBe('1')
+    expect(overlaid.claims.nationality).toBe('THA')
   })
 
   test('keeps existing claims when mdoc parse yields no mapped fields', () => {

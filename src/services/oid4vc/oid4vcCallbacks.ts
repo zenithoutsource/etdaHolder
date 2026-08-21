@@ -17,6 +17,7 @@ export type CreateOid4vcCallbacksOptions = {
   mode?: Oid4vcCallbackMode
   signJwtImpl?: CallbackContext['signJwt']
   verifyJwtImpl?: CallbackContext['verifyJwt']
+  clientAuthentication?: CallbackContext['clientAuthentication']
 }
 
 export function createOid4vcCallbacks(options?: CreateOid4vcCallbacksOptions): CallbackContext {
@@ -67,6 +68,7 @@ export function createOid4vcCallbacks(options?: CreateOid4vcCallbacksOptions): C
       throw new Error('PresentationRequestUnsupported: X.509 client identifiers are not supported in Phase 1')
     },
     generateRandom: async (byteLength) => new Uint8Array(randomBytes(byteLength)),
-    clientAuthentication: clientAuthenticationNone({ clientId: 'wallet-holder' }),
+    clientAuthentication:
+      options?.clientAuthentication ?? clientAuthenticationNone({ clientId: 'wallet-holder' }),
   }
 }

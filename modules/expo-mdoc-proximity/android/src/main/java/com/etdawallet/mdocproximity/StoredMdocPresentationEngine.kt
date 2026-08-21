@@ -41,11 +41,14 @@ object StoredMdocPresentationEngine : MdocPresentationEngine {
    * Tell JS the DeviceResponse is on the wire. Do not stop HCE here —
    * Iso18013Presentment keeps GET RESPONSE alive until the NFC field drops.
    */
-  fun notifyPresentationComplete(sharedFields: List<String>) {
+  fun notifyPresentationComplete(
+    sharedFields: List<String>,
+    omittedFields: List<OmittedMdocField> = emptyList(),
+  ) {
     if (!uiCompleteNotified.compareAndSet(false, true)) return
     val fields = sharedFields.ifEmpty { armState?.approvedMdocFields.orEmpty() }
     CompanionSession.markMdocExchangeComplete()
-    ProximityEventDispatcher.sendPresentationComplete(fields)
+    ProximityEventDispatcher.sendPresentationComplete(fields, omittedFields)
   }
 
   fun finishSessionAfterPresentment() {

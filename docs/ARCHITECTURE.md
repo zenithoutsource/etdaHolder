@@ -93,7 +93,7 @@ The first OID4VP slice is intentionally narrow and Verifier-driven:
 3. Accept Presentation Exchange requests only when the requested disclosure is the ThaiNationalID birth date, or the development Verifier API's DCQL IDCard request.
 4. Show native Holder consent before signing.
 5. Sign a JWT VP token with the bound holder `k_cred` under the same one-prompt biometric gate.
-6. Send `vp_token`, `presentation_submission`, and optional `state` to the Verifier using `direct_post`.
+6. Send `vp_token`, `presentation_submission`, and optional `state` using `direct_post`, or encrypt the Authorization Response and POST `response=<JWE>` when `response_mode` is `direct_post.jwt`.
 7. Record successful presentations locally after the Verifier returns a successful HTTP response.
 
 The current development allowlist includes `http://verifier.zenithcomp.co.th:455/openid4vc/verify` for the supplied Verifier API and is emitted only in development builds. Production deployments trust env-configured `decentralized_identifier:did:web:` Verifiers through `EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID`, `EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN`, and optional `EXPO_PUBLIC_VERIFIER_DID_WEB_JWK`; unpinned DID document resolution uses HTTPS `did.json` with the `EXPO_PUBLIC_DID_WEB_FETCH_TIMEOUT_MS` and `EXPO_PUBLIC_DID_WEB_MAX_BYTES` policy.

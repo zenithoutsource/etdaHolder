@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -57,6 +59,19 @@ object LocalVerifierServer {
             "claims",
             buildJsonObject {
               result.claims.forEach { (key, value) -> put(key, value) }
+            },
+          )
+          put(
+            "omittedFields",
+            buildJsonArray {
+              HostClaimDisplay.omittedFields(MDL_REQUEST_FIELDS, result.claims).forEach { field ->
+                add(
+                  buildJsonObject {
+                    put("key", field.key)
+                    put("reason", field.reason)
+                  },
+                )
+              }
             },
           )
         },

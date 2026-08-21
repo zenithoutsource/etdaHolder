@@ -34,6 +34,22 @@ describe('mdocCredential NFC visibility', () => {
     ).toBe(false)
   })
 
+  test('hides NFC for an unregistered credential even when native mdoc exists', () => {
+    expect(
+      canShowNfcPresentButton({
+        record: {
+          rawVc: 'eyJhbGciOiJFZERTQSJ9.e30.sig',
+          type: 'DLTDrivingLicence',
+          claims: { vct: 'urn:tonyhere:demo:pid-age:1' },
+          credentialConfigurationId: 'urn:tonyhere:demo:pid-age:1',
+        },
+        hasNativeMdoc: true,
+        renewalBlocked: false,
+        platform: 'android',
+      }),
+    ).toBe(false)
+  })
+
   test('hides NFC off Android', () => {
     expect(
       canShowNfcPresentButton({

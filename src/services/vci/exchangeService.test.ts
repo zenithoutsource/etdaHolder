@@ -169,6 +169,7 @@ const mdlDoctypeOfferUri =
 
 const realFetch = globalThis.fetch
 const originalEnv = process.env
+process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = 'false'
 
 beforeEach(() => {
   mockRetrievePreAuthorizedTokenViaOid4vc.mockResolvedValue({
@@ -978,6 +979,104 @@ test('resolveOffer maps format-suffixed IdCard configuration ids to idcard metad
       format: 'dc+sd-jwt',
       display: expect.objectContaining({ name: 'Thai National ID' }),
     }),
+  )
+})
+
+test('resolveOffer accepts origin metadata for a same-origin session issuer path', async () => {
+  const sessionIssuer =
+    'https://issuer.example.com/ssi/openid4vci/final-1.0/OPENID4VCI_FINAL1/tenant/session'
+  const offerUri = `openid-credential-offer://?${new URLSearchParams({
+    credential_offer: JSON.stringify({
+      credential_issuer: sessionIssuer,
+      credential_configuration_ids: ['ThaiNationalID'],
+      grants: {
+        'urn:ietf:params:oauth:grant-type:pre-authorized_code': {
+          'pre-authorized_code': 'mock-preauth-code',
+        },
+      },
+    }),
+  }).toString()}`
+
+  const resolved = await resolveOffer(offerUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        ThaiNationalID: {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/ThaiNationalID',
+          claims: [],
+        },
+      },
+    }),
+  })
+
+  expect(resolved.issuer).toBe(sessionIssuer)
+  expect(resolved.credentialConfigurations[0]?.id).toBe('ThaiNationalID')
+})
+
+test('resolveOffer requests an unknown offer id when metadata has a single SD-JWT config', async () => {
+  const offerUri = `openid-credential-offer://?${new URLSearchParams({
+    credential_offer: JSON.stringify({
+      credential_issuer: 'https://issuer.example.com',
+      credential_configuration_ids: ['urn:tonyhere:demo:pid-age:1'],
+      grants: {
+        'urn:ietf:params:oauth:grant-type:pre-authorized_code': {
+          'pre-authorized_code': 'mock-preauth-code',
+        },
+      },
+    }),
+  }).toString()}`
+
+  const resolved = await resolveOffer(offerUri, {
+    fetchIssuerMetadata: async () => ({
+      credential_issuer: 'https://issuer.example.com',
+      credential_endpoint: 'https://issuer.example.com/credential',
+      credential_configurations_supported: {
+        ThaiNationalID: {
+          format: 'dc+sd-jwt',
+          vct: 'https://issuer.example.com/vct/ThaiNationalID',
+          claims: [],
+        },
+      },
+    }),
+  })
+
+  expect(resolved.credentialConfigurations[0]).toEqual(
+    expect.objectContaining({
+      id: 'urn:tonyhere:demo:pid-age:1',
+      requestId: 'urn:tonyhere:demo:pid-age:1',
+      format: 'dc+sd-jwt',
+    }),
+  )
+})
+
+test('resolveOffer rejects an unknown offer id when metadata has mixed formats', async () => {
+  const offerUri = `openid-credential-offer://?${new URLSearchParams({
+    credential_offer: JSON.stringify({
+      credential_issuer: 'https://issuer.example.com',
+      credential_configuration_ids: ['urn:example:unknown:1'],
+      grants: {
+        'urn:ietf:params:oauth:grant-type:pre-authorized_code': {
+          'pre-authorized_code': 'mock-preauth-code',
+        },
+      },
+    }),
+  }).toString()}`
+
+  await expectErrorPrefix(
+    () =>
+      resolveOffer(offerUri, {
+        fetchIssuerMetadata: async () => ({
+          credential_issuer: 'https://issuer.example.com',
+          credential_endpoint: 'https://issuer.example.com/credential',
+          credential_configurations_supported: {
+            ThaiNationalID: { format: 'dc+sd-jwt' },
+            'org.iso.18013.5.1.mDL': { format: 'mso_mdoc' },
+          },
+        }),
+      }),
+    'CredentialConfigurationNotSupported',
   )
 })
 

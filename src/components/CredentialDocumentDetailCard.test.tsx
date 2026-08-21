@@ -434,6 +434,43 @@ describe('CredentialDocumentDetailCard', () => {
     expect(onPresentViaNfc).toHaveBeenCalledTimes(1)
   })
 
+  test('uses generic detail rows for unregistered tonyhere driving licence, not DLT chrome', () => {
+    render(
+      <CredentialDocumentDetailCard
+        display={{
+          ...display,
+          title: 'Demo Driving License',
+          documentTitle: 'DIGITAL DOCUMENT',
+          imageKey: 'car',
+          primaryText: 'Ada',
+          primaryRows: [
+            { key: 'given_name', label: 'Given name', value: 'Ada' },
+            { key: 'issuing_authority', label: 'Issuing authority', value: 'Demo Transport' },
+          ],
+          extraRows: [],
+        }}
+        record={{
+          id: 'tonyhere-dl-1',
+          type: 'DLTDrivingLicence',
+          rawVc: 'header.payload.signature',
+          claims: {
+            vct: 'https://demo.tonyhere.work/credentials/DrivingLicense',
+            given_name: 'Ada',
+            issuing_authority: 'Demo Transport',
+          },
+          issuedAt: '2026-08-21T00:00:00.000Z',
+          issuerUrl: 'https://demo.tonyhere.work/',
+        }}
+        onOpenQr={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByTestId('driving-licence-card')).toBeNull()
+    expect(screen.getByTestId('document-detail-card')).toBeTruthy()
+    expect(screen.getByText('Issuing authority')).toBeTruthy()
+    expect(screen.getByText('Demo Transport')).toBeTruthy()
+  })
+
   test('places a banner action on the driving-licence card header', () => {
     render(
       <CredentialDocumentDetailCard

@@ -70,11 +70,69 @@ describe('credentialDisplay', () => {
   expect(detail.title).toBe('Credential')
   expect(detail.documentTitle).toBe('DIGITAL DOCUMENT')
   expect(detail.issuedAt).toBe('2026-06-08T00:00:00.000Z')
-  expect(detail.primaryRows).toEqual([])
-    expect(detail.extraRows).toEqual([
-      { key: 'customClaim', label: 'customClaim', value: 'Visible value' },
-      { key: 'givenName', label: 'givenName', value: 'Ada' },
+  expect(detail.primaryRows).toEqual([
+      { key: 'customClaim', label: 'Custom Claim', value: 'Visible value' },
+      { key: 'givenName', label: 'Given Name', value: 'Ada' },
     ])
+    expect(detail.extraRows).toEqual([])
+  })
+
+  test('renders tonyhere claims with persisted labels instead of DLT chrome', () => {
+    const detail = readCredentialDetailDisplay({
+      id: 'tonyhere-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'header.payload.signature',
+      claims: {
+        vct: 'urn:tonyhere:demo:pid-age:1',
+        given_name: 'Ada',
+        age_over_18: true,
+      },
+      issuedAt: '2026-08-21T00:00:00.000Z',
+      credentialConfigurationId: 'urn:tonyhere:demo:pid-age:1',
+      credentialDisplayName: 'PID Age Credential',
+      claimDisplayLabels: { given_name: 'Given name', age_over_18: 'Over 18' },
+      issuerName: 'tonyhere',
+    })
+
+    expect(detail.title).toBe('PID Age Credential')
+    expect(detail.issuerName).toBe('tonyhere')
+    expect(detail.imageKey).toBe('profile')
+    expect(detail.primaryRows).toEqual([
+      { key: 'age_over_18', label: 'Over 18', value: 'Yes' },
+      { key: 'given_name', label: 'Given name', value: 'Ada' },
+    ])
+  })
+
+  test('lists tonyhere DrivingLicense ISO-style claims on generic detail', () => {
+    const detail = readCredentialDetailDisplay({
+      id: 'tonyhere-dl-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'header.payload.signature',
+      claims: {
+        vct: 'https://demo.tonyhere.work/credentials/DrivingLicense',
+        given_name: 'Ada',
+        issuing_authority: 'Demo Transport',
+        age_over_18: true,
+      },
+      issuedAt: '2026-08-21T00:00:00.000Z',
+      issuerUrl: 'https://demo.tonyhere.work/',
+      credentialConfigurationId: 'https://demo.tonyhere.work/credentials/DrivingLicense',
+      credentialDisplayName: 'Demo Driving License',
+      claimDisplayLabels: {
+        given_name: 'Given name',
+        issuing_authority: 'Issuing authority',
+      },
+    })
+
+    expect(detail.imageKey).toBe('profile')
+    expect(detail.primaryRows).toEqual(
+      expect.arrayContaining([
+        { key: 'given_name', label: 'Given name', value: 'Ada' },
+        { key: 'issuing_authority', label: 'Issuing authority', value: 'Demo Transport' },
+        { key: 'age_over_18', label: 'Age Over 18', value: 'Yes' },
+      ]),
+    )
+    expect(detail.primaryRows.find((row) => row.key === 'licenceNumber')).toBeUndefined()
   })
 
   test('reads holder profile values from ThaiNationalID claims', () => {

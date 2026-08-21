@@ -69,6 +69,23 @@ export function endPortalReturnCapture(generation?: number): void {
 }
 
 /**
+ * Aborts the current portal wait without starting a newer capture.
+ * Used when the wallet PIN session expires so issuer-portal polling cannot
+ * continue on the PIN lock screen. A URL already delivered is left in place.
+ */
+export function cancelPortalReturnWait(): void {
+  if (lastNotifiedUrl) return
+  if (!activeWaiter) return
+
+  const waiter = activeWaiter
+  activeWaiter = null
+  logWalletStep('wallet-unlock', 'issuer-portal-wait-cancelled', {
+    generation: waiter.generation,
+  })
+  waiter.resolve(undefined)
+}
+
+/**
  * Prevents stale callback URLs from reaching the app-wide deep-link router
  * while an issuer portal capture is active.
  */

@@ -29,9 +29,9 @@ data class PrivilegeDisplay(
 )
 
 /**
- * Issued mDLs often put `issue_date` / `expiry_date` on each driving-privilege
- * entry (ISO optional on DrivingPrivilege) instead of as top-level mDL elements.
- * Requesting missing top-level dates is how Multipaz session status 20 starts.
+ * DrivingPrivilege may include optional nested issue_date / expiry_date.
+ * Those stay on the privilege object. Host claim rows for วันที่ออกใบอนุญาต
+ * and วันหมดอายุ use only the top-level mDL identifiers.
  */
 fun readPrivilegeDisplay(value: DataItem): PrivilegeDisplay {
   value.asTstrOrNull()?.let {

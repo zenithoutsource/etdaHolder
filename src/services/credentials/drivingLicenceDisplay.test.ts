@@ -88,6 +88,26 @@ describe('readDrivingLicenceCardView', () => {
     expect(view.englishType).not.toBe('B')
   })
 
+  test('maps driving_privileges vehicle_category_code arrays to Thai and English type names', () => {
+    const view = readDrivingLicenceCardView({
+      ...drivingLicenceRecord,
+      claims: {
+        givenName: 'สมชาย',
+        familyName: 'ใจดี',
+        licenceNumber: 'DLT-12345',
+        driving_privileges: [{ vehicle_category_code: 'B' }],
+        birthDate: '1990-05-15',
+        issuanceDate: '2024-01-20',
+        expiryDate: '2030-01-31',
+      },
+    })
+
+    expect(view.type).toBe('รถยนต์ส่วนบุคคล')
+    expect(view.englishType).toBe('Private Motor Car')
+    expect(view.type).not.toContain('vehicle_category_code')
+    expect(view.type).not.toContain('[')
+  })
+
   test('maps ISO category A to motorcycle labels', () => {
     const view = readDrivingLicenceCardView({
       ...drivingLicenceRecord,
@@ -112,6 +132,29 @@ describe('readDrivingLicenceCardView', () => {
 
     expect(view.type).toBe('-')
     expect(view.englishType).toBe('-')
+  })
+
+  test('keeps first-party vehicle type from license_type when leftover privilege objects replace licenceClass', () => {
+    const view = readDrivingLicenceCardView({
+      id: 'dl-zenith',
+      type: 'DLTDrivingLicence',
+      rawVc: 'header.payload.signature',
+      issuedAt: '2024-01-20T00:00:00.000Z',
+      issuerUrl: 'https://issuer.zenithcomp.co.th:455/',
+      claims: {
+        vct: 'https://issuer.zenithcomp.co.th:455/credentials/DrivingLicense',
+        givenName: 'สมชาย',
+        familyName: 'ใจดี',
+        licenceNumber: '54002891',
+        license_type: 'รถยนต์ส่วนบุคคล',
+        driving_privileges: { vehicle_category_code: 'B' },
+        sex: '1',
+        issuing_authority: 'Department of Land Transport',
+      },
+    })
+
+    expect(view.type).toBe('รถยนต์ส่วนบุคคล')
+    expect(view.englishType).toBe('Private Motor Car')
   })
 
   test('fills missing Thai name from the holder profile and uses the mock English name', () => {

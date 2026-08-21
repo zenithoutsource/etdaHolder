@@ -1,4 +1,4 @@
-import { getCardSchema, getCardSchemaForConfigurationId, getAllCardSchemas, resolvePresentationDisclosureLabel } from './cardSchemas'
+import { getCardSchema, getCardSchemaForConfigurationId, getAllCardSchemas, resolvePresentationDisclosureLabel, resolveCardSchema } from './cardSchemas'
 
 import { THEME } from './themeColors'
 
@@ -6,7 +6,7 @@ describe('getCardSchema', () => {
   test('returns ThaiNationalID schema', () => {
     const schema = getCardSchema('ThaiNationalID')
     expect(schema.type).toBe('ThaiNationalID')
-    expect(schema.title).toBe('Thai National ID')
+    expect(schema.title).toBe('บัตรประชาชน')
     expect(schema.primaryColor).toBe(THEME.navy)
     expect(schema.displayFields.length).toBeGreaterThan(0)
   })
@@ -14,19 +14,38 @@ describe('getCardSchema', () => {
   test('returns DLTDrivingLicence schema', () => {
     const schema = getCardSchema('DLTDrivingLicence')
     expect(schema.type).toBe('DLTDrivingLicence')
-    expect(schema.title).toBe('Driver License')
+    expect(schema.title).toBe('ใบขับขี่')
     expect(schema.displayFields.some((f) => f.key === 'licenceNumber')).toBe(true)
   })
 
-  test('maps ISO mDL configuration id and doctype to DLTDrivingLicence', () => {
+  test('maps ISO mDL configuration id to DLTDrivingLicence and leaves unknown licence ids on fallback', () => {
     expect(getCardSchemaForConfigurationId('org.iso.18013.5.1.mDL').type).toBe('DLTDrivingLicence')
-    expect(getCardSchemaForConfigurationId('TestMdocDrivingLicence').type).toBe('DLTDrivingLicence')
+    expect(getCardSchemaForConfigurationId('Iso18013DriversLicenseCredential_dc+sd-jwt').type).toBe(
+      'DLTDrivingLicence',
+    )
+    expect(getCardSchemaForConfigurationId('TranscriptCredential_dc+sd-jwt').type).toBe(
+      'ChulalongkornUniversityTranscript',
+    )
+    expect(getCardSchemaForConfigurationId('TestMdocDrivingLicence').type).toBe('__fallback__')
+    expect(getCardSchemaForConfigurationId('idcard').type).toBe('ThaiNationalID')
+    expect(
+      getCardSchemaForConfigurationId(
+        'Iso18013DriversLicenseCredential_dc+sd-jwt',
+        'https://demo.tonyhere.work/',
+      ).type,
+    ).toBe('__fallback__')
+    expect(
+      getCardSchemaForConfigurationId(
+        'Iso18013DriversLicenseCredential_dc+sd-jwt',
+        'https://issuer.zenithcomp.co.th:455',
+      ).type,
+    ).toBe('DLTDrivingLicence')
   })
 
   test('returns ChulalongkornUniversityTranscript schema', () => {
     const schema = getCardSchema('ChulalongkornUniversityTranscript')
     expect(schema.type).toBe('ChulalongkornUniversityTranscript')
-    expect(schema.title).toBe('Academic Transcript')
+    expect(schema.title).toBe('ใบแสดงผลการเรียน')
     expect(schema.displayFields.some((f) => f.key === 'gpa')).toBe(true)
   })
 
@@ -65,6 +84,21 @@ describe('getCardSchema', () => {
   test('returns fallback for empty string', () => {
     const schema = getCardSchema('')
     expect(schema.title).toBe('Credential')
+  })
+
+  test('returns fallback for unknown third-party configuration ids', () => {
+    const schema = getCardSchemaForConfigurationId('urn:tonyhere:demo:pid-age:1')
+    expect(schema.type).toBe('__fallback__')
+    expect(schema.title).toBe('Credential')
+  })
+
+  test('resolveCardSchema ignores a stored DLT type when the vct is unregistered', () => {
+    const schema = resolveCardSchema({
+      type: 'DLTDrivingLicence',
+      claims: { vct: 'urn:tonyhere:demo:pid-age:1' },
+      credentialConfigurationId: 'urn:tonyhere:demo:pid-age:1',
+    })
+    expect(schema.type).toBe('__fallback__')
   })
 
   test('each schema has non-empty displayFields with key and label', () => {

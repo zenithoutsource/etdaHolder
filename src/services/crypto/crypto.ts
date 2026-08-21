@@ -557,8 +557,10 @@ export async function withUnlockedHolderSeedForProximity(
  * @param nonce    c_nonce from the token endpoint response
  * @param audience Issuer URL (aud claim)
  */
+export type ProofKeyBinding = 'did-kid' | 'jwk' | 'jwk-kid'
+
 export type SignProofOptions = {
-  keyBinding?: 'did-kid' | 'jwk'
+  keyBinding?: ProofKeyBinding
   /** Pending or bound credential key id for v2 per-credential PoP signing. */
   credentialKeyId?: string
 }
@@ -724,9 +726,15 @@ async function signProofWithCredentialSession(
   }
 
   const keyBinding = options.keyBinding ?? 'did-kid'
+  const kid = `${credentialSession.holderDid}#${credentialSession.holderDid.slice('did:key:'.length)}`
   const header =
-    keyBinding === 'jwk'
+    keyBinding === 'did-kid'
       ? {
+          alg: 'EdDSA' as const,
+          typ: 'openid4vci-proof+jwt' as const,
+          kid,
+        }
+      : {
           alg: 'EdDSA' as const,
           typ: 'openid4vci-proof+jwt' as const,
           jwk: credentialSession.publicJwk,
@@ -735,11 +743,7 @@ async function signProofWithCredentialSession(
               getPublicKeyFromCredentialSigningJwk(credentialSession.publicJwk),
             ),
           ),
-        }
-      : {
-          alg: 'EdDSA' as const,
-          typ: 'openid4vci-proof+jwt' as const,
-          kid: `${credentialSession.holderDid}#${credentialSession.holderDid.slice('did:key:'.length)}`,
+          ...(keyBinding === 'jwk-kid' ? { kid } : {}),
         }
   const payload = {
     aud: audience,
@@ -805,10 +809,19 @@ async function signProofWithSeed(
   const keyBinding = options.keyBinding ?? 'did-kid'
   const credentialKeyId = options.credentialKeyId
   const useCredentialKey = Boolean(credentialKeyId && usesPerCredentialSigning())
+  const did = useCredentialKey
+    ? await getCredentialSigningHolderDid(credentialKeyId!)
+    : getHolderDid()
+  const kid = `${did}#${did.slice('did:key:'.length)}`
 
   const header =
-    keyBinding === 'jwk'
+    keyBinding === 'did-kid'
       ? {
+          alg: 'EdDSA' as const,
+          typ: 'openid4vci-proof+jwt' as const,
+          kid,
+        }
+      : {
           alg: 'EdDSA' as const,
           typ: 'openid4vci-proof+jwt' as const,
           jwk: useCredentialKey
@@ -823,14 +836,8 @@ async function signProofWithSeed(
                 ),
               )
             : getHolderCoseKeyBase64Url(),
+          ...(keyBinding === 'jwk-kid' ? { kid } : {}),
         }
-      : await (async () => {
-          const did = useCredentialKey
-            ? await getCredentialSigningHolderDid(credentialKeyId!)
-            : getHolderDid()
-          const kid = `${did}#${did.slice('did:key:'.length)}`
-          return { alg: 'EdDSA' as const, typ: 'openid4vci-proof+jwt' as const, kid }
-        })()
 
   const payload = {
     aud: audience,

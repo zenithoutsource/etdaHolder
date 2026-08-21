@@ -1,5 +1,7 @@
 import { requestCredentialViaPortalFlow } from './requestCredentialViaPortalFlow'
 import { openCredentialRequestPortal } from './openCredentialRequestPortal'
+import { hasWalletPin } from '../auth/walletPin'
+import { useAuthStore } from '../../store/authStore'
 import { useDeeplinkStore } from '../../store/deeplinkStore'
 import { consumeLastPortalReturn } from './lastPortalReturn'
 import type { IssuanceCallbackLogSummary } from './describeIssuanceCallbackForLog'
@@ -21,6 +23,10 @@ jest.mock('./storedCredentials', () => ({
 jest.mock('./credentialKeyRenewal', () => ({
   ...jest.requireActual('./credentialKeyRenewal'),
   readCredentialRenewalStatuses: jest.fn(() => ({})),
+}))
+
+jest.mock('../auth/walletPin', () => ({
+  hasWalletPin: jest.fn(() => false),
 }))
 
 jest.mock('./credentialGuard', () => {
@@ -53,6 +59,23 @@ const consumeLastPortalReturnMock = consumeLastPortalReturn as jest.MockedFuncti
   typeof consumeLastPortalReturn
 >
 const readPidGateStatusMock = readPidGateStatus as jest.MockedFunction<typeof readPidGateStatus>
+const mockHasWalletPin = hasWalletPin as jest.MockedFunction<typeof hasWalletPin>
+
+function lockWalletPinSession() {
+  mockHasWalletPin.mockReturnValue(true)
+  useAuthStore.setState({
+    isAuthenticated: true,
+    isPinVerified: false,
+  })
+}
+
+function unlockWalletPinSession() {
+  mockHasWalletPin.mockReturnValue(true)
+  useAuthStore.setState({
+    isAuthenticated: true,
+    isPinVerified: true,
+  })
+}
 
 describe('requestCredentialViaPortalFlow', () => {
   const router = { push: jest.fn() }
@@ -60,6 +83,15 @@ describe('requestCredentialViaPortalFlow', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
+    mockHasWalletPin.mockReturnValue(false)
+    useAuthStore.setState({
+      token: null,
+      walletId: null,
+      accountId: null,
+      isAuthenticated: false,
+      isLoading: false,
+      isPinVerified: false,
+    })
     readPidGateStatusMock.mockReturnValue('ready')
     useDeeplinkStore.setState({
       pendingUri: null,
@@ -85,6 +117,32 @@ describe('requestCredentialViaPortalFlow', () => {
         title: WALLET_HOME_COPY.portalMisconfiguredTitle,
       }),
     )
+  })
+
+  test('opens the DLT portal when the stored type is a DrivingLicense vct URL', async () => {
+    openCredentialRequestPortalMock.mockResolvedValueOnce({ status: 'dismissed' })
+
+    await requestCredentialViaPortalFlow({
+      credentialType: 'https://issuer.zenithcomp.co.th:455/credentials/DrivingLicense',
+      router,
+      showDialog,
+    })
+
+    expect(openCredentialRequestPortalMock).toHaveBeenCalledWith('DLTDrivingLicence')
+    expect(showDialog).not.toHaveBeenCalled()
+  })
+
+  test('opens the transcript portal when the stored type is TranscriptCredential', async () => {
+    openCredentialRequestPortalMock.mockResolvedValueOnce({ status: 'dismissed' })
+
+    await requestCredentialViaPortalFlow({
+      credentialType: 'TranscriptCredential',
+      router,
+      showDialog,
+    })
+
+    expect(openCredentialRequestPortalMock).toHaveBeenCalledWith('ChulalongkornUniversityTranscript')
+    expect(showDialog).not.toHaveBeenCalled()
   })
 
   test('routes auth_code_claim_ready portal result to credential-offer', async () => {
@@ -314,5 +372,63 @@ describe('requestCredentialViaPortalFlow', () => {
     })
 
     expect(openCredentialRequestPortalMock).toHaveBeenCalledWith('ThaiNationalID')
+  })
+
+  test('does not navigate to credential-offer when PIN lock is required after a claimed portal result', async () => {
+    unlockWalletPinSession()
+    openCredentialRequestPortalMock.mockImplementationOnce(async () => {
+      lockWalletPinSession()
+      return {
+        status: 'claimed' as const,
+        deeplink: 'walletapp://callback?credential_offer_uri=https://issuer/offer',
+      }
+    })
+
+    const outcome = await requestCredentialViaPortalFlow({
+      credentialType: 'ThaiNationalID',
+      router,
+      showDialog,
+    })
+
+    expect(outcome).toBe('opened-claim')
+    expect(router.push).not.toHaveBeenCalled()
+  })
+
+  test('still shows the empty-offer dialog when PIN lock is required after the portal wait', async () => {
+    unlockWalletPinSession()
+    openCredentialRequestPortalMock.mockImplementationOnce(async () => {
+      lockWalletPinSession()
+      return {
+        status: 'empty_offer' as const,
+        reason: 'no_callback',
+        diagnostic: 'timeout',
+      }
+    })
+
+    await requestCredentialViaPortalFlow({
+      credentialType: 'ThaiNationalID',
+      router,
+      showDialog,
+    })
+
+    expect(showDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: WALLET_HOME_COPY.portalNoCallbackTitle,
+      }),
+    )
+  })
+
+  test('retry no-ops while PIN lock is required', async () => {
+    lockWalletPinSession()
+
+    const outcome = await requestCredentialViaPortalFlow({
+      credentialType: 'ThaiNationalID',
+      router,
+      showDialog,
+    })
+
+    expect(outcome).toBe('abandoned')
+    expect(openCredentialRequestPortalMock).not.toHaveBeenCalled()
+    expect(router.push).not.toHaveBeenCalled()
   })
 })

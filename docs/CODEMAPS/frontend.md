@@ -20,6 +20,8 @@ Where to change text vs card chrome. Inline exceptions are listed per screen.
 | Colors | [src/config/themeColors.ts](../../src/config/themeColors.ts) |
 | NFC pre-tap disclosure set | [src/config/readerProfiles.ts](../../src/config/readerProfiles.ts) |
 | Display helpers (claim → label/value; issuer-first holder profile, PID fills gaps) | [src/services/credentials/credentialDisplay.ts](../../src/services/credentials/credentialDisplay.ts) (`resolveDisplayHolderProfile`) |
+| First-party vs unregistered classification | [src/config/firstPartyCredential.ts](../../src/config/firstPartyCredential.ts), [src/services/credentials/unregisteredHomeDocuments.ts](../../src/services/credentials/unregisteredHomeDocuments.ts) |
+| Generic unregistered claim rows | [src/services/credentials/genericClaimDisplay.ts](../../src/services/credentials/genericClaimDisplay.ts) |
 | DL/transcript card English mock | [src/config/drivingLicenceSample.ts](../../src/config/drivingLicenceSample.ts) (`MOCK_HOLDER_ENGLISH_NAME`) |
 
 **Inline exceptions (not extracted):** NFC waiting copy in [WaitingForTapPanel.tsx](../../src/components/proximity/WaitingForTapPanel.tsx); several Scan/Auth/OID4VP panel strings still live in the component.
@@ -34,7 +36,7 @@ Tab: [app/(tabs)/index.tsx](../../app/(tabs)/index.tsx). Hidden detail: [app/(ta
 
 **Steps**
 
-1. Home lists stored credentials (hero summary + document rows) with request / renew / reissue CTAs.
+1. Home lists stored credentials (PID hero + four first-party document rows, then extra rows for unregistered third-party credentials) with request / renew / reissue CTAs on first-party rows only.
 2. Card or row press opens credential detail.
 3. Detail: view document; My QR modal (hidden when this document is expired); NFC present → `#present-and-nfc`; receive / portal **ขอเอกสารใหม่** for expired or leftover-key cards; revoke/delete via action menu (PIN/biometric then approve). P3 **ขอเอกสาร** is Home expand only.
 4. Revoke/delete success → History with `filter=lifecycle`.
@@ -47,7 +49,7 @@ Tab: [app/(tabs)/index.tsx](../../app/(tabs)/index.tsx). Hidden detail: [app/(ta
 - Hardware P3 **ขอเอกสาร** (`WALLET_HOME_COPY.requestCredential`) is Home expand only; credential detail does not show it. It appears only while the VC is still valid as a document. Badge is **หมดอายุ** (not English Inactive). Calendar warning window uses **ใกล้หมดอายุ** even if leftover P3 `renewal-required` is present. Document-expired and leftover Ed25519 use **ขอเอกสารใหม่** (`requestNewCredential`) via issuer portal Fresh reissue (`requestCredentialViaPortalFlow`) — same Home expand as P6 revoke, not `submitRenewalRequest`. Leftover `renewal-required` must not hide that CTA. In-flight P3 (`renewal-processing` / `cleanup-pending` / `old-revoked`) still wins over expiry. Wallet-wide P3-1 is hidden when hardware P-256 or crypto v2 is on. Detail still has **ขอเอกสารใหม่** for expired / hardware-reissue-required so opening the card is not a dead end.
 - Inactive **ขอเอกสาร** (`WALLET_HOME_COPY.requestCredential`) on Home expand is P3 intake: mint pending hardware `k_cred`, then issuer portal (`requestCredentialViaPortalFlow`) or Scan. Home does **not** POST `/wallet-api/dev/wallet/renewal-request`. The card stays `renewal-required` (not `renewal-processing`) so the stub status poller does not run. Portal dismiss / empty offer / PID block discards the pending key. Same-type claim reuses that pending key and pairs old `cleanup-pending` / new `renewed-active`. Silent old-VC OID4VP stays peer until a working renewal-request API exists. Mint failures still use [`renewalRequestFailureUi`](../../src/services/credentials/renewalRequestFailureUi.ts). Document-expired and leftover Ed25519 stay portal **ขอเอกสารใหม่**.
 - Slice B is not on Home. The runner is [runHardwareEcdsaSliceBChecklist](../../src/services/crypto/hardwareEcdsaDiagnostics.ts). Claim / startup do **not** log `slice-b-checklist-complete`. Metro tag is `[wallet:hardware-ecdsa]`, not `[hardware-ecdsa]`.
-- PID gate before present, My QR, or portal Fresh reissue on detail ([credentialGuard](../../src/services/credentials/credentialGuard.ts) / [pidGateDialog](../../src/services/credentials/pidGateDialog.ts)). Hardware P3 **ขอเอกสาร** of another card is not blocked by PID `renewal-required`.
+- PID gate before present, My QR, or portal Fresh reissue on detail ([credentialGuard](../../src/services/credentials/credentialGuard.ts) / [pidGateDialog](../../src/services/credentials/pidGateDialog.ts)). A preferred ID Card that shows **หมดอายุ** (k_cred TTL, including `renewed-active` before P3-6 delete) is not a usable PID: other documents cannot present or portal-request. Old `cleanup-pending` PID is not a usable stand-in. Hardware P3 **ขอเอกสาร** of another card is not blocked by PID `renewal-required`.
 - Detail phases: `detail` | `issuerAck` | `renewalProcessing` | `revokeSubmitting` | `security` | `approve`. Focus reset clears the session.
 - Holder names **and birth date** on DL cards (detail, receive preview, OID4VP info) use the **issuer’s own claims** first via `resolveDisplayHolderProfile`. Stored PID fills a field only when that document omitted it. Driving-licence and transcript **English name** on the card is the mock `MOCK_HOLDER_ENGLISH_NAME` (`Ms. Thodsopp Eekkasandigital`). Transcript cards hide birth date. OID4VP consent/info disclosure **values** keep the issuer string when present (`overlayPresentationDisclosureValue`); empty name fields fall back to PID. VP tokens still send document claims. PID religion is hidden (ThaID does not send it). Driving-licence left column shows **เลขที่ใบอนุญาต** above **ประเภทยานพาหนะ**; vehicle type maps ISO `B` to Thai/English labels on the card; the VP token still sends the raw claim.
 
@@ -131,12 +133,12 @@ Hidden route: [app/(tabs)/present.tsx](../../app/(tabs)/present.tsx). Opened fro
 
 **Panels:** [PreTapConsentPanel](../../src/components/proximity/PreTapConsentPanel.tsx) → [WaitingForTapPanel](../../src/components/proximity/WaitingForTapPanel.tsx) → [proximity/PresentationResultPanel](../../src/components/proximity/PresentationResultPanel.tsx). Older unused: [proximity/ConsentPanel](../../src/components/proximity/ConsentPanel.tsx), [ProximityPresentButton](../../src/components/proximity/ProximityPresentButton.tsx).
 
-**Copy / layout:** reader profile fields; `cardSchemas` disclosure labels; consent hero icon from `presentationVerifierMocks` by `documentType`; **waiting copy is inline Thai** in `WaitingForTapPanel`. Result wrapper uses `WALLET_HISTORY_COPY`.
+**Copy / layout:** reader profile fields; `cardSchemas` disclosure labels; consent hero icon from `presentationVerifierMocks` by `documentType`; **waiting copy is inline Thai** in `WaitingForTapPanel`. Result wrapper uses `WALLET_HISTORY_COPY` (verification-complete only; **no** sent/omitted claim list).
 
 **Steps** (`proximityStore.status`)
 
 1. `idle` → open presentation when mdoc is stored
-2. `awaiting-consent` → pre-tap consent (fixed reader-profile fields, no toggles)
+2. `awaiting-consent` → pre-tap consent (reader-profile fields; holder toggles; Accept requires ≥1)
 3. `approved` → waiting (preparing)
 4. `hce-armed` / `engaged` → waiting (hold on reader)
 5. `complete` → result; `error` / blocked (expired, hardware reissue, PID, no mdoc)
@@ -148,7 +150,7 @@ Hidden route: [app/(tabs)/present.tsx](../../app/(tabs)/present.tsx). Opened fro
 - Tap-only static NFC handover — Waiting for tap shows **no** holder QR.
 - Ensure native mdoc is stored before arming; reset the proximity store on unmount; HCE arm window from `HCE_ARM_WINDOW_MS` ([dualFormatPolicy](../../src/config/dualFormatPolicy.ts)).
 - NFC DeviceResponse **session overlay**: at arm/presentment, PID Thai `given_name` / `family_name` overlay ISO mDL names **only when those fields are missing** on the presenting document (`displayNameOverlay` → Kotlin `MdocDisplayNameOverlay`). If the issuer already sent names, the stored mdoc values go on the wire. Stored mdoc is never rewritten. Logs `fieldCount` only (no PII). Overlaying missing names still means `issuerAuth` / MSO digests will not match those items — the lab extractor does not verify; production ISO verifiers that check MSO would reject.
-- Pre-tap consent hides **ศาสนา / religion** if a reader profile lists it, and shows **ชื่อ** above **นามสกุล** when those are separate rows. Display only; the mdoc field set sent on tap is still the reader profile.
+- Pre-tap consent hides **ศาสนา / religion** if a reader profile lists it, and shows **ชื่อ** above **นามสกุล** when those are separate rows. Display only. The mdoc field set sent on tap is `DeviceRequest ∩` holder selection (subset of the reader profile). Wallet Success does **not** list claims; received vs omitted is on the ACR1311 host page. Spec [2026-08-21-mdl-nfc-holder-selective-disclosure-design.md](../superpowers/specs/2026-08-21-mdl-nfc-holder-selective-disclosure-design.md).
 
 ## History
 
@@ -194,6 +196,7 @@ Startup overlays in [app/_layout.tsx](../../app/_layout.tsx): [StoragePinMigrati
 
 - Access redirect: `/auth` | `/pin-setup` | `/pin-lock` | tabs ([walletPinNavigation](../../src/services/auth/walletPinNavigation.ts)).
 - Pin-lock: skip consumed VP; deferred `setWalletPin` after unlock; 15s biometric timeout.
+- Idle-grace PIN lock (`EXPO_PUBLIC_WALLET_PIN_SESSION_GRACE_MS`) freezes wallet UI and protocol actions: [AppDialog](../../src/components/AppDialog.tsx) is hidden and stashed; issuer-portal wait is cancelled; `requestCredentialViaPortalFlow` does not `router.push` or retry. After unlock the deferred dialog is restored on Home unless a pending offer/VP exists (that pending flow wins).
 - Forgot PIN OTP uses the OS number pad; `ForgotPinFlow` adds keyboard-height `paddingBottom` so the six boxes stay above the pad on Android edge-to-edge. Do not change global `softwareKeyboardLayoutMode`.
 - Forgot PIN does **not** wipe credential MMKV. Startup complete is `completeForgotPinRecovery` (logout + `/auth` only). Confirm writes PIN meta even when credential MMKV is still locked. `hasWalletPin()` must not throw `StorageNotInitialized` — RootLayout reads it on the first render after logout.
 - There is no `src/screens/PinLockScreen.tsx` — the route file is the screen (`PinLockScreen.test.tsx` imports `app/pin-lock.tsx`).
@@ -202,7 +205,7 @@ Startup overlays in [app/_layout.tsx](../../app/_layout.tsx): [StoragePinMigrati
 
 [app/(tabs)/_layout.tsx](../../app/(tabs)/_layout.tsx) mounts:
 
-- [WalletKeyExpiryHost](../../src/components/WalletKeyExpiryHost.tsx) → [WalletKeyExpiredModal](../../src/components/WalletKeyExpiredModal.tsx) (wallet-wide P3-1; hidden when hardware P-256 or crypto v2)
+- [WalletKeyExpiryHost](../../src/components/WalletKeyExpiryHost.tsx) → [WalletKeyExpiredModal](../../src/components/WalletKeyExpiredModal.tsx) (wallet-wide P3-1; hidden when hardware P-256 or crypto v2, and while PIN lock is required)
 - [CredentialExpiryHost](../../src/components/CredentialExpiryHost.tsx) (null UI; [useCredentialExpiryWatch](../../src/hooks/useCredentialExpiryWatch.ts) also syncs per-credential `k_cred` TTL via [credentialKeyExpiry.ts](../../src/services/credentials/credentialKeyExpiry.ts))
 - [PresentationIntakeErrorHost](../../src/components/PresentationIntakeErrorHost.tsx) (dialog from `deeplinkStore.presentationIntakeError`)
 

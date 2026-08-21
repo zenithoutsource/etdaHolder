@@ -1,3 +1,4 @@
+import { canonicalFirstPartyType } from '../../config/firstPartyCredential'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import {
   deleteStoredMdoc,
@@ -1526,15 +1527,15 @@ function readDocumentTypeFromOffer(offer: ResolvedCredentialOffer): string {
   const vct = typeof configuration?.rawConfiguration?.vct === 'string'
     ? configuration.rawConfiguration.vct
     : undefined
-  if (vct?.toLowerCase().includes('transcript')) return 'ChulalongkornUniversityTranscript'
+  const fromVct = canonicalFirstPartyType(vct)
+  if (fromVct) return fromVct
 
   const docType = configuration ? readMdocDocTypeFromConfig(configuration) : undefined
-  if (docType?.toLowerCase().includes('mdl') || docType?.toLowerCase().includes('driving')) {
-    return 'DLTDrivingLicence'
-  }
-  if (configuration?.id.toLowerCase().includes('mdl') || configuration?.id.toLowerCase().includes('driving')) {
-    return 'DLTDrivingLicence'
-  }
+  const fromDocType = canonicalFirstPartyType(docType)
+  if (fromDocType) return fromDocType
+
+  const fromConfiguration = canonicalFirstPartyType(configuration?.id)
+  if (fromConfiguration) return fromConfiguration
 
   return configuration?.display?.name ?? 'VerifiableCredential'
 }

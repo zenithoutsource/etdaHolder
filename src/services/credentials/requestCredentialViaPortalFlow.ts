@@ -1,12 +1,14 @@
 /**
  * Opens the Issuer portal for a credential type and routes the Holder to claim or VP.
  * Journey: P1 Home ขอเอกสาร / P3 Inactive ขอเอกสาร intake / expired ขอเอกสารใหม่.
+ * PIN lock: do not open, navigate, or retry while the idle-grace PIN screen is showing.
  */
 import type { Router } from 'expo-router'
 
 import type { AppDialogOptions } from '../../components/AppDialog'
-import { isIssuerPortalCredentialType } from '../../config/issuerPortalUrls'
+import { resolveIssuerPortalCredentialType } from '../../config/issuerPortalUrls'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../../store/deeplinkStore'
+import { readWalletPinLockRequired } from '../auth/walletPinNavigation'
 import { logWalletError } from '../debug/walletLogger'
 import { readPidGateStatus, type PidGateStatus } from './credentialGuard'
 import { readCredentialRenewalStatuses } from './credentialKeyRenewal'
@@ -43,7 +45,12 @@ export async function requestCredentialViaPortalFlow(input: {
 }): Promise<PortalFlowOutcome> {
   const { credentialType, router, showDialog } = input
 
-  if (!isIssuerPortalCredentialType(credentialType)) {
+  if (readWalletPinLockRequired()) {
+    return 'abandoned'
+  }
+
+  const portalCredentialType = resolveIssuerPortalCredentialType(credentialType)
+  if (!portalCredentialType) {
     showDialog({
       title: WALLET_HOME_COPY.portalMisconfiguredTitle,
       message: WALLET_HOME_COPY.portalMisconfiguredMessage,
@@ -54,7 +61,7 @@ export async function requestCredentialViaPortalFlow(input: {
   }
 
   const pidGateStatus = readPortalPidGateStatus()
-  if (shouldShowHomePidGateDialog(credentialType, pidGateStatus)) {
+  if (shouldShowHomePidGateDialog(portalCredentialType, pidGateStatus)) {
     showPidGateDialog(
       showDialog,
       pidGateStatus,
@@ -71,17 +78,18 @@ export async function requestCredentialViaPortalFlow(input: {
   }
 
   const offerGenerationAtStart = useDeeplinkStore.getState().offerGeneration
-  const result = await openCredentialRequestPortal(credentialType)
+  const result = await openCredentialRequestPortal(portalCredentialType)
+  const pinLocked = readWalletPinLockRequired()
   if (result.status === 'claimed' || result.status === 'auth_code_claim_ready') {
-    router.push('/(tabs)/credential-offer')
+    if (!pinLocked) router.push('/(tabs)/credential-offer')
     return 'opened-claim'
   }
   if (result.status === 'auth_code_awaiting_pid_vp') {
-    router.push('/(tabs)/presentation-request')
+    if (!pinLocked) router.push('/(tabs)/presentation-request')
     return 'opened-presentation'
   }
   if (result.status === 'presentation_request') {
-    router.push('/(tabs)/presentation-request')
+    if (!pinLocked) router.push('/(tabs)/presentation-request')
     return 'opened-presentation'
   }
   if (result.status === 'misconfigured') {
@@ -119,7 +127,7 @@ export async function requestCredentialViaPortalFlow(input: {
   const { offerGeneration, pendingUri } = useDeeplinkStore.getState()
   const pendingOffer = offerGeneration > offerGenerationAtStart ? pendingUri : null
   if (pendingOffer && isCredentialOfferDeeplink(pendingOffer)) {
-    router.push('/(tabs)/credential-offer')
+    if (!readWalletPinLockRequired()) router.push('/(tabs)/credential-offer')
     return 'opened-claim'
   }
   const lastReturn = consumeLastPortalReturn()

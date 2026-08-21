@@ -201,6 +201,28 @@ describe('canWalletSatisfyDcqlCredentialQuery', () => {
     expect(describeDcqlMatchFailure(drivingLicenceRecord, credential).failedGate).toBe('none')
   })
 
+  test('does not treat a mis-folded unregistered card as DLT for DCQL type matching', () => {
+    const tonyhereRecord: VerifiableCredentialRecord = {
+      id: 'tonyhere-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'eyJhbGciOiJFUzI1NiJ9.eyJ2Y3QiOiJ1cm46dG9ueWhlcmU6ZGVtbzpwdWQtYWdlOjEifQ.signature~ZGlzY2xvc3VyZQ',
+      claims: {
+        vct: 'urn:tonyhere:demo:pid-age:1',
+        given_name: 'Ada',
+      },
+      issuedAt: '2026-08-21T00:00:00.000Z',
+      credentialConfigurationId: 'urn:tonyhere:demo:pid-age:1',
+    }
+    const credential: DcqlCredentialQuery = {
+      id: 'driving_licence',
+      format: 'dc+sd-jwt',
+      meta: { type_values: ['org.iso.18013.5.1.mDL'] },
+    }
+
+    expect(canWalletSatisfyDcqlCredentialQuery(tonyhereRecord, credential)).toBe(false)
+    expect(describeDcqlMatchFailure(tonyhereRecord, credential).failedGate).toBe('type')
+  })
+
   test('satisfies requested photo when portrait is stored as binary bytes', () => {
     const drivingLicenceRecord: VerifiableCredentialRecord = {
       id: 'driving-licence-1',

@@ -1,7 +1,8 @@
 import { readCredentialHolderProfile, readPresentationFieldValue } from '../credentials/credentialDisplay'
 import { hasAnyClaimValue, readClaimText } from '../credentials/claimFormatting'
 import { isIssuerOid4VpClientId, isIssuerOid4VpResponseUri } from '../../config/trustedVerifiers'
-import { getCardSchema, findDisplayFieldForClaimKey, collectDisplayFieldMatchKeys, resolvePresentationDisclosureLabel } from '../../config/cardSchemas'
+import { findDisplayFieldForClaimKey, collectDisplayFieldMatchKeys, resolvePresentationDisclosureLabel, resolveCardSchema } from '../../config/cardSchemas'
+import { isFirstPartyDrivingLicence } from '../../config/firstPartyCredential'
 import { formatDrivingLicenceVehicleTypeDisplay } from '../../config/drivingLicenceVehicleCategories'
 import {
   isSdJwtKbDisabledForTesting,
@@ -54,6 +55,13 @@ import { parseAuthorizationRequestViaOid4vc } from './oid4vc/parseAuthorizationR
 import { shouldUseOid4vcVpAdapter } from './oid4vc/shouldUseOid4vcVpAdapter'
 import { submitDirectPostViaOid4vc } from './oid4vc/submitDirectPostViaOid4vc'
 import type { Oid4vcAdapterContext, PresentationFlowOrigin, ProtocolPath } from './oid4vc/types'
+import {
+  isSupportedOid4vpResponseMode,
+  resolveOid4vpResponseEncryptionParams,
+  type Oid4vpResponseEncryptionParams,
+  type Oid4vpResponseMode,
+} from './oid4vpResponseEncryption'
+import { buildDirectPostFormBody } from './directPostFormBody'
 
 type JsonRecord = Record<string, unknown>
 
@@ -112,11 +120,13 @@ export type DcqlQuery = {
 
 export type { PresentationFlowOrigin, ProtocolPath } from './oid4vc/types'
 
+export type { Oid4vpResponseMode } from './oid4vpResponseEncryption'
+
 export type ResolvedPresentationRequest = {
   requestUri: string
   clientId: string
   responseUri: string
-  responseMode: 'direct_post'
+  responseMode: Oid4vpResponseMode
   nonce: string
   state?: string
   presentationDefinition?: PresentationDefinition
@@ -126,6 +136,7 @@ export type ResolvedPresentationRequest = {
   disclosures: PresentationDisclosure[]
   protocolPath: ProtocolPath
   oid4vcContext?: Oid4vcAdapterContext
+  responseEncryption?: Oid4vpResponseEncryptionParams
 }
 
 export type PresentationSubmission = {
@@ -167,7 +178,6 @@ type PresentationTokenModeOptions =
   }
 
 
-const SUPPORTED_RESPONSE_MODE = 'direct_post'
 const THAI_ID_TYPE = 'ThaiNationalID'
 const TRANSCRIPT_TYPE = 'ChulalongkornUniversityTranscript'
 const DRIVING_LICENCE_TYPE = 'DLTDrivingLicence'
@@ -227,9 +237,14 @@ export async function resolvePresentationRequest(
     throw replayError
   }
 
-  if (responseMode !== SUPPORTED_RESPONSE_MODE) {
+  if (!isSupportedOid4vpResponseMode(responseMode)) {
     throw new Error(`PresentationRequestUnsupported: response_mode ${responseMode} is not supported`)
   }
+
+  const responseEncryption =
+    responseMode === 'direct_post.jwt'
+      ? resolveOid4vpResponseEncryptionParams(authorizationRequest)
+      : undefined
 
   assertMutuallyExclusiveQueryLanguages(authorizationRequest)
 
@@ -395,10 +410,11 @@ export async function resolvePresentationRequest(
     requestUri: rawRequestUri,
     clientId,
     responseUri,
-    responseMode: SUPPORTED_RESPONSE_MODE,
+    responseMode: responseMode as Oid4vpResponseMode,
     nonce,
     protocolPath,
     ...(oid4vcContext ? { oid4vcContext } : {}),
+    ...(responseEncryption ? { responseEncryption } : {}),
     ...(readString(authorizationRequest.state) ? { state: readString(authorizationRequest.state) } : {}),
     ...(presentationDefinition ? { presentationDefinition } : {}),
     ...(effectiveDcqlQuery ? { dcqlQuery: effectiveDcqlQuery } : {}),
@@ -483,6 +499,8 @@ export async function submitPresentationResponse(
     submissionPresent: Boolean(options.presentationSubmission),
     statePresent: Boolean(request.state),
     protocolPath: request.protocolPath,
+    responseMode: request.responseMode,
+    encryptedResponse: request.responseMode === 'direct_post.jwt',
   })
   if (__DEV__) {
     console.info('[wallet:oid4vp] submit-response-debug', {
@@ -501,8 +519,12 @@ export async function submitPresentationResponse(
       const adapterResult = await submitDirectPostViaOid4vc({
         oid4vcContext: request.oid4vcContext,
         responseUri: request.responseUri,
+        responseMode: request.responseMode,
+        ...(request.responseEncryption ? { responseEncryption: request.responseEncryption } : {}),
         vpToken: formattedVpToken,
         ...(request.state ? { state: request.state } : {}),
+        ...(options.presentationSubmission ? { presentationSubmission: options.presentationSubmission } : {}),
+        request,
         fetchImpl: options.fetchImpl,
       })
 
@@ -541,12 +563,11 @@ export async function submitPresentationResponse(
     }
   }
 
-  const body = new URLSearchParams()
-  body.set('vp_token', formattedVpToken)
-  if (options.presentationSubmission) {
-    body.set('presentation_submission', JSON.stringify(options.presentationSubmission))
-  }
-  if (request.state) body.set('state', request.state)
+  const body = buildDirectPostFormBody({
+    request,
+    formattedVpToken,
+    presentationSubmission: options.presentationSubmission,
+  })
 
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
     method: 'POST',
@@ -1081,7 +1102,7 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
   const claimsQueries = query.credentials.flatMap((credential) => credential.claims ?? [])
   if (claimsQueries.length === 0) return undefined
 
-  const schema = getCardSchema(record.type)
+  const schema = resolveCardSchema(record)
   const claims = readCredentialClaimMap(record)
   const normalizedClaimKeys = new Map(Object.keys(claims).map((key) => [normalizeClaimKey(key), key]))
 
@@ -1101,7 +1122,7 @@ function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: Dcq
       ? readPresentationFieldValue(claims, field)
       : readClaimText(claims, lookupKeys)
     const value =
-      record.type === 'DLTDrivingLicence' && field?.key === 'licenceClass'
+      isFirstPartyDrivingLicence(record) && field?.key === 'licenceClass'
         ? formatDrivingLicenceVehicleTypeDisplay(rawValue) ?? rawValue
         : rawValue
     const present = value !== undefined || hasAnyClaimValue(claims, lookupKeys)

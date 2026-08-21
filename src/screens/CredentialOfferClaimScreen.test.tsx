@@ -515,6 +515,37 @@ describe('CredentialOfferClaimScreen', () => {
     }
   })
 
+  it('lets a non-PID third-party offer proceed when the interop flag is on', async () => {
+    const originalFlag = process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER
+    process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER = 'true'
+    readPidGateStatusMock.mockReturnValue('missing')
+    const offerUri =
+      'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fthird-party'
+    useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
+    resolveOfferMock.mockResolvedValue({
+      credentialConfigurations: [
+        { id: 'urn:tonyhere:demo:pid-age:1', format: 'dc+sd-jwt', rawConfiguration: {} },
+      ],
+      issuer: 'https://issuer.example',
+      txCode: undefined,
+    })
+
+    try {
+      render(<CredentialOfferClaimScreen />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('thai-id-confirmation-image')).toBeTruthy()
+      })
+      expect(screen.queryByText(WALLET_HOME_COPY.pidRequiredMessage)).toBeNull()
+    } finally {
+      if (originalFlag === undefined) {
+        delete process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER
+      } else {
+        process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER = originalFlag
+      }
+    }
+  })
+
   it('shows the DOPA confirmation before acquiring a ThaiNationalID credential', async () => {
     const offerUri = 'openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fid-card-before-acquire'
     useDeeplinkStore.getState().setPendingDeeplinkUri(offerUri)
@@ -1075,7 +1106,7 @@ describe('CredentialOfferClaimScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText(
-        'Authentication with the issuer failed. The transaction code may be incorrect or may belong to another request.',
+        'This issuance link has already been used or has expired, or the transaction code is incorrect. Request a new document from the issuer (do not reuse an old offer link).',
       )).toBeTruthy()
     })
     expect(logWalletError).toHaveBeenCalledWith(
@@ -1092,7 +1123,7 @@ describe('CredentialOfferClaimScreen', () => {
     })
 
     expect(screen.getByText(
-      'Authentication with the issuer failed. The transaction code may be incorrect or may belong to another request.',
+      'This issuance link has already been used or has expired, or the transaction code is incorrect. Request a new document from the issuer (do not reuse an old offer link).',
     )).toBeTruthy()
     expect(screen.queryByText('Opening Credential Offer')).toBeNull()
     expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()

@@ -29,6 +29,7 @@ import { WalletHeader } from '../components/WalletHeader'
 import { useAndroidBackNavigation } from '../hooks/useAndroidBackNavigation'
 import { useReturnToWallet } from '../hooks/useReturnToWallet'
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
+import { readTrustAnyOid4vcPeerEnabled } from '../config/oid4vcPeerTrustPolicy'
 import { readWalletReturnUrl } from '../config/sameDeviceIssuance'
 import type { IssuerPortalCredentialType } from '../config/issuerPortalUrls'
 import { buildAuthorizationRequestUrlForResolvedOffer } from '../services/credentials/buildAuthorizationRequestUrlForResolvedOffer'
@@ -84,6 +85,7 @@ import { isCredentialOfferDeeplink, useDeeplinkStore } from '../store/deeplinkSt
 import { normalizeNumericCode } from '../utils/normalizeNumericCode'
 
 import { THEME } from '../config/themeColors'
+import { resolveFirstPartyType } from '../config/firstPartyCredential'
 
 const SCREEN_SAFE_EDGES = ['top'] as const
 
@@ -292,7 +294,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       pidGateStatus,
       authorizationCodeFlow: Boolean(authorizationCodeExchangeRef.current),
     })
-    if (!isPidOffer && pidGateStatus !== 'ready') {
+    if (!isPidOffer && pidGateStatus !== 'ready' && !readTrustAnyOid4vcPeerEnabled()) {
       logWalletError(
         'deeplink',
         'offer-requires-pid',
@@ -685,9 +687,10 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   }
 
   const acceptPreview = (record: VerifiableCredentialRecord, pendingMdoc?: PendingMdocCredential) => {
+    const firstPartyType = resolveFirstPartyType(record)
     if (
-      record.type === 'DLTDrivingLicence'
-      || record.type === 'ChulalongkornUniversityTranscript'
+      firstPartyType === 'DLTDrivingLicence'
+      || firstPartyType === 'ChulalongkornUniversityTranscript'
     ) {
       setPhase({
         tag: 'issuerConfirm',
@@ -701,7 +704,8 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   }
 
   if (phase.tag === 'preview') {
-    if (phase.record.type === 'DLTDrivingLicence') {
+    const previewType = resolveFirstPartyType(phase.record)
+    if (previewType === 'DLTDrivingLicence') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={exitFlow} />
@@ -714,7 +718,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       )
     }
 
-    if (phase.record.type === 'ThaiNationalID') {
+    if (previewType === 'ThaiNationalID') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={exitFlow} />
@@ -729,7 +733,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       )
     }
 
-    if (phase.record.type === 'ChulalongkornUniversityTranscript') {
+    if (previewType === 'ChulalongkornUniversityTranscript') {
       return (
         <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
           <WalletHeader onBack={exitFlow} />

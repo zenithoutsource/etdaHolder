@@ -25,6 +25,7 @@ import { requireNativeProximityModule } from './nativeProximityModule'
 export type ArmProximityPresentationInput = {
   credentialId: string
   approvedMdocFields: string[]
+  profileCeiling?: string[]
   sharingMode: ReaderSharingMode
   mdocPayloadBytes?: number
   companionPayloadBytes?: number
@@ -93,6 +94,10 @@ export async function armProximityPresentation(input: ArmProximityPresentationIn
       sharingMode: input.sharingMode,
       profileId: profile?.profileId ?? 'unknown-profile',
       approvedMdocFields: input.approvedMdocFields,
+      profileCeiling:
+        input.profileCeiling && input.profileCeiling.length > 0
+          ? input.profileCeiling
+          : input.approvedMdocFields,
       companionTransportPluginId: profile?.companion?.transportPluginId,
       ...(profile && readerProfileUsesCompanion(profile) && record?.rawVc
         ? { companionSdJwt: record.rawVc }

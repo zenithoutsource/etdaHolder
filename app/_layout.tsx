@@ -4,6 +4,9 @@
  * Copy: StartupLoadingPanel; inline startup errors via toUserMessage.
  * Next: (tabs), auth, pin-setup, pin-lock, callback.
  * Map: docs/CODEMAPS/frontend.md#global-hosts
+ *
+ * Idle-grace PIN lock also cancels an in-flight issuer-portal wait so protocol
+ * work cannot continue on the PIN screen.
  */
 
 import '@/src/sdk/fetchIndirection';
@@ -58,7 +61,7 @@ import {
   useDeeplinkStore,
 } from '@/src/store/deeplinkStore';
 import { storePendingFromIssuanceCallbackUrl } from '@/src/services/credentials/resolveIssuanceCallbackResult';
-import { isPortalReturnUrlIgnoredDuringCapture } from '@/src/services/credentials/portalReturnBridge';
+import { isPortalReturnUrlIgnoredDuringCapture, cancelPortalReturnWait } from '@/src/services/credentials/portalReturnBridge';
 import {
   configurePresentationReplayStorage,
   createWebPresentationReplayStorage,
@@ -502,6 +505,7 @@ export default function RootLayout() {
 
         if (authState.isPinVerified) {
           authState.setPinVerified(false);
+          cancelPortalReturnWait();
           logWalletStep('wallet-unlock', 'session-expired');
         }
       } finally {

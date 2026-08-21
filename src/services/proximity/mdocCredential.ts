@@ -2,6 +2,7 @@ import { Platform } from 'react-native'
 
 import { base64UrlToBytes } from '@/src/utils/jwtUtils'
 
+import { isFirstPartyDrivingLicence, type FirstPartyRecordLike } from '../../config/firstPartyCredential'
 import { logWalletError } from '../debug/walletLogger'
 import { hasStoredMdoc, storeMdocCredential } from './mdocStorage'
 
@@ -10,7 +11,9 @@ const MDOC_RAW_PREFIX = 'mdoc:'
 type MdocRecordLike = {
   id: string
   rawVc: string
+  type?: string
   claims: Record<string, unknown>
+  credentialConfigurationId?: string
 }
 
 export function isMdocRawVc(rawVc: string | undefined): boolean {
@@ -18,13 +21,24 @@ export function isMdocRawVc(rawVc: string | undefined): boolean {
 }
 
 export function canShowNfcPresentButton(input: {
-  record?: Pick<MdocRecordLike, 'rawVc'>
+  record?: Pick<MdocRecordLike, 'rawVc'> &
+    Partial<Pick<MdocRecordLike, 'type' | 'claims' | 'credentialConfigurationId'>>
   hasNativeMdoc: boolean
   renewalBlocked: boolean
   platform?: string
 }): boolean {
   if (input.renewalBlocked || !input.record) return false
   if ((input.platform ?? Platform.OS) !== 'android') return false
+  if (input.record.type) {
+    const classified: FirstPartyRecordLike = {
+      type: input.record.type,
+      claims: input.record.claims ?? {},
+      ...(input.record.credentialConfigurationId
+        ? { credentialConfigurationId: input.record.credentialConfigurationId }
+        : {}),
+    }
+    if (!isFirstPartyDrivingLicence(classified)) return false
+  }
   return input.hasNativeMdoc || isMdocRawVc(input.record.rawVc)
 }
 

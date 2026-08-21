@@ -199,6 +199,13 @@ class ExpoMdocProximityModule : Module() {
         "approvedMdocFields is required",
       )
     }
+    val profileCeiling = readStringList(config["profileCeiling"]).ifEmpty { approvedFields }
+    if (approvedFields.any { field -> !ApprovedMdocFieldCeiling.containsKey(profileCeiling, field) }) {
+      throw MdocProximityException(
+        MdocProximityErrors.INVALID_ARGUMENT,
+        "approvedMdocFields must be a subset of profileCeiling",
+      )
+    }
     val companionSdJwt = config["companionSdJwt"] as? String
     val displayNameOverlay = readStringMap(config["displayNameOverlay"])
     val armWindowMs = (config["armWindowMs"] as? Number)?.toLong() ?: 180_000L
@@ -218,6 +225,7 @@ class ExpoMdocProximityModule : Module() {
         sharingMode = sharingMode,
         profileId = profileId,
         approvedMdocFields = approvedFields,
+        profileCeiling = profileCeiling,
         companionSdJwt = companionSdJwt,
         armedUntilMs = System.currentTimeMillis() + armWindowMs,
         responseDrainGraceMs = responseDrainGraceMs,

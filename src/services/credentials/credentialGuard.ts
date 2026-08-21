@@ -5,6 +5,8 @@ import {
   type CredentialRenewalState,
 } from './credentialKeyRenewal'
 import { isCredentialDocumentExpired } from './credentialDocumentExpiry'
+import { isJwtLikeCredentialRaw } from './credentialHolderBinding'
+import { isStoredCredentialKeyTtlExpired } from './credentialKeyExpiry'
 import { readCredentialLifecycleStatus } from './credentialLifecycle'
 import { readIssuerSuspension } from './issuerSuspension'
 import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
@@ -90,12 +92,13 @@ export function hasUsablePidCredential(
   return credentials.some((credential) => {
     if (credential.type !== PID_CREDENTIAL_TYPE) return false
     if (isCredentialDocumentExpired(credential)) return false
+    if (isStoredCredentialKeyTtlExpired(credential)) return false
     if (isCredentialWithdrawnFromUse(credential.id)) return false
     if (credentialRequiresHardwareReissue(credential.id)) return false
 
     const state = readRenewalState(credential.id, renewalStatuses)
     if (!state) return true
-    return state === 'renewed-active' || state === 'cleanup-pending'
+    return state === 'renewed-active'
   })
 }
 
@@ -139,6 +142,7 @@ export function canSubmitCredentialRenewal(
 
   const credential = credentials.find((entry) => entry.id === credentialId)
   if (!credential) return false
+  if (!isJwtLikeCredentialRaw(credential.rawVc)) return false
   if (isCredentialDocumentExpired(credential)) return false
 
   const pidGateStatus = readPidGateStatus(credentials, renewalStatuses)

@@ -18,6 +18,10 @@ import {
 
 import { MOCK_HOLDER_ENGLISH_NAME } from "../config/drivingLicenceSample";
 import {
+  isFirstPartyDrivingLicence,
+  resolveFirstPartyType,
+} from "../config/firstPartyCredential";
+import {
   readCredentialHolderProfile,
   type CredentialDetailDisplay,
   type CredentialDisplayRow,
@@ -588,7 +592,17 @@ export function CredentialDocumentDetailCard({
   const openQr = presentmentBlocked ? undefined : onOpenQr;
   const presentNfc = presentmentBlocked ? undefined : onPresentViaNfc;
 
-  if (display.imageKey === "transcript") {
+  const firstPartyType = record ? resolveFirstPartyType(record) : undefined
+  const useTranscriptLayout =
+    firstPartyType === "ChulalongkornUniversityTranscript" ||
+    (!record && display.imageKey === "transcript")
+  const useIdCardLayout =
+    firstPartyType === "ThaiNationalID" || (!record && display.imageKey === "id")
+  const useDrivingLicenceLayout =
+    Boolean(record && isFirstPartyDrivingLicence(record)) ||
+    (!record && display.imageKey === "car")
+
+  if (useTranscriptLayout) {
     return (
       <TranscriptDocumentDetailCard
         display={display}
@@ -603,7 +617,7 @@ export function CredentialDocumentDetailCard({
       />
     );
   }
-  if (display.imageKey === "id") {
+  if (useIdCardLayout) {
     return (
       <IdCardDocumentDetailCard
         display={display}
@@ -618,7 +632,7 @@ export function CredentialDocumentDetailCard({
       />
     );
   }
-  if (display.imageKey === "car") {
+  if (useDrivingLicenceLayout) {
     return (
       <DrivingLicenceDocumentDetailCard
         display={display}
@@ -696,7 +710,11 @@ export function CredentialDocumentDetailCard({
             >
               <Image
                 testID="document-detail-image"
-                source={credentialImages[display.imageKey]}
+                source={
+                  display.photoUri
+                    ? { uri: display.photoUri }
+                    : credentialImages[display.imageKey]
+                }
                 className={
                   isPortraitArtwork ? "h-full w-full" : "h-[82px] w-[82px]"
                 }

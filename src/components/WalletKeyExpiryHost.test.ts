@@ -73,6 +73,16 @@ describe('shouldShowWalletKeyExpiredModal', () => {
       }),
     ).toBe(false)
   })
+
+  test('hides create-key modal while wallet PIN lock is required', () => {
+    expect(
+      shouldShowWalletKeyExpiredModal({
+        lane: 'create-key',
+        isRotatingWalletKey: false,
+        pinLockRequired: true,
+      }),
+    ).toBe(false)
+  })
 })
 
 describe('shouldShowPendingRenewalsDialog', () => {

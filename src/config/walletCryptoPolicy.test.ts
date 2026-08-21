@@ -2,6 +2,7 @@ import {
   isPerCredentialSigningEnabled,
   isWalletAttestationRequested,
   readIssuancePendingKeyTtlMs,
+  readOid4vcClientAttestationTtlMs,
   readWalletAttestChallengeUnsupportedTtlMs,
   readWalletAttestFetchTimeoutMs,
   WALLET_ATTEST_CHALLENGE_UNSUPPORTED_UNTIL_KEY,
@@ -16,6 +17,7 @@ describe('walletCryptoPolicy', () => {
   const originalAttest = process.env.EXPO_PUBLIC_OID4VC_CREDENTIAL_WALLET_ATTESTATIONS_ENABLED
   const originalChallengeTtl = process.env.EXPO_PUBLIC_WALLET_ATTEST_CHALLENGE_UNSUPPORTED_TTL_MS
   const originalFetchTimeout = process.env.EXPO_PUBLIC_WALLET_ATTEST_FETCH_TIMEOUT_MS
+  const originalClientAttestationTtl = process.env.EXPO_PUBLIC_OID4VC_CLIENT_ATTESTATION_TTL_MS
 
   afterEach(() => {
     if (originalTtl === undefined) {
@@ -42,6 +44,11 @@ describe('walletCryptoPolicy', () => {
       delete process.env.EXPO_PUBLIC_WALLET_ATTEST_FETCH_TIMEOUT_MS
     } else {
       process.env.EXPO_PUBLIC_WALLET_ATTEST_FETCH_TIMEOUT_MS = originalFetchTimeout
+    }
+    if (originalClientAttestationTtl === undefined) {
+      delete process.env.EXPO_PUBLIC_OID4VC_CLIENT_ATTESTATION_TTL_MS
+    } else {
+      process.env.EXPO_PUBLIC_OID4VC_CLIENT_ATTESTATION_TTL_MS = originalClientAttestationTtl
     }
   })
 
@@ -80,5 +87,10 @@ describe('walletCryptoPolicy', () => {
   test('readWalletAttestFetchTimeoutMs defaults to 15 seconds', () => {
     delete process.env.EXPO_PUBLIC_WALLET_ATTEST_FETCH_TIMEOUT_MS
     expect(readWalletAttestFetchTimeoutMs()).toBe(15_000)
+  })
+
+  test('readOid4vcClientAttestationTtlMs defaults to 1 hour', () => {
+    delete process.env.EXPO_PUBLIC_OID4VC_CLIENT_ATTESTATION_TTL_MS
+    expect(readOid4vcClientAttestationTtlMs()).toBe(3_600_000)
   })
 })

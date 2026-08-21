@@ -87,8 +87,26 @@ describe('hardwareJwtSigner', () => {
         x: publicJwk.x,
         y: publicJwk.y,
       })
-      expect(jwkHeader.kid).toBe(`${holderDid}#${holderDid.slice('did:key:'.length)}`)
+      expect(jwkHeader.kid).toBeUndefined()
       expect(jwkHeader.cose_key).toBeUndefined()
+
+      const jwkKidJwt = await signHardwareProofJwt({
+        nonce: 'nonce-2b',
+        audience: 'https://issuer.zenithcomp.co.th:455',
+        keyBinding: 'jwk-kid',
+        publicJwk,
+        holderDid,
+        sign: (message) => session.sign(message),
+      })
+      const jwkKidHeader = decodeJwtPart(jwkKidJwt.split('.')[0]!)
+      expect(jwkKidHeader.jwk).toMatchObject({
+        kty: 'EC',
+        crv: 'P-256',
+        x: publicJwk.x,
+        y: publicJwk.y,
+      })
+      expect(jwkKidHeader.kid).toContain(holderDid)
+      expect(jwkKidHeader.cose_key).toBeUndefined()
 
       const defaultJwt = await signHardwareProofJwt({
         nonce: 'nonce-3',
@@ -99,7 +117,7 @@ describe('hardwareJwtSigner', () => {
       })
       const defaultHeader = decodeJwtPart(defaultJwt.split('.')[0]!)
       expect(defaultHeader.jwk).toMatchObject({ kty: 'EC', crv: 'P-256' })
-      expect(defaultHeader.kid).toBe(`${holderDid}#${holderDid.slice('did:key:'.length)}`)
+      expect(defaultHeader.kid).toBeUndefined()
     } finally {
       await session.close()
     }

@@ -61,6 +61,7 @@ object TestMdlGenerator {
     familyName: String = DEFAULT_FAMILY_NAME,
     givenName: String = DEFAULT_GIVEN_NAME,
     birthDate: String = DEFAULT_BIRTH_DATE,
+    includeTopLevelLicenceDates: Boolean = true,
   ): GeneratedTestMdl {
     val now = Clock.System.now()
     val signedAt = kotlin.time.Instant.fromEpochSeconds(now.epochSeconds, 0)
@@ -99,8 +100,10 @@ object TestMdlGenerator {
         addDataElement("given_name", Tstr(givenName))
         addDataElement("birth_date", LocalDate.parse(birthDate).toDataItemFullDate())
         addDataElement("issuing_country", Tstr("TH"))
-        addDataElement("issue_date", LocalDate.parse("2024-01-01").toDataItemFullDate())
-        addDataElement("expiry_date", LocalDate.parse("2034-01-01").toDataItemFullDate())
+        if (includeTopLevelLicenceDates) {
+          addDataElement("issue_date", LocalDate.parse("2024-01-01").toDataItemFullDate())
+          addDataElement("expiry_date", LocalDate.parse("2034-01-01").toDataItemFullDate())
+        }
         addDataElement(
           "driving_privileges",
           org.multipaz.cbor.buildCborArray {

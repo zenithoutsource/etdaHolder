@@ -88,8 +88,7 @@ describe('crypto hardware P-256 router', () => {
     expect(header.alg).toBe('ES256')
     expect(header.typ).toBe('openid4vci-proof+jwt')
     expect(header.jwk).toMatchObject({ kty: 'EC', crv: 'P-256' })
-    expect(typeof header.kid).toBe('string')
-    expect(header.kid).toContain('did:key:')
+    expect(header.kid).toBeUndefined()
     expect(header.cose_key).toBeUndefined()
   })
 

@@ -1,9 +1,9 @@
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
-import { getCardSchema } from '../../config/cardSchemas'
+import { resolveCardSchema } from '../../config/cardSchemas'
 import { readString } from '../../utils/jwtUtils'
 
 export function readCredentialIssuerName(record: VerifiableCredentialRecord): string {
-  const schema = getCardSchema(record.type)
+  const schema = resolveCardSchema(record)
   if (schema.type !== '__fallback__') return schema.issuerName
 
   const storedName = record.issuerName?.trim()

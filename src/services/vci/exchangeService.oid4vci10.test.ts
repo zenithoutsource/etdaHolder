@@ -294,7 +294,13 @@ describe('OID4VCI 1.0 credential request (oid4vc path)', () => {
     expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalled()
   })
 
-  test('rejects mso_mdoc PoP JWT that omits kid when jwk is present', async () => {
+  test('accepts mso_mdoc PoP JWT with jwk and no kid', async () => {
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
+        format: 'mso_mdoc',
+        credential: 'AQIDBA',
+      },
+    })
     const unsigned = unsignedJwt(
       { aud: 'https://issuer.example.com', iat: 1, nonce: 'nonce' },
       'ES256',
@@ -308,15 +314,13 @@ describe('OID4VCI 1.0 credential request (oid4vc path)', () => {
     })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
     const jwkOnlyJwt = `${jwkOnlyHeader}.${payloadB64}.${signatureB64}`
 
-    await expect(
-      acquireCredentialRecord(makeMdlResolvedOffer(), {
-        dependencies: {
-          signProof: async () => jwkOnlyJwt,
-          getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
-        },
-      }),
-    ).rejects.toThrow(/kid header is required/)
-    expect(mockRetrieveCredentialViaOid4vc).not.toHaveBeenCalled()
+    await acquireCredentialRecord(makeMdlResolvedOffer(), {
+      dependencies: {
+        signProof: async () => jwkOnlyJwt,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+    expect(mockRetrieveCredentialViaOid4vc).toHaveBeenCalled()
   })
 
   test('sends OID4VCI 1.0 mso_mdoc request without doctype and maps org.iso.18013.5.1.mDL to DLTDrivingLicence', async () => {
@@ -387,6 +391,63 @@ describe('OID4VCI 1.0 credential request (oid4vc path)', () => {
     expect(requestPayload).not.toHaveProperty('proof')
     expect(requestPayload).not.toHaveProperty('proofs')
     expect(record.rawVc).toBe('mdoc:AQIDBA')
+  })
+
+  test('signs zenithcomp mso_mdoc PoP with jwk-kid so the issuer receives kid', async () => {
+    mockRetrieveCredentialViaOid4vc.mockResolvedValue({
+      credentialResponse: {
+        format: 'mso_mdoc',
+        credential: 'AQIDBA',
+      },
+    })
+
+    const signProof = jest.fn(async () => 'proof.jwt')
+    await acquireCredentialRecord(makeZenithcompMdlResolvedOffer(), {
+      dependencies: {
+        signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+
+    expect(signProof).toHaveBeenCalledWith(
+      'nonce',
+      'https://issuer.zenithcomp.co.th:455',
+      expect.objectContaining({ keyBinding: 'jwk-kid' }),
+    )
+  })
+
+  test('retries mso_mdoc invalid_proof kid-required with jwk-kid', async () => {
+    mockRetrieveCredentialViaOid4vc
+      .mockRejectedValueOnce(
+        new InvalidProofError('CredentialRequestFailed: invalid_proof - kid header is required', 'fresh-nonce'),
+      )
+      .mockResolvedValueOnce({
+        credentialResponse: {
+          format: 'mso_mdoc',
+          credential: 'AQIDBA',
+        },
+      })
+
+    const signProof = jest.fn(async () => 'proof.jwt')
+    await acquireCredentialRecord(makeMdlResolvedOffer(), {
+      dependencies: {
+        signProof,
+        getCredentialStorage: () => ({ getString: () => undefined, set: () => undefined }),
+      },
+    })
+
+    expect(signProof).toHaveBeenNthCalledWith(
+      1,
+      'nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'jwk' }),
+    )
+    expect(signProof).toHaveBeenNthCalledWith(
+      2,
+      'fresh-nonce',
+      'https://issuer.example.com',
+      expect.objectContaining({ keyBinding: 'jwk-kid' }),
+    )
   })
 
   test('accepts OID4VCI 1.0 credentials array mso_mdoc response', async () => {

@@ -8,8 +8,11 @@ import {
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from './exchangeService'
-import { getCardSchema, type DisplayField, type CardSchemaConfig } from '../../config/cardSchemas'
+import { resolveCardSchema, type DisplayField, type CardSchemaConfig } from '../../config/cardSchemas'
+import { canonicalFirstPartyType, isFirstPartyIssuerOrigin } from '../../config/firstPartyCredential'
 import { isHiddenClaimKey, readClaimText, stringifyClaim } from '../credentials/claimFormatting'
+import { readClaimDisplayName } from '../credentials/claimDisplayMetadata'
+import { readGenericClaimRows } from '../credentials/genericClaimDisplay'
 import { getCredentialKeyRecord } from '../crypto/credentialKeyRegistry'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { launchPushNotificationsInBackground } from '../notifications/pushNotificationService'
@@ -50,7 +53,8 @@ type ClaimConfirmedOfferOptions = {
 export function readOfferConfirmationPreview(offer: ResolvedCredentialOffer): OfferConfirmationPreview {
   const configuration = offer.credentialConfigurations[0]
   const dualFormat = isDualFormatOffer(offer.credentialConfigurations)
-  const credentialName = configuration?.display?.name ?? readFriendlyCredentialName(configuration?.id)
+  const credentialName =
+    configuration?.display?.name ?? readFriendlyCredentialName(configuration?.id, offer.issuer)
   const informationItems = readInformationItems(configuration?.rawConfiguration)
 
   return {
@@ -104,25 +108,26 @@ export function readCredentialInformationRows(
 }
 
 export function readCredentialPreviewDisplay(record: VerifiableCredentialRecord): CredentialPreviewDisplay {
-  const schema = getCardSchema(record.type)
+  const schema = resolveCardSchema(record)
+  const rows = schema.displayFields.length > 0
+    ? readCredentialInformationRows(record, schema.displayFields)
+    : readGenericClaimRows(record.claims, record.claimDisplayLabels).rows
 
   return {
-    documentTitle: schema.documentTitle,
+    documentTitle: record.credentialDisplayName?.trim() || schema.documentTitle,
     imageKey: schema.imageKey,
-    rows: readCredentialInformationRows(record, schema.displayFields),
+    rows,
   }
 }
 
-function readFriendlyCredentialName(configurationId?: string): string {
+function readFriendlyCredentialName(configurationId?: string, issuer?: string): string {
   if (!configurationId) return 'Digital Document'
-
-  const normalized = configurationId.toLowerCase()
-  if (normalized.includes('transcript')) return 'Academic Transcript'
-  if (normalized.includes('driving') || normalized.includes('licence') || normalized.includes('license')) return 'Driving Licence'
-  if (normalized.includes('thai') || normalized.includes('national') || normalized.includes('idcard') || normalized.includes('id_card')) {
-    return 'Thai National ID'
-  }
-
+  if (issuer && !isFirstPartyIssuerOrigin(issuer)) return 'Digital Document'
+  const firstPartyType = canonicalFirstPartyType(configurationId)
+  if (firstPartyType === 'ThaiNationalID') return 'Thai National ID'
+  if (firstPartyType === 'DLTDrivingLicence') return 'Driving Licence'
+  if (firstPartyType === 'ChulalongkornUniversityTranscript') return 'Academic Transcript'
+  if (firstPartyType === 'MedicalCertificate') return 'Medical Certificate'
   return 'Digital Document'
 }
 
@@ -135,21 +140,5 @@ function readInformationItems(rawConfiguration: unknown): OfferInformationItem[]
     key,
     label: readClaimDisplayName(value) ?? key,
   }))
-}
-
-function readClaimDisplayName(value: unknown): string | undefined {
-  const display = readRecord(value)?.display
-  if (!Array.isArray(display)) return undefined
-
-  for (const item of display) {
-    const name = readRecord(item)?.name
-    if (typeof name === 'string' && name.length > 0 && !isPlaceholderDisplayName(name)) return name
-  }
-
-  return undefined
-}
-
-function isPlaceholderDisplayName(value: string): boolean {
-  return value.trim().toLowerCase() === 'string'
 }
 

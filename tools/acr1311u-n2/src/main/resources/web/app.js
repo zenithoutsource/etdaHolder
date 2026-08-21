@@ -40,6 +40,7 @@ presentBtn.addEventListener('click', async () => {
     const CLAIM_LABELS = {
       given_name: 'ชื่อ',
       family_name: 'นามสกุล',
+      birth_date: 'วันเดือนปีเกิด',
       age_over_18: 'อายุเกิน 18',
       driving_privileges: 'ประเภทใบอนุญาต',
       issue_date: 'วันที่ออกใบอนุญาต',
@@ -48,11 +49,14 @@ presentBtn.addEventListener('click', async () => {
     const CLAIM_ORDER = [
       'given_name',
       'family_name',
+      'birth_date',
       'age_over_18',
       'driving_privileges',
       'issue_date',
       'expiry_date',
     ]
+    const OMITTED_COPY = 'ผู้ถือบัตรไม่ยินยอมเปิดเผย'
+    const NOT_SENT = 'ไม่ได้ส่ง'
     claimsEl.innerHTML = ''
     const claims = body.claims || {}
     CLAIM_ORDER.forEach((key) => {
@@ -61,6 +65,16 @@ presentBtn.addEventListener('click', async () => {
       dt.textContent = CLAIM_LABELS[key] || key
       const dd = document.createElement('dd')
       dd.textContent = claims[key]
+      claimsEl.append(dt, dd)
+    })
+    ;(body.omittedFields || []).forEach((row) => {
+      if (!row || row.key === 'age_over_18') return
+      if (claims[row.key] != null && claims[row.key] !== '') return
+      const dt = document.createElement('dt')
+      dt.textContent = CLAIM_LABELS[row.key] || row.key
+      const dd = document.createElement('dd')
+      dd.className = 'omitted'
+      dd.textContent = NOT_SENT + ' — ' + OMITTED_COPY
       claimsEl.append(dt, dd)
     })
     verifyBannerEl.hidden = true

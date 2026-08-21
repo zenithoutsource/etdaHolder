@@ -8,7 +8,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Image, Text, View, type ImageSourcePropType } from 'react-native'
 
-import { getCardSchema, type DisplayField } from '../config/cardSchemas'
+import { resolveCardSchema, type DisplayField } from '../config/cardSchemas'
 import {
   overlayPresentationDisclosureValue,
   readCredentialDetailDisplay,
@@ -48,7 +48,7 @@ function resolveSummaryValue(
 }
 
 export function PresentationCredentialSummaryCard({ record, holderProfile }: Props) {
-  const schema = getCardSchema(record.type)
+  const schema = resolveCardSchema(record)
   const display = readCredentialDetailDisplay(record)
   const profile = holderProfile ?? {}
   const summaryFields = schema.summaryFields ?? []

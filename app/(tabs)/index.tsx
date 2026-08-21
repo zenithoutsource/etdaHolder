@@ -50,7 +50,7 @@ import { usesWalletWideKeyRotation } from "../../src/components/WalletKeyExpiryH
 import { performWalletKeyRotationWithDialog } from "../../src/services/crypto/walletKeyRotationFlow";
 import { readWalletKeyExpiryLane } from "../../src/services/crypto/walletKeyExpiryLane";
 import { readWalletKeyRotationRecord } from "../../src/services/crypto/walletKeyRotation";
-import { isIssuerPortalCredentialType } from "../../src/config/issuerPortalUrls";
+import { isIssuerPortalCredentialType, resolveIssuerPortalCredentialTypeFromRecord } from "../../src/config/issuerPortalUrls";
 import { requestCredentialViaPortalFlow } from "../../src/services/credentials/requestCredentialViaPortalFlow";
 import { buildRenewalRequestFailureDialog } from "../../src/services/credentials/renewalRequestFailureUi";
 import { readCredentialStatusBadge } from "../../src/services/credentials/credentialStatusBadge";
@@ -72,6 +72,10 @@ import {
 } from "../../src/services/credentials/renewalIssuerIntake";
 import { shouldShowRenewedActiveBadge } from "../../src/services/credentials/credentialRenewalPresentation";
 import { findCleanupPendingForCredentialType } from "../../src/services/credentials/renewalCleanupNotification";
+import {
+  isCatalogFirstPartyMatch,
+  listUnregisteredHomeDocuments,
+} from "../../src/services/credentials/unregisteredHomeDocuments";
 import {
   hasPendingIssuerSuspensionAck,
   readIssuerSuspensionStatuses,
@@ -153,8 +157,12 @@ export default function WalletHomeScreen() {
   const [isRotatingWalletKey, setIsRotatingWalletKey] = useState(false);
   const lifecycleStatuses = readCredentialLifecycleStatuses(credentials);
   const summaryCredential = pickPreferredHomeCredential(
-    credentials.filter((record) => record.type === "ThaiNationalID"),
+    credentials.filter((record) => isCatalogFirstPartyMatch(record, "ThaiNationalID")),
     renewalStatuses,
+  );
+  const unregisteredDocuments = useMemo(
+    () => listUnregisteredHomeDocuments(credentials, renewalStatuses),
+    [credentials, renewalStatuses],
   );
 
   const syncLocalCredentialStatuses = useCallback(() => {
@@ -259,9 +267,9 @@ export default function WalletHomeScreen() {
   }
 
   async function handleRenewalRequest(credentialId: string) {
-    const credentialType = credentials.find(
-      (entry) => entry.id === credentialId,
-    )?.type;
+    const record = credentials.find((entry) => entry.id === credentialId);
+    const credentialType =
+      record ? resolveIssuerPortalCredentialTypeFromRecord(record) : undefined;
     try {
       await startRenewalIssuerIntake(credentialId);
       const latestCredentials = readStoredCredentials();
@@ -360,7 +368,9 @@ export default function WalletHomeScreen() {
               // one so the home screen reflects the latest state immediately.
               const credential = item.credentialType
                 ? pickPreferredHomeCredential(
-                    credentials.filter((r) => r.type === item.credentialType),
+                    credentials.filter((r) =>
+                      isCatalogFirstPartyMatch(r, item.credentialType!),
+                    ),
                     renewalStatuses,
                   )
                 : undefined;
@@ -576,6 +586,56 @@ export default function WalletHomeScreen() {
                       },
                     }).finally(() => {
                       setIsRotatingWalletKey(false);
+                    });
+                  }}
+                />
+              );
+            })}
+            {unregisteredDocuments.map((item) => {
+              const credential = item.record;
+              const isNewCredential = newCredentialIds.includes(credential.id);
+              const isVerifiedCredential = verifiedCredentialIds.includes(
+                credential.id,
+              );
+              const lifecycleStatus = lifecycleStatuses[credential.id];
+              const inactiveState = readInactiveState(
+                credential,
+                lifecycleStatus,
+              );
+              const badge = readCredentialStatusBadge({
+                inactiveState,
+                isVerifiedCredential,
+                isNewCredential,
+                isRenewedActive: false,
+                credential,
+              });
+
+              return (
+                <WalletDocumentMenuItem
+                  key={credential.id}
+                  label={item.label}
+                  icon={require("../../assets/images/profile.png")}
+                  iconStyle={{ width: 41, height: 27 }}
+                  hasCredential
+                  isExpanded={false}
+                  badge={badge}
+                  requestLabel={WALLET_HOME_COPY.requestCredential}
+                  onPress={() => {
+                    if (isNewCredential) {
+                      clearNewCredentialBadge(credential.id);
+                      setNewCredentialIds((current) =>
+                        current.filter((entryId) => entryId !== credential.id),
+                      );
+                    }
+                    if (isVerifiedCredential) {
+                      clearSuccessfulPresentationBadge(credential.id);
+                      setVerifiedCredentialIds((current) =>
+                        current.filter((entryId) => entryId !== credential.id),
+                      );
+                    }
+                    router.push({
+                      pathname: "/(tabs)/credential/[id]",
+                      params: { id: credential.id },
                     });
                   }}
                 />

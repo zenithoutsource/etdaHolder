@@ -54,6 +54,53 @@ describe('retrieveCredentialViaOid4vc', () => {
     expect(mockRetrieveCredentials.mock.calls[0]?.[0]).not.toHaveProperty('proof')
   })
 
+  test('injects an offered configuration id missing from origin metadata before retrieveCredentials', async () => {
+    mockRetrieveCredentials.mockResolvedValue({ credential: 'vc.jwt' })
+    const offeredId = 'urn:tonyhere:demo:pid-age:1'
+    const originConfig = {
+      format: 'dc+sd-jwt',
+      vct: 'https://issuer.example.com/vct/ThaiNationalID',
+    }
+    const context = {
+      ...oid4vcContext,
+      credentialOfferObject: {
+        ...oid4vcContext.credentialOfferObject,
+        credential_configuration_ids: [offeredId],
+      },
+      issuerMetadataResult: {
+        ...oid4vcContext.issuerMetadataResult,
+        credentialIssuer: {
+          credential_issuer: 'https://issuer.example.com',
+          credential_endpoint: 'https://issuer.example.com/credential',
+          credential_configurations_supported: {
+            ThaiNationalID: originConfig,
+          },
+        },
+        knownCredentialConfigurations: {
+          ThaiNationalID: originConfig,
+        },
+      },
+    } as unknown as Oid4vcVciAdapterContext
+
+    await retrieveCredentialViaOid4vc({
+      oid4vcContext: context,
+      accessToken: 'access-token',
+      proofJwt: 'proof.jwt',
+      credentialConfigurationId: offeredId,
+    })
+
+    const issuerMetadata = mockRetrieveCredentials.mock.calls[0]?.[0]?.issuerMetadata as {
+      credentialIssuer: { credential_configurations_supported: Record<string, unknown> }
+      knownCredentialConfigurations: Record<string, unknown>
+    }
+    expect(issuerMetadata.credentialIssuer.credential_configurations_supported[offeredId]).toEqual(
+      expect.objectContaining({ format: 'dc+sd-jwt' }),
+    )
+    expect(issuerMetadata.knownCredentialConfigurations[offeredId]).toEqual(
+      expect.objectContaining({ format: 'dc+sd-jwt' }),
+    )
+  })
+
   test('maps invalid_proof credential errors to InvalidProofError with c_nonce', async () => {
     mockRetrieveCredentials.mockRejectedValue(
       new Openid4vciRetrieveCredentialsError('invalid proof', {

@@ -1,5 +1,6 @@
 import {
 
+  isWalletPinLockRequired,
   readPostLoginRoute,
 
   readResumeRoute,
@@ -11,6 +12,50 @@ import {
 
 
 describe('walletPinNavigation', () => {
+
+  test('isWalletPinLockRequired is true only for authenticated native wallets with a PIN that is not verified', () => {
+    expect(isWalletPinLockRequired({
+      platform: 'android',
+      isAuthenticated: true,
+      isPinVerified: false,
+      hasWalletPin: true,
+    })).toBe(true)
+
+    expect(isWalletPinLockRequired({
+      platform: 'ios',
+      isAuthenticated: true,
+      isPinVerified: false,
+      hasWalletPin: true,
+    })).toBe(true)
+
+    expect(isWalletPinLockRequired({
+      platform: 'web',
+      isAuthenticated: true,
+      isPinVerified: false,
+      hasWalletPin: true,
+    })).toBe(false)
+
+    expect(isWalletPinLockRequired({
+      platform: 'android',
+      isAuthenticated: false,
+      isPinVerified: false,
+      hasWalletPin: true,
+    })).toBe(false)
+
+    expect(isWalletPinLockRequired({
+      platform: 'android',
+      isAuthenticated: true,
+      isPinVerified: true,
+      hasWalletPin: true,
+    })).toBe(false)
+
+    expect(isWalletPinLockRequired({
+      platform: 'android',
+      isAuthenticated: true,
+      isPinVerified: false,
+      hasWalletPin: false,
+    })).toBe(false)
+  })
 
   test('routes first successful native login without a PIN to setup', () => {
 

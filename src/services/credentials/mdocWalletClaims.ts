@@ -3,6 +3,7 @@ import { decode as decodeCborX } from 'cbor-x'
 import { base64UrlToBytes } from '@/src/utils/jwtUtils'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { logWalletError } from '../debug/walletLogger'
+import { hasClaimValue, isHiddenClaimKey } from './claimFormatting'
 import { parseMdocDocument, type ParsedMdocNamespaces } from '../proximity/mdocParser'
 
 const ISO_18013_NAMESPACE = 'org.iso.18013.5.1'
@@ -16,6 +17,8 @@ const ISO_TO_WALLET_CLAIM_KEYS: Readonly<Record<string, string>> = {
   issue_date: 'issuanceDate',
   issuing_country: 'issuingCountry',
 }
+
+const WALLET_MAPPED_CLAIM_KEYS = new Set(Object.values(ISO_TO_WALLET_CLAIM_KEYS))
 
 export function mapIso18013NamespaceClaims(
   namespaces: ParsedMdocNamespaces,
@@ -35,6 +38,15 @@ export function mapIso18013NamespaceClaims(
   const licenceClass = readDrivingPrivilegeLabel(isoClaims.driving_privileges)
   if (licenceClass) {
     claims.licenceClass = licenceClass
+  }
+
+  const mappedIsoKeys = new Set(Object.keys(ISO_TO_WALLET_CLAIM_KEYS))
+  for (const [isoKey, value] of Object.entries(isoClaims)) {
+    if (mappedIsoKeys.has(isoKey) || isoKey.startsWith('_') || isHiddenClaimKey(isoKey)) continue
+    if (isoKey === 'doctype') continue
+    if (value instanceof Uint8Array || ArrayBuffer.isView(value)) continue
+    if (!hasClaimValue(value)) continue
+    claims[isoKey] = value
   }
 
   return claims
@@ -63,11 +75,22 @@ export function overlayDrivingLicenceMdocClaims(
   const mdocClaims = extractMdocWalletClaims(base64UrlToBytes(mdocRawBase64))
   if (Object.keys(mdocClaims).length === 0) return record
 
+  const leftoverIsoClaims: Record<string, unknown> = {}
+  const walletMappedClaims: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(mdocClaims)) {
+    if (WALLET_MAPPED_CLAIM_KEYS.has(key) || key === 'licenceClass') {
+      walletMappedClaims[key] = value
+    } else {
+      leftoverIsoClaims[key] = value
+    }
+  }
+
   return {
     ...record,
     claims: {
+      ...leftoverIsoClaims,
       ...record.claims,
-      ...mdocClaims,
+      ...walletMappedClaims,
     },
   }
 }
@@ -76,20 +99,21 @@ function decodeMdocCbor(input: Uint8Array): unknown {
   return decodeCborX(input)
 }
 
-function readDrivingPrivilegeLabel(value: unknown): string | undefined {
+export function readDrivingPrivilegeLabel(value: unknown): string | undefined {
   if (typeof value === 'string') {
     const trimmed = value.trim()
     return trimmed.length > 0 ? trimmed : undefined
   }
 
-  if (!Array.isArray(value)) return undefined
-
-  for (const entry of value) {
-    const code = readVehicleCategoryCode(entry)
-    if (code) return code
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const code = readVehicleCategoryCode(entry)
+      if (code) return code
+    }
+    return undefined
   }
 
-  return undefined
+  return readVehicleCategoryCode(value)
 }
 
 function readVehicleCategoryCode(entry: unknown): string | undefined {

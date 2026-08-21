@@ -3,7 +3,10 @@ const mockDisarmProximityPresentation = jest.fn(async () => undefined)
 const mockDenyProximityPresentation = jest.fn(async () => undefined)
 
 type ProximityEventHandlers = {
-  onPresentationComplete?: (event: { sharedFields: string[] }) => void
+  onPresentationComplete?: (event: {
+    sharedFields: string[]
+    omittedFields?: { key: string; reason: string }[]
+  }) => void
 }
 
 let capturedHandlers: ProximityEventHandlers | null = null
@@ -81,6 +84,19 @@ describe('proximityStore NFC Presentment Consent', () => {
         credentialId: 'cred-1',
         sharingMode: 'mdoc-only',
         approvedMdocFields: mdlCeiling,
+        profileCeiling: mdlCeiling,
+      }),
+    )
+  })
+
+  test('approvePresentation arms with selected keys not the full openPresentation ceiling', async () => {
+    useProximityStore.getState().openPresentation('cred-1', 'mdoc-only')
+    const selected = mdlCeiling.filter((key) => !key.endsWith('expiry_date'))
+    await useProximityStore.getState().approvePresentation(selected)
+    expect(mockArmProximityPresentation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approvedMdocFields: selected,
+        profileCeiling: mdlCeiling,
       }),
     )
   })
@@ -128,5 +144,21 @@ describe('proximityStore NFC Presentment Consent', () => {
       'org.iso.18013.5.1.issue_date',
       'org.iso.18013.5.1.expiry_date',
     ])
+  })
+
+  test('presentation complete stores omitted fields and history uses sent labels only', async () => {
+    useProximityStore.getState().openPresentation('cred-1', 'mdoc-only')
+    await useProximityStore.getState().approvePresentation(mdlCeiling)
+    capturedHandlers?.onPresentationComplete?.({
+      sharedFields: ['org.iso.18013.5.1.given_name'],
+      omittedFields: [{ key: 'org.iso.18013.5.1.expiry_date', reason: 'holder_declined' }],
+    })
+    expect(useProximityStore.getState().omittedFields).toEqual([
+      { key: 'org.iso.18013.5.1.expiry_date', reason: 'holder_declined' },
+    ])
+    expect(recordNfcPresentationSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'DLTDrivingLicence' }),
+      ['ชื่อ'],
+    )
   })
 })

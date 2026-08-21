@@ -9,6 +9,7 @@ import {
   readDisplayValue,
   type CredentialHolderProfile,
 } from './credentialDisplay'
+import { readDrivingPrivilegeLabel } from './mdocWalletClaims'
 
 export type DrivingLicenceCardView = Readonly<{
   documentTitle: string
@@ -87,13 +88,20 @@ export function readDrivingLicenceCardView(
       'dob',
     ])
   const licenceClass =
+    readDrivingPrivilegeLabel(claims.licenceClass) ??
+    readDrivingPrivilegeLabel(claims.driving_privileges) ??
+    readDrivingPrivilegeLabel(claims['org.iso.18013.5.1.driving_privileges']) ??
     readFieldValue(claims, 'licenceClass', [
       'licence_class',
       'licenseClass',
       'license_class',
+      'license_type',
+      'licence_type',
+      'licenseType',
+      'licenceType',
       'vehicle_category_code',
       'vehicleCategoryCode',
-    ]) ?? display.primaryRows.find((row) => row.key === 'licenceClass')?.value
+    ])
   const licenceNumber =
     readFieldValue(claims, 'licenceNumber', [
       'licence_number',

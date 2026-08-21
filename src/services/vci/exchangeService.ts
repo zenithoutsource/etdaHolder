@@ -15,6 +15,7 @@ import {
     toErrorMessage,
 } from '@/src/utils/jwtUtils'
 import { getCardSchema } from '../../config/cardSchemas'
+import { canonicalFirstPartyType } from '../../config/firstPartyCredential'
 import {
   readHistoryDocumentLabel,
   readHistoryIssuerPartyName,
@@ -22,6 +23,10 @@ import {
 import {
     importCredential as defaultImportCredential,
 } from '../../sdk/walletApi'
+import {
+  readClaimDisplayLabels,
+  readCredentialDisplayName,
+} from '../credentials/claimDisplayMetadata'
 import { stringifyClaim } from '../credentials/claimFormatting'
 import { extractMdocWalletClaims } from '../credentials/mdocWalletClaims'
 import { readNormalizedDocumentExpiry } from '../credentials/credentialDocumentExpiresAt'
@@ -100,6 +105,10 @@ import {
   retrieveDeferredCredentialsViaOid4vc,
   retrievePreAuthorizedTokenViaOid4vc,
 } from './oid4vc/retrieveViaOid4vc'
+import {
+  discoverIssuerMetadata,
+  issuerIdentifiersCompatible,
+} from './discoverIssuerMetadata'
 import { findCredentialConfigurationViaOid4vc } from './oid4vc/matchCredentialConfigurationViaOid4vc'
 import {
   buildAuthorizationCodeCredentialOfferObject,
@@ -184,6 +193,8 @@ export type VerifiableCredentialRecord = {
   claimDisclosurePolicy?: Record<string, ClaimDisclosurePolicyEntry>
   issuerUrl?: string
   credentialConfigurationId?: string
+  credentialDisplayName?: string
+  claimDisplayLabels?: Record<string, string>
 }
 
 export type CredentialStorage = {
@@ -434,31 +445,21 @@ export async function claimCredentialWithAuthorizationCode(
 }
 
 export async function fetchIssuerMetadata(issuer: string): Promise<IssuerMetadataV1_0_15> {
-  const metadataUrl = getIssuerMetadataUrl(issuer)
-  logWalletStep('oid4vci', 'issuer-metadata-fetch-start', { issuer, metadataUrl })
+  logWalletStep('oid4vci', 'issuer-metadata-fetch-start', {
+    issuer,
+    metadataUrl: getIssuerMetadataUrl(issuer),
+  })
 
-  let response: Response
   try {
-    response = await fetch(metadataUrl, {
-      headers: {
-        Accept: 'application/json',
-      },
+    const metadata = await discoverIssuerMetadata(issuer)
+    logWalletStep('oid4vci', 'issuer-metadata-fetch-complete', {
+      issuer,
+      credentialIssuer: metadata.credential_issuer,
     })
+    return metadata
   } catch (error) {
-    logWalletError('oid4vci', 'issuer-metadata-fetch-error', error, { issuer, metadataUrl })
-    throw new Error(`IssuerMetadataFetchFailed: ${toErrorMessage(error)}`)
-  }
-
-  logWalletStep('oid4vci', 'issuer-metadata-fetch-response', { issuer, metadataUrl, status: response.status, ok: response.ok })
-  if (!response.ok) {
-    throw new Error(`IssuerMetadataFetchFailed: HTTP ${response.status}`)
-  }
-
-  try {
-    return (await response.json()) as IssuerMetadataV1_0_15
-  } catch (error) {
-    logWalletError('oid4vci', 'issuer-metadata-parse-error', error, { issuer, metadataUrl, status: response.status })
-    throw new Error(`IssuerMetadataParseFailed: ${toErrorMessage(error)}`)
+    logWalletError('oid4vci', 'issuer-metadata-fetch-error', error, { issuer })
+    throw error
   }
 }
 
@@ -601,7 +602,10 @@ export async function acquireCredentialRecord(
     ),
   })
   throwIfCredentialAcquisitionAborted(options.signal)
-  const proofKeyBinding = readProofKeyBinding(resolvedOffer.credentialConfigurations[0])
+  const proofKeyBinding = readProofKeyBinding(
+    resolvedOffer.credentialConfigurations[0],
+    resolvedOffer.issuer,
+  )
   let pendingCredentialKeyId =
     options.pendingCredentialKeyId ??
     (usesPerCredentialSigning() ? options.proofSession?.credentialKeyId : undefined)
@@ -774,23 +778,24 @@ export async function acquireCredentialRecord(
     }
 
     if (!rawVc && credentialRequestError instanceof InvalidProofError) {
+      const retryKeyBinding = readRetryProofKeyBinding(proofKeyBinding, credentialRequestError)
       logWalletError('oid4vci', 'credential-request-invalid-proof', credentialRequestError, {
         issuer: resolvedOffer.issuer,
         retry: true,
       })
       options.onCNonceUpdated?.(credentialRequestError.cNonce)
       proof = await signProofForClaim(credentialRequestError.cNonce, resolvedOffer.issuer, {
-        keyBinding: proofKeyBinding,
+        keyBinding: retryKeyBinding,
       })
       assertProofHeaderMatchesKeyBinding(
         proof,
-        proofKeyBinding,
+        retryKeyBinding,
         resolvedOffer.credentialConfigurations[0],
       )
       logWalletStep('oid4vci', 'proof-resigned', {
         issuer: resolvedOffer.issuer,
         popBytes: proof.length,
-        keyBinding: proofKeyBinding,
+        keyBinding: retryKeyBinding,
         ...readProofHeaderBindingDiagnostics(proof),
       })
       rememberCredentialResult(await submitCredentialRequest(token, proof))
@@ -1209,7 +1214,7 @@ function normalizeIssuerUrl(issuer: string): string {
 }
 
 function assertIssuerMetadata(issuer: string, metadata: IssuerMetadataV1_0_15): void {
-  if (normalizeIssuerUrl(metadata.credential_issuer) !== normalizeIssuerUrl(issuer)) {
+  if (!issuerIdentifiersCompatible(issuer, metadata.credential_issuer)) {
     throw new Error('IssuerMetadataMismatch: credential_issuer does not match the credential offer issuer')
   }
 
@@ -1232,11 +1237,16 @@ function resolveCredentialConfigurationsByIds(
   }
 
   return offeredIds.map((id) => {
-    const matchedConfiguration = findCredentialConfiguration(
-      id,
-      issuerMetadata.credential_configurations_supported,
-      issuerMetadataResult,
-    )
+    const matchedConfiguration =
+      findCredentialConfiguration(
+        id,
+        issuerMetadata.credential_configurations_supported,
+        issuerMetadataResult,
+      ) ??
+      synthesizeUnknownOfferedConfiguration(
+        id,
+        issuerMetadata.credential_configurations_supported,
+      )
 
     if (!matchedConfiguration) {
       throw new Error(`CredentialConfigurationNotSupported: ${id}`)
@@ -1271,6 +1281,19 @@ function resolveCredentialConfigurations(
 type MatchedCredentialConfiguration = {
   id: string
   rawConfiguration: CredentialConfigurationSupportedV1_0_15
+}
+
+function synthesizeUnknownOfferedConfiguration(
+  offeredId: string,
+  supported: Record<string, CredentialConfigurationSupportedV1_0_15>,
+): MatchedCredentialConfiguration | undefined {
+  const entries = Object.entries(supported)
+  if (entries.length !== 1) return undefined
+
+  const rawConfiguration = entries[0]?.[1]
+  if (!rawConfiguration?.format) return undefined
+
+  return { id: offeredId, rawConfiguration }
 }
 
 function findCredentialConfiguration(
@@ -1610,6 +1633,8 @@ function normalizeCredentialRecord(
 
   const configuration = resolvedOffer?.credentialConfigurations[0]
   const claimDisclosurePolicy = parseClaimDisclosurePolicyFromCredentialMetadata(configuration?.rawConfiguration)
+  const credentialDisplayName = readCredentialDisplayName(configuration?.display)
+  const claimDisplayLabels = readClaimDisplayLabels(configuration?.rawConfiguration)
 
   return {
     id,
@@ -1622,6 +1647,8 @@ function normalizeCredentialRecord(
     ...(claimDisclosurePolicy ? { claimDisclosurePolicy } : {}),
     ...(resolvedOffer?.issuer ? { issuerUrl: resolvedOffer.issuer } : {}),
     ...(configuration?.id ? { credentialConfigurationId: configuration.id } : {}),
+    ...(credentialDisplayName ? { credentialDisplayName } : {}),
+    ...(claimDisplayLabels ? { claimDisplayLabels } : {}),
   }
 }
 
@@ -1709,6 +1736,7 @@ export function createDefaultClaimCredentialDependencies(): ClaimCredentialDepen
           accessToken,
           proofJwt: proof,
           credentialConfigurationId: credentialConfiguration.requestId,
+          credentialConfiguration: credentialConfiguration.rawConfiguration as Record<string, unknown>,
           ...(credentialIdentifier ? { credentialIdentifier } : {}),
           additionalRequestPayload,
           signal,
@@ -2100,12 +2128,16 @@ function isP256DeviceJwk(value: unknown): value is { kty: 'EC'; crv: 'P-256' } {
     && typeof value.y === 'string' && value.y.length > 0
 }
 
+function usesJwkProofHeader(keyBinding: 'did-kid' | 'jwk' | 'jwk-kid'): boolean {
+  return keyBinding === 'jwk' || keyBinding === 'jwk-kid'
+}
+
 function assertProofHeaderMatchesKeyBinding(
   proof: string,
-  keyBinding: 'did-kid' | 'jwk',
+  keyBinding: 'did-kid' | 'jwk' | 'jwk-kid',
   configuration: OfferedCredentialConfiguration | undefined,
 ): void {
-  if (keyBinding !== 'jwk') return
+  if (!usesJwkProofHeader(keyBinding)) return
   const header = decodeJwtHeader(proof)
   if (!header) return
 
@@ -2116,9 +2148,6 @@ function assertProofHeaderMatchesKeyBinding(
       }
     } else if (!isRecord(header.jwk)) {
       throw new Error('CredentialProofInvalid: jwk header is required for mso_mdoc')
-    }
-    if (typeof header.kid !== 'string' || header.kid.length === 0) {
-      throw new Error('CredentialProofInvalid: kid header is required for mso_mdoc')
     }
     return
   }
@@ -2131,21 +2160,46 @@ function assertProofHeaderMatchesKeyBinding(
 /** mso_mdoc / cose_key configs need public key material in the PoP JWT (`jwk` header).
  * SD-JWT VC Verifiers that require `cnf.jwk` also need the Issuer to receive a PoP `jwk`
  * (did-kid alone yields credentials with only `cnf.kid` → `missing_holder_binding_key`).
+ * zenithcomp mDL additionally requires `kid` on that JWT (`jwk-kid`).
  */
+function readRetryProofKeyBinding(
+  current: 'did-kid' | 'jwk' | 'jwk-kid',
+  error: InvalidProofError,
+): 'did-kid' | 'jwk' | 'jwk-kid' {
+  if (current !== 'jwk') return current
+  if (/kid header is required/i.test(error.message)) return 'jwk-kid'
+  return current
+}
+
+function isZenithCredentialIssuer(issuer: string): boolean {
+  try {
+    return new URL(issuer).hostname.toLowerCase().includes('zenithcomp.co.th')
+  } catch {
+    return issuer.toLowerCase().includes('zenithcomp.co.th')
+  }
+}
+
+function readMdocProofKeyBinding(issuer?: string): 'jwk' | 'jwk-kid' {
+  // zenithcomp mDL JWT proofs reject jwk-only PoP with "kid header is required"
+  // while still needing the P-256 device key in `jwk` for cose_key binding.
+  return issuer && isZenithCredentialIssuer(issuer) ? 'jwk-kid' : 'jwk'
+}
+
 function readProofKeyBinding(
   configuration: OfferedCredentialConfiguration | undefined,
-): 'did-kid' | 'jwk' {
+  issuer?: string,
+): 'did-kid' | 'jwk' | 'jwk-kid' {
   if (!configuration) return 'did-kid'
-  if (isMsoMdocFormat(configuration.format)) return 'jwk'
+  if (isMsoMdocFormat(configuration.format)) return readMdocProofKeyBinding(issuer)
   if (isIsoMdocDoctypeOfferId(configuration.id) || isIsoMdocDoctypeOfferId(configuration.requestId)) {
-    return 'jwk'
+    return readMdocProofKeyBinding(issuer)
   }
 
   const raw = readRecord(configuration.rawConfiguration)
   const rawFormat = readString(raw?.format)
-  if (rawFormat && isMsoMdocFormat(rawFormat)) return 'jwk'
+  if (rawFormat && isMsoMdocFormat(rawFormat)) return readMdocProofKeyBinding(issuer)
   const doctype = readString(raw?.doctype) ?? readString(raw?.docType)
-  if (doctype && isIsoMdocDoctypeOfferId(doctype)) return 'jwk'
+  if (doctype && isIsoMdocDoctypeOfferId(doctype)) return readMdocProofKeyBinding(issuer)
 
   const methods = raw?.cryptographic_binding_methods_supported
   if (Array.isArray(methods)) {
@@ -2211,14 +2265,6 @@ function sanitizeCredentialAdditionalRequestPayload(
   return rest
 }
 
-function isZenithCredentialIssuer(issuer: string): boolean {
-  try {
-    return new URL(issuer).hostname.toLowerCase().includes('zenithcomp.co.th')
-  } catch {
-    return issuer.toLowerCase().includes('zenithcomp.co.th')
-  }
-}
-
 function applyMsoMdocCredentialRequestFields(
   credentialRequest: Record<string, unknown>,
   configuration: OfferedCredentialConfiguration,
@@ -2274,12 +2320,21 @@ function finalizeMdocCredentialRecord(
     ...extractMdocWalletClaims(mdocBytes),
   }
 
+  const issuerName = resolvedOffer.issuerDisplay?.name?.trim() || resolvedOffer.issuer
+  const credentialDisplayName = readCredentialDisplayName(configuration.display)
+  const claimDisplayLabels = readClaimDisplayLabels(configuration.rawConfiguration)
+
   return {
     id: hashCredential(rawBase64),
     type,
     rawVc: `mdoc:${rawBase64}`,
     claims,
     issuedAt: new Date().toISOString(),
+    ...(issuerName ? { issuerName } : {}),
+    ...(resolvedOffer.issuer ? { issuerUrl: resolvedOffer.issuer } : {}),
+    ...(configuration.id ? { credentialConfigurationId: configuration.id } : {}),
+    ...(credentialDisplayName ? { credentialDisplayName } : {}),
+    ...(claimDisplayLabels ? { claimDisplayLabels } : {}),
   }
 }
 
@@ -2471,27 +2526,7 @@ function readCredentialType(
 }
 
 function canonicalCredentialType(type: string): string {
-  const normalized = type.toLowerCase()
-
-  if (normalized.includes('transcript')) {
-    return 'ChulalongkornUniversityTranscript'
-  }
-
-  if (normalized.includes('driving') || normalized.includes('licence') || normalized.includes('license')) {
-    return 'DLTDrivingLicence'
-  }
-
-  if (normalized.includes('mdl') || normalized.endsWith('.mdl') || normalized.includes('18013.5.1.mdl')) {
-    return 'DLTDrivingLicence'
-  }
-
-  if (normalized === 'idcard' || normalized.includes('idcard')) return 'ThaiNationalID'
-
-  if (normalized.includes('thai') || normalized.includes('nationalid') || normalized.includes('national_id')) {
-    return 'ThaiNationalID'
-  }
-
-  return type
+  return canonicalFirstPartyType(type) ?? type
 }
 
 function readTypeValue(value: unknown): string | undefined {

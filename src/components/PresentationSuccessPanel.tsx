@@ -5,6 +5,7 @@
  * Map: docs/CODEMAPS/frontend.md#oid4vp-request
  */
 
+import type { ReactNode } from 'react'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Text, View } from 'react-native'
 
@@ -18,6 +19,7 @@ type PresentationSuccessPanelProps = {
   buttonLabel: string
   onDone: () => void
   fullScreen?: boolean
+  children?: ReactNode
 }
 
 export function PresentationSuccessPanel({
@@ -26,6 +28,7 @@ export function PresentationSuccessPanel({
   buttonLabel,
   onDone,
   fullScreen = false,
+  children,
 }: PresentationSuccessPanelProps) {
   return (
     <View className={fullScreen ? 'flex-1 items-center bg-green-50 px-6 pt-[100px]' : 'rounded-[12px] bg-white px-5 py-8'}>
@@ -45,6 +48,7 @@ export function PresentationSuccessPanel({
       <Text className={`${fullScreen ? 'mt-4 mb-4 text-[14px] leading-[22px] text-slate750' : 'mt-2 text-sm leading-[22px] text-slate'} text-center`}>
         {message}
       </Text>
+      {children}
 
       <AppButton
         variant="solid-block"

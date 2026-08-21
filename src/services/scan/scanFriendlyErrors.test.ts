@@ -9,6 +9,49 @@ describe('toFriendlyError', () => {
     )
   })
 
+  test('maps network issuer metadata failures to a connection message', () => {
+    expect(toFriendlyError('IssuerMetadataFetchFailed: Network request failed')).toBe(
+      'Could not reach the issuer. Check your connection and try again.',
+    )
+    expect(toFriendlyError('IssuerMetadataFetchFailed: Failed to fetch')).toBe(
+      'Could not reach the issuer. Check your connection and try again.',
+    )
+  })
+
+  test('maps HTTP issuer metadata failures away from the connection copy', () => {
+    expect(toFriendlyError('IssuerMetadataFetchFailed: HTTP 406')).toBe(
+      'The issuer configuration could not be loaded. Try again or contact the issuer.',
+    )
+  })
+
+  test('maps unsupported credential configurations to a document-type message', () => {
+    expect(toFriendlyError('CredentialConfigurationNotSupported: urn:example:doc:1')).toBe(
+      'This wallet could not match the offered document type.',
+    )
+  })
+
+  test('maps missing wallet attestation to an activation message', () => {
+    expect(toFriendlyError('WalletAttestationRequired: this issuer requires wallet attestation')).toBe(
+      'This issuer requires wallet attestation. Activate this wallet and try again.',
+    )
+    expect(toFriendlyError('token_endpoint_auth_methods_supported includes attest_jwt_client_auth')).toContain(
+      'wallet attestation',
+    )
+    expect(
+      toFriendlyError(
+        'CredentialTokenExchangeFailed: Error validating schema with data {"alg":"none","typ":"wallet-attestation+jwt"} Expected value to be "oauth-client-attestation+jwt" at "typ"',
+      ),
+    ).toBe('This issuer requires wallet attestation. Activate this wallet and try again.')
+  })
+
+  test('maps invalid_grant token errors to a fresh-offer message', () => {
+    expect(
+      toFriendlyError(
+        'CredentialTokenExchangeFailed: Unable to retrieve access token from \'https://issuer.example/token\'. Received token error response with status 400 { "error": "invalid_grant" }',
+      ),
+    ).toContain('already been used or has expired')
+  })
+
   test('maps invalid_token credential request to a fresh-offer message', () => {
     expect(
       toFriendlyError('CredentialRequestFailed: invalid_token - Token is invalid or expired'),

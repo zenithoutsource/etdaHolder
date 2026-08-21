@@ -6,6 +6,7 @@ import {
   readNearestCredentialKeyExpiryBoundaryMs,
   syncCredentialKeyTtlRenewals,
 } from '@/src/services/credentials/credentialKeyExpiry'
+import { logWalletError } from '@/src/services/debug/walletLogger'
 import { scheduleDocumentExpiryNotifications } from '@/src/services/notifications/documentExpiryNotificationService'
 import {
   notifyCredentialsChanged,
@@ -43,27 +44,31 @@ export function useCredentialExpiryWatch(): UseCredentialExpiryWatchResult {
     const scheduleBoundaryCheck = () => {
       clearScheduledCheck()
 
-      const credentials = readStoredCredentials()
-      void scheduleDocumentExpiryNotifications(credentials)
-      syncCredentialKeyTtlRenewals()
+      try {
+        const credentials = readStoredCredentials()
+        void scheduleDocumentExpiryNotifications(credentials)
+        syncCredentialKeyTtlRenewals()
 
-      const documentDelayMs = readNearestCredentialExpiryBoundaryMs(credentials)
-      const keyDelayMs = readNearestCredentialKeyExpiryBoundaryMs()
-      const delayMs = [documentDelayMs, keyDelayMs]
-        .filter((value): value is number => typeof value === 'number')
-        .reduce<number | undefined>(
-          (nearest, value) => (nearest === undefined || value < nearest ? value : nearest),
-          undefined,
-        )
-      if (delayMs === undefined || delayMs <= 0) {
-        return
+        const documentDelayMs = readNearestCredentialExpiryBoundaryMs(credentials)
+        const keyDelayMs = readNearestCredentialKeyExpiryBoundaryMs()
+        const delayMs = [documentDelayMs, keyDelayMs]
+          .filter((value): value is number => typeof value === 'number')
+          .reduce<number | undefined>(
+            (nearest, value) => (nearest === undefined || value < nearest ? value : nearest),
+            undefined,
+          )
+        if (delayMs === undefined || delayMs <= 0) {
+          return
+        }
+
+        timeoutId = setTimeout(() => {
+          publishExpiryRevision()
+          refreshExpiryWatch()
+          scheduleBoundaryCheck()
+        }, Math.min(delayMs + 50, MAX_TIMEOUT_MS))
+      } catch (error) {
+        logWalletError('expiry-watch', 'boundary-check-failed', error)
       }
-
-      timeoutId = setTimeout(() => {
-        publishExpiryRevision()
-        refreshExpiryWatch()
-        scheduleBoundaryCheck()
-      }, Math.min(delayMs + 50, MAX_TIMEOUT_MS))
     }
 
     scheduleBoundaryCheck()

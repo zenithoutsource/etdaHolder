@@ -11,10 +11,15 @@ export type ProximityAvailability = {
   presentationReady: boolean
 }
 
+export type OmittedMdocField = {
+  key: string
+  reason: 'holder_declined' | 'not_in_document' | string
+}
+
 export type ProximityNativeEvents = {
   onDeviceEngaged: { sessionId?: string }
   onRequestReceived: { requestedFields: string[] }
-  onPresentationComplete: { sharedFields: string[] }
+  onPresentationComplete: { sharedFields: string[]; omittedFields?: OmittedMdocField[] }
   onCompanionSignRequested: { nonceBase64Url: string }
   onError: { code: string; message: string }
 }
@@ -24,6 +29,7 @@ export type ProximityArmConfig = {
   sharingMode: ReaderSharingMode
   profileId: string
   approvedMdocFields: string[]
+  profileCeiling: string[]
   companionTransportPluginId?: string
   companionSdJwt?: string
   displayNameOverlay?: Record<string, string>

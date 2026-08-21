@@ -1,5 +1,6 @@
 import {
   beginPortalReturnCapture,
+  cancelPortalReturnWait,
   endPortalReturnCapture,
   isPortalReturnUrlIgnoredDuringCapture,
   notifyPortalReturnUrl,
@@ -86,5 +87,27 @@ describe('portalReturnBridge stale callback guard', () => {
         'walletapp://callback',
       ),
     ).toBe(false)
+  })
+
+  test('cancelPortalReturnWait resolves an in-flight wait without bumping capture generation', async () => {
+    const generation = beginPortalReturnCapture()
+    const wait = waitForPortalReturnNotification(5_000, {
+      captureGeneration: generation,
+    })
+
+    cancelPortalReturnWait()
+
+    expect(readPortalReturnCaptureGeneration()).toBe(generation)
+    await expect(wait).resolves.toBeUndefined()
+  })
+
+  test('cancelPortalReturnWait leaves an already-notified portal URL', () => {
+    beginPortalReturnCapture()
+    const offerUrl = 'walletapp://callback?credential_offer_uri=https%3A%2F%2Fissuer.example%2Fnew'
+    notifyPortalReturnUrl(offerUrl, 'test')
+
+    cancelPortalReturnWait()
+
+    expect(readLastNotifiedPortalReturnUrl()).toBe(offerUrl)
   })
 })

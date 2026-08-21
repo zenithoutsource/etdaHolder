@@ -58,6 +58,19 @@ describe('shouldUseOid4vcVpAdapter', () => {
     ).toBe(false)
   })
 
+  it('returns true for scan + flag on + DCQL + direct_post.jwt', () => {
+    expect(
+      shouldUseOid4vcVpAdapter({
+        flagEnabled: true,
+        presentationFlowOrigin: 'scan',
+        authorizationRequest: {
+          ...dcqlRequest,
+          response_mode: 'direct_post.jwt',
+        },
+      }),
+    ).toBe(true)
+  })
+
   it('returns false for Presentation Exchange', () => {
     expect(
       shouldUseOid4vcVpAdapter({

@@ -1,4 +1,5 @@
-import { getCardSchema, findDisplayFieldForClaimKey, collectDisplayFieldMatchKeys } from '../../config/cardSchemas'
+import { resolveCardSchema, findDisplayFieldForClaimKey, collectDisplayFieldMatchKeys } from '../../config/cardSchemas'
+import { resolveFirstPartyType } from '../../config/firstPartyCredential'
 import { readComposedPersonName } from '../credentials/credentialDisplay'
 import { hasAnyClaimValue } from '../credentials/claimFormatting'
 import { readCredentialClaimMap } from '../vci/exchangeService'
@@ -82,7 +83,10 @@ export function canWalletSatisfyDcqlCredentialQuery(
 ): boolean {
   const typeValues = credential.meta?.type_values ?? []
   if (typeValues.length > 0) {
-    const typeMatches = typeValues.some((value) => record.type === readCredentialTypeFromDcqlTypeValue(value))
+    const typeMatches = typeValues.some((value) => {
+      const requestedType = readCredentialTypeFromDcqlTypeValue(value)
+      return Boolean(requestedType) && resolveFirstPartyType(record) === requestedType
+    })
     if (!typeMatches) return false
   }
 
@@ -106,7 +110,7 @@ function findUnsatisfiedDcqlClaimKeys(
   if (claims.length === 0) return []
 
   const claimMap = readCredentialClaimMap(record)
-  const schema = getCardSchema(record.type)
+  const schema = resolveCardSchema(record)
 
   const isClaimSatisfied = (claimQuery: DcqlClaimsQuery): boolean => {
     const requestedKey = claimQuery.path[0]
@@ -179,7 +183,10 @@ export function describeDcqlMatchFailure(
 
   if (
     requestedTypeValues.length > 0 &&
-    !requestedTypeValues.some((value) => record.type === readCredentialTypeFromDcqlTypeValue(value))
+    !requestedTypeValues.some((value) => {
+      const requestedType = readCredentialTypeFromDcqlTypeValue(value)
+      return Boolean(requestedType) && resolveFirstPartyType(record) === requestedType
+    })
   ) {
     return { ...base, failedGate: 'type' }
   }
