@@ -113,7 +113,7 @@ export async function refreshIssuerSuspensionsFromServer(
   try {
     const response = await fetchImpl(DEV_SUSPENSION_STATUS_ENDPOINT)
     if (!response.ok) {
-      logWalletStep('storage', 'issuer-suspension-refresh-non-ok', {
+      logWalletError('storage', 'issuer-suspension-refresh-non-ok', new Error(`HTTP ${response.status}`), {
         status: response.status,
       })
       return

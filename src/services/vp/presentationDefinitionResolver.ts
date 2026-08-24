@@ -2,7 +2,7 @@ import {
   PRESENTATION_DEFINITION_FETCH_TIMEOUT_MS,
   PRESENTATION_DEFINITION_MAX_BYTES,
 } from '@/src/config/presentationDefinitionFetchPolicy'
-import { logWalletStep } from '../debug/walletLogger'
+import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { toErrorMessage } from '@/src/utils/jwtUtils'
 import { parsePresentationDefinitionJson, type PresentationDefinition } from './presentationService'
 
@@ -50,14 +50,20 @@ export async function fetchPresentationDefinition(
     })
   } catch (error) {
     if (isAbortError(error)) {
+      logWalletError('oid4vp', 'fetch-presentation-definition-failed', error, { host: parsed.host })
       throw new Error('PresentationDefinitionFetchFailed: request timed out')
     }
+    logWalletError('oid4vp', 'fetch-presentation-definition-failed', error, { host: parsed.host })
     throw new Error(`PresentationDefinitionFetchFailed: network error (${toErrorMessage(error)})`)
   } finally {
     clearTimeout(timeoutId)
   }
 
   if (!response.ok) {
+    logWalletError('oid4vp', 'fetch-presentation-definition-failed', new Error(`HTTP ${response.status}`), {
+      host: parsed.host,
+      status: response.status,
+    })
     throw new Error(`PresentationDefinitionFetchFailed: HTTP ${response.status}`)
   }
 
@@ -68,6 +74,7 @@ export async function fetchPresentationDefinition(
     if (error instanceof Error && error.message.startsWith('PresentationDefinitionFetchFailed:')) {
       throw error
     }
+    logWalletError('oid4vp', 'fetch-presentation-definition-failed', error, { host: parsed.host })
     throw new Error(`PresentationDefinitionFetchFailed: network error (${toErrorMessage(error)})`)
   }
 

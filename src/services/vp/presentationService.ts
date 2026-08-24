@@ -9,7 +9,7 @@ import {
   readVerifierDcqlVpTokenShape,
   readVerifierKbAudienceMode,
 } from '../../config/runtimeFlags'
-import { logWalletError, logWalletStep } from '../debug/walletLogger'
+import { logWalletError, logWalletRawProtocol, logWalletStep } from '../debug/walletLogger'
 import { isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { enrichDisclosuresWithPolicy } from './claimDisclosurePolicy'
@@ -29,9 +29,14 @@ import {
 } from './dcqlCredentialMatch'
 import { parseDcqlCredentialSets, resolveDcqlCredentialSelection } from './dcqlCredentialSetResolver'
 import { formatDcqlVpTokenEnvelope } from './oid4vc/formatDcqlVpTokenEnvelope'
-import { describePresentationAttempt } from './presentationDiagnostics'
+import {
+  createSafePresentationTransportHint,
+  describeEncryptedSubmitAttempt,
+  describePresentationAttempt,
+  type SafePresentationTransportHint,
+} from './presentationDiagnostics'
 import { assertDualFormatPresentationReady, isDualFormatDcqlRequest } from './dualFormatPresentationMatch'
-import { isSdJwtDcqlFormat } from './dualFormatQuery'
+import { isMsoMdocDcqlFormat, isSdJwtDcqlFormat } from './dualFormatQuery'
 import {
   matchesPresentationDefinitionCredential,
   satisfiesDcqlCandidateTypes,
@@ -42,6 +47,7 @@ import {
 import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
 import { hasUsablePidCredential } from '../credentials/credentialGuard'
+import { ensureNativeMdocStored } from '../proximity/mdocCredential'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
 import { PresentationCredentialUnavailableError, type PresentationMatchFailureKind } from './presentationUnavailable'
 import { isPresentationNonceConsumed } from './presentationRequestReplay'
@@ -103,6 +109,7 @@ export type DcqlCredentialQuery = {
   meta?: {
     type_values?: string[]
     vct_values?: string[]
+    doctype_value?: string
   }
   claims?: DcqlClaimsQuery[]
   claimSets?: string[][]
@@ -169,7 +176,7 @@ export type VerifierResponse = {
   redirectUri?: string
 }
 
-export type PresentationTokenMode = 'signed-vp-jwt' | 'raw-credential' | 'sd-jwt-kb'
+export type PresentationTokenMode = 'signed-vp-jwt' | 'raw-credential' | 'sd-jwt-kb' | 'mso-mdoc'
 
 type PresentationTokenModeOptions =
   | boolean
@@ -393,6 +400,8 @@ export async function resolvePresentationRequest(
 
   if (effectiveDcqlQuery && isDualFormatDcqlRequest(effectiveDcqlQuery)) {
     await assertDualFormatPresentationReady(matchedCredential)
+  } else if (effectiveDcqlQuery?.credentials.every((credential) => isMsoMdocDcqlFormat(credential.format))) {
+    await ensureNativeMdocStored(matchedCredential)
   }
 
   const dcqlClaimDisclosures = effectiveDcqlQuery ? readDcqlClaimDisclosures(matchedCredential, effectiveDcqlQuery) : undefined
@@ -469,6 +478,9 @@ export function readPresentationTokenMode(
   const sdJwtKbDisabledForTesting = typeof options === 'boolean'
     ? options
     : options.sdJwtKbDisabledForTesting ?? isSdJwtKbDisabledForTesting()
+  if (request.dcqlQuery?.credentials.every((credential) => isMsoMdocDcqlFormat(credential.format))) {
+    return 'mso-mdoc'
+  }
   if (request.dcqlQuery?.credentials.every((credential) => isSdJwtDcqlFormat(credential.format))) {
     return request.dcqlQuery.credentials.every((credential) =>
       credential.require_cryptographic_holder_binding === false ||
@@ -491,6 +503,11 @@ export async function submitPresentationResponse(
 ): Promise<VerifierResponse> {
   const formattedVpToken = formatVpTokenForResponse(request, options.vpToken)
 
+  logWalletRawProtocol('oid4vp', 'debug-raw-vp-token', {
+    responseUri: request.responseUri,
+    vpToken: formattedVpToken,
+  })
+
   logWalletStep('oid4vp', 'submit-response-start', {
     responseUri: request.responseUri,
     verifierName: request.verifier.name,
@@ -502,20 +519,17 @@ export async function submitPresentationResponse(
     responseMode: request.responseMode,
     encryptedResponse: request.responseMode === 'direct_post.jwt',
   })
-  if (__DEV__) {
-    console.info('[wallet:oid4vp] submit-response-debug', {
-      body: formattedVpToken,
-      submission: options.presentationSubmission,
-      protocolPath: request.protocolPath,
-    })
-  }
-
   if (request.protocolPath === 'oid4vc') {
     if (!request.oid4vcContext) {
       throw new Error('PresentationSubmissionFailed: oid4vc adapter context is missing')
     }
 
     try {
+      logWalletRawProtocol('oid4vp', 'debug-raw-presentation-submission', {
+        responseUri: request.responseUri,
+        responseMode: request.responseMode,
+        body: '[oid4vc-adapter]',
+      })
       const adapterResult = await submitDirectPostViaOid4vc({
         oid4vcContext: request.oid4vcContext,
         responseUri: request.responseUri,
@@ -538,6 +552,10 @@ export async function submitPresentationResponse(
       })
 
       const parsedBody = adapterResult.parsedBody
+      logWalletRawProtocol('oid4vp', 'debug-raw-verifier-response', {
+        responseUri: request.responseUri,
+        parsedBody,
+      })
       const redirectUri = readVerifierReturnUrl(parsedBody, request)
 
       return {
@@ -552,14 +570,31 @@ export async function submitPresentationResponse(
         request,
         vpToken: options.vpToken,
       })
+      const compactJwe = error instanceof Error
+        ? (error as Error & { compactJwe?: unknown }).compactJwe
+        : undefined
+      const transportDiagnostic = request.responseMode === 'direct_post.jwt'
+        ? describeEncryptedSubmitAttempt({
+          request,
+          formattedVpToken,
+          ...(typeof compactJwe === 'string' ? { compactJwe } : {}),
+        })
+        : undefined
       logWalletError('oid4vp', 'submit-response-failed', error, {
         responseUri: request.responseUri,
         verifierName: request.verifier.name,
         protocolPath: request.protocolPath,
         diagnostic,
+        ...(transportDiagnostic ? { transportDiagnostic } : {}),
       })
       const raw = error instanceof Error ? error.message : String(error)
-      throw new Error(raw)
+      const safeTransportHint = request.responseMode === 'direct_post.jwt'
+        ? createSafePresentationTransportHint({
+          formattedVpToken,
+          ...(typeof compactJwe === 'string' ? { compactJwe } : {}),
+        })
+        : undefined
+      throw createPresentationSubmissionError(raw, safeTransportHint)
     }
   }
 
@@ -567,6 +602,12 @@ export async function submitPresentationResponse(
     request,
     formattedVpToken,
     presentationSubmission: options.presentationSubmission,
+  })
+
+  logWalletRawProtocol('oid4vp', 'debug-raw-presentation-submission', {
+    responseUri: request.responseUri,
+    responseMode: request.responseMode,
+    body: body.toString(),
   })
 
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
@@ -579,6 +620,10 @@ export async function submitPresentationResponse(
   })
 
   const parsedBody = await readJsonResponse(response)
+  logWalletRawProtocol('oid4vp', 'debug-raw-verifier-response', {
+    responseUri: request.responseUri,
+    parsedBody,
+  })
   logWalletStep('oid4vp', 'submit-response-received', {
     responseUri: request.responseUri,
     verifierName: request.verifier.name,
@@ -613,6 +658,15 @@ export async function submitPresentationResponse(
     ...(readString(parsedBody.message) ? { message: readString(parsedBody.message) } : {}),
     ...(redirectUri ? { redirectUri } : {}),
   }
+}
+
+function createPresentationSubmissionError(
+  message: string,
+  presentationTransportHint?: SafePresentationTransportHint,
+): Error {
+  return Object.assign(new Error(message), {
+    ...(presentationTransportHint ? { presentationTransportHint } : {}),
+  })
 }
 
 export function readVerifierReturnUrl(
@@ -905,6 +959,7 @@ function readDcqlCredentialQuery(value: unknown): DcqlCredentialQuery | undefine
   const vctValues = Array.isArray(meta?.vct_values)
     ? meta.vct_values.filter((item): item is string => typeof item === 'string')
     : undefined
+  const doctypeValue = readString(meta?.doctype_value)
 
   const claims = Array.isArray(value.claims)
     ? value.claims.map(readDcqlClaimsQuery).filter((claim): claim is DcqlClaimsQuery => Boolean(claim))
@@ -922,7 +977,15 @@ function readDcqlCredentialQuery(value: unknown): DcqlCredentialQuery | undefine
     ...(typeof value.require_cryptographic_holder_binding === 'boolean'
       ? { require_cryptographic_holder_binding: value.require_cryptographic_holder_binding }
       : {}),
-    ...(typeValues || vctValues ? { meta: { ...(typeValues ? { type_values: typeValues } : {}), ...(vctValues ? { vct_values: vctValues } : {}) } } : {}),
+    ...(typeValues || vctValues || doctypeValue
+      ? {
+        meta: {
+          ...(typeValues ? { type_values: typeValues } : {}),
+          ...(vctValues ? { vct_values: vctValues } : {}),
+          ...(doctypeValue ? { doctype_value: doctypeValue } : {}),
+        },
+      }
+      : {}),
     ...(claims && claims.length > 0 ? { claims } : {}),
     ...(claimSets && claimSets.length > 0 ? { claimSets } : {}),
   }

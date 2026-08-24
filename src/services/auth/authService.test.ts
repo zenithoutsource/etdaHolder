@@ -21,6 +21,12 @@ import {
   confirmPinReset as confirmPinResetService,
   verifyPinResetOtp,
 } from './authService'
+import { logWalletError } from '../debug/walletLogger'
+
+jest.mock('../debug/walletLogger', () => ({
+  logWalletError: jest.fn(),
+  logWalletStep: jest.fn(),
+}))
 
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: {
@@ -65,6 +71,7 @@ const confirmPinResetMock = confirmPinResetApi as jest.Mock
 const verifyPinResetOtpMock = verifyPinResetOtpApi as jest.Mock
 const logoutUserMock = logoutUser as jest.Mock
 const getWalletsMock = getWallets as jest.Mock
+const logWalletErrorMock = logWalletError as jest.Mock
 const getGenericPasswordMock = Keychain.getGenericPassword as jest.Mock
 const setGenericPasswordMock = Keychain.setGenericPassword as jest.Mock
 const resetGenericPasswordMock = Keychain.resetGenericPassword as jest.Mock
@@ -251,28 +258,24 @@ describe('authService', () => {
       data: { message: 'Invalid or expired OTP' },
       headers: new Headers(),
     })
-    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 
-    try {
-      await expect(verifyPinResetOtp('test@example.com', '000000')).rejects.toThrow(
-        'Invalid or expired OTP',
-      )
-      expect(errorSpy).not.toHaveBeenCalled()
-    } finally {
-      errorSpy.mockRestore()
-    }
+    await expect(verifyPinResetOtp('test@example.com', '000000')).rejects.toThrow(
+      'Invalid or expired OTP',
+    )
+    expect(logWalletErrorMock).not.toHaveBeenCalled()
   })
 
   test('verifyPinResetOtp still logs unexpected transport failures', async () => {
     verifyPinResetOtpMock.mockRejectedValueOnce(new Error('network down'))
-    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
 
-    try {
-      await expect(verifyPinResetOtp('test@example.com', '000000')).rejects.toThrow('network down')
-      expect(errorSpy).toHaveBeenCalled()
-    } finally {
-      errorSpy.mockRestore()
-    }
+    await expect(verifyPinResetOtp('test@example.com', '000000')).rejects.toThrow('network down')
+
+    expect(logWalletErrorMock).toHaveBeenCalledWith(
+      'sdk',
+      'pin-reset-verify-failed',
+      expect.any(Error),
+      expect.objectContaining({ userIdentifierProvided: true }),
+    )
   })
 
   test('logout sends bearer token and clears local session', async () => {
@@ -287,6 +290,24 @@ describe('authService', () => {
     expect(logoutUserMock).toHaveBeenCalledWith({
       headers: { Authorization: 'Bearer session-token' },
     })
+    expect(resetGenericPasswordMock).toHaveBeenCalledWith({ service: 'etda.wallet.session' })
+  })
+
+  test('logout logs server failure on non-2xx response', async () => {
+    getGenericPasswordMock.mockResolvedValueOnce({
+      username: 'session',
+      password: JSON.stringify({ accountId: 'account-1', token: 'session-token', walletId: 'wallet-1' }),
+    })
+    logoutUserMock.mockResolvedValueOnce({ status: 500, data: {}, headers: new Headers() })
+
+    await logout()
+
+    expect(logWalletErrorMock).toHaveBeenCalledWith(
+      'sdk',
+      'logout-server-failed',
+      expect.any(Error),
+      expect.objectContaining({ accountId: 'account-1', status: 500 }),
+    )
     expect(resetGenericPasswordMock).toHaveBeenCalledWith({ service: 'etda.wallet.session' })
   })
 

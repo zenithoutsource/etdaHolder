@@ -235,10 +235,17 @@ export async function logout(): Promise<void> {
     const session = await loadSession()
     if (session) {
       logWalletStep('sdk', 'logout-server-start', { accountId: session.accountId, walletId: session.walletId })
-      await logoutUser({
+      const logoutRes = await logoutUser({
         headers: { Authorization: `Bearer ${session.token}` },
       })
-      logWalletStep('sdk', 'logout-server-complete', { accountId: session.accountId, walletId: session.walletId })
+      if (logoutRes.status < 200 || logoutRes.status >= 300) {
+        logWalletError('sdk', 'logout-server-failed', new Error(`LogoutFailed: HTTP ${logoutRes.status}`), {
+          accountId: session.accountId,
+          status: logoutRes.status,
+        })
+      } else {
+        logWalletStep('sdk', 'logout-server-complete', { accountId: session.accountId, walletId: session.walletId })
+      }
     }
   } catch (error) {
     logWalletError('sdk', 'logout-server-failed', error)

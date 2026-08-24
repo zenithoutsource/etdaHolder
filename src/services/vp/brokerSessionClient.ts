@@ -1,4 +1,4 @@
-import { logWalletStep } from '../debug/walletLogger'
+import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { resolveBrokerBaseUrl } from './brokerBaseUrl'
 
 export type BrokerCreateSessionRequest = {
@@ -123,7 +123,9 @@ export function createBrokerSessionClient(
         body: JSON.stringify(input),
       })
       if (!response.ok) {
-        logWalletStep('vp-broker', 'create-session-failed', { status: response.status })
+        logWalletError('vp-broker', 'create-session-failed', new Error(`HTTP ${response.status}`), {
+          status: response.status,
+        })
         throw new Error(`BrokerSessionCreateFailed:${response.status}`)
       }
       const json = (await response.json()) as BrokerCreateSessionResponse
@@ -140,7 +142,7 @@ export function createBrokerSessionClient(
       const response = await fetchImpl(`${normalizedBase}/broker/session/${sessionId}/request`)
       if (response.status === 404 || response.status === 204) return null
       if (!response.ok) {
-        logWalletStep('vp-broker', 'fetch-request-failed', {
+        logWalletError('vp-broker', 'fetch-request-failed', new Error(`HTTP ${response.status}`), {
           sessionPrefix: sessionId.slice(0, 8),
           status: response.status,
         })

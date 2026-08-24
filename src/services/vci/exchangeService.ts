@@ -50,6 +50,7 @@ import {
 } from '@/src/config/issuerJwtVerifyPolicy'
 import { isWalletAttestationRequested } from '@/src/config/walletCryptoPolicy'
 import { assertHardwareCutoverReissueAllowedForOffer } from '../crypto/cutoverMigrationPolicy'
+import { finalizeCredentialClaim } from '../credentials/finalizeCredentialClaim'
 import { usesPerCredentialSigning, commitIssuanceCredentialKeyReplacement, destroyIssuanceCredentialKey, discardPendingIssuanceCredentialKey } from '../crypto/perCredentialSigning'
 import {
     createProofSigningSession as defaultCreateProofSigningSession,
@@ -64,7 +65,7 @@ import {
     isWalletCryptoV2Enabled,
     readCachedWalletAttestations,
 } from '../crypto/walletCryptoActivation'
-import { logWalletError, logWalletStep } from '../debug/walletLogger'
+import { logWalletError, logWalletRawProtocol, logWalletStep } from '../debug/walletLogger'
 import { appendWalletHistoryEvent } from '../history/walletEventLog'
 import { readActiveOfferDeliveryPath } from '../history/historyDeliveryPath'
 import {
@@ -293,7 +294,7 @@ export type ImportCredentialToBackend = (
   wallet: string,
   data: { jwt: string; associated_did: string },
   options?: RequestInit,
-) => Promise<{ status: number }>
+) => Promise<{ status: number; data?: unknown }>
 
 export type SyncCredentialToBackendDependencies = {
   importCredential: ImportCredentialToBackend
@@ -503,6 +504,7 @@ export async function claimCredential(
     await persistClaimedCredentialFormats(record, resolvedOffer, dependencies)
     logWalletStep('oid4vci', 'credential-save-start', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
     saveCredentialRecord(record, { getCredentialStorage: dependencies.getCredentialStorage })
+    finalizeCredentialClaim(record)
     await commitIssuanceCredentialKeyReplacement(record.id)
     logWalletStep('oid4vci', 'credential-save-complete', { id: record.id, type: record.type, issuer: resolvedOffer.issuer })
     return record
@@ -600,6 +602,14 @@ export async function acquireCredentialRecord(
       resolvedOffer.issuer,
       resolvedOffer.issuerMetadata.credential_endpoint,
     ),
+  })
+  logWalletRawProtocol('oid4vci', 'debug-raw-token-response', {
+    issuer: resolvedOffer.issuer,
+    tokenResponse: {
+      credentialIdentifier: token.credentialIdentifier,
+      cNonce: token.cNonce,
+      accessToken: token.accessToken,
+    },
   })
   throwIfCredentialAcquisitionAborted(options.signal)
   const proofKeyBinding = readProofKeyBinding(
@@ -719,6 +729,10 @@ export async function acquireCredentialRecord(
         walletAttestationsAttached: Boolean(walletAttestationsForRequest),
         additionalRequestKeys: Object.keys(additionalRequestPayloadPreview),
       })
+      logWalletRawProtocol('oid4vci', 'debug-raw-proof-jwt', {
+        issuer: resolvedOffer.issuer,
+        proofJwt: proof,
+      })
       clearLastCredentialRequestWireFailure()
       rememberCredentialResult(await submitCredentialRequest(token, proof))
     } catch (error) {
@@ -805,6 +819,10 @@ export async function acquireCredentialRecord(
       throw new Error('CredentialRequestFailed: credential response was empty')
     }
 
+    logWalletRawProtocol('oid4vci', 'debug-raw-credential-received', {
+      issuer: resolvedOffer.issuer,
+      rawVc,
+    })
     logWalletStep('oid4vci', 'credential-response-received', { issuer: resolvedOffer.issuer, credentialBytes: rawVc.length })
 
     const configuration = resolvedOffer.credentialConfigurations[0]
@@ -1101,6 +1119,11 @@ export async function syncCredentialToBackend(
       : dependencies.getHolderDid()
 
   let response: Awaited<ReturnType<ImportCredentialToBackend>>
+  logWalletRawProtocol('sdk', 'debug-raw-backend-sync', {
+    walletId: options.walletId,
+    jwt: record.rawVc,
+    associatedDid,
+  })
   try {
     response = await dependencies.importCredential(
       options.walletId,
@@ -1115,6 +1138,7 @@ export async function syncCredentialToBackend(
       },
     )
   } catch (error) {
+    logWalletError('sdk', 'backend-sync-failed', error, { credentialId: record.id })
     try {
       recordBackendSyncHistory(record, 'failure', error)
     } catch {
@@ -1124,6 +1148,11 @@ export async function syncCredentialToBackend(
   }
 
   if (response.status !== 201) {
+    const message = readBackendSyncResponseMessage(response.data) ?? `HTTP ${response.status}`
+    logWalletError('sdk', 'backend-sync-failed', new Error(message), {
+      credentialId: record.id,
+      status: response.status,
+    })
     try {
       recordBackendSyncHistory(record, 'failure', new Error(`BackendSyncFailed: HTTP ${response.status}`))
     } catch {
@@ -1139,6 +1168,12 @@ export async function syncCredentialToBackend(
   }
 
   return { status: 201 }
+}
+
+function readBackendSyncResponseMessage(data: unknown): string | undefined {
+  if (!isRecord(data)) return undefined
+  const message = readString(data.message)
+  return message ?? undefined
 }
 
 export function getIssuerMetadataUrl(issuer: string): string {

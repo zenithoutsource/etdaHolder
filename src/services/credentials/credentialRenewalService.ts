@@ -390,7 +390,10 @@ export async function refreshAndCompleteRenewals(
 
   try {
     const response = await resolvedDependencies.fetchImpl(DEV_RENEWAL_STATUS_ENDPOINT)
-    if (!response.ok) return
+    if (!response.ok) {
+      logWalletError('renewal', 'status-poll-non-ok', new Error(`HTTP ${response.status}`))
+      return
+    }
 
     const payload = (await response.json()) as Partial<RenewalStatusPayload>
     if (!Array.isArray(payload.renewals)) return

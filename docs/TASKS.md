@@ -1,5 +1,30 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-24 (Wallet API and protocol debug logging)
+
+- Spec: `docs/superpowers/specs/2026-08-24-wallet-api-debug-logging-design.md`
+- Plan: `docs/superpowers/plans/2026-08-24-wallet-api-debug-logging.md`
+- Implemented: central `walletHttpTrace` on global fetch (all outbound HTTP in dev),
+  error-level logging on `!response.ok`, opt-in raw VC/VP/JWT via
+  `EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL=true`, service-layer gap fixes
+  (backend sync, logout, broker, renewal poll, presentation definition fetch).
+- Dev flags documented in `.env.example`.
+
+### Session 2026-08-24 (Credential reissue Home display)
+
+- Spec: `docs/superpowers/specs/2026-08-24-credential-reissue-display-design.md`.
+- Plan: `docs/superpowers/plans/2026-08-24-credential-reissue-display.md`.
+- Implemented: `pickPreferredHomeCredential` prefers newest `issuedAt` among normal-active
+  same-family siblings; `findSupersededOldCredentialForDisplay` drives Home
+  **ดูเอกสาร (เอกสารเดิม)**; `finalizeCredentialClaim` pairs P3 intake and removes
+  calendar-expired siblings; superseded inactive detail state.
+- Verification:
+  `yarn test src/services/credentials/credentialReissueFamily.test.ts`
+  `yarn test src/services/credentials/credentialGuard.test.ts`
+  `yarn test src/services/credentials/credentialSupersededSibling.test.ts`
+  `yarn test src/services/credentials/finalizeCredentialClaim.test.ts`
+  `yarn test src/services/credentials/credentialInactiveState.test.ts`
+
 ### Session 2026-08-24 (First-party vs third-party ISO mDL identity)
 
 - Spec (draft): `docs/superpowers/specs/2026-08-24-first-party-third-party-mdl-identity-design.md`.
@@ -9,6 +34,52 @@
   Display-time catalog split already exists; claiming a third-party mDL
   must not prompt to delete an expired first-party Driving Licence.
 - Implementation not started.
+
+### Session 2026-08-24 (Tonyhere direct_post.jwt invalid_request)
+
+- Spec approved: `docs/superpowers/specs/2026-08-24-tonyhere-oid4vp-direct-post-jwt-design.md`
+  (Approach A: diagnosis harness + ranked fixes).
+- Plan: `docs/superpowers/plans/2026-08-24-tonyhere-oid4vp-direct-post-jwt.md`.
+- Symptom: pid-age SD-JWT DCQL resolves/signs OK; submit `HTTP 400: invalid_request`
+  on `direct_post.jwt` with all KB diagnostics passing. Already evidenced baseline:
+  DCQL `vp_token` shape `object_array`, JWE `enc=A128GCM`, and verifier response
+  `HTTP 400: invalid_request` (no winning transport shape or encryption algorithm
+  has been established).
+- Physical-device A/B matrix is pending and requires a Galaxy A26, the tonyhere
+  pid-age QR, a Metro reload after every environment change, and capture of the
+  safe transport diagnostic plus KB diagnostics for each run:
+  1. Defaults: `object_array` + `A128GCM` (baseline confirmation).
+  2. `EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE=raw` + `A128GCM`.
+  3. `EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE=object_string` + `A128GCM`.
+  4. `EXPO_PUBLIC_OID4VP_JWE_ENC=A256GCM`, only when verifier metadata advertises
+     `A256GCM` support.
+- Do not claim a winning shape, set a build/EAS environment, or change production
+  defaults from these pending runs. If every later run returns the same
+  `invalid_request`, follow up on verifier policy and credential reissue; the
+  wallet transport remains documented as verified.
+- Follow-up diagnosis from the Galaxy A26 log: the wallet's custom JWE passed only
+  its own round-trip test, not an independent RFC 7518 decrypt. `jweEcdhEs.ts`
+  had an extra leading key-length field in Concat KDF `OtherInfo` and omitted the
+  protected-header segment as AES-GCM AAD. Both are corrected, with an independent
+  RFC-shaped decrypt regression vector now passing. A second independent trace
+  found the ECDH shared secret was using the full 65-byte uncompressed point rather
+  than RFC 7518's 32-byte X-coordinate; that is corrected and covered by the same
+  vector. Re-run the physical A/B matrix after rebuilding; no verifier shape or
+  `enc` default is locked yet.
+
+### Session 2026-08-24 (Standalone third-party mso_mdoc OID4VP)
+
+- Standalone DCQL `mso_mdoc` is no longer rejected as an unsupported format.
+  The wallet parses `meta.doctype_value`, matches stored `mdoc:` credentials by
+  doctype (not first-party type), and submits the stored mDOC bytes as the
+  `vp_token` entry (native store, with `mdoc:` rawVc fallback). ISO two-segment
+  claim paths are accepted; claim filtering is still the interim whole-document
+  path until a DeviceResponse builder lands.
+- Third-party mdocs stay off Home DLT / NFC. SD-JWT type matching is unchanged.
+- Verification: `yarn test src/services/vp/dcqlCredentialMatch.test.ts
+  src/services/vp/presentationTokenBuilders/registry.test.ts
+  src/services/vp/presentationService.test.ts
+  src/components/Oid4VpDisclosureFlow.test.tsx --no-coverage`.
 
 ### Session 2026-08-21 (OID4VP direct_post.jwt)
 

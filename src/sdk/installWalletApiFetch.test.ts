@@ -8,8 +8,12 @@ import {
 import { logWalletError, logWalletStep } from '../services/debug/walletLogger'
 
 jest.mock('../services/debug/walletLogger', () => ({
+  isWalletDebugLoggingEnabled: jest.fn(() => true),
+  isWalletRawProtocolLoggingEnabled: jest.fn(() => false),
+  readWalletDebugMaxBodyBytes: jest.fn(() => 32768),
   logWalletError: jest.fn(),
   logWalletStep: jest.fn(),
+  sanitizeForWalletLog: jest.fn((value: unknown) => value),
 }))
 
 describe('wallet API fetch installer', () => {
@@ -144,10 +148,14 @@ describe('wallet API fetch installer', () => {
     ).rejects.toBe(abortError)
 
     expect(logWalletErrorMock).not.toHaveBeenCalled()
-    expect(logWalletStepMock).not.toHaveBeenCalled()
+    expect(logWalletStepMock).toHaveBeenCalledWith(
+      'http',
+      'http-request-aborted',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
-  test('logs wallet API AbortError as fetch-aborted, not fetch-failed', async () => {
+  test('logs wallet API AbortError as http-request-aborted, not http-request-failed', async () => {
     const abortError = new Error('Aborted')
     abortError.name = 'AbortError'
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => {
@@ -164,8 +172,45 @@ describe('wallet API fetch installer', () => {
     expect(logWalletErrorMock).not.toHaveBeenCalled()
     expect(logWalletStepMock).toHaveBeenCalledWith(
       'sdk',
-      'fetch-aborted',
+      'http-request-aborted',
       expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  test('traces issuer HTTPS calls at http scope', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(async () => new Response('{}', { status: 200 }))
+
+    installWalletApiFetch({
+      baseUrl: 'http://localhost:3001',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    await fetch('https://issuer.example.com/credential', { method: 'POST', body: '{}' })
+
+    expect(logWalletStepMock).toHaveBeenCalledWith(
+      'http',
+      'http-request-start',
+      expect.objectContaining({ method: 'POST', host: 'issuer.example.com' }),
+    )
+  })
+
+  test('logs HTTP 400 wallet-api response as error', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response('{"message":"bad"}', { status: 400 }),
+    )
+
+    installWalletApiFetch({
+      baseUrl: 'http://localhost:3001',
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    await fetch('/wallet-api/auth/login', { method: 'POST' })
+
+    expect(logWalletErrorMock).toHaveBeenCalledWith(
+      'sdk',
+      'http-response',
+      expect.any(Error),
+      expect.objectContaining({ status: 400, ok: false }),
     )
   })
 })
