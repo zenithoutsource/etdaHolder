@@ -8,6 +8,8 @@ type LogScope =
   | 'sdk'
   | string
 
+const DEFAULT_WALLET_DEBUG_MAX_BODY_BYTES = 32768
+
 const SENSITIVE_KEY_PATTERN =
   /(access[_-]?token|refresh[_-]?token|id[_-]?token|vp[_-]?token|raw[_-]?vc|sd[_-]?jwt|jwt|proof|disclosure|credentialSubject|claims|private|secret|seed|password|authorization|email|photo|image|birthdate|id_number|full_name|given_name|family_name|tx_code|pre[-_]?authorized)/i
 
@@ -16,8 +18,34 @@ export function isWalletDebugLoggingEnabled(isDevelopment = __DEV__): boolean {
   return process.env.EXPO_PUBLIC_ENABLE_WALLET_DEBUG_LOGS !== 'false'
 }
 
-export function sanitizeForWalletLog(value: unknown): unknown {
-  return sanitizeValue(value)
+export function isWalletRawProtocolLoggingEnabled(isDevelopment = __DEV__): boolean {
+  if (!isDevelopment) return false
+  if (!isWalletDebugLoggingEnabled(isDevelopment)) return false
+  return process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL === 'true'
+}
+
+export function readWalletDebugMaxBodyBytes(): number {
+  const parsed = Number(process.env.EXPO_PUBLIC_WALLET_DEBUG_MAX_BODY_BYTES)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WALLET_DEBUG_MAX_BODY_BYTES
+}
+
+export function logWalletRawProtocol(scope: LogScope, event: string, details?: unknown): void {
+  if (!isWalletRawProtocolLoggingEnabled()) return
+  logWalletStep(scope, event, details)
+}
+
+function shouldRedactSensitiveKeys(isDevelopment = __DEV__): boolean {
+  return !isWalletRawProtocolLoggingEnabled(isDevelopment)
+}
+
+function shouldRedactKey(keyHint: string, isDevelopment = __DEV__): boolean {
+  if (/^authorization$/i.test(keyHint)) return true
+  if (!shouldRedactSensitiveKeys(isDevelopment)) return false
+  return SENSITIVE_KEY_PATTERN.test(keyHint)
+}
+
+export function sanitizeForWalletLog(value: unknown, isDevelopment = __DEV__): unknown {
+  return sanitizeValue(value, undefined, isDevelopment)
 }
 
 export function logWalletStep(scope: LogScope, event: string, details?: unknown): void {
@@ -34,7 +62,7 @@ export function logWalletStep(scope: LogScope, event: string, details?: unknown)
 export function logWalletError(scope: LogScope, event: string, error: unknown, details?: unknown): void {
   if (!isWalletDebugLoggingEnabled()) return
 
-  const sanitizedError = sanitizeError(error)
+  const sanitizedError = sanitizeError(error, __DEV__)
   if (details === undefined) {
     console.error(`[wallet:${scope}] ${event}`, sanitizedError)
     return
@@ -43,18 +71,18 @@ export function logWalletError(scope: LogScope, event: string, error: unknown, d
   console.error(`[wallet:${scope}] ${event}`, sanitizeForWalletLog(details), sanitizedError)
 }
 
-function sanitizeValue(value: unknown, keyHint?: string): unknown {
-  if (keyHint && SENSITIVE_KEY_PATTERN.test(keyHint)) return '[redacted]'
+function sanitizeValue(value: unknown, keyHint?: string, isDevelopment = __DEV__): unknown {
+  if (keyHint && shouldRedactKey(keyHint, isDevelopment)) return '[redacted]'
   if (value === null || value === undefined) return value
 
-  if (value instanceof Error) return sanitizeError(value)
+  if (value instanceof Error) return sanitizeError(value, isDevelopment)
 
   if (Array.isArray(value)) {
-    return value.map((item) => sanitizeValue(item))
+    return value.map((item) => sanitizeValue(item, undefined, isDevelopment))
   }
 
   if (typeof value === 'string') {
-    if (looksLikeCompactToken(value)) return '[redacted]'
+    if (shouldRedactSensitiveKeys(isDevelopment) && looksLikeCompactToken(value)) return '[redacted]'
     return value
   }
 
@@ -62,12 +90,12 @@ function sanitizeValue(value: unknown, keyHint?: string): unknown {
 
   const output: Record<string, unknown> = {}
   for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-    output[key] = sanitizeValue(nestedValue, key)
+    output[key] = sanitizeValue(nestedValue, key, isDevelopment)
   }
   return output
 }
 
-function sanitizeError(error: unknown): Record<string, unknown> {
+function sanitizeError(error: unknown, isDevelopment = __DEV__): Record<string, unknown> {
   if (error instanceof Error) {
     const coded = error as Error & { code?: unknown }
     return {
@@ -78,7 +106,7 @@ function sanitizeError(error: unknown): Record<string, unknown> {
   }
 
   if (typeof error === 'object' && error !== null) {
-    return sanitizeValue(error) as Record<string, unknown>
+    return sanitizeValue(error, undefined, isDevelopment) as Record<string, unknown>
   }
 
   return { message: String(error) }

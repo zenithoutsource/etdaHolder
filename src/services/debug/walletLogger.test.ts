@@ -1,7 +1,10 @@
 import {
   isWalletDebugLoggingEnabled,
+  isWalletRawProtocolLoggingEnabled,
   logWalletError,
+  logWalletRawProtocol,
   logWalletStep,
+  readWalletDebugMaxBodyBytes,
   sanitizeForWalletLog,
 } from './walletLogger'
 
@@ -90,6 +93,88 @@ describe('walletLogger', () => {
       '[wallet:oid4vp] submit-failed',
       { responseStatus: 400, vpToken: '[redacted]' },
       { code: 'VerifierRejected', message: 'Present VP is invalid', name: 'Error' },
+    )
+  })
+})
+
+describe('walletLogger raw protocol mode', () => {
+  const originalInfo = console.info
+  const originalRaw = process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL
+  const originalMax = process.env.EXPO_PUBLIC_WALLET_DEBUG_MAX_BODY_BYTES
+  const originalDebugFlag = process.env.EXPO_PUBLIC_ENABLE_WALLET_DEBUG_LOGS
+
+  beforeEach(() => {
+    console.info = jest.fn()
+    delete process.env.EXPO_PUBLIC_ENABLE_WALLET_DEBUG_LOGS
+  })
+
+  afterEach(() => {
+    console.info = originalInfo
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL = originalRaw
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_MAX_BODY_BYTES = originalMax
+    process.env.EXPO_PUBLIC_ENABLE_WALLET_DEBUG_LOGS = originalDebugFlag
+  })
+
+  test('raw protocol mode is off unless explicitly enabled in development', () => {
+    delete process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL
+    expect(isWalletRawProtocolLoggingEnabled(true)).toBe(false)
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL = 'true'
+    expect(isWalletRawProtocolLoggingEnabled(true)).toBe(true)
+    expect(isWalletRawProtocolLoggingEnabled(false)).toBe(false)
+  })
+
+  test('raw protocol mode requires master debug logging switch', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL = 'true'
+    process.env.EXPO_PUBLIC_ENABLE_WALLET_DEBUG_LOGS = 'false'
+    expect(isWalletRawProtocolLoggingEnabled(true)).toBe(false)
+  })
+
+  test('sanitizeForWalletLog still redacts outside development even when raw flag is set', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL = 'true'
+    const jwt = 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signaturepart'
+    expect(sanitizeForWalletLog({ rawVc: jwt }, false)).toEqual({ rawVc: '[redacted]' })
+  })
+
+  test('sanitizeForWalletLog still redacts authorization in raw mode', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL = 'true'
+    expect(sanitizeForWalletLog({ authorization: 'Bearer secret', rawVc: 'vc' }, true)).toEqual({
+      authorization: '[redacted]',
+      rawVc: 'vc',
+    })
+  })
+
+  test('sanitizeForWalletLog preserves compact JWT strings in raw mode', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL = 'true'
+    const jwt = 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signaturepart'
+    expect(sanitizeForWalletLog(jwt, true)).toBe(jwt)
+  })
+
+  test('sanitizeForWalletLog preserves rawVc when raw mode is on', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL = 'true'
+    const jwt = 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature'
+    expect(sanitizeForWalletLog({ rawVc: jwt }, true)).toEqual({ rawVc: jwt })
+  })
+
+  test('sanitizeForWalletLog still redacts rawVc when raw mode is off', () => {
+    delete process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL
+    const jwt = 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signaturepart'
+    expect(sanitizeForWalletLog({ rawVc: jwt }, true)).toEqual({ rawVc: '[redacted]' })
+  })
+
+  test('readWalletDebugMaxBodyBytes defaults to 32768', () => {
+    delete process.env.EXPO_PUBLIC_WALLET_DEBUG_MAX_BODY_BYTES
+    expect(readWalletDebugMaxBodyBytes()).toBe(32768)
+  })
+
+  test('logWalletRawProtocol emits only when raw mode enabled', () => {
+    delete process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL
+    logWalletRawProtocol('oid4vci', 'debug-raw-credential-received', { rawVc: 'x' })
+    expect(console.info).not.toHaveBeenCalled()
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_RAW_PROTOCOL = 'true'
+    logWalletRawProtocol('oid4vci', 'debug-raw-credential-received', { rawVc: 'x' })
+    expect(console.info).toHaveBeenCalledWith(
+      '[wallet:oid4vci] debug-raw-credential-received',
+      { rawVc: 'x' },
     )
   })
 })
