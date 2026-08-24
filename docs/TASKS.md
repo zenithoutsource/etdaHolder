@@ -1,5 +1,15 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-24 (First-party vs third-party ISO mDL identity)
+
+- Spec (draft): `docs/superpowers/specs/2026-08-24-first-party-third-party-mdl-identity-design.md`.
+- `org.iso.18013.5.1.mDL` is a shared ISO doctype. Persist, after-claim
+  expiry cleanup, storage replace, and P3 pairing must key on first-party
+  issuer origin plus document family, not stored type / doctype alone.
+  Display-time catalog split already exists; claiming a third-party mDL
+  must not prompt to delete an expired first-party Driving Licence.
+- Implementation not started.
+
 ### Session 2026-08-21 (OID4VP direct_post.jwt)
 
 - Wallet accepts `response_mode=direct_post.jwt`, selects EC P-256 ECDH-ES key from
