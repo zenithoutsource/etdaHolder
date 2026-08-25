@@ -12,8 +12,59 @@ if (!hashes.sha512) hashes.sha512 = sha512
 
 type JsonRecord = Record<string, unknown>
 
+export type SafePresentationTransportHint = {
+  jweSegments: number
+  vpTokenJsonType: 'object' | 'array' | 'string'
+  jweAlg?: string
+  jweEnc?: string
+  jweApvPresent?: boolean
+}
+
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const ED25519_MULTICODEC_PREFIX = [0xed, 0x01]
+
+export function describeEncryptedSubmitAttempt(input: {
+  request: Pick<ResolvedPresentationRequest, 'responseMode' | 'protocolPath' | 'state' | 'dcqlQuery'>
+  formattedVpToken: string
+  compactJwe?: string
+  jwkCoordPadded?: boolean
+}): string {
+  const jweSegments = input.compactJwe?.split('.') ?? []
+  const protectedHeader = jweSegments[0] ? decodeJwtPart(jweSegments[0], 0) : undefined
+  const transportHint = createSafePresentationTransportHint(input)
+
+  return [
+    `response_mode=${input.request.responseMode}`,
+    `protocol_path=${input.request.protocolPath}`,
+    `jwe_segments=${transportHint.jweSegments}`,
+    `jwe_alg=${formatValue(readString(protectedHeader?.alg))}`,
+    `jwe_enc=${formatValue(readString(protectedHeader?.enc))}`,
+    `jwe_kid=${formatValue(readString(protectedHeader?.kid))}`,
+    `jwe_apu_present=${typeof protectedHeader?.apu === 'string'}`,
+    `jwe_apv_present=${typeof protectedHeader?.apv === 'string'}`,
+    `jwk_coord_padded=${Boolean(input.jwkCoordPadded)}`,
+    `jwe_bytes=${input.compactJwe?.length ?? 0}`,
+    `vp_token_json_type=${transportHint.vpTokenJsonType}`,
+    `dcql_envelope_shape=${input.request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw'}`,
+    `state_in_encrypted_payload=${Boolean(input.request.state)}`,
+  ].join('; ')
+}
+
+export function createSafePresentationTransportHint(input: {
+  formattedVpToken: string
+  compactJwe?: string
+}): SafePresentationTransportHint {
+  const jweSegments = input.compactJwe?.split('.') ?? []
+  const protectedHeader = jweSegments[0] ? decodeJwtPart(jweSegments[0], 0) : undefined
+
+  return {
+    jweSegments: jweSegments.length,
+    vpTokenJsonType: readVpTokenJsonType(input.formattedVpToken),
+    ...(readString(protectedHeader?.alg) ? { jweAlg: readString(protectedHeader?.alg) } : {}),
+    ...(readString(protectedHeader?.enc) ? { jweEnc: readString(protectedHeader?.enc) } : {}),
+    ...(protectedHeader ? { jweApvPresent: typeof protectedHeader.apv === 'string' } : {}),
+  }
+}
 
 export function describePresentationAttempt(input: {
   request: Pick<ResolvedPresentationRequest, 'clientId' | 'responseUri' | 'nonce' | 'state' | 'dcqlQuery' | 'matchedCredential'>
@@ -123,6 +174,21 @@ function decodeJwtPart(jwt: string, index: number): JsonRecord | undefined {
   } catch {
     return undefined
   }
+}
+
+function readVpTokenJsonType(formattedVpToken: string): 'object' | 'array' | 'string' {
+  const trimmed = formattedVpToken.trimStart()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return 'string'
+
+  try {
+    const parsed = JSON.parse(formattedVpToken) as unknown
+    if (Array.isArray(parsed)) return 'array'
+    if (parsed !== null && typeof parsed === 'object') return 'object'
+  } catch {
+    // Structural diagnostics treat malformed JSON as a raw string.
+  }
+
+  return 'string'
 }
 
 function base64UrlDecodeToString(value: string): string {

@@ -2,7 +2,7 @@ import { getPublicKey, hashes, sign } from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha2.js'
 import { createHash } from 'react-native-quick-crypto'
 
-import { describePresentationAttempt } from './presentationDiagnostics'
+import { describeEncryptedSubmitAttempt, describePresentationAttempt } from './presentationDiagnostics'
 import type { ResolvedPresentationRequest } from './presentationService'
 
 hashes.sha512 = sha512
@@ -54,6 +54,51 @@ function ed25519DidKey(publicKey: Uint8Array): string {
   prefixed.set(publicKey, 2)
   return `did:key:z${base58btcEncode(prefixed)}`
 }
+
+test('describeEncryptedSubmitAttempt reports JWE structure without token content', () => {
+  const jwe = 'eyJhbGciOiJFQ0RILUVTIiwiZW5jIjoiQTEyOEdDTSJ9..iv.ct.tag'
+  const summary = describeEncryptedSubmitAttempt({
+    request: {
+      responseMode: 'direct_post.jwt',
+      protocolPath: 'oid4vc',
+      state: 's1',
+      dcqlQuery: { credentials: [{ id: 'cred-1' }] },
+    },
+    formattedVpToken: '{"cred-1":["eyJ.test~kb"]}',
+    compactJwe: jwe,
+  })
+
+  expect(summary).toContain('response_mode=direct_post.jwt')
+  expect(summary).toContain('protocol_path=oid4vc')
+  expect(summary).toContain('jwe_segments=5')
+  expect(summary).toContain('vp_token_json_type=object')
+  expect(summary).toContain('dcql_envelope_shape=')
+  expect(summary).not.toContain('eyJ.test')
+})
+
+test('describeEncryptedSubmitAttempt reports jwk_coord_padded when set', () => {
+  const summary = describeEncryptedSubmitAttempt({
+    request: { responseMode: 'direct_post.jwt', protocolPath: 'legacy', state: 's1' },
+    formattedVpToken: JSON.stringify({ q1: ['vp'] }),
+    compactJwe: 'eyJhbGciOiJFQ0RILUVTIn0..iv.ct.tag',
+    jwkCoordPadded: true,
+  })
+  expect(summary).toContain('jwk_coord_padded=true')
+})
+
+test('describeEncryptedSubmitAttempt classifies a JSON array vp_token structurally', () => {
+  const summary = describeEncryptedSubmitAttempt({
+    request: {
+      responseMode: 'direct_post.jwt',
+      protocolPath: 'oid4vc',
+      dcqlQuery: { credentials: [{ id: 'cred-1' }] },
+    },
+    formattedVpToken: '["secret-vp-token"]',
+  })
+
+  expect(summary).toContain('vp_token_json_type=array')
+  expect(summary).not.toContain('secret-vp-token')
+})
 
 test('describes SD-JWT KB presentation metadata without full token contents', () => {
   const issuerJwt = jwt(

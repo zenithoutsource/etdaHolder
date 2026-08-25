@@ -578,6 +578,7 @@ export async function submitPresentationResponse(
           request,
           formattedVpToken,
           ...(typeof compactJwe === 'string' ? { compactJwe } : {}),
+          ...(request.responseEncryption?.jwkCoordinatePadded ? { jwkCoordPadded: true } : {}),
         })
         : undefined
       logWalletError('oid4vp', 'submit-response-failed', error, {
