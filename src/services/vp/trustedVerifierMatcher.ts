@@ -1,5 +1,6 @@
 import { parseClientId, readResponseUriMatchesClientId } from './clientIdScheme'
-import { readTrustAnyOid4vcPeerEnabled } from '@/src/config/oid4vcPeerTrustPolicy'
+import { isClientIdSchemeSupportedForTrust } from './clientIdInteropPolicy'
+import { readTrustAnyOid4vcVerifierEnabled } from '@/src/config/oid4vcPeerTrustPolicy'
 
 export type TrustedVerifier = {
   clientId: string
@@ -12,24 +13,17 @@ export function findTrustedVerifier(
   clientId: string,
   responseUri: string,
   trustedVerifiers: TrustedVerifier[],
-  trustAnyHttpsPeer: boolean = readTrustAnyOid4vcPeerEnabled(),
+  trustAnyHttpsPeer: boolean = readTrustAnyOid4vcVerifierEnabled(),
 ): TrustedVerifier | undefined {
   const responseOrigin = readUrlOrigin(responseUri)
   if (!responseOrigin) return undefined
 
   const parsedClientId = parseClientId(clientId)
-  if (
-    parsedClientId.scheme === 'unknown' ||
-    parsedClientId.scheme === 'openid_federation' ||
-    parsedClientId.scheme === 'verifier_attestation' ||
-    parsedClientId.scheme === 'x509_san_dns' ||
-    parsedClientId.scheme === 'x509_hash' ||
-    parsedClientId.scheme === 'origin'
-  ) {
+  if (!isClientIdSchemeSupportedForTrust(parsedClientId.scheme, trustAnyHttpsPeer)) {
     return undefined
   }
 
-  if (!readResponseUriMatchesClientId(clientId, responseUri)) {
+  if (!readResponseUriMatchesClientId(clientId, responseUri, { allowSameOrigin: trustAnyHttpsPeer })) {
     return undefined
   }
 

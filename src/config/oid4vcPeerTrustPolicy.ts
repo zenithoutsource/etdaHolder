@@ -28,7 +28,7 @@ export function readTrustAnyOid4vcVerifierEnabled(): boolean {
 
 /** @deprecated Prefer readTrustAnyOid4vcIssuerEnabled / readTrustAnyOid4vcVerifierEnabled. */
 export function readTrustAnyOid4vcPeerEnabled(): boolean {
-  return readTrustAnyOid4vcIssuerEnabled() && readTrustAnyOid4vcVerifierEnabled()
+  return process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER === 'true'
 }
 
 export function readTrustAnyOid4vcPeerForClientId(clientId: string): boolean {

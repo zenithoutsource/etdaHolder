@@ -47,6 +47,15 @@ describe('oid4vcPeerTrustPolicy', () => {
     expect(readTrustAnyOid4vcVerifierEnabled()).toBe(true)
   })
 
+  test('does not enable the legacy peer reader when only both granular flags are on', () => {
+    delete process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER
+    delete process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+    process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_ISSUER = 'true'
+    process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_VERIFIER = 'true'
+
+    expect(readTrustAnyOid4vcPeerEnabled()).toBe(false)
+  })
+
   test('enables only for the string true', () => {
     process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER = '1'
     expect(readTrustAnyOid4vcIssuerEnabled()).toBe(false)
