@@ -1,7 +1,6 @@
 import { isRecord, toErrorMessage } from '@/src/utils/jwtUtils'
 import { logWalletStep } from '@/src/services/debug/walletLogger'
 import { buildDirectPostFormBody } from '../directPostFormBody'
-import { logOid4vpRawPresentationSubmit } from '../oid4vpRawProtocolLog'
 import { createSafePresentationTransportHint, type SafePresentationTransportHint } from '../presentationDiagnostics'
 import type { Oid4vpResponseEncryptionParams, Oid4vpResponseMode } from '../oid4vpResponseEncryption'
 import type { Oid4vcAdapterContext } from './types'
@@ -57,13 +56,6 @@ export async function submitDirectPostViaOid4vc(input: {
       compactJwe,
     })
     : undefined
-
-  logOid4vpRawPresentationSubmit({
-    responseUri: input.responseUri,
-    responseMode: input.responseMode,
-    vpToken: input.vpToken,
-    wireBody: body.toString(),
-  })
 
   try {
     const response = await fetchImpl(input.responseUri, {
