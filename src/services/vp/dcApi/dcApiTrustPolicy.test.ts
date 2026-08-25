@@ -110,6 +110,20 @@ describe('evaluateDcApiTrust', () => {
     })).toMatchObject({ allowed: false, reason: expect.stringMatching(/unsigned/i) })
   })
 
+  test('rejects unsigned dc_api with an unexpected release profile when development is false', () => {
+    process.env.EXPO_PUBLIC_BUILD_PROFILE = 'staging'
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+
+    expect(evaluateDcApiTrust({
+      isSignedRequest: false,
+      origin: 'https://digital-credentials.dev',
+      responseMode: 'dc_api',
+      authorizationRequest: { nonce: 'n1', response_mode: 'dc_api' },
+      trustedVerifiers: [],
+      isDevelopment: false,
+    })).toMatchObject({ allowed: false, reason: expect.stringMatching(/unsigned/i) })
+  })
+
   test('rejects non-HTTPS origin for unsigned dc_api', () => {
     process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
 
