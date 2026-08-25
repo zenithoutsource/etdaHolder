@@ -1,5 +1,12 @@
 # TASKS.md - Active Implementation Backlog
 
+### Active slice: OID4VP DC API (digital-credentials.dev)
+
+- Spec: `docs/superpowers/specs/2026-08-25-oid4vp-dc-api-design.md`
+- Plan: `docs/superpowers/plans/2026-08-25-oid4vp-dc-api.md`
+- Task 1 (ADR and documentation linkage) is committed; runtime work remains
+  pending.
+
 ### Session 2026-08-25 (Demo interop VP-submit profile)
 
 - Completed slice: `docs/superpowers/specs/2026-08-25-demo-interop-vp-submit-design.md`.
