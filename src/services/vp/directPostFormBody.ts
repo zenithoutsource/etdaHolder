@@ -1,3 +1,4 @@
+import { readWalletDemoInteropEnabled, shouldIncludeOid4vpJweApv } from '@/src/config/runtimeFlags'
 import { encryptCompactJweEcdhEsP256 } from '@/src/services/crypto/jweEcdhEs'
 import { toErrorMessage } from '@/src/utils/jwtUtils'
 
@@ -8,6 +9,8 @@ import type { Oid4vpResponseEncryptionParams } from './oid4vpResponseEncryption'
 export type DirectPostFormBodyRequest = {
   responseMode: 'direct_post' | 'direct_post.jwt'
   responseEncryption?: Oid4vpResponseEncryptionParams
+  /** Authorization request nonce — bound into JWE `apv` only by the development A/B override. */
+  nonce?: string
   state?: string
   dcqlQuery?: {
     credentials: { id: string; format?: string }[]
@@ -74,6 +77,11 @@ export function buildDirectPostFormBody(input: {
     if (!input.request.responseEncryption) {
       throw new Error('PresentationSubmissionFailed: direct_post.jwt response encryption parameters are missing')
     }
+    const demoInteropEnabled = readWalletDemoInteropEnabled()
+    const includeJweApv = shouldIncludeOid4vpJweApv() && !demoInteropEnabled
+    if (includeJweApv && !input.request.nonce) {
+      throw new Error('PresentationSubmissionFailed: direct_post.jwt requires authorization request nonce for JWE apv')
+    }
 
     const authorizationPayload = buildAuthorizationResponsePayload({
       request: input.request,
@@ -86,6 +94,10 @@ export function buildDirectPostFormBody(input: {
         recipientJwk: input.request.responseEncryption.jwk,
         enc: input.request.responseEncryption.enc,
         payload: authorizationPayload,
+        lenientRecipientCoordinates: demoInteropEnabled,
+        ...(includeJweApv && input.request.nonce
+          ? { agreementParties: { partyVInfo: new TextEncoder().encode(input.request.nonce) } }
+          : {}),
       })
       body.set('response', compactJwe)
       return body
