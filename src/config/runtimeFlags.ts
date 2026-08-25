@@ -1,5 +1,6 @@
 export type VerifierDcqlVpTokenShape = 'object_array' | 'object_string' | 'raw'
 export type VerifierKbAudienceMode = 'client_id' | 'response_uri'
+export type Oid4vpJweEncOverride = 'A128GCM' | 'A256GCM'
 
 export function isBiometricDisabledForTesting(isDevelopment = __DEV__): boolean {
   return isDevelopment && process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING === 'true'
@@ -19,8 +20,21 @@ export function readVerifierKbAudienceMode(): VerifierKbAudienceMode {
   return process.env.EXPO_PUBLIC_VERIFIER_KB_AUD === 'response_uri' ? 'response_uri' : 'client_id'
 }
 
+export function readOid4vpJweEncOverride(): Oid4vpJweEncOverride | undefined {
+  if (!__DEV__) return undefined
+
+  const value = process.env.EXPO_PUBLIC_OID4VP_JWE_ENC
+  return value === 'A128GCM' || value === 'A256GCM' ? value : undefined
+}
+
+export function shouldIncludeOid4vpJweApv(isDevelopment = __DEV__): boolean {
+  return isDevelopment && process.env.EXPO_PUBLIC_OID4VP_JWE_APV === 'true'
+}
+
 export function readWalletDemoInteropEnabled(isDevelopment = __DEV__): boolean {
   if (process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP !== 'true') return false
+  const buildProfile = process.env.EXPO_PUBLIC_BUILD_PROFILE
+  if (buildProfile === 'production') return false
   if (isDevelopment) return true
-  return process.env.EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP === 'true'
+  return buildProfile === 'preview' && process.env.EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP === 'true'
 }

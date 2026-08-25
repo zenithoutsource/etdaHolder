@@ -10,6 +10,8 @@
       "env": {
         "EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED": "true",
         "EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND": "custom",
+        "EXPO_PUBLIC_BUILD_PROFILE": "development",
+        "EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER": "true",
         "EXPO_PUBLIC_WALLET_DEMO_INTEROP": "true",
         "EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP": "true"
       }
@@ -19,6 +21,7 @@
       "env": {
         "EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED": "true",
         "EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND": "custom",
+        "EXPO_PUBLIC_BUILD_PROFILE": "preview",
         "EXPO_PUBLIC_WALLET_API_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_WALLET_API_PINNED_CERTS": "sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4=",
         "EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL": "https://wallet.zenithcomp.co.th:455",
@@ -26,6 +29,7 @@
         "EXPO_PUBLIC_VERIFIER_API_BASE_URL": "https://verifier.zenithcomp.co.th:455",
         "EXPO_PUBLIC_VERIFIER_NAME": "Verifier API",
         "EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST": "true",
+        "EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER": "true",
         "EXPO_PUBLIC_WALLET_DEMO_INTEROP": "true",
         "EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP": "true"
       }
@@ -35,6 +39,7 @@
       "env": {
         "EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED": "true",
         "EXPO_PUBLIC_HARDWARE_ECDSA_BACKEND": "custom",
+        "EXPO_PUBLIC_BUILD_PROFILE": "production",
         "EXPO_PUBLIC_WALLET_API_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_WALLET_API_PINNED_CERTS": "sha256/Y5HqyCJlL1uzfx/hodI3CK4zcMJV5WdNdhS7Kmw6sA4=",
         "EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL": "https://wallet.zenithcomp.co.th:455",

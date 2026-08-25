@@ -10,7 +10,6 @@ import {
   readVerifierKbAudienceMode,
 } from '../../config/runtimeFlags'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
-import { logOid4vpRawPresentationSubmit } from './oid4vpRawProtocolLog'
 import { isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { enrichDisclosuresWithPolicy } from './claimDisclosurePolicy'
@@ -611,13 +610,6 @@ export async function submitPresentationResponse(
     request,
     formattedVpToken,
     presentationSubmission: options.presentationSubmission,
-  })
-
-  logOid4vpRawPresentationSubmit({
-    responseUri: request.responseUri,
-    responseMode: request.responseMode,
-    vpToken: formattedVpToken,
-    wireBody: body.toString(),
   })
 
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
