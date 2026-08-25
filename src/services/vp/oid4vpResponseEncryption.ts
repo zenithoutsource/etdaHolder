@@ -2,7 +2,7 @@
  * OID4VP direct_post.jwt: select Verifier response-encryption JWK from client_metadata.
  */
 import { isRecord, readString } from '@/src/utils/jwtUtils'
-import { readOid4vpJweEncOverride, readWalletDemoInteropEnabled } from '@/src/config/runtimeFlags'
+import { readWalletDemoInteropEnabled } from '@/src/config/runtimeFlags'
 import { logWalletStep } from '@/src/services/debug/walletLogger'
 import { parseP256JwkPublicKey } from '@/src/services/crypto/p256Identity'
 
@@ -87,9 +87,6 @@ function selectEncAlgorithm(clientMetadata: Record<string, unknown>): Oid4vpJweE
   const supported = clientMetadata.encrypted_response_enc_values_supported
   if (!Array.isArray(supported)) return DEFAULT_ENC
 
-  const override = readOid4vpJweEncOverride()
-  if (override && supported.includes(override)) return override
-
   for (const entry of supported) {
     if (typeof entry !== 'string') continue
     if (entry === 'A128GCM' || entry === 'A256GCM') {
@@ -114,24 +111,10 @@ export function resolveOid4vpResponseEncryptionParams(
   }
 
   const enc = selectEncAlgorithm(clientMetadata)
-  const keys = readJwksKeys(clientMetadata)
-  for (const key of keys) {
+  for (const key of readJwksKeys(clientMetadata)) {
     const recipient = readP256EcdhEsRecipientJwk(key)
     if (recipient) {
       const { jwk, coordinatePadded } = recipient
-      logWalletStep('oid4vp', 'response-encryption-selected', {
-        enc,
-        advertisedEncValues: Array.isArray(clientMetadata.encrypted_response_enc_values_supported)
-          ? clientMetadata.encrypted_response_enc_values_supported.filter((value): value is string => typeof value === 'string')
-          : [],
-        jwksKeyCount: keys.length,
-        selectedKey: {
-          alg: jwk.alg,
-          crv: jwk.crv,
-          kidPresent: Boolean(jwk.kid),
-          use: jwk.use ?? undefined,
-        },
-      })
       return {
         alg: 'ECDH-ES',
         enc,

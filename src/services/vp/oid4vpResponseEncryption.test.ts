@@ -1,3 +1,7 @@
+import { p256 } from '@noble/curves/nist.js'
+
+import { p256PublicKeyToJwk } from '@/src/services/crypto/p256Identity'
+
 import {
   resolveOid4vpResponseEncryptionParams,
   isSupportedOid4vpResponseMode,
@@ -13,7 +17,37 @@ const recipientJwk = {
   y: 'Hekpm0zfK7C-YccH5iBjcIXgf6YdUvNUac_0At55Okk',
 }
 
+function buildRecipientWithShortLeadingZeroXCoordinate() {
+  for (let value = 1; value < 4096; value += 1) {
+    const privateKey = new Uint8Array(32)
+    new DataView(privateKey.buffer).setUint32(28, value, false)
+    const uncompressedPublicKey = p256.getPublicKey(privateKey, false)
+    if (uncompressedPublicKey[1] !== 0) continue
+
+    return {
+      ...p256PublicKeyToJwk(uncompressedPublicKey),
+      alg: 'ECDH-ES',
+      kid: 'short-coordinate',
+      use: 'enc',
+      x: base64UrlEncode(uncompressedPublicKey.slice(2, 33)),
+    }
+  }
+  throw new Error('TestFixtureMissingLeadingZeroCoordinate')
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
 describe('oid4vpResponseEncryption', () => {
+  const originalWalletDemoInterop = process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+
+  afterEach(() => {
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = originalWalletDemoInterop
+  })
+
   it('accepts supported response modes', () => {
     expect(isSupportedOid4vpResponseMode('direct_post')).toBe(true)
     expect(isSupportedOid4vpResponseMode('direct_post.jwt')).toBe(true)
@@ -41,6 +75,44 @@ describe('oid4vpResponseEncryption', () => {
     })
 
     expect(params.enc).toBe('A256GCM')
+  })
+
+  it('records padding used for a verifier encryption JWK in demo interop', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+
+    const params = resolveOid4vpResponseEncryptionParams({
+      client_metadata: {
+        jwks: { keys: [buildRecipientWithShortLeadingZeroXCoordinate()] },
+      },
+    })
+
+    expect(params.jwkCoordinatePadded).toBe(true)
+  })
+
+  it('rejects oversized verifier encryption coordinates in demo interop', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+
+    expect(() =>
+      resolveOid4vpResponseEncryptionParams({
+        client_metadata: {
+          jwks: {
+            keys: [{ ...recipientJwk, x: base64UrlEncode(new Uint8Array(33)) }],
+          },
+        },
+      }),
+    ).toThrow('InvalidP256JwkCoordinateLength')
+  })
+
+  it('rejects malformed verifier encryption coordinates in demo interop', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+
+    expect(() =>
+      resolveOid4vpResponseEncryptionParams({
+        client_metadata: {
+          jwks: { keys: [{ ...recipientJwk, x: 'invalid-coordinate' }] },
+        },
+      }),
+    ).toThrow()
   })
 
   it('throws when client_metadata is missing', () => {
