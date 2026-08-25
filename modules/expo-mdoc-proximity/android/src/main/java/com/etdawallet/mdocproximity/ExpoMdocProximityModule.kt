@@ -1,5 +1,8 @@
 package com.etdawallet.mdocproximity
 
+import android.util.Base64
+import android.util.Log
+import com.wallet.mdocproximity.DcApiDeviceResponseBuilder
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -103,6 +106,75 @@ class ExpoMdocProximityModule : Module() {
     AsyncFunction("deleteMdoc") { credentialId: String ->
       val context = appContext.reactContext?.applicationContext ?: return@AsyncFunction
       MdocProximityEngine.deleteMdoc(context, credentialId)
+    }
+
+    AsyncFunction("buildDcApiDeviceResponse") { params: Map<String, Any?>, promise: Promise ->
+      val activity = appContext.currentActivity as? FragmentActivity
+      if (activity == null) {
+        promise.reject(
+          MdocProximityErrors.PROXIMITY_NOT_READY,
+          "CurrentActivityUnavailable",
+          null,
+        )
+        return@AsyncFunction
+      }
+
+      CoroutineScope(Dispatchers.Main.immediate).launch {
+        try {
+          val input = readDcApiDeviceResponseInput(params)
+          if (MdocProximityEngine.isPresentationActive()) {
+            throw MdocProximityException(
+              MdocProximityErrors.PRESENTATION_ACTIVE,
+              "A proximity presentation is already active",
+            )
+          }
+          val context = requireContext()
+          val mdocBytes = MdocProximityEngine.readMdoc(context, input.credentialId)
+          val storedDocType = MdocProximityEngine.readStoredDocType(context, input.credentialId)
+
+          HardwareSigningSessionManager.authenticateMdocSession(input.opaqueNativeHandle, activity)
+          val encoded = withContext(Dispatchers.Default) {
+            val hardwareSecureArea = HardwareHandleSecureArea(input.opaqueNativeHandle)
+            val publicKey = hardwareSecureArea
+              .getKeyInfo(HardwareHandleSecureArea.KEY_ALIAS)
+              .publicKey
+            DcApiDeviceResponseBuilder.build(
+              mdocBytes = mdocBytes,
+              storedDocType = storedDocType,
+              approvedNamespaceKeys = input.approvedNamespaceKeys,
+              origin = input.origin,
+              nonce = input.nonce,
+              encryptionJwkJson = input.encryptionJwkJson,
+              publicKey = publicKey,
+              sign = { data ->
+                HardwareSigningSessionManager.signMdocWithoutPrompt(
+                  input.opaqueNativeHandle,
+                  data,
+                )
+              },
+            )
+          }
+          promise.resolve(
+            Base64.encodeToString(
+              encoded,
+              Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
+            ),
+          )
+        } catch (error: MdocProximityException) {
+          Log.e(TAG, "[dc-api-mdoc] DeviceResponse build failed", error)
+          promise.reject(error.code, error.message, error)
+        } catch (error: IllegalArgumentException) {
+          Log.e(TAG, "[dc-api-mdoc] DeviceResponse input rejected", error)
+          promise.reject(MdocProximityErrors.INVALID_ARGUMENT, error.message, error)
+        } catch (error: Exception) {
+          Log.e(TAG, "[dc-api-mdoc] DeviceResponse build failed", error)
+          promise.reject(
+            MdocProximityErrors.DC_API_DEVICE_RESPONSE_FAILED,
+            "DC API DeviceResponse construction failed",
+            error,
+          )
+        }
+      }
     }
 
     AsyncFunction("armProximitySession") { config: Map<String, Any?>, promise: Promise ->
@@ -268,4 +340,43 @@ class ExpoMdocProximityModule : Module() {
     }
     return overlay
   }
+
+  private fun readDcApiDeviceResponseInput(params: Map<String, Any?>): DcApiDeviceResponseInput {
+    val credentialId = requireString(params, "credentialId")
+    val approvedNamespaceKeys = readStringList(params["approvedNamespaceKeys"])
+    if (approvedNamespaceKeys.isEmpty()) {
+      throw MdocProximityException(
+        MdocProximityErrors.INVALID_ARGUMENT,
+        "approvedNamespaceKeys is required",
+      )
+    }
+    return DcApiDeviceResponseInput(
+      credentialId = credentialId,
+      approvedNamespaceKeys = approvedNamespaceKeys,
+      origin = requireString(params, "origin"),
+      nonce = requireString(params, "nonce"),
+      encryptionJwkJson = (params["encryptionJwkJson"] as? String)?.takeIf { it.isNotBlank() },
+      opaqueNativeHandle = requireString(params, "opaqueNativeHandle"),
+    )
+  }
+
+  private fun requireString(params: Map<String, Any?>, name: String): String =
+    (params[name] as? String)?.takeIf { it.isNotBlank() }
+      ?: throw MdocProximityException(
+        MdocProximityErrors.INVALID_ARGUMENT,
+        "$name is required",
+      )
+
+  private companion object {
+    const val TAG = "ExpoMdocProximity"
+  }
 }
+
+private data class DcApiDeviceResponseInput(
+  val credentialId: String,
+  val approvedNamespaceKeys: List<String>,
+  val origin: String,
+  val nonce: String,
+  val encryptionJwkJson: String?,
+  val opaqueNativeHandle: String,
+)
