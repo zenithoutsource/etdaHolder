@@ -6,7 +6,7 @@ import { p256 } from '@noble/curves/nist.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { createCipheriv, createDecipheriv, randomBytes } from 'react-native-quick-crypto'
 
-import { p256JwkToPublicKey, p256PublicKeyToJwk } from '@/src/services/crypto/p256Identity'
+import { parseP256JwkPublicKey, p256JwkToPublicKey, p256PublicKeyToJwk } from '@/src/services/crypto/p256Identity'
 import type { EcP256Jwk } from '@/src/services/crypto/hardwareEcdsaTypes'
 import { base64UrlEncodeBytes } from '@/src/utils/base64Url'
 import { decodeJsonBase64Url } from '@/src/utils/jwtUtils'
@@ -90,8 +90,11 @@ export function encryptCompactJweEcdhEsP256(input: {
   recipientJwk: Oid4vpEncryptionRecipientJwk
   enc: Oid4vpJweEncAlgorithm
   payload: Record<string, unknown>
+  lenientRecipientCoordinates?: boolean
 }): string {
-  const recipientPublicKey = p256JwkToPublicKey(input.recipientJwk)
+  const recipientPublicKey = parseP256JwkPublicKey(input.recipientJwk, {
+    lenientCoordinates: input.lenientRecipientCoordinates === true,
+  }).publicKey
   const ephemeralPrivateKey = p256.keygen().secretKey
   const ephemeralPublicJwk = readEphemeralPublicJwk(ephemeralPrivateKey)
   const sharedSecret = p256.getSharedSecret(ephemeralPrivateKey, recipientPublicKey, false)

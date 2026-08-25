@@ -6,6 +6,7 @@ import {
   base58btcEncode,
   compressP256PublicKey,
   didKeyToP256PublicJwk,
+  parseP256JwkPublicKey,
   p256JwkToPublicKey,
   p256PublicKeyToCoseKey,
   p256PublicKeyToDidKey,
@@ -39,6 +40,25 @@ describe('p256Identity', () => {
     const jwk = p256PublicKeyToJwk(TEST_PUBLIC_KEY)
     const restored = p256JwkToPublicKey(jwk)
     expect(restored).toEqual(TEST_PUBLIC_KEY)
+  })
+
+  test('lenient mode left-pads short EC coordinates for encryption JWK interop', () => {
+    const uncompressedPublicKey = readPublicKeyWithLeadingZeroXCoordinate()
+    const expectedPublicKey = p256.Point.fromBytes(uncompressedPublicKey).toBytes(true)
+    const fullJwk = p256PublicKeyToJwk(uncompressedPublicKey)
+    const shortX = base64UrlEncode(uncompressedPublicKey.slice(2, 33))
+
+    expect(() =>
+      parseP256JwkPublicKey({ ...fullJwk, x: shortX }, { lenientCoordinates: false }),
+    ).toThrow('InvalidP256JwkCoordinateLength')
+
+    const lenient = parseP256JwkPublicKey(
+      { ...fullJwk, x: shortX },
+      { lenientCoordinates: true },
+    )
+
+    expect(lenient.coordinatePadded).toBe(true)
+    expect(lenient.publicKey).toEqual(expectedPublicKey)
   })
 
   test('encodes did:key with [0x80, 0x24] multicodec prefix and 33-byte compressed key', () => {
@@ -105,4 +125,20 @@ function decodeBase58(input: string): Uint8Array {
   const bytes = new Uint8Array(zeros + decoded.length)
   bytes.set(decoded, zeros)
   return bytes
+}
+
+function readPublicKeyWithLeadingZeroXCoordinate(): Uint8Array {
+  for (let value = 1; value < 4096; value += 1) {
+    const privateKey = new Uint8Array(32)
+    new DataView(privateKey.buffer).setUint32(28, value, false)
+    const publicKey = p256.getPublicKey(privateKey, false)
+    if (publicKey[1] === 0) return publicKey
+  }
+  throw new Error('TestFixtureMissingLeadingZeroCoordinate')
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }

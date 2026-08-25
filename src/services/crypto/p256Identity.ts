@@ -13,6 +13,11 @@ export type P256CoseKey = {
   3: -7
 } & { [K in -1 | -2 | -3]: K extends -1 ? 1 : Uint8Array }
 
+export type P256JwkParseResult = {
+  publicKey: Uint8Array
+  coordinatePadded: boolean
+}
+
 function bytesToBigInt(bytes: Uint8Array): bigint {
   let n = 0n
   for (const b of bytes) n = (n << 8n) | BigInt(b)
@@ -97,20 +102,44 @@ export function p256PublicKeyToJwk(publicKey: Uint8Array): EcP256Jwk {
   }
 }
 
-export function p256JwkToPublicKey(jwk: EcP256Jwk): Uint8Array {
+function parseP256JwkCoordinate(
+  value: string,
+  lenientCoordinates: boolean,
+): { bytes: Uint8Array; padded: boolean } {
+  const decoded = base64UrlDecode(value)
+  if (decoded.length === 32) return { bytes: decoded, padded: false }
+  if (!lenientCoordinates || decoded.length > 32) {
+    throw new Error('InvalidP256JwkCoordinateLength')
+  }
+
+  const bytes = new Uint8Array(32)
+  bytes.set(decoded, 32 - decoded.length)
+  return { bytes, padded: true }
+}
+
+export function parseP256JwkPublicKey(
+  jwk: EcP256Jwk,
+  options?: { lenientCoordinates?: boolean },
+): P256JwkParseResult {
   if (jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.x || !jwk.y) {
     throw new Error('InvalidP256Jwk')
   }
-  const x = base64UrlDecode(jwk.x)
-  const y = base64UrlDecode(jwk.y)
-  if (x.length !== 32 || y.length !== 32) {
-    throw new Error('InvalidP256JwkCoordinateLength')
-  }
+
+  const x = parseP256JwkCoordinate(jwk.x, options?.lenientCoordinates === true)
+  const y = parseP256JwkCoordinate(jwk.y, options?.lenientCoordinates === true)
   const uncompressed = new Uint8Array(65)
   uncompressed[0] = 0x04
-  uncompressed.set(x, 1)
-  uncompressed.set(y, 33)
-  return compressP256PublicKey(uncompressed)
+  uncompressed.set(x.bytes, 1)
+  uncompressed.set(y.bytes, 33)
+
+  return {
+    publicKey: compressP256PublicKey(uncompressed),
+    coordinatePadded: x.padded || y.padded,
+  }
+}
+
+export function p256JwkToPublicKey(jwk: EcP256Jwk): Uint8Array {
+  return parseP256JwkPublicKey(jwk).publicKey
 }
 
 export function p256PublicKeyToDidKey(publicKey: Uint8Array): string {
