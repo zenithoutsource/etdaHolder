@@ -15,13 +15,14 @@ export type DcApiPresentationPayload =
 export type BuildDcApiPresentationPayloadInput = {
   responseMode: DcApiPresentationPayload['responseMode']
   authorizationRequest: Record<string, unknown>
+  selectedDcqlQueryId: string
   deviceResponse: string
 }
 
 export function buildDcApiPresentationPayload(
   input: BuildDcApiPresentationPayloadInput,
 ): DcApiPresentationPayload {
-  const vpToken = buildDcqlObjectArrayVpToken(input.authorizationRequest, input.deviceResponse)
+  const vpToken = buildDcqlObjectArrayVpToken(input)
 
   if (input.responseMode === 'dc_api') {
     return { responseMode: 'dc_api', data: { vp_token: vpToken } }
@@ -39,28 +40,28 @@ export function buildDcApiPresentationPayload(
   }
 }
 
-function buildDcqlObjectArrayVpToken(
-  authorizationRequest: Record<string, unknown>,
-  deviceResponse: string,
-): Record<string, string[]> {
-  const queryId = readFirstDcqlQueryId(authorizationRequest)
+function buildDcqlObjectArrayVpToken(input: BuildDcApiPresentationPayloadInput): Record<string, string[]> {
+  assertSelectedDcqlQueryId(input.authorizationRequest, input.selectedDcqlQueryId)
   const envelope = formatDcqlVpTokenEnvelope({
-    entries: { [queryId]: deviceResponse },
+    entries: { [input.selectedDcqlQueryId]: input.deviceResponse },
     shape: 'object_array',
   })
   return JSON.parse(envelope) as Record<string, string[]>
 }
 
-function readFirstDcqlQueryId(authorizationRequest: Record<string, unknown>): string {
+function assertSelectedDcqlQueryId(
+  authorizationRequest: Record<string, unknown>,
+  selectedDcqlQueryId: string,
+): void {
   const dcqlQuery = authorizationRequest.dcql_query
   if (!isRecord(dcqlQuery) || !Array.isArray(dcqlQuery.credentials)) {
     throw new Error('PresentationRequestInvalid: dc_api requires dcql_query.credentials')
   }
 
-  const firstCredential = dcqlQuery.credentials[0]
-  const queryId = isRecord(firstCredential) ? readString(firstCredential.id) : undefined
-  if (!queryId) {
-    throw new Error('PresentationRequestInvalid: dc_api requires a DCQL credential query ID')
+  const selectedQueryExists = dcqlQuery.credentials.some(
+    (credential) => isRecord(credential) && readString(credential.id) === selectedDcqlQueryId,
+  )
+  if (!selectedQueryExists) {
+    throw new Error('PresentationRequestInvalid: dc_api selected DCQL credential query ID is not requested')
   }
-  return queryId
 }

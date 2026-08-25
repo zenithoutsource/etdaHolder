@@ -22,6 +22,7 @@ describe('buildDcApiPresentationPayload', () => {
     const payload = buildDcApiPresentationPayload({
       responseMode: 'dc_api',
       authorizationRequest,
+      selectedDcqlQueryId: 'cred1',
       deviceResponse: 'base64urlDeviceResponse',
     })
 
@@ -35,6 +36,7 @@ describe('buildDcApiPresentationPayload', () => {
     const payload = buildDcApiPresentationPayload({
       responseMode: 'dc_api.jwt',
       authorizationRequest: { ...authorizationRequest, state: 'must-not-be-sent' },
+      selectedDcqlQueryId: 'cred1',
       deviceResponse: 'base64urlDeviceResponse',
     })
 
@@ -44,6 +46,51 @@ describe('buildDcApiPresentationPayload', () => {
     expect(payload.response.split('.')).toHaveLength(5)
     expect(decryptCompactJweEcdhEsP256ForTest(payload.response, privateKey)).toEqual({
       vp_token: { cred1: ['base64urlDeviceResponse'] },
+    })
+  })
+
+  it('uses the explicitly selected later DCQL query ID for dc_api', () => {
+    const payloadInput = {
+      responseMode: 'dc_api' as const,
+      authorizationRequest: {
+        ...authorizationRequest,
+        dcql_query: {
+          credentials: [
+            { id: 'cred1', format: 'mso_mdoc' },
+            { id: 'cred2', format: 'mso_mdoc' },
+          ],
+        },
+      },
+      selectedDcqlQueryId: 'cred2',
+      deviceResponse: 'base64urlDeviceResponse',
+    }
+
+    expect(buildDcApiPresentationPayload(payloadInput)).toEqual({
+      responseMode: 'dc_api',
+      data: { vp_token: { cred2: ['base64urlDeviceResponse'] } },
+    })
+  })
+
+  it('uses the explicitly selected later DCQL query ID for dc_api.jwt', () => {
+    const payloadInput = {
+      responseMode: 'dc_api.jwt' as const,
+      authorizationRequest: {
+        ...authorizationRequest,
+        dcql_query: {
+          credentials: [
+            { id: 'cred1', format: 'mso_mdoc' },
+            { id: 'cred2', format: 'mso_mdoc' },
+          ],
+        },
+      },
+      selectedDcqlQueryId: 'cred2',
+      deviceResponse: 'base64urlDeviceResponse',
+    }
+    const payload = buildDcApiPresentationPayload(payloadInput)
+
+    if (payload.responseMode !== 'dc_api.jwt') throw new Error('ExpectedDcApiJwtPayload')
+    expect(decryptCompactJweEcdhEsP256ForTest(payload.response, privateKey)).toEqual({
+      vp_token: { cred2: ['base64urlDeviceResponse'] },
     })
   })
 })

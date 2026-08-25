@@ -47,3 +47,34 @@ cmd.exe /d /c "node_modules\\.bin\\eslint.cmd src/services/vp/dcApi/dcApiRespons
 Result: completed with no diagnostics.
 
 An additional full `yarn.cmd test --runInBand` invocation was started for branch verification, but the local shell detached it without returning an exit result. It is not used as evidence in this report; the focused verification above is the recorded Task 5 result.
+
+## Fix round 1
+
+- Corrected the response-builder contract to require `selectedDcqlQueryId` after DCQL selection.
+- The builder now verifies that this ID is included in `dcql_query.credentials` and uses it for both the plaintext `dc_api` envelope and the encrypted `dc_api.jwt` payload.
+- Added regression tests where `cred2` is selected after `cred1`; both response modes emit only `cred2`.
+
+### TDD and verification
+
+1. RED command:
+
+   ```text
+   cmd.exe /d /c "yarn.cmd test src/services/vp/dcApi/dcApiResponseBuilder.test.ts --no-cache --runInBand"
+   ```
+
+   Result: failed as expected. Both new assertions received `cred1` when the selected query ID was `cred2`.
+
+2. GREEN command: same focused command.
+
+   Result: PASS — 1 suite, 4 tests.
+
+3. Focused regression command:
+
+   ```text
+   cmd.exe /d /c "yarn.cmd test src/services/vp/dcApi/dcApiResponseBuilder.test.ts src/services/vp/oid4vpResponseEncryption.test.ts src/services/vp/oid4vc/formatDcqlVpTokenEnvelope.test.ts src/services/vp/directPostFormBody.test.ts --no-cache --runInBand"
+   ```
+
+   Result: PASS — 4 suites, 27 tests.
+
+4. `cmd.exe /d /c "yarn.cmd tsc --noEmit"` completed with no diagnostics.
+5. `cmd.exe /d /c "node_modules\\.bin\\eslint.cmd src/services/vp/dcApi/dcApiResponseBuilder.ts src/services/vp/dcApi/dcApiResponseBuilder.test.ts"` completed with no diagnostics.
