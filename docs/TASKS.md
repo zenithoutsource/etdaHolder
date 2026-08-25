@@ -1,5 +1,17 @@
 # TASKS.md - Active Implementation Backlog
 
+### Session 2026-08-25 (Demo interop VP-submit profile)
+
+- Completed slice: `docs/superpowers/specs/2026-08-25-demo-interop-vp-submit-design.md`.
+  The issuer-side non-PID claim prerequisite consumes the cascading
+  `readTrustAnyOid4vcIssuerEnabled()` policy; no screen-level demo-flag logic was added.
+- Development and preview EAS builds explicitly enable the demo profile; production
+  contains neither demo-profile enabling variable. The profile remains an opt-in
+  interop-only security boundary, not a customer-production default.
+- Manual acceptance targets: TonyHere verifier QR approval/submission returns HTTP 200;
+  Animo VP playground QR approval/submission has no JARM decrypt error. Recheck Animo
+  credential issuance as the OID4VCI regression target.
+
 ### Session 2026-08-24 (Wallet API and protocol debug logging)
 
 - Spec: `docs/superpowers/specs/2026-08-24-wallet-api-debug-logging-design.md`

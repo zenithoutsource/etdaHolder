@@ -29,7 +29,7 @@ import { WalletHeader } from '../components/WalletHeader'
 import { useAndroidBackNavigation } from '../hooks/useAndroidBackNavigation'
 import { useReturnToWallet } from '../hooks/useReturnToWallet'
 import { useStoredCredentials } from '../hooks/useStoredCredentials'
-import { readTrustAnyOid4vcPeerEnabled } from '../config/oid4vcPeerTrustPolicy'
+import { readTrustAnyOid4vcIssuerEnabled } from '../config/oid4vcPeerTrustPolicy'
 import { readWalletReturnUrl } from '../config/sameDeviceIssuance'
 import type { IssuerPortalCredentialType } from '../config/issuerPortalUrls'
 import { buildAuthorizationRequestUrlForResolvedOffer } from '../services/credentials/buildAuthorizationRequestUrlForResolvedOffer'
@@ -294,7 +294,7 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
       pidGateStatus,
       authorizationCodeFlow: Boolean(authorizationCodeExchangeRef.current),
     })
-    if (!isPidOffer && pidGateStatus !== 'ready' && !readTrustAnyOid4vcPeerEnabled()) {
+    if (!isPidOffer && pidGateStatus !== 'ready' && !readTrustAnyOid4vcIssuerEnabled()) {
       logWalletError(
         'deeplink',
         'offer-requires-pid',
