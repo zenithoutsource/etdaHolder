@@ -1,0 +1,49 @@
+import { p256 } from '@noble/curves/nist.js'
+
+import { decryptCompactJweEcdhEsP256ForTest } from '@/src/services/crypto/jweEcdhEs'
+import { p256PublicKeyToJwk } from '@/src/services/crypto/p256Identity'
+
+import { buildDcApiPresentationPayload } from './dcApiResponseBuilder'
+
+describe('buildDcApiPresentationPayload', () => {
+  const privateKey = p256.keygen().secretKey
+  const recipientJwk = {
+    ...p256PublicKeyToJwk(p256.getPublicKey(privateKey, false)),
+    alg: 'ECDH-ES' as const,
+    kid: 'dc-api-encryption-key',
+    use: 'enc',
+  }
+  const authorizationRequest = {
+    dcql_query: { credentials: [{ id: 'cred1', format: 'mso_mdoc' }] },
+    client_metadata: { jwks: { keys: [recipientJwk] } },
+  }
+
+  it('builds an object_array vp_token keyed by the DCQL credential query ID', () => {
+    const payload = buildDcApiPresentationPayload({
+      responseMode: 'dc_api',
+      authorizationRequest,
+      deviceResponse: 'base64urlDeviceResponse',
+    })
+
+    expect(payload).toEqual({
+      responseMode: 'dc_api',
+      data: { vp_token: { cred1: ['base64urlDeviceResponse'] } },
+    })
+  })
+
+  it('returns only a compact JWE whose plaintext omits state for dc_api.jwt', () => {
+    const payload = buildDcApiPresentationPayload({
+      responseMode: 'dc_api.jwt',
+      authorizationRequest: { ...authorizationRequest, state: 'must-not-be-sent' },
+      deviceResponse: 'base64urlDeviceResponse',
+    })
+
+    expect(payload.responseMode).toBe('dc_api.jwt')
+    expect(payload).toEqual({ responseMode: 'dc_api.jwt', response: expect.any(String) })
+    if (payload.responseMode !== 'dc_api.jwt') throw new Error('ExpectedDcApiJwtPayload')
+    expect(payload.response.split('.')).toHaveLength(5)
+    expect(decryptCompactJweEcdhEsP256ForTest(payload.response, privateKey)).toEqual({
+      vp_token: { cred1: ['base64urlDeviceResponse'] },
+    })
+  })
+})
