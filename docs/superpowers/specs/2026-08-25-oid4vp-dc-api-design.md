@@ -101,7 +101,7 @@ No logging of claims, `DeviceResponse` plaintext, JWE keys, or Origin PII beyond
 
 ## Documentation follow-up
 
-- New ADR: DC API as online presentation transport (complements ADR 0003 NFC).
+- New ADR: [`0012-dc-api-online-presentation-transport.md`](../../adr/0012-dc-api-online-presentation-transport.md) for DC API as online presentation transport (complements ADR 0003 NFC).
 - Update P4 canvas if Holder steps change.
 - Update `docs/CODEMAPS/frontend.md` if consent entry path changes.
 - Update `docs/TASKS.md` when implementation lands.
