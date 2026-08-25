@@ -17,33 +17,59 @@ export type SafePresentationTransportHint = {
   vpTokenJsonType: 'object' | 'array' | 'string'
   jweAlg?: string
   jweEnc?: string
+  jweKidPresent?: boolean
+  jweApuPresent?: boolean
   jweApvPresent?: boolean
+  jweBytes?: number
+}
+
+type EncryptedSubmitAttemptBase = {
+  request: Pick<ResolvedPresentationRequest, 'responseMode' | 'protocolPath' | 'state' | 'dcqlQuery'>
+  jwkCoordPadded?: boolean
+}
+
+type EncryptedSubmitAttemptWithHint = EncryptedSubmitAttemptBase & {
+  transportHint: SafePresentationTransportHint
+  formattedVpToken?: never
+  compactJwe?: never
+}
+
+type EncryptedSubmitAttemptWithTokens = EncryptedSubmitAttemptBase & {
+  transportHint?: never
+  formattedVpToken: string
+  compactJwe?: string
 }
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 const ED25519_MULTICODEC_PREFIX = [0xed, 0x01]
 
-export function describeEncryptedSubmitAttempt(input: {
-  request: Pick<ResolvedPresentationRequest, 'responseMode' | 'protocolPath' | 'state' | 'dcqlQuery'>
-  formattedVpToken: string
-  compactJwe?: string
-  jwkCoordPadded?: boolean
-}): string {
+export function describeEncryptedSubmitAttempt(input: EncryptedSubmitAttemptWithHint): string
+export function describeEncryptedSubmitAttempt(input: EncryptedSubmitAttemptWithTokens): string
+export function describeEncryptedSubmitAttempt(
+  input: EncryptedSubmitAttemptBase & {
+    formattedVpToken?: string
+    compactJwe?: string
+    transportHint?: SafePresentationTransportHint
+  },
+): string {
   const jweSegments = input.compactJwe?.split('.') ?? []
   const protectedHeader = jweSegments[0] ? decodeJwtPart(jweSegments[0], 0) : undefined
-  const transportHint = createSafePresentationTransportHint(input)
+  const transportHint = input.transportHint ?? createSafePresentationTransportHint({
+    formattedVpToken: input.formattedVpToken ?? '',
+    ...(input.compactJwe ? { compactJwe: input.compactJwe } : {}),
+  })
 
   return [
     `response_mode=${input.request.responseMode}`,
     `protocol_path=${input.request.protocolPath}`,
     `jwe_segments=${transportHint.jweSegments}`,
-    `jwe_alg=${formatValue(readString(protectedHeader?.alg))}`,
-    `jwe_enc=${formatValue(readString(protectedHeader?.enc))}`,
-    `jwe_kid=${formatValue(readString(protectedHeader?.kid))}`,
-    `jwe_apu_present=${typeof protectedHeader?.apu === 'string'}`,
-    `jwe_apv_present=${typeof protectedHeader?.apv === 'string'}`,
+    `jwe_alg=${formatValue(transportHint.jweAlg)}`,
+    `jwe_enc=${formatValue(transportHint.jweEnc)}`,
+    `jwe_kid=${input.transportHint ? (transportHint.jweKidPresent ? 'present' : 'none') : formatValue(readString(protectedHeader?.kid))}`,
+    `jwe_apu_present=${transportHint.jweApuPresent ?? false}`,
+    `jwe_apv_present=${transportHint.jweApvPresent ?? false}`,
     `jwk_coord_padded=${Boolean(input.jwkCoordPadded)}`,
-    `jwe_bytes=${input.compactJwe?.length ?? 0}`,
+    `jwe_bytes=${transportHint.jweBytes ?? input.compactJwe?.length ?? 0}`,
     `vp_token_json_type=${transportHint.vpTokenJsonType}`,
     `dcql_envelope_shape=${input.request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw'}`,
     `state_in_encrypted_payload=${Boolean(input.request.state)}`,
@@ -62,7 +88,14 @@ export function createSafePresentationTransportHint(input: {
     vpTokenJsonType: readVpTokenJsonType(input.formattedVpToken),
     ...(readString(protectedHeader?.alg) ? { jweAlg: readString(protectedHeader?.alg) } : {}),
     ...(readString(protectedHeader?.enc) ? { jweEnc: readString(protectedHeader?.enc) } : {}),
-    ...(protectedHeader ? { jweApvPresent: typeof protectedHeader.apv === 'string' } : {}),
+    ...(protectedHeader
+      ? {
+        jweKidPresent: typeof protectedHeader.kid === 'string',
+        jweApuPresent: typeof protectedHeader.apu === 'string',
+        jweApvPresent: typeof protectedHeader.apv === 'string',
+      }
+      : {}),
+    ...(input.compactJwe ? { jweBytes: input.compactJwe.length } : {}),
   }
 }
 

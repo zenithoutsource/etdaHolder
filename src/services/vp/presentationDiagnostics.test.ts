@@ -76,6 +76,31 @@ test('describeEncryptedSubmitAttempt reports JWE structure without token content
   expect(summary).not.toContain('eyJ.test')
 })
 
+test('describeEncryptedSubmitAttempt consumes a safe generated-JWE hint without token content', () => {
+  const summary = describeEncryptedSubmitAttempt({
+    request: { responseMode: 'direct_post.jwt', protocolPath: 'oid4vc', state: 's1' },
+    transportHint: {
+      jweSegments: 5,
+      vpTokenJsonType: 'string',
+      jweAlg: 'ECDH-ES',
+      jweEnc: 'A128GCM',
+      jweKidPresent: true,
+      jweApuPresent: false,
+      jweApvPresent: true,
+      jweBytes: 342,
+    },
+    jwkCoordPadded: true,
+  })
+
+  expect(summary).toContain('jwe_segments=5')
+  expect(summary).toContain('jwe_alg=ECDH-ES')
+  expect(summary).toContain('jwe_enc=A128GCM')
+  expect(summary).toContain('jwe_kid=present')
+  expect(summary).toContain('jwe_apv_present=true')
+  expect(summary).toContain('jwk_coord_padded=true')
+  expect(summary).toContain('jwe_bytes=342')
+})
+
 test('describeEncryptedSubmitAttempt reports jwk_coord_padded when set', () => {
   const summary = describeEncryptedSubmitAttempt({
     request: { responseMode: 'direct_post.jwt', protocolPath: 'legacy', state: 's1' },

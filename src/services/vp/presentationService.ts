@@ -9,7 +9,8 @@ import {
   readVerifierDcqlVpTokenShape,
   readVerifierKbAudienceMode,
 } from '../../config/runtimeFlags'
-import { logWalletError, logWalletRawProtocol, logWalletStep } from '../debug/walletLogger'
+import { logWalletError, logWalletStep } from '../debug/walletLogger'
+import { logOid4vpRawPresentationSubmit } from './oid4vpRawProtocolLog'
 import { isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { enrichDisclosuresWithPolicy } from './claimDisclosurePolicy'
@@ -48,6 +49,7 @@ import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
 import { hasUsablePidCredential } from '../credentials/credentialGuard'
 import { ensureNativeMdocStored } from '../proximity/mdocCredential'
+import { readTrustAnyOid4vcPeerForClientId } from '../../config/oid4vcPeerTrustPolicy'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
 import { PresentationCredentialUnavailableError, type PresentationMatchFailureKind } from './presentationUnavailable'
 import { isPresentationNonceConsumed } from './presentationRequestReplay'
@@ -198,6 +200,20 @@ function hasPidPresentationAnchor(
   return hasUsablePidCredential(walletCredentials ?? presentableCredentials)
 }
 
+function pickLatestIssuedCredential(
+  records: VerifiableCredentialRecord[],
+): VerifiableCredentialRecord | undefined {
+  return records.reduce<VerifiableCredentialRecord | undefined>((latest, candidate) => {
+    if (!latest) return candidate
+
+    const candidateIssuedAt = Date.parse(candidate.issuedAt)
+    const latestIssuedAt = Date.parse(latest.issuedAt)
+    if (!Number.isFinite(candidateIssuedAt)) return latest
+    if (!Number.isFinite(latestIssuedAt) || candidateIssuedAt > latestIssuedAt) return candidate
+    return latest
+  }, undefined)
+}
+
 export function isOid4VpAuthorizationRequest(raw: string): boolean {
   if (!raw.trim()) return false
 
@@ -255,7 +271,12 @@ export async function resolvePresentationRequest(
 
   assertMutuallyExclusiveQueryLanguages(authorizationRequest)
 
-  const verifier = findTrustedVerifier(clientId, responseUri, options.trustedVerifiers)
+  const verifier = findTrustedVerifier(
+    clientId,
+    responseUri,
+    options.trustedVerifiers,
+    readTrustAnyOid4vcPeerForClientId(clientId),
+  )
   if (!verifier) {
     if (isIssuerOid4VpClientId(clientId)) {
       throw new Error('IssuerOid4VpUntrusted: client_id and response_uri origin must be allowlisted')
@@ -295,7 +316,7 @@ export async function resolvePresentationRequest(
   const issuerPidRequest = isIssuerOid4VpClientId(clientId) && requestedTypes.includes(THAI_ID_TYPE)
   const hasRequiredClaims = (candidate: VerifiableCredentialRecord) =>
     hasRequiredClaimForRequest(candidate, { presentationDefinition, dcqlQuery: effectiveDcqlQuery })
-  const matchedCredential = credentials.find((record) => {
+  const matchesRequest = (record: VerifiableCredentialRecord) => {
     if (presentationDefinition) {
       return matchesPresentationDefinitionCredential(record, requestedTypes, hasRequiredClaims)
     }
@@ -303,7 +324,12 @@ export async function resolvePresentationRequest(
     if (!effectiveDcqlQuery) return false
 
     return satisfiesFullDcqlRequest(record, effectiveDcqlQuery)
-  })
+  }
+  const matchingCredentials = credentials.filter(matchesRequest)
+  const matchedCredential =
+    effectiveDcqlQuery && !isDualFormatDcqlRequest(effectiveDcqlQuery)
+      ? pickLatestIssuedCredential(matchingCredentials)
+      : matchingCredentials[0]
   if (!matchedCredential) {
     const dcqlMatchFailures =
       effectiveDcqlQuery && !isDualFormatDcqlRequest(effectiveDcqlQuery)
@@ -503,11 +529,6 @@ export async function submitPresentationResponse(
 ): Promise<VerifierResponse> {
   const formattedVpToken = formatVpTokenForResponse(request, options.vpToken)
 
-  logWalletRawProtocol('oid4vp', 'debug-raw-vp-token', {
-    responseUri: request.responseUri,
-    vpToken: formattedVpToken,
-  })
-
   logWalletStep('oid4vp', 'submit-response-start', {
     responseUri: request.responseUri,
     verifierName: request.verifier.name,
@@ -525,11 +546,6 @@ export async function submitPresentationResponse(
     }
 
     try {
-      logWalletRawProtocol('oid4vp', 'debug-raw-presentation-submission', {
-        responseUri: request.responseUri,
-        responseMode: request.responseMode,
-        body: '[oid4vc-adapter]',
-      })
       const adapterResult = await submitDirectPostViaOid4vc({
         oid4vcContext: request.oid4vcContext,
         responseUri: request.responseUri,
@@ -552,10 +568,6 @@ export async function submitPresentationResponse(
       })
 
       const parsedBody = adapterResult.parsedBody
-      logWalletRawProtocol('oid4vp', 'debug-raw-verifier-response', {
-        responseUri: request.responseUri,
-        parsedBody,
-      })
       const redirectUri = readVerifierReturnUrl(parsedBody, request)
 
       return {
@@ -570,14 +582,16 @@ export async function submitPresentationResponse(
         request,
         vpToken: options.vpToken,
       })
-      const compactJwe = error instanceof Error
-        ? (error as Error & { compactJwe?: unknown }).compactJwe
+      const transportHint = error instanceof Error
+        ? (error as Error & { presentationTransportHint?: SafePresentationTransportHint }).presentationTransportHint
         : undefined
-      const transportDiagnostic = request.responseMode === 'direct_post.jwt'
+      const safeTransportHint = request.responseMode === 'direct_post.jwt'
+        ? transportHint ?? createSafePresentationTransportHint({ formattedVpToken })
+        : undefined
+      const transportDiagnostic = safeTransportHint
         ? describeEncryptedSubmitAttempt({
           request,
-          formattedVpToken,
-          ...(typeof compactJwe === 'string' ? { compactJwe } : {}),
+          transportHint: safeTransportHint,
           ...(request.responseEncryption?.jwkCoordinatePadded ? { jwkCoordPadded: true } : {}),
         })
         : undefined
@@ -589,12 +603,6 @@ export async function submitPresentationResponse(
         ...(transportDiagnostic ? { transportDiagnostic } : {}),
       })
       const raw = error instanceof Error ? error.message : String(error)
-      const safeTransportHint = request.responseMode === 'direct_post.jwt'
-        ? createSafePresentationTransportHint({
-          formattedVpToken,
-          ...(typeof compactJwe === 'string' ? { compactJwe } : {}),
-        })
-        : undefined
       throw createPresentationSubmissionError(raw, safeTransportHint)
     }
   }
@@ -605,10 +613,11 @@ export async function submitPresentationResponse(
     presentationSubmission: options.presentationSubmission,
   })
 
-  logWalletRawProtocol('oid4vp', 'debug-raw-presentation-submission', {
+  logOid4vpRawPresentationSubmit({
     responseUri: request.responseUri,
     responseMode: request.responseMode,
-    body: body.toString(),
+    vpToken: formattedVpToken,
+    wireBody: body.toString(),
   })
 
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
@@ -621,10 +630,6 @@ export async function submitPresentationResponse(
   })
 
   const parsedBody = await readJsonResponse(response)
-  logWalletRawProtocol('oid4vp', 'debug-raw-verifier-response', {
-    responseUri: request.responseUri,
-    parsedBody,
-  })
   logWalletStep('oid4vp', 'submit-response-received', {
     responseUri: request.responseUri,
     verifierName: request.verifier.name,
