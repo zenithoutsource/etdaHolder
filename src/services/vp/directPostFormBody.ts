@@ -56,7 +56,7 @@ function buildAuthorizationResponsePayload(input: {
     vp_token: vpTokenValue,
   }
 
-  if (input.presentationSubmission) {
+  if (input.presentationSubmission && !input.request.dcqlQuery) {
     payload.presentation_submission = input.presentationSubmission
   }
   if (input.request.state) {

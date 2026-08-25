@@ -6,6 +6,14 @@ import { decryptCompactJweEcdhEsP256ForTest } from '@/src/services/crypto/jweEcd
 
 import { buildDirectPostFormBody } from './directPostFormBody'
 
+function restoreEnvironmentVariable(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name]
+    return
+  }
+  process.env[name] = value
+}
+
 describe('directPostFormBody', () => {
   const originalOid4vpJweApv = process.env.EXPO_PUBLIC_OID4VP_JWE_APV
   const originalWalletDemoInterop = process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
@@ -18,8 +26,8 @@ describe('directPostFormBody', () => {
   }
 
   afterEach(() => {
-    process.env.EXPO_PUBLIC_OID4VP_JWE_APV = originalOid4vpJweApv
-    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = originalWalletDemoInterop
+    restoreEnvironmentVariable('EXPO_PUBLIC_OID4VP_JWE_APV', originalOid4vpJweApv)
+    restoreEnvironmentVariable('EXPO_PUBLIC_WALLET_DEMO_INTEROP', originalWalletDemoInterop)
   })
 
   it('builds plaintext direct_post body', () => {
@@ -33,7 +41,7 @@ describe('directPostFormBody', () => {
     expect(body.get('response')).toBeNull()
   })
 
-  it('builds encrypted direct_post.jwt body without JWE agreement party headers by default', () => {
+  it('omits presentation_submission from encrypted DCQL direct_post.jwt payloads', () => {
     delete process.env.EXPO_PUBLIC_OID4VP_JWE_APV
     const vpEnvelope = JSON.stringify({ idcard_credential: ['vp.jwt'] })
     const body = buildDirectPostFormBody({
@@ -60,11 +68,24 @@ describe('directPostFormBody', () => {
     const decrypted = decryptCompactJweEcdhEsP256ForTest(body.get('response')!, privateKey)
     expect(decrypted.vp_token).toEqual({ idcard_credential: ['vp.jwt'] })
     expect(decrypted.state).toBe('s1')
-    expect(decrypted.presentation_submission).toEqual({
-      id: 'sub',
-      definition_id: 'def',
-      descriptor_map: [],
+    expect(decrypted.presentation_submission).toBeUndefined()
+  })
+
+  it('retains presentation_submission in encrypted non-DCQL direct_post.jwt payloads', () => {
+    const presentationSubmission = { id: 'sub', definition_id: 'def', descriptor_map: [] }
+    const body = buildDirectPostFormBody({
+      request: {
+        responseMode: 'direct_post.jwt',
+        responseEncryption: { alg: 'ECDH-ES', enc: 'A128GCM', jwk: publicJwk },
+        state: 's1',
+      },
+      formattedVpToken: 'vp.jwt',
+      presentationSubmission,
     })
+
+    const decrypted = decryptCompactJweEcdhEsP256ForTest(body.get('response')!, privateKey)
+    expect(decrypted.presentation_submission).toEqual(presentationSubmission)
+    expect(decrypted.state).toBe('s1')
   })
 
   it('includes nonce-derived JWE apv for the explicit development override', () => {
@@ -126,5 +147,14 @@ describe('directPostFormBody', () => {
     expect(decrypted.vp_token).toEqual({ q1: ['vp.jwt'] })
     expect(decrypted.presentation_submission).toBeUndefined()
     expect(decrypted.state).toBe('s1')
+  })
+
+  test('restores absent environment variables by deleting them', () => {
+    const variableName = 'WALLET_TEST_UNSET_ENVIRONMENT'
+    process.env[variableName] = 'changed'
+
+    restoreEnvironmentVariable(variableName, undefined)
+
+    expect(process.env[variableName]).toBeUndefined()
   })
 })
