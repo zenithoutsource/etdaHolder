@@ -18,3 +18,9 @@ export function readVerifierDcqlVpTokenShape(): VerifierDcqlVpTokenShape {
 export function readVerifierKbAudienceMode(): VerifierKbAudienceMode {
   return process.env.EXPO_PUBLIC_VERIFIER_KB_AUD === 'response_uri' ? 'response_uri' : 'client_id'
 }
+
+export function readWalletDemoInteropEnabled(isDevelopment = __DEV__): boolean {
+  if (process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP !== 'true') return false
+  if (isDevelopment) return true
+  return process.env.EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP === 'true'
+}

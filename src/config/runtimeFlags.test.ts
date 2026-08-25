@@ -1,6 +1,7 @@
 import {
   isBiometricDisabledForTesting,
   isSdJwtKbDisabledForTesting,
+  readWalletDemoInteropEnabled,
   readVerifierDcqlVpTokenShape,
   readVerifierKbAudienceMode,
 } from './runtimeFlags'
@@ -10,12 +11,16 @@ describe('runtime flags', () => {
   const originalSdJwtFlag = process.env.EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING
   const originalDcqlShape = process.env.EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE
   const originalKbAudience = process.env.EXPO_PUBLIC_VERIFIER_KB_AUD
+  const originalWalletDemoInterop = process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+  const originalAllowNonDevDemoInterop = process.env.EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP
 
   afterEach(() => {
     process.env.EXPO_PUBLIC_DISABLE_BIOMETRIC_FOR_TESTING = originalFlag
     process.env.EXPO_PUBLIC_DISABLE_SD_JWT_KB_FOR_TESTING = originalSdJwtFlag
     process.env.EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE = originalDcqlShape
     process.env.EXPO_PUBLIC_VERIFIER_KB_AUD = originalKbAudience
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = originalWalletDemoInterop
+    process.env.EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP = originalAllowNonDevDemoInterop
   })
 
   test('allows the biometric test bypass only in development', () => {
@@ -66,5 +71,25 @@ describe('runtime flags', () => {
     process.env.EXPO_PUBLIC_VERIFIER_KB_AUD = 'invalid'
 
     expect(readVerifierKbAudienceMode()).toBe('client_id')
+  })
+
+  test('enables demo interop only in development when flag is true', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+    delete process.env.EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP
+
+    expect(readWalletDemoInteropEnabled(true)).toBe(true)
+    expect(readWalletDemoInteropEnabled(false)).toBe(false)
+  })
+
+  test('allows demo interop outside __DEV__ only with explicit allow flag', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+    process.env.EXPO_PUBLIC_ALLOW_NON_DEV_DEMO_INTEROP = 'true'
+
+    expect(readWalletDemoInteropEnabled(false)).toBe(true)
+  })
+
+  test('demo interop is off when master flag absent', () => {
+    delete process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+    expect(readWalletDemoInteropEnabled(true)).toBe(false)
   })
 })
