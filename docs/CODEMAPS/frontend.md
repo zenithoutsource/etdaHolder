@@ -59,9 +59,9 @@ Tab: [app/(tabs)/scan.tsx](../../app/(tabs)/scan.tsx). Hidden offer route: [app/
 
 Same-device portal return: [app/callback.tsx](../../app/callback.tsx), rewrite hook [app/+native-intent.tsx](../../app/+native-intent.tsx). Intake store: [deeplinkStore.ts](../../src/store/deeplinkStore.ts).
 
-**Panels:** [ScanCameraPermissionPanel](../../src/components/ScanCameraPermissionPanel.tsx), [ScanCaptureSurface](../../src/components/ScanCaptureSurface.tsx), [ThaiIdSuccessConfirmationPanel](../../src/components/ThaiIdSuccessConfirmationPanel.tsx) → [IssuanceTrustConfirmationPanel](../../src/components/IssuanceTrustConfirmationPanel.tsx), [ThaiIdReceivePanel](../../src/components/ThaiIdReceivePanel.tsx) / [DrivingLicencePreviewPanel](../../src/components/DrivingLicencePreviewPanel.tsx) / [TranscriptPreviewPanel](../../src/components/TranscriptPreviewPanel.tsx) (shared [CredentialReceiveCardPanel](../../src/components/CredentialReceiveCardPanel.tsx) → same `CredentialDocumentDetailCard` as detail; no My QR/NFC), [ScanSuccessPanel](../../src/components/ScanSuccessPanel.tsx). One component per issuance phase — do not merge them.
+**Panels:** [ScanCameraPermissionPanel](../../src/components/ScanCameraPermissionPanel.tsx), [ScanCaptureSurface](../../src/components/ScanCaptureSurface.tsx), [TxCodeEntryPanel](../../src/components/TxCodeEntryPanel.tsx) (enter the code on the verifier screen), [ThaiIdSuccessConfirmationPanel](../../src/components/ThaiIdSuccessConfirmationPanel.tsx) → [IssuanceTrustConfirmationPanel](../../src/components/IssuanceTrustConfirmationPanel.tsx), [ThaiIdReceivePanel](../../src/components/ThaiIdReceivePanel.tsx) / [DrivingLicencePreviewPanel](../../src/components/DrivingLicencePreviewPanel.tsx) / [TranscriptPreviewPanel](../../src/components/TranscriptPreviewPanel.tsx) (shared [CredentialReceiveCardPanel](../../src/components/CredentialReceiveCardPanel.tsx) → same `CredentialDocumentDetailCard` as detail; no My QR/NFC), [ScanSuccessPanel](../../src/components/ScanSuccessPanel.tsx). One component per issuance phase — do not merge them.
 
-**Copy / layout:** `cardSchemas` issuance confirmation; `WALLET_HOME_COPY` for PID-gate; camera permission copy is inline Thai in `ScanCameraPermissionPanel`; Scan errors often inline English.
+**Copy / layout:** `cardSchemas` issuance confirmation; `WALLET_HOME_COPY` for PID-gate; camera permission copy is inline Thai in `ScanCameraPermissionPanel`; tx_code copy is inline Thai in `TxCodeEntryPanel`; Scan errors often inline English.
 
 **Steps**
 
@@ -126,6 +126,26 @@ Hidden route: [app/(tabs)/presentation-request.tsx](../../app/(tabs)/presentatio
 - After presentation **success**, consume/dismiss the VP URI immediately. Header / Android Back leaves to Wallet (`onCancel`) and must not open DOPA / credential-offer. **เสร็จสิ้น** (`onDone`) may resume an in-progress same-device claim after issuer PID VP.
 - Driving-licence DCQL may use Thai-ID-style paths (`full_name`, `license_type`, `photo`). Schema aliases / `matchAliases` map those to ISO/wallet claims (`given_name`+`family_name`, `licenceClass`, `portrait`) so consent shows **ชื่อ-นามสกุล**, **ประเภทใบอนุญาต**, **รูปถ่าย** instead of **ข้อมูลที่ร้องขอ**. OID4VP info uses `CredentialDocumentDetailCard` for every type. DL/transcript **English** on that card is `MOCK_HOLDER_ENGLISH_NAME`; transcript hides birth date. Consent and requested-item **values** keep issuer strings; empty name fields fall back to PID. VP wire stays the document claims. Driving-licence vehicle type on that card maps `B`; the VP wire value stays the issuer claim.
 - Holder-facing consent and info requested-item lists (`readConsentItems` / `prepareHolderFacingDisclosureItems`) hide **ศาสนา / religion** even if the verifier asked for it. Schema `religion` stays for matching; `readInitialSelectedClaimKeys` still includes it so the VP token can send the claim. Driving-licence lists that show **ชื่อ** and **นามสกุล** as separate rows put given name above family name (display only; submit keys keep match order). NFC [PreTapConsentPanel](../../src/components/proximity/PreTapConsentPanel.tsx) uses the same helper.
+
+## DC API presentation {#dc-api-presentation}
+
+Hidden root route: [app/dc-api-presentation.tsx](../../app/dc-api-presentation.tsx) remounts [DcApiPresentationFlow.tsx](../../src/components/DcApiPresentationFlow.tsx) on `routeGeneration` from [dcApiPresentationStore.ts](../../src/store/dcApiPresentationStore.ts).
+
+**Entry:** Android Credential Manager → [expo-dc-api-provider](../../modules/expo-dc-api-provider/) → [dcApiConsentBridge.ts](../../src/services/vp/dcApi/dcApiConsentBridge.ts) → `/dc-api-presentation` (not Scan tab). Native transport is reported as `cross_device` when the platform uses `GET_CREDENTIALS` / identity-credentials actions or forwards multiple credential options (desktop QR hybrid); phone Chrome same-tab requests are `same_device`. Both paths may use registry `GET_CREDENTIAL` at the wallet activity — check `credentialOptionCount` in logcat, not intent action alone.
+
+**Orchestrator:** [DcApiPresentationFlow.tsx](../../src/components/DcApiPresentationFlow.tsx) uses [dcApiPresentationService.ts](../../src/services/vp/dcApi/dcApiPresentationService.ts) + native `buildDcApiDeviceResponse`.
+
+**Panels:** Reuses [PresentationConsentPanel](../../src/components/PresentationConsentPanel.tsx), [PresentationInfoPanel](../../src/components/PresentationInfoPanel.tsx), [PresentationResultPanel](../../src/components/PresentationResultPanel.tsx), [PresentationFailurePanel](../../src/components/PresentationFailurePanel.tsx).
+
+**Startup:** [useDcApiProviderStartup.ts](../../src/hooks/useDcApiProviderStartup.ts) in [app/_layout.tsx](../../app/_layout.tsx) after PIN unlock — registry sync + native event listener.
+
+**Canvas:** P4 online DC API variant (Chrome / digital-credentials.dev); NFC Scan `direct_post` unchanged.
+
+**Gotchas**
+
+- Unsigned `dc_api` requires demo interop; production release rejects unsigned regardless of env.
+- One biometric on native DeviceResponse sign only — no extra consent biometric.
+- mdoc consent keys use ISO namespace paths (`org.iso.18013.5.1/family_name`); mapped in [dcApiConsentModel.ts](../../src/services/vp/dcApi/dcApiConsentModel.ts).
 
 ## Present and NFC
 

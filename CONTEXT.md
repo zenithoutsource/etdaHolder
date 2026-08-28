@@ -187,4 +187,5 @@ _Avoid_: Folding any string that merely contains licence, license, mdl, or thai 
 ## Unregistered credential type
 
 Any claimed Verifiable Credential whose `vct`, doctype, or credential configuration id is not on the first-party allowlist. Stored and shown as its own extra Digital Document, not as a first-party card.
-_Avoid_: Third-party credential as a type name; mapping these onto DLTDrivingLicence, ThaiNationalID, or transcript chrome.
+_Display_: Labels come from OID4VCI `credential_configuration.claims[].display` metadata snapshotted as `claimDisplayLabels` at claim time. Values come from decoded issuer payloads without wallet-side remapping into first-party cardSchemas. Row order follows the claim-time metadata snapshot; issuer metadata changes require re-claim. Implementation: `src/services/credentials/thirdPartyCredentialDisplay.ts`.
+_Avoid_: Third-party credential as a type name; mapping these onto DLTDrivingLicence, ThaiNationalID, or transcript chrome; remapping interop mDL into `DrivingLicenceDocumentCard` or `cardSchemas` fields.

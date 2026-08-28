@@ -27,7 +27,6 @@
         "EXPO_PUBLIC_WALLET_PROVIDER_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_BROKER_BASE_URL": "https://wallet.zenithcomp.co.th:455",
         "EXPO_PUBLIC_VERIFIER_API_BASE_URL": "https://verifier.zenithcomp.co.th:455",
-        "EXPO_PUBLIC_VERIFIER_NAME": "Verifier API",
         "EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST": "true",
         "EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER": "true",
         "EXPO_PUBLIC_WALLET_DEMO_INTEROP": "true",

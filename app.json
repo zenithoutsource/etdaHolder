@@ -48,6 +48,7 @@
       "./plugins/with-android-backup-rules.js",
       "./modules/expo-mdoc-proximity/app.plugin.js",
       "./modules/expo-wallet-hardware-ecdsa/app.plugin.js",
+      "./modules/expo-dc-api-provider/app.plugin.js",
       "expo-camera",
       "expo-notifications",
       [

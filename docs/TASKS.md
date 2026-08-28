@@ -1,23 +1,120 @@
 # TASKS.md - Active Implementation Backlog
 
-### Active slice: OID4VP DC API (digital-credentials.dev)
+### EUDI alignment roadmap (brainstorming 2026-08-26, baseline updated 2026-08-28)
+
+Reference: **[eudi-dev v2.0.7](https://github.com/dominikschlosser/eudi-dev)** (`C:\project\eudi-dev-2.0.7`) as protocol correctness baseline. Supersedes v1.26.2 comparisons. Separate design specs — implement in order:
+
+| Phase | Spec | Scope |
+|-------|------|--------|
+| **A** | `docs/superpowers/specs/2026-08-26-eudi-alignment-phase-a-interop-foundation-design.md` | Unified VP path, production `x509_*` (+ §5.9.1 FQDN bind for `x509_san_dns`), metadata-driven DPoP |
+| **B** | `docs/superpowers/specs/2026-08-26-eudi-alignment-phase-b-dcql-vci-depth-design.md` | Type inheritance, strict nonce (2.0.7), notification, cred response encryption, proof `iss` (2.0.5), `sd_hash`/`_sd_alg` (2.0.6), nested cleartext-parent claims (2.0.6) |
+| **C** | `docs/superpowers/specs/2026-08-26-eudi-alignment-phase-c-eudi-stack-readiness-design.md` | `trusted_authorities`, HAIP (+ mdoc/JWT validate 2.0.6), OIDF CI, `docs/spec-compliance.md`, optional RSA-OAEP (2.0.2) |
+| **D** | `docs/superpowers/specs/2026-08-26-eudi-alignment-phase-d-deferred-capabilities-design.md` | Interactive auth 1.1, SIOP, fragment, deep nested DCQL, batch issuance, transaction_data — issuer-driven |
+
+**Status:** Specs approved 2026-08-28; **Phase A plan:** `docs/superpowers/plans/2026-08-28-eudi-alignment-phase-a-interop-foundation.md`. Decisions locked: hybrid C x509 trust, adapter-as-helper. Implementation not started. Rollout: A2 → A3 → A1.
+
+**Key 2.0.7 deltas absorbed into specs:** `x509_san_dns` response host binding (A2), nonce endpoint strictness (B2), proof JWT `iss` (B5), `_sd_alg` sd_hash (B6), cleartext-parent DCQL (B7), HAIP credential format coverage (C2), RSA-OAEP JWE (C6/D8).
+
+**Related completed work:** demo interop VP submit (2026-08-25), verifier submit shape cache Tier 1 (2026-08-26), DC API slice in progress.
+
+### Session 2026-08-28 (Environment surface cleanup)
+
+- Fixed per-credential signing on as a settled architecture decision; removed its legacy env override.
+- Moved hardware signing ceilings (OID4VCI 8, OID4VP 4, mdoc 16, attest 2), the Slice B capacity probe default (48), and debug HTTP body preview cap (32768 bytes) into code constants.
+- Removed the redundant global Verifier display-name env; redirect-URI trust now uses `Verifier API`, while explicit did:web/did:key trust entries retain their own name settings.
+- Removed the retired entries from env templates and EAS preview configuration. Duration/TTL settings remain configurable as required by project policy.
+- Verification: 44 focused tests pass; lint exits 0 with 107 pre-existing warnings. Full TypeScript remains blocked by unrelated errors in the existing dirty worktree (including presentation, dual-format, token-status, proximity, and nested worktree files); no reported error points to this env-cleanup slice.
+
+### Session 2026-08-26 (Verifier submit interop — DCQL shape profile Tier 1)
+
+- Spec: `docs/superpowers/specs/2026-08-26-verifier-submit-interop-design.md`
+- Plan: `docs/superpowers/plans/2026-08-26-verifier-submit-interop-tier1.md`
+- Implemented: per-verifier DCQL `vp_token` shape cache wired into submit (read before
+  format, write on HTTP 2xx). Submit logs now carry `interopCacheKey` and `shapeSource`.
+- Device evidence 2026-08-26 (Animo Playground, `x509_hash`, `urn:eudi:pid:1`,
+  `direct_post.jwt`): `object_string` returned `HTTP 500: server_error` while JWE
+  (`ECDH-ES`/`A128GCM`, 5 segments) and every KB-JWT check passed. The static hint map
+  is therefore empty again; Animo uses the spec-correct `object_array` default. HTTP 500
+  stays non-retryable in `isRetryableDcqlVpTokenShapeError`, so nothing is cached on failure.
+- Next device run: Animo with `object_array` default; confirm 2xx, then re-scan and
+  confirm `shapeSource=cached`.
+- Fixed alongside: `hardwareJwtSigner.ts` called `normalizeSdJwtWithoutKb` without
+  importing it, so hardware SD-JWT+KB presentation approval threw
+  `ReferenceError: Property 'normalizeSdJwtWithoutKb' doesn't exist` on device.
+- Tier 2 (JWE profile) deferred until device evidence shows shape cache insufficient.
+
+### Pending slice: OID4VP DC API (digital-credentials.dev)
 
 - Spec: `docs/superpowers/specs/2026-08-25-oid4vp-dc-api-design.md`
 - Plan: `docs/superpowers/plans/2026-08-25-oid4vp-dc-api.md`
-- Task 1 (ADR and documentation linkage) is committed; runtime work remains
-  pending.
+- **2026-08-28 tonyhere mDL DC API E2E (A26):** PASS — Chrome on phone,
+  `Prepare device-wallet age check` (`scenario: age_over_18`, unsigned `dc_api`),
+  after matcher auto-registration + mDL issued from tonyhere Step 3.
+- **2026-08-28 Android build repair:** closed the `GetCredentialActivity.onDestroy()`
+  method before the activity's remaining member functions. This restores
+  `:expo-dc-api-provider:compileDebugKotlin`; physical A26 + Chrome E2E remains pending.
+- **2026-08-26 Chrome Agree and continue stuck:** CM sheet showed credential
+  Info but tapping Agree did nothing because `GetCredentialActivity` rejected
+  the request — Chrome cert fingerprint in `DcApiPrivilegedAllowlist` was wrong,
+  so `getOrigin()` returned empty. Fixed with interop allowlist asset (Chrome +
+  Samsung Internet + GMS). Requires native rebuild.
+- **2026-08-28 matcher auto-registration:** DC API registry now advertises every
+  scalar `org.iso.18013.5.1` mDL claim from stored bytes (not a fixed allowlist),
+  derives missing `age_over_1..N` booleans from `birth_date` (default N=99,
+  `EXPO_PUBLIC_DC_API_DERIVED_AGE_OVER_MAX`), and still omits binary/complex
+  values except `portrait` (presence-only). Fixes tonyhere `age_over_18` CM miss.
+- **2026-08-26 matcher miss:** same-device / Chrome QR never reached
+  `GetCredentialActivity` because Credential Manager matching failed. Device logs
+  registered only `family_name` + `given_name`. Fix: serialize CBOR `birth_date`
+  dates, register `portrait` as a presence-only matcher path, derive `age_over_21`,
+  and register through AndroidX `OpenId4VpRegistry` (OpenID4VP 1.0 default matcher)
+  instead of the custom CMWallet WASM blob. Requires a native Android rebuild.
+  Wallet Scan of a DC API QR is still out of scope (platform invokes the provider).
+- **2026-08-27 same-device failed / cross-device no-op:** removed
+  `moveTaskToBack()` after CM delivery (CMWallet only `finish()`); strip `:443`
+  from Chrome `getOrigin()` before handover. Cross-device requires Bluetooth on,
+  desktop QR scanned by phone OS/Chrome (not Wallet Scan tab), and platform
+  hybrid relay back to desktop.
+  (`dcApiCrossDevice.ts`, native `DcApiTransport.kt`, `onDcApiCrossDeviceSession`
+  emission, cross-device auto-dismiss after delivery). Task 10 integration/regression
+  tests added. Task 11 checklist/env notes updated — **physical E2E still required**
+  on A26 + Chrome.
+- **2026-08-25 progress:** Tasks 2–6 (trust, native DeviceResponse, TS orchestration)
+  and Tasks 7–8 scaffold (expo-dc-api-provider module, consent bridge, hidden route)
+  are implemented in working tree — **not yet device-validated**. Remaining physical
+  validation on A26 + Chrome E2E on digital-credentials.dev.
+- Device checklist (Task 11): `EXPO_PUBLIC_WALLET_DEMO_INTEROP=true` dev build; mDL
+  stored; unsigned/signed/encrypted same-device; desktop QR cross-device; Scan
+  `direct_post` smoke unchanged.
+- **E2E status (2026-08-28):** tonyhere mDL age DC API unsigned same-device PASS on A26.
+  digital-credentials.dev matrix still pending unless noted below.
+  | Check | Status |
+  |-------|--------|
+  | `EXPO_PUBLIC_WALLET_DEMO_INTEROP=true` dev build | pass (tonyhere run) |
+  | mDL stored in wallet | pass (tonyhere run) |
+  | tonyhere mDL age DC API unsigned (Chrome phone) | **pass** |
+  | Chrome on A26 unsigned same-device (digital-credentials.dev) | pending |
+  | Signed request checkbox | pending |
+  | Use encryption (`dc_api.jwt`) | pending |
+  | Desktop QR → phone cross-device | pending |
+  | Scan tab `direct_post` smoke unchanged | pending (unit regression green) |
 
 ### Session 2026-08-25 (Demo interop VP-submit profile)
 
 - Completed slice: `docs/superpowers/specs/2026-08-25-demo-interop-vp-submit-design.md`.
   The issuer-side non-PID claim prerequisite consumes the cascading
   `readTrustAnyOid4vcIssuerEnabled()` policy; no screen-level demo-flag logic was added.
-- Development and preview EAS builds explicitly enable the demo profile; production
-  contains neither demo-profile enabling variable. The profile remains an opt-in
-  interop-only security boundary, not a customer-production default.
+- EAS injects an explicit `EXPO_PUBLIC_BUILD_PROFILE` for development, preview, and
+  production. Development and preview builds explicitly enable the demo profile;
+  production hard-disables it regardless of demo env values. The profile remains an
+  opt-in interop-only security boundary, not a customer-production default.
 - Manual acceptance targets: TonyHere verifier QR approval/submission returns HTTP 200;
   Animo VP playground QR approval/submission has no JARM decrypt error. Recheck Animo
   credential issuance as the OID4VCI regression target.
+- DCQL `vp_token` shape selection: demo interop picks one shape per submit from env override,
+  cached success, verifier hint (`playground.animo.id|x509_hash` → `object_string`), or
+  `object_array` default. No in-session retry — Animo invalidates the session after the first POST.
+  Device retest Animo with a fresh QR scan.
 
 ### Session 2026-08-24 (Wallet API and protocol debug logging)
 
@@ -75,7 +172,9 @@
 - Do not claim a winning shape, set a build/EAS environment, or change production
   defaults from these pending runs. If every later run returns the same
   `invalid_request`, follow up on verifier policy and credential reissue; the
-  wallet transport remains documented as verified.
+  wallet transport remains documented as verified. This was the pre-KB-header
+  hypothesis status; the later device A/B result below supersedes it for the
+  hardware KB-JWT `kid` behavior only.
 - Follow-up diagnosis from the Galaxy A26 log: the wallet's custom JWE passed only
   its own round-trip test, not an independent RFC 7518 decrypt. `jweEcdhEs.ts`
   had an extra leading key-length field in Concat KDF `OtherInfo` and omitted the
@@ -85,6 +184,106 @@
   than RFC 7518's 32-byte X-coordinate; that is corrected and covered by the same
   vector. Re-run the physical A/B matrix after rebuilding; no verifier shape or
   `enc` default is locked yet.
+- Rebuilt default-device run (`object_array`, `A128GCM`, KB-JWT `aud=client_id`)
+  still returned one `HTTP 400: invalid_request` after the request and verifier DID
+  document both fetched with `200`. Submit diagnostics now show a five-segment
+  `ECDH-ES`/`A128GCM` JWE and all KB-JWT checks passing, so this run does not
+  reproduce a wallet-side JWE failure. The run also showed repeated scanner/request
+  resolution events before one final submit; no duplicate POST was observed.
+- Added safe response-encryption selection diagnostics and OID4VC adapter verifier
+  response logging for the next A/B run. Keep raw protocol logging disabled after
+  device capture because it exposes the full VP token in Metro.
+- Device A/B follow-up: `raw + aud=response_uri` and `object_string +
+  aud=response_uri` both returned `HTTP 400: invalid_request`. Both runs kept
+  `jwe_segments=5`, `ECDH-ES`/`A128GCM`, and all KB-JWT checks true. Because shape
+  and audience changed together, these runs do not isolate either variable; run
+  `object_array + aud=response_uri` next before changing any production default.
+- Superseded: `direct_post.jwt` previously omitted JWE `apu` / `apv` by default and
+  hard-disabled `apv` whenever demo interop was on. `direct_post.jwt` now always binds
+  `apv = base64url(authorization request nonce)`, and development builds can opt out
+  with `EXPO_PUBLIC_OID4VP_JWE_APV=false`. Reason: Animo Playground returned
+  `HTTP 500: server_error` for both `object_array` and `object_string` DCQL envelopes
+  while every other diagnostic was green (`jwe_segments=5`, `ECDH-ES`/`A128GCM`,
+  `kb_sd_hash_matches=true`, `issuer_jwt_sig_verifies=true`,
+  `queryIdsMatchDcql=true`), which rules out the envelope shape. The remaining
+  divergence from the OID4VP reference stack was the JARM JWE header: the reference
+  `createOpenid4vpAuthorizationResponse` always sets
+  `apv = encodeToBase64Url(request.nonce)` (and `apu` only when a separate JARM
+  encryption nonce exists, which the wallet does not use). Because `apv` feeds
+  PartyVInfo in the ECDH-ES Concat KDF, a verifier that reconstructs the expected
+  `apv` from its own nonce instead of reading the received header cannot derive the
+  CEK, and an unhandled decrypt failure surfaces as 500 rather than 400. Focused
+  runtime-flag, form-body, submit-adapter, and diagnostics tests pass.
+- Device A/B result: `apv` did **not** fix Animo. With `jwe_header_keys=alg,enc,kid,epk,apv`
+  and `jwe_apv_present=true`, Animo still returned `HTTP 500: server_error`. Keep `apv`
+  on regardless, because it matches the reference stack, but it is not the root cause.
+- Reading the reference verifier path narrows the failure layer decisively. In
+  `decryptJarmAuthorizationResponseJwt`, a failed decrypt throws
+  `Oauth2ServerErrorResponseError` with `invalid_request`, and `jarmAuthorizationResponseValidate`
+  likewise emits `invalid_request`. Every JARM-layer rejection is therefore a **400**.
+  A **500 `server_error`** means an unhandled exception *after* successful decryption and
+  JARM validation — that is, inside the verifier's credential verification, not in our
+  transport, envelope, JWE, or KB-JWT. This also explains why `object_array`,
+  `object_string`, `aud=response_uri`, and `apv` A/B runs all produced the identical 500.
+- **ROOT CAUSE FOUND AND FIXED — the ECDH-ES shared secret was wrong.**
+  `src/services/crypto/jweEcdhEs.ts` computed the Concat KDF input as
+  `p256.getSharedSecret(priv, pub, false).slice(1)`. With `isCompressed=false` noble
+  returns the 65-byte uncompressed point `0x04 || X || Y`, so `.slice(1)` yielded the
+  **64-byte `X || Y`**. Per RFC 6090 / NIST SP 800-56A the ECDH shared secret `Z` is the
+  **x-coordinate only (32 bytes)**. Every verifier therefore derived a different CEK than
+  the wallet, so no encrypted response has ever been decryptable by any external verifier.
+  Fixed via a named `readEcdhSharedSecretX()` helper used by both the encrypt and
+  test-decrypt paths.
+- Why this survived so long: the round-trip tests were symmetric — the wallet decrypted
+  with the same wrong `Z` it encrypted with — and the test helper named
+  "an independent RFC 7518 ECDH-ES implementation" had copied the identical
+  `sharedPoint.slice(1)` misreading, so it was never actually independent. A self-consistent
+  reimplementation is not evidence of interop; only a published vector is.
+- Regression guard: added the **RFC 7518 Appendix C** ECDH-ES vector as a test over the
+  production derivation path (`deriveEcdhEsContentKeyForTest`), asserted from both sides of
+  the agreement. It reproduces the spec's `VqqN6vgjbSBcIijNcacQGg` derived key, which the
+  old 64-byte `Z` could not produce. `src/services/crypto/jweEcdhEs.test.ts`: 11 passed.
+- Isolation that identified the layer: the user toggled **"Use Response Encryption" off** in
+  Animo Playground and the same credential, KB-JWT, and DCQL query presented successfully.
+  That single A/B invalidated both earlier hypotheses in one step.
+- Corrected — two earlier hypotheses in this session were wrong, keep them retracted:
+  1. `apv` was **not** the cause (it is still correct to send, and stays on).
+  2. The "missing `iss` therefore an issuance-side defect" theory was **wrong**. Animo
+     verified that exact credential once encryption was disabled, so `credential_iss=none`
+     is not fatal here. The `issuer_jwt_registered_claims` diagnostic added for that theory
+     is kept — it is cheap and genuinely useful — but it is not evidence of a defect.
+  3. The "500 must mean a post-decryption crash, because the reference maps decrypt
+     failure to `invalid_request`/400" inference was **wrong in practice**: a verifier's
+     `decryptJwe` callback throws rather than returning `{ decrypted: false }`, so a
+     decrypt failure escapes the JARM error mapping and surfaces as 500. Status-code
+     reasoning about someone else's error mapping is weak evidence; the toggle A/B was strong.
+- Tonyhere mdoc approve failure (`no approved mdoc fields match the DCQL request`):
+  DCQL `mso_mdoc` claims use two-segment paths (`namespace`, `identifier`), but
+  `readDcqlClaimDisclosures` used only `path[0]` as the disclosure key, so consent fell
+  back to generic `credential`. On approve, the mdoc builder passed that raw UI key into
+  `readApprovedMdocNamespaceKeysForPresentation`, which expects `namespace/identifier`
+  keys — zero overlap → error before submit. Fixed by mirroring the DC API consent model:
+  disclosure keys are now `org.iso.18013.5.1/family_name`, and the mdoc token builder
+  uses `readEffectiveClaimKeys()` instead of raw holder selection.
+- Device A/B confirmed the hardware P-256 SD-JWT KB header hypothesis: Tonyhere
+  returned HTTP 200 when a `cnf.jwk`-only credential omitted the fallback KB-JWT
+  `kid`; the successful header was `{ alg: ES256, typ: kb+jwt }` with the credential
+  `cnf.jwk` retained for binding. This is now the production hardware default;
+  explicit `cnf.kid` remains preserved and Keychain EdDSA behavior is unchanged.
+- A later trace showed `kid=none` with the embedded KB header JWK still present
+  returned HTTP 400. The successful Tonyhere 200 decoded to `{ alg: ES256,
+  typ: kb+jwt }` with neither optional header `kid` nor header `jwk`; hardware
+  `cnf.jwk`-only presentations now omit both. Explicit `cnf.kid` retains the
+  embedded JWK for compatibility.
+- The latest failing trace still has a five-segment `ECDH-ES`/`A128GCM` response,
+  `vp_token` object-array shape, `aud=client_id`, and all wallet-side KB-JWT
+  binding/signature checks passing. The accepted 200 event supplied a different
+  credential holder key and status-list index than the failing run. Because
+  reissued siblings can remain in storage and the resolver previously chose the
+  first matching record, single-format DCQL matching now prefers the newest
+  valid `issuedAt`; dual-format pairing keeps its existing selection behavior.
+  The new resolver regression test and the focused VP/crypto suites pass. Re-run
+  with a fresh QR to confirm the verifier accepts the newly selected credential.
 
 ### Session 2026-08-24 (Standalone third-party mso_mdoc OID4VP)
 

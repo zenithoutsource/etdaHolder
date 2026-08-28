@@ -57,6 +57,7 @@
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
     "expo-web-browser": "~15.0.11",
+    "fflate": "^0.8.2",
     "jail-monkey": "^3.0.0",
     "jest-expo": "~54.0.17",
     "msw": "^2.14.6",
@@ -99,6 +100,7 @@
         "exclude": [
           "expo-mdoc-proximity",
           "expo-wallet-hardware-ecdsa",
+          "expo-dc-api-provider",
           "react-native-nfc-manager",
           "react-native-ssl-pinning"
         ]
