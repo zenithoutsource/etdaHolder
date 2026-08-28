@@ -2,7 +2,8 @@ import { hashes, verify } from '@noble/ed25519'
 import { sha512 } from '@noble/hashes/sha2.js'
 import { createHash } from 'react-native-quick-crypto'
 
-import { readVerifierDcqlVpTokenShape } from '../../config/runtimeFlags'
+import { readVerifierDcqlVpTokenShape, readWalletDemoInteropEnabled, type VerifierDcqlVpTokenShape } from '../../config/runtimeFlags'
+import { readSdJwtDisclosureClaimKeys } from '../debug/agentDebugLog'
 import { readRecord, readString } from '../../utils/jwtUtils'
 import { verifyEs256CompactJwt } from '../crypto/es256JwtVerify'
 import { didKeyToP256PublicJwk } from '../crypto/p256Identity'
@@ -21,11 +22,20 @@ export type SafePresentationTransportHint = {
   jweApuPresent?: boolean
   jweApvPresent?: boolean
   jweBytes?: number
+  jweHeaderKeys?: string[]
+  jweTyp?: string
 }
 
 type EncryptedSubmitAttemptBase = {
   request: Pick<ResolvedPresentationRequest, 'responseMode' | 'protocolPath' | 'state' | 'dcqlQuery'>
   jwkCoordPadded?: boolean
+  tokenShape?: VerifierDcqlVpTokenShape
+  encryptionSelection?: {
+    jwksKeyCount: number
+    selectedKeyIndex: number
+    advertisedEncValues: string[]
+    selectedEnc: string
+  }
 }
 
 type EncryptedSubmitAttemptWithHint = EncryptedSubmitAttemptBase & {
@@ -66,13 +76,20 @@ export function describeEncryptedSubmitAttempt(
     `jwe_alg=${formatValue(transportHint.jweAlg)}`,
     `jwe_enc=${formatValue(transportHint.jweEnc)}`,
     `jwe_kid=${input.transportHint ? (transportHint.jweKidPresent ? 'present' : 'none') : formatValue(readString(protectedHeader?.kid))}`,
+    `jwe_header_keys=${(transportHint.jweHeaderKeys ?? (protectedHeader ? Object.keys(protectedHeader) : [])).join(',') || 'none'}`,
+    `jwe_typ=${formatValue(transportHint.jweTyp ?? readString(protectedHeader?.typ))}`,
     `jwe_apu_present=${transportHint.jweApuPresent ?? false}`,
     `jwe_apv_present=${transportHint.jweApvPresent ?? false}`,
     `jwk_coord_padded=${Boolean(input.jwkCoordPadded)}`,
     `jwe_bytes=${transportHint.jweBytes ?? input.compactJwe?.length ?? 0}`,
     `vp_token_json_type=${transportHint.vpTokenJsonType}`,
-    `dcql_envelope_shape=${input.request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw'}`,
+    `dcql_envelope_shape=${readAttemptedDcqlVpTokenShape(input)}`,
     `state_in_encrypted_payload=${Boolean(input.request.state)}`,
+    `demo_interop=${readWalletDemoInteropEnabled()}`,
+    `jwks_key_count=${formatNumber(input.encryptionSelection?.jwksKeyCount)}`,
+    `selected_key_index=${formatNumber(input.encryptionSelection?.selectedKeyIndex)}`,
+    `advertised_enc=${formatList(input.encryptionSelection?.advertisedEncValues ?? [])}`,
+    `selected_enc=${formatValue(input.encryptionSelection?.selectedEnc)}`,
   ].join('; ')
 }
 
@@ -93,6 +110,8 @@ export function createSafePresentationTransportHint(input: {
         jweKidPresent: typeof protectedHeader.kid === 'string',
         jweApuPresent: typeof protectedHeader.apu === 'string',
         jweApvPresent: typeof protectedHeader.apv === 'string',
+        jweHeaderKeys: Object.keys(protectedHeader),
+        ...(readString(protectedHeader.typ) ? { jweTyp: readString(protectedHeader.typ) } : {}),
       }
       : {}),
     ...(input.compactJwe ? { jweBytes: input.compactJwe.length } : {}),
@@ -100,13 +119,15 @@ export function createSafePresentationTransportHint(input: {
 }
 
 export function describePresentationAttempt(input: {
-  request: Pick<ResolvedPresentationRequest, 'clientId' | 'responseUri' | 'nonce' | 'state' | 'dcqlQuery' | 'matchedCredential'>
+  request: Pick<ResolvedPresentationRequest, 'clientId' | 'responseUri' | 'nonce' | 'state' | 'dcqlQuery' | 'matchedCredential' | 'transactionData'>
   vpToken: string
+  tokenShape?: VerifierDcqlVpTokenShape
 }): string {
   const sdJwtKb = readSdJwtKbParts(input.vpToken)
   const issuerJwt = sdJwtKb.issuerJwt
   const kbJwt = sdJwtKb.kbJwt
   const issuerPayload = decodeJwtPayload(issuerJwt)
+  const issuerHeader = decodeJwtHeader(issuerJwt)
   const kbHeader = kbJwt ? decodeJwtHeader(kbJwt) : undefined
   const kbPayload = kbJwt ? decodeJwtPayload(kbJwt) : undefined
   const credentialCnf = readRecord(issuerPayload?.cnf)
@@ -119,19 +140,44 @@ export function describePresentationAttempt(input: {
   const kbIssuedAt = readNumber(kbPayload?.iat)
 
   const dcqlCredentials = input.request.dcqlQuery?.credentials ?? []
+  const dcqlClaimPaths = dcqlCredentials.flatMap((credential) =>
+    (credential.claims ?? []).map((claim) => claim.path.join('.')),
+  )
   const parts = [
     `dcql_ids=${formatList(dcqlCredentials.map((credential) => credential.id))}`,
+    `dcql_claim_paths=${formatList(dcqlClaimPaths)}`,
     `requested_vct=${formatList(dcqlCredentials.flatMap((credential) => credential.meta?.vct_values ?? []))}`,
-    `vp_token_response_shape=${input.request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw'}`,
+    `vp_token_response_shape=${readAttemptedDcqlVpTokenShape(input)}`,
     `state_present=${Boolean(input.request.state)}`,
     `credential_vct=${formatValue(readString(issuerPayload?.vct))}`,
+    `credential_issued_at=${formatValue(input.request.matchedCredential.issuedAt)}`,
+    `credential_iss=${formatValue(readString(issuerPayload?.iss))}`,
+    `credential_iss_type=${issuerPayload?.iss === undefined ? 'none' : typeof issuerPayload.iss}`,
+    `issuer_jwt_registered_claims=${formatList(
+      ['iss', 'sub', 'aud', 'nbf', 'exp', 'iat', 'jti', 'cnf', 'vct', 'status', '_sd', '_sd_alg']
+        .filter((claim) => issuerPayload?.[claim] !== undefined),
+    )}`,
+    `issuer_jwt_typ=${formatValue(readString(issuerHeader?.typ))}`,
+    `issuer_jwt_kid_present=${Boolean(readString(issuerHeader?.kid))}`,
+    `issuer_jwt_x5c_count=${Array.isArray(issuerHeader?.x5c) ? issuerHeader.x5c.length : 0}`,
+    `issuer_sd_count=${formatNumber(Array.isArray(issuerPayload?._sd) ? issuerPayload._sd.length : undefined)}`,
+    `status_claim_type=${issuerPayload?.status === undefined ? 'none' : typeof issuerPayload.status}`,
+    `status_list_present=${Boolean(readRecord(readRecord(issuerPayload?.status)?.status_list))}`,
+    `status_list_idx=${formatNumber(readNumber(readRecord(readRecord(issuerPayload?.status)?.status_list)?.idx))}`,
+    `status_list_host=${formatValue(readUrlHost(readString(readRecord(readRecord(issuerPayload?.status)?.status_list)?.uri)))}`,
+    `credential_nbf_in_future=${formatOptionalBoolean(isUnixInFuture(readNumber(issuerPayload?.nbf)))}`,
+    `credential_exp_in_past=${formatOptionalBoolean(isUnixInPast(readNumber(issuerPayload?.exp)))}`,
+    `disclosure_keys_match_dcql_paths=${setsEqual(dcqlClaimPaths, readSdJwtDisclosureClaimKeys(input.vpToken))}`,
     `credential_cnf_kid=${formatValue(readString(credentialCnf?.kid))}`,
     `credential_cnf_jwk=${credentialCnfJwk ? `${formatValue(readString(credentialCnfJwk.kty))}/${formatValue(readString(credentialCnfJwk.crv))}/${shortValue(readString(credentialCnfJwk.x))}` : 'none'}`,
     `sdjwt_disclosure_count=${sdJwtKb.disclosureCount}`,
+    `sdjwt_disclosure_keys=${formatList(readSdJwtDisclosureClaimKeys(input.vpToken))}`,
     `sdjwt_has_trailing_separator_before_kb=${sdJwtKb.hasTrailingSeparatorBeforeKb}`,
     `client_id=${input.request.clientId}`,
     `response_uri=${input.request.responseUri}`,
     `request_nonce=${input.request.nonce}`,
+    `transaction_data_count=${formatNumber(input.request.transactionData?.entries.length ?? 0)}`,
+    `kb_transaction_data_hashes_present=${Array.isArray(kbPayload?.transaction_data_hashes) && kbPayload.transaction_data_hashes.length > 0}`,
     `kb_header_alg=${formatValue(readString(kbHeader?.alg))}`,
     `kb_header_typ=${formatValue(readString(kbHeader?.typ))}`,
     `kb_header_kid=${formatValue(readString(kbHeader?.kid))}`,
@@ -152,6 +198,14 @@ export function describePresentationAttempt(input: {
   ]
 
   return `Presentation debug: ${parts.join('; ')}`
+}
+
+function readAttemptedDcqlVpTokenShape(input: {
+  request: Pick<ResolvedPresentationRequest, 'dcqlQuery'>
+  tokenShape?: VerifierDcqlVpTokenShape
+}): VerifierDcqlVpTokenShape | 'raw' {
+  if (!input.request.dcqlQuery) return 'raw'
+  return input.tokenShape ?? readVerifierDcqlVpTokenShape()
 }
 
 function readSdJwtKbParts(vpToken: string): {
@@ -363,7 +417,34 @@ function base58btcDecode(value: string): Uint8Array {
 }
 
 function readNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && /^-?\d+$/.test(value)) return Number(value)
+  return undefined
+}
+
+function readUrlHost(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  try {
+    return new URL(value).hostname
+  } catch {
+    return undefined
+  }
+}
+
+function isUnixInFuture(value: number | undefined): boolean | undefined {
+  if (value === undefined) return undefined
+  return value > Math.floor(Date.now() / 1000)
+}
+
+function isUnixInPast(value: number | undefined): boolean | undefined {
+  if (value === undefined) return undefined
+  return value < Math.floor(Date.now() / 1000)
+}
+
+function setsEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const rightSet = new Set(right)
+  return left.every((value) => rightSet.has(value))
 }
 
 function formatList(values: string[]): string {

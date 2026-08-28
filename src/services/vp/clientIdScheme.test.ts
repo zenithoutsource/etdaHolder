@@ -59,6 +59,13 @@ describe('clientIdScheme', () => {
         'https://verifier.example.com/other',
       ),
     ).toBe(false)
+    expect(
+      readResponseUriMatchesClientId(
+        'redirect_uri:https://verifier.example.com/cb',
+        'https://verifier.example.com/other',
+        { allowSameOrigin: true },
+      ),
+    ).toBe(true)
   })
 
   test('matches decentralized_identifier did:web origins to response_uri origin', () => {

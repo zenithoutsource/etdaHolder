@@ -2,11 +2,12 @@ import { resolveCardSchema, findDisplayFieldForClaimKey, collectDisplayFieldMatc
 import { resolveFirstPartyType } from '../../config/firstPartyCredential'
 import { readComposedPersonName } from '../credentials/credentialDisplay'
 import { hasAnyClaimValue } from '../credentials/claimFormatting'
+import { isMdocPresentableRecord, isMdocRawVc, readMdocDocTypeFromRecord } from '../proximity/mdocCredential'
 import { readCredentialClaimMap } from '../vci/exchangeService'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { isCompactJwtVc, isCompactSdJwt, readCredentialVct } from './credentialFormatUtils'
-import { isExactDualFormatPair, isSdJwtDcqlFormat } from './dualFormatQuery'
+import { isExactDualFormatPair, isMsoMdocDcqlFormat, isSdJwtDcqlFormat } from './dualFormatQuery'
 import type { DcqlClaimsQuery, DcqlCredentialQuery, DcqlQuery } from './presentationService'
 
 export { isCompactJwtVc, isCompactSdJwt, readCredentialVct } from './credentialFormatUtils'
@@ -16,7 +17,7 @@ const TRANSCRIPT_TYPE = 'ChulalongkornUniversityTranscript'
 const DRIVING_LICENCE_TYPE = 'DLTDrivingLicence'
 
 function isSupportedDcqlFormat(format: string): boolean {
-  return format === 'jwt_vc_json' || format === 'jwt_vc' || isSdJwtDcqlFormat(format)
+  return format === 'jwt_vc_json' || format === 'jwt_vc' || isSdJwtDcqlFormat(format) || isMsoMdocDcqlFormat(format)
 }
 
 export function readCredentialTypeFromDcqlTypeValue(value: string): string | undefined {
@@ -38,10 +39,20 @@ export function assertSupportedDcqlCredentialQuery(credential: DcqlCredentialQue
     throw new Error('PresentationRequestUnsupported: requested DCQL credential format is not supported')
   }
 
+  const isMdocQuery = isMsoMdocDcqlFormat(credential.format)
   for (const claim of credential.claims ?? []) {
-    if (claim.path.length > 1) {
+    if (claim.path.length > (isMdocQuery ? 2 : 1)) {
       throw new Error('PresentationRequestUnsupported: nested DCQL claim paths are not supported in v1')
     }
+  }
+
+  if (isMdocQuery) {
+    const doctypeValue = credential.meta?.doctype_value
+    const typeValues = credential.meta?.type_values ?? []
+    if (!doctypeValue && typeValues.length === 0) {
+      throw new Error('PresentationRequestUnsupported: requested DCQL credential type is not supported')
+    }
+    return
   }
 
   const typeValues = credential.meta?.type_values ?? []
@@ -81,6 +92,10 @@ export function canWalletSatisfyDcqlCredentialQuery(
   record: VerifiableCredentialRecord,
   credential: DcqlCredentialQuery,
 ): boolean {
+  if (isMsoMdocDcqlFormat(credential.format)) {
+    return isStoredMdocCompatibleWithDcqlQuery(record, credential)
+  }
+
   const typeValues = credential.meta?.type_values ?? []
   if (typeValues.length > 0) {
     const typeMatches = typeValues.some((value) => {
@@ -150,7 +165,7 @@ function findUnsatisfiedDcqlClaimKeys(
 
 export type DcqlMatchFailure = {
   recordType: string
-  recordFormat: 'sd-jwt' | 'jwt_vc' | 'unknown'
+  recordFormat: 'sd-jwt' | 'jwt_vc' | 'mso_mdoc' | 'unknown'
   recordVct?: string
   requestedFormat?: string
   requestedTypeValues: string[]
@@ -173,12 +188,22 @@ export function describeDcqlMatchFailure(
   const requestedVctValues = credential.meta?.vct_values ?? []
   const base = {
     recordType: record.type,
-    recordFormat: readRecordCredentialFormat(record.rawVc),
+    recordFormat: readRecordCredentialFormat(record),
     recordVct: readCredentialVct(record),
     requestedFormat: credential.format,
     requestedTypeValues,
     requestedVctValues,
     recordClaimKeys: Object.keys(readCredentialClaimMap(record)),
+  }
+
+  if (isMsoMdocDcqlFormat(credential.format)) {
+    if (!isMdocPresentableRecord(record)) {
+      return { ...base, failedGate: 'format' }
+    }
+    if (!isStoredMdocCompatibleWithDcqlQuery(record, credential)) {
+      return { ...base, failedGate: 'type' }
+    }
+    return { ...base, failedGate: 'none' }
   }
 
   if (
@@ -207,7 +232,12 @@ export function describeDcqlMatchFailure(
   return { ...base, failedGate: 'none' }
 }
 
-function readRecordCredentialFormat(rawVc: string): DcqlMatchFailure['recordFormat'] {
+function readRecordCredentialFormat(
+  record: VerifiableCredentialRecord,
+): DcqlMatchFailure['recordFormat'] {
+  if (isMdocPresentableRecord(record)) return 'mso_mdoc'
+  const rawVc = record.rawVc
+  if (isMdocRawVc(rawVc)) return 'mso_mdoc'
   if (isCompactSdJwt(rawVc)) return 'sd-jwt'
   if (isCompactJwtVc(rawVc)) return 'jwt_vc'
   return 'unknown'
@@ -218,6 +248,7 @@ export function isCredentialCompatibleWithDcqlFormat(
   format: string | undefined,
 ): boolean {
   if (!format) return false
+  if (isMsoMdocDcqlFormat(format)) return isMdocPresentableRecord(record)
   if (format === 'jwt_vc_json' || format === 'jwt_vc') return isCompactJwtVc(record.rawVc)
   if (isSdJwtDcqlFormat(format)) return isCompactSdJwt(record.rawVc)
   return false
@@ -234,6 +265,29 @@ export function isCredentialCompatibleWithDcqlMetadata(
   return Boolean(
     credentialVct && requestedVctValues.some((requested) => areVctValuesEquivalent(requested, credentialVct)),
   )
+}
+
+function isStoredMdocCompatibleWithDcqlQuery(
+  record: VerifiableCredentialRecord,
+  credential: DcqlCredentialQuery,
+): boolean {
+  const storedDoctype = readStoredMdocDoctype(record)
+  if (!storedDoctype) return false
+
+  const requestedDoctypes = readRequestedMdocDoctypes(credential)
+  return requestedDoctypes.includes(storedDoctype)
+}
+
+function readRequestedMdocDoctypes(credential: DcqlCredentialQuery): string[] {
+  return [
+    ...(credential.meta?.doctype_value ? [credential.meta.doctype_value] : []),
+    ...(credential.meta?.type_values ?? []),
+  ]
+}
+
+function readStoredMdocDoctype(record: VerifiableCredentialRecord): string | undefined {
+  if (!isMdocPresentableRecord(record)) return undefined
+  return readMdocDocTypeFromRecord(record)
 }
 
 /**

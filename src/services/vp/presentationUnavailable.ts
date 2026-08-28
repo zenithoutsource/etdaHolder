@@ -54,6 +54,11 @@ export class PresentationCredentialUnavailableError extends Error {
   }
 }
 
+export function isPresentationCredentialMissingError(error: unknown): boolean {
+  return error instanceof PresentationCredentialUnavailableError
+    && error.reason === 'credential-missing'
+}
+
 export function readPresentationUnavailableDetails(
   error: unknown,
 ): PresentationUnavailableDetails | undefined {

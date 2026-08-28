@@ -3,6 +3,7 @@ import {
   signSdJwtKbPresentationToken as defaultSignSdJwtKbPresentationToken,
 } from '../../crypto/crypto'
 import { buildDualFormatDcqlVpToken as defaultBuildDualFormatDcqlVpToken } from '../dualFormatVpToken'
+import { readMdocVpTokenEntry as defaultReadMdocVpTokenEntry } from '../mdocVpTokenEntry'
 import { readPresentationTokenMode, type ResolvedPresentationRequest } from '../presentationService'
 import {
   dualFormatDcqlPresentationBuilder,
@@ -31,7 +32,7 @@ export function registerPresentationTokenBuilder(builder: PresentationTokenBuild
 
 export async function buildApprovedPresentationResponse(
   request: ResolvedPresentationRequest,
-  dependencies: Partial<Pick<PresentationTokenBuildContext, 'signSdJwtKbPresentationToken' | 'signPresentationVpToken' | 'readTokenMode' | 'buildDualFormatDcqlVpToken' | 'selectedClaimKeys'>> = {},
+  dependencies: Partial<Pick<PresentationTokenBuildContext, 'signSdJwtKbPresentationToken' | 'signPresentationVpToken' | 'readTokenMode' | 'buildDualFormatDcqlVpToken' | 'readMdocVpTokenEntry' | 'selectedClaimKeys'>> = {},
   builders: PresentationTokenBuilder[] = defaultBuilders,
 ): Promise<ApprovedPresentationResponse> {
   const context: PresentationTokenBuildContext = {
@@ -41,6 +42,7 @@ export async function buildApprovedPresentationResponse(
     signPresentationVpToken: dependencies.signPresentationVpToken ?? defaultSignPresentationVpToken,
     readTokenMode: dependencies.readTokenMode ?? readPresentationTokenMode,
     buildDualFormatDcqlVpToken: dependencies.buildDualFormatDcqlVpToken ?? defaultBuildDualFormatDcqlVpToken,
+    readMdocVpTokenEntry: dependencies.readMdocVpTokenEntry ?? defaultReadMdocVpTokenEntry,
   }
 
   const builder = selectPresentationTokenBuilder(request, builders)

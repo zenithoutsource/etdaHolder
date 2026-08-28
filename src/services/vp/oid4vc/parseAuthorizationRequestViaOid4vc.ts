@@ -13,12 +13,17 @@ import {
 } from '@/src/utils/jwtUtils'
 import { logWalletError } from '@/src/services/debug/walletLogger'
 import { isTrustedIssuerJwtAlg } from '@/src/config/issuerJwtVerifyPolicy'
+import { readTrustAnyOid4vcPeerForClientId } from '@/src/config/oid4vcPeerTrustPolicy'
 import {
   resolveRequestObjectVerificationJwk,
   verifyAuthorizationRequestSignature,
 } from '../authorizationRequestJar'
 import { parseClientId } from '../clientIdScheme'
 import { findTrustedVerifier, type TrustedVerifier } from '../trustedVerifierMatcher'
+import {
+  describeVerifierTrustRejection,
+  readVerifierTrustInteropFlags,
+} from '../verifierTrustDiagnostics'
 import { createOid4vcCallbacks } from './oid4vcCallbacks'
 import type { AuthorizationRequestMaterial, Oid4vcAdapterContext } from './types'
 
@@ -63,7 +68,7 @@ function createAdapterVerifyJwtImpl(input: {
         return { verified: false as const }
       }
 
-      if (jwtSigner.method !== 'jwk' && jwtSigner.method !== 'did') {
+      if (jwtSigner.method !== 'jwk' && jwtSigner.method !== 'did' && jwtSigner.method !== 'x5c') {
         logWalletError(
           'oid4vp',
           'jar_verify_rejected_signer_method',
@@ -255,8 +260,25 @@ export async function parseAuthorizationRequestViaOid4vc(
 
   rejectBareDidClientId(clientId)
 
-  const trustedVerifier = findTrustedVerifier(clientId, responseUri, options.trustedVerifiers)
+  const trustAnyHttpsPeer = readTrustAnyOid4vcPeerForClientId(clientId)
+  const trustedVerifier = findTrustedVerifier(
+    clientId,
+    responseUri,
+    options.trustedVerifiers,
+    trustAnyHttpsPeer,
+  )
   if (!trustedVerifier) {
+    const interopFlags = readVerifierTrustInteropFlags()
+    logWalletError(
+      'oid4vp',
+      'verifier-trust-rejected',
+      new Error('PresentationRequestInvalid: verifier is not trusted'),
+      {
+        clientIdScheme: parseClientId(clientId).scheme,
+        rejectionReason: describeVerifierTrustRejection(clientId, responseUri, trustAnyHttpsPeer),
+        ...interopFlags,
+      },
+    )
     throw new Error('PresentationRequestInvalid: verifier is not trusted')
   }
 

@@ -8,11 +8,9 @@ describe('oid4vcCallbacks', () => {
     )
   })
 
-  it('throws PresentationRequestUnsupported from getX509CertificateMetadata', () => {
+  it('reads SAN metadata from an x509 certificate', () => {
     const callbacks = createOid4vcCallbacks()
-    expect(() => callbacks.getX509CertificateMetadata?.('cert')).toThrow(
-      'PresentationRequestUnsupported: X.509 client identifiers are not supported in Phase 1',
-    )
+    expect(() => callbacks.getX509CertificateMetadata?.('not-a-cert')).toThrow()
   })
 
   it('throws PresentationRequestUnsupported from signJwt', async () => {

@@ -72,11 +72,12 @@ async function buildDcqlCredentialToken(input: {
         { documentType: input.request.matchedCredential.type },
       ),
       credentialId: input.request.matchedCredential.id,
+      ...(input.request.transactionData ? { transactionData: input.request.transactionData } : {}),
     })
   }
 
   if (format === 'mso_mdoc') {
-    return input.readMdocEntry(input.request.matchedCredential.id)
+    return input.readMdocEntry(input.request.matchedCredential.id, input.request.matchedCredential.rawVc)
   }
 
   throw new Error(`PresentationCredentialFormatUnsupported: DCQL format ${format ?? 'unknown'} is not supported`)

@@ -10,15 +10,41 @@ import {
   resolvePresentationRequest,
   submitPresentationResponse,
 } from './presentationService'
+import { resolvePresentationFailureUi } from './presentationFailureUi'
+import * as walletLogger from '../debug/walletLogger'
+import * as rawProtocolLog from './oid4vpRawProtocolLog'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { writeIssuerSuspension } from '../credentials/issuerSuspension'
 import * as storageModule from '../storage/storage'
+import { getMetaStorage } from '@/src/services/storage/storage'
+import {
+  buildVerifierInteropCacheKey,
+  readCachedVerifierDcqlVpTokenShape,
+  writeCachedVerifierDcqlVpTokenShape,
+} from './verifierDcqlSubmitNegotiation'
 import {
   configurePresentationReplayStorage,
   markPresentationRequestConsumed,
 } from './presentationRequestReplay'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
+
+jest.mock('../vci/issuerDidWebVerify', () => ({
+  assertIssuerDidWebCredentialSignature: jest.fn(async () => undefined),
+}))
+
+jest.mock('../proximity/mdocCredential', () => ({
+  ...jest.requireActual('../proximity/mdocCredential'),
+  ensureNativeMdocStored: jest.fn(async () => true),
+}))
+
+function restoreEnvironmentVariable(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name]
+    return
+  }
+  process.env[name] = value
+}
 
 function unsignedJwt(payload: Record<string, unknown>): string {
   const encode = (value: unknown) =>
@@ -965,6 +991,61 @@ describe('presentationService', () => {
     })
   })
 
+  test('prefers the newest matching SD-JWT credential when reissued siblings are stored', async () => {
+    const olderCredential: VerifiableCredentialRecord = {
+      ...thaiIdRecord,
+      id: 'sd-jwt-older',
+      rawVc: compactSdJwt(),
+      issuedAt: '2026-06-01T10:00:00.000Z',
+    }
+    const newerCredential: VerifiableCredentialRecord = {
+      ...olderCredential,
+      id: 'sd-jwt-newer',
+      issuedAt: '2026-08-23T10:00:00.000Z',
+    }
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-123',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'idcard_credential',
+                  format: 'dc+sd-jwt',
+                  meta: { vct_values: ['IDCardCredential'] },
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const request = await resolvePresentationRequest(
+      verifierRequestUri(),
+      [olderCredential, newerCredential],
+      {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      },
+    )
+
+    expect(request.matchedCredential.id).toBe('sd-jwt-newer')
+  })
+
   test('resolves DCQL dc+sd-jwt Transcript request with vct_values', async () => {
     const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
       async () =>
@@ -1202,6 +1283,127 @@ describe('presentationService', () => {
     expect(readPresentationTokenMode(request)).toBe('signed-vp-jwt')
   })
 
+  test('resolves standalone third-party mso_mdoc DCQL and uses mso-mdoc token mode', async () => {
+    const tonyhereMdoc: VerifiableCredentialRecord = {
+      id: 'tonyhere-mdoc-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'mdoc:AQIDBA',
+      claims: {
+        doctype: 'org.iso.18013.5.1.mDL',
+        given_name: 'Ada',
+      },
+      issuedAt: '2026-08-24T00:00:00.000Z',
+      issuerUrl: 'https://demo.tonyhere.work',
+    }
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:https://verifier.tonyhere.work/ssi/openid4vp/final-1.0/response',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'https://verifier.tonyhere.work/ssi/openid4vp/final-1.0/response',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'mdoc_credential',
+                  format: 'mso_mdoc',
+                  meta: { doctype_value: 'org.iso.18013.5.1.mDL' },
+                  claims: [{ path: ['org.iso.18013.5.1', 'family_name'] }],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const request = await resolvePresentationRequest(
+      'openid4vp://authorize?client_id=redirect_uri:https://verifier.tonyhere.work/ssi/openid4vp/final-1.0/response&request_uri=https://verifier.tonyhere.work/ssi/openid4vp/request/123',
+      [thaiIdRecord, tonyhereMdoc],
+      {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:https://verifier.tonyhere.work/ssi/openid4vp/final-1.0/response',
+            name: 'Third-party Verifier',
+            allowedOrigins: ['https://verifier.tonyhere.work'],
+          },
+        ],
+      },
+    )
+
+    expect(request.matchedCredential.id).toBe('tonyhere-mdoc-1')
+    expect(request.dcqlQuery?.credentials[0]?.meta?.doctype_value).toBe('org.iso.18013.5.1.mDL')
+    expect(readPresentationTokenMode(request)).toBe('mso-mdoc')
+  })
+
+  test('maps ISO mdoc DCQL claim paths to namespace/identifier disclosure keys', async () => {
+    const tonyhereMdoc: VerifiableCredentialRecord = {
+      id: 'tonyhere-mdoc-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'mdoc:AQIDBA',
+      claims: {
+        doctype: 'org.iso.18013.5.1.mDL',
+        family_name: 'ใจดี',
+      },
+      issuedAt: '2026-08-24T00:00:00.000Z',
+      issuerUrl: 'https://demo.tonyhere.work',
+    }
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: 'redirect_uri:https://verifier.tonyhere.work/ssi/openid4vp/final-1.0/response',
+            response_mode: 'direct_post',
+            state: 'request-123',
+            nonce: 'request-123',
+            response_uri: 'https://verifier.tonyhere.work/ssi/openid4vp/final-1.0/response',
+            dcql_query: {
+              credentials: [
+                {
+                  id: 'mdoc_credential',
+                  format: 'mso_mdoc',
+                  meta: { doctype_value: 'org.iso.18013.5.1.mDL' },
+                  claims: [{ path: ['org.iso.18013.5.1', 'family_name'] }],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+    )
+
+    const request = await resolvePresentationRequest(
+      'openid4vp://authorize?client_id=redirect_uri:https://verifier.tonyhere.work/ssi/openid4vp/final-1.0/response&request_uri=https://verifier.tonyhere.work/ssi/openid4vp/request/123',
+      [tonyhereMdoc],
+      {
+        presentationFlowOrigin: 'scan',
+        walletCredentials: [thaiIdRecord],
+        fetchImpl: fetchMock as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:https://verifier.tonyhere.work/ssi/openid4vp/final-1.0/response',
+            name: 'Third-party Verifier',
+            allowedOrigins: ['https://verifier.tonyhere.work'],
+          },
+        ],
+      },
+    )
+
+    expect(request.disclosures).toEqual([
+      disclosure({
+        key: 'org.iso.18013.5.1/family_name',
+        label: 'นามสกุล',
+        value: 'ใจดี',
+      }),
+    ])
+  })
+
   test('rejects untrusted Verifier requests', async () => {
     await expect(
       resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
@@ -1350,6 +1552,278 @@ describe('presentationService', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     expect(result).toEqual({ status: 'verified', message: 'Verification succeeded' })
+  })
+
+  test('does not log formatted vp_token or presentation_submission contents', async () => {
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
+    )
+    const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      trustedVerifiers: [
+        {
+          clientId: 'decentralized_identifier:did:web:verifier.example.com',
+          name: 'Entertainment Venue',
+          allowedOrigins: ['https://verifier.example.com'],
+        },
+      ],
+    })
+
+    await submitPresentationResponse(request, {
+      vpToken: 'vp.jwt~private-disclosure~kb.jwt',
+      presentationSubmission: buildPresentationSubmission(request),
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    const logged = JSON.stringify(infoSpy.mock.calls)
+    expect(logged).not.toContain('private-disclosure')
+    expect(logged).not.toContain('presentation-submission:age-over-20')
+  })
+
+  test('does not invoke the raw protocol logger for a plaintext direct_post submission', async () => {
+    const rawSubmitSpy = jest.spyOn(rawProtocolLog, 'logOid4vpRawPresentationSubmit')
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
+    )
+    const request = await resolvePresentationRequest(authorizationRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      trustedVerifiers: [
+        {
+          clientId: 'decentralized_identifier:did:web:verifier.example.com',
+          name: 'Entertainment Venue',
+          allowedOrigins: ['https://verifier.example.com'],
+        },
+      ],
+    })
+
+    try {
+      await submitPresentationResponse(request, {
+        vpToken: 'vp.jwt~private-wire-value~kb.jwt',
+        presentationSubmission: buildPresentationSubmission(request),
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      })
+
+      expect(rawSubmitSpy).not.toHaveBeenCalled()
+    } finally {
+      rawSubmitSpy.mockRestore()
+    }
+  })
+
+  test('maps an opaque encrypted submit 400 to dev-only structural UI hints', async () => {
+    const runtime = globalThis as typeof globalThis & { __DEV__?: boolean }
+    const originalDev = runtime.__DEV__
+    const request = {
+      requestUri: 'openid4vp://authorize?request_uri=https://verifier.example/request/1',
+      clientId: 'redirect_uri:https://verifier.example/verify/1',
+      responseUri: 'https://verifier.example/verify/1',
+      responseMode: 'direct_post.jwt' as const,
+      nonce: 'nonce-1',
+      state: 'state-1',
+      dcqlQuery: {
+        credentials: [{ id: 'idcard_credential', format: 'dc+sd-jwt' }],
+      },
+      verifier: {
+        clientId: 'redirect_uri:https://verifier.example/verify',
+        name: 'Verifier',
+        allowedOrigins: ['https://verifier.example'],
+      },
+      matchedCredential: thaiIdRecord,
+      disclosures: [],
+      protocolPath: 'oid4vc' as const,
+      oid4vcContext: {
+        authorizationRequestPayload: {
+          response_uri: 'https://verifier.example/verify/1',
+          client_id: 'redirect_uri:https://verifier.example/verify/1',
+          response_mode: 'direct_post.jwt',
+        },
+      },
+      responseEncryption: {
+        alg: 'ECDH-ES' as const,
+        enc: 'A128GCM' as const,
+        jwk: {
+          kty: 'EC' as const,
+          crv: 'P-256' as const,
+          alg: 'ECDH-ES' as const,
+          kid: 'enc-1',
+          x: 'YO4epjifD-KWeq1sL2tNmm36BhXnkJ0He-WqMYrp9Fk',
+          y: 'Hekpm0zfK7C-YccH5iBjcIXgf6YdUvNUac_0At55Okk',
+        },
+      },
+    }
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response('', { status: 400 }),
+    )
+
+    let submitError: unknown
+    try {
+      await submitPresentationResponse(request, {
+        vpToken: 'secret-vp-token',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      })
+    } catch (error) {
+      submitError = error
+    }
+
+    try {
+      runtime.__DEV__ = true
+      const developmentUi = resolvePresentationFailureUi(submitError)
+      expect(developmentUi.body).toContain('jwe_segments=5')
+      expect(developmentUi.body).toContain('vp_token_json_type=object')
+      expect(developmentUi.body).not.toContain('secret-vp-token')
+      expect(developmentUi.body).not.toContain('response=')
+      expect(developmentUi.body).not.toContain('invalid_request')
+
+      runtime.__DEV__ = false
+      const productionUi = resolvePresentationFailureUi(submitError)
+      expect(productionUi.body).not.toContain('jwe_segments')
+      expect(productionUi.body).not.toContain('vp_token_json_type')
+    } finally {
+      runtime.__DEV__ = originalDev
+    }
+  })
+
+  test('reports the generated encrypted JWE apv hint after a direct_post.jwt failure', async () => {
+    const originalJweApv = process.env.EXPO_PUBLIC_OID4VP_JWE_APV
+    const originalDemoInterop = process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+    process.env.EXPO_PUBLIC_OID4VP_JWE_APV = 'true'
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'false'
+
+    const request = {
+      requestUri: 'openid4vp://authorize?request_uri=https://verifier.example/request/1',
+      clientId: 'redirect_uri:https://verifier.example/verify/1',
+      responseUri: 'https://verifier.example/verify/1',
+      responseMode: 'direct_post.jwt' as const,
+      nonce: 'nonce-1',
+      state: 'state-1',
+      dcqlQuery: { credentials: [{ id: 'idcard_credential', format: 'dc+sd-jwt' }] },
+      verifier: {
+        clientId: 'redirect_uri:https://verifier.example/verify',
+        name: 'Verifier',
+        allowedOrigins: ['https://verifier.example'],
+      },
+      matchedCredential: thaiIdRecord,
+      disclosures: [],
+      protocolPath: 'oid4vc' as const,
+      oid4vcContext: {
+        authorizationRequestPayload: {
+          response_uri: 'https://verifier.example/verify/1',
+          client_id: 'redirect_uri:https://verifier.example/verify/1',
+          response_mode: 'direct_post.jwt',
+        },
+      },
+      responseEncryption: {
+        alg: 'ECDH-ES' as const,
+        enc: 'A128GCM' as const,
+        jwk: {
+          kty: 'EC' as const,
+          crv: 'P-256' as const,
+          alg: 'ECDH-ES' as const,
+          kid: 'enc-1',
+          x: 'YO4epjifD-KWeq1sL2tNmm36BhXnkJ0He-WqMYrp9Fk',
+          y: 'Hekpm0zfK7C-YccH5iBjcIXgf6YdUvNUac_0At55Okk',
+        },
+      },
+    }
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify({ error: 'invalid_request' }), { status: 400 }),
+    )
+
+    let submitError: unknown
+    try {
+      await submitPresentationResponse(request, {
+        vpToken: 'secret-vp-token',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      })
+    } catch (error) {
+      submitError = error
+    }
+
+    try {
+      expect(submitError).toBeInstanceOf(Error)
+      expect((submitError as Error).message).toBe('PresentationSubmissionFailed: HTTP 400: invalid_request')
+      expect(submitError).toMatchObject({
+        presentationTransportHint: {
+          jweSegments: 5,
+          jweApvPresent: true,
+        },
+      })
+      expect(submitError).not.toHaveProperty('compactJwe')
+      const init = fetchMock.mock.calls[0]?.[1]
+      const body = new URLSearchParams(String(init?.body ?? ''))
+      expect(body.get('response')?.split('.')).toHaveLength(5)
+
+      const diagnostic = resolvePresentationFailureUi(submitError)
+      expect(diagnostic.body).toContain('jwe_apv_present=true')
+      expect(diagnostic.body).not.toContain('secret-vp-token')
+    } finally {
+      restoreEnvironmentVariable('EXPO_PUBLIC_OID4VP_JWE_APV', originalJweApv)
+      restoreEnvironmentVariable('EXPO_PUBLIC_WALLET_DEMO_INTEROP', originalDemoInterop)
+    }
+  })
+
+  test('legacy direct_post.jwt HTTP failure logs encrypted transport diagnostic with jwk_coord_padded', async () => {
+    const logWalletErrorSpy = jest.spyOn(walletLogger, 'logWalletError')
+    const request = {
+      requestUri: 'openid4vp://authorize?request_uri=https://verifier.example/request/1',
+      clientId: 'redirect_uri:https://verifier.example/verify/1',
+      responseUri: 'https://verifier.example/verify/1',
+      responseMode: 'direct_post.jwt' as const,
+      nonce: 'nonce-1',
+      state: 'state-1',
+      dcqlQuery: { credentials: [{ id: 'idcard_credential', format: 'dc+sd-jwt' }] },
+      verifier: {
+        clientId: 'redirect_uri:https://verifier.example/verify',
+        name: 'Verifier',
+        allowedOrigins: ['https://verifier.example'],
+      },
+      matchedCredential: thaiIdRecord,
+      disclosures: [],
+      protocolPath: 'legacy' as const,
+      responseEncryption: {
+        alg: 'ECDH-ES' as const,
+        enc: 'A128GCM' as const,
+        jwkCoordinatePadded: true,
+        jwk: {
+          kty: 'EC' as const,
+          crv: 'P-256' as const,
+          alg: 'ECDH-ES' as const,
+          kid: 'enc-1',
+          x: 'YO4epjifD-KWeq1sL2tNmm36BhXnkJ0He-WqMYrp9Fk',
+          y: 'Hekpm0zfK7C-YccH5iBjcIXgf6YdUvNUac_0At55Okk',
+        },
+      },
+    }
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify({ error: 'invalid_request' }), { status: 400 }),
+    )
+
+    let submitError: unknown
+    try {
+      await submitPresentationResponse(request, {
+        vpToken: 'secret-vp-token',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      })
+    } catch (error) {
+      submitError = error
+    }
+
+    expect(submitError).toBeInstanceOf(Error)
+    expect((submitError as Error).message).toBe('PresentationSubmissionFailed: HTTP 400: invalid_request')
+    expect(submitError).toMatchObject({
+      presentationTransportHint: {
+        jweSegments: 5,
+        jweApvPresent: true,
+      },
+    })
+    expect(logWalletErrorSpy).toHaveBeenCalledWith(
+      'oid4vp',
+      'submit-response-failed',
+      expect.any(Error),
+      expect.objectContaining({
+        transportDiagnostic: expect.stringContaining('jwk_coord_padded=true'),
+      }),
+    )
+    logWalletErrorSpy.mockRestore()
   })
 
   test('resolves issuer OID4VP PID DCQL request and posts VP body to issuer response_uri', async () => {
@@ -1524,6 +1998,153 @@ describe('presentationService', () => {
     const [, init] = fetchMock.mock.calls[0]
     const body = new URLSearchParams(String(init?.body))
     expect(body.get('vp_token')).toBe('vp.jwt')
+  })
+
+  test('uses default DCQL vp_token object_array shape for Animo playground', async () => {
+    const originalDemoInterop = process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+    const originalShape = process.env.EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+    delete process.env.EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE
+    getMetaStorage().clearAll()
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
+    )
+    const request = {
+      requestUri: 'openid4vp://authorize?request_uri=https://playground.animo.id/request/1',
+      clientId: 'x509_hash:abc',
+      responseUri: 'https://playground.animo.id/oid4vp/session/1/authorize?session=abc',
+      responseMode: 'direct_post' as const,
+      nonce: 'nonce-1',
+      state: 'state-1',
+      dcqlQuery: {
+        credentials: [{ id: '0', format: 'dc+sd-jwt', meta: { vct_values: ['urn:eudi:pid:1'] } }],
+      },
+      verifier: {
+        clientId: 'x509_hash:abc',
+        name: 'playground.animo.id',
+        allowedOrigins: ['https://playground.animo.id'],
+      },
+      matchedCredential: thaiIdRecord,
+      disclosures: [],
+      protocolPath: 'legacy' as const,
+    }
+
+    try {
+      await submitPresentationResponse(request, {
+        vpToken: 'vp.jwt',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const body = new URLSearchParams(String(fetchMock.mock.calls[0]?.[1]?.body))
+      expect(JSON.parse(body.get('vp_token') ?? '')).toEqual({ '0': ['vp.jwt'] })
+      expect(readCachedVerifierDcqlVpTokenShape('playground.animo.id|x509_hash')).toBe('object_array')
+    } finally {
+      restoreEnvironmentVariable('EXPO_PUBLIC_WALLET_DEMO_INTEROP', originalDemoInterop)
+      restoreEnvironmentVariable('EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE', originalShape)
+      getMetaStorage().clearAll()
+    }
+  })
+
+  test('submitPresentationResponse uses cached DCQL vp_token shape for envelope formatting', async () => {
+    const clientId = 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-cached'
+    const responseUri = 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-cached'
+    const cacheKey = buildVerifierInteropCacheKey(clientId, responseUri)
+    getMetaStorage().clearAll()
+    writeCachedVerifierDcqlVpTokenShape(cacheKey, 'object_string')
+
+    const fetchMock = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }),
+    )
+
+    const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+      presentationFlowOrigin: 'scan',
+      fetchImpl: jest.fn(async () =>
+        new Response(
+          unsignedRequestJwt({
+            response_type: 'vp_token',
+            client_id: clientId,
+            response_mode: 'direct_post',
+            nonce: 'request-cached',
+            response_uri: responseUri,
+            dcql_query: {
+              credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+            },
+          }),
+          { status: 200 },
+        ),
+      ) as unknown as typeof fetch,
+      trustedVerifiers: [
+        {
+          clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+          name: 'Verifier API',
+          allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+        },
+      ],
+    })
+
+    try {
+      await submitPresentationResponse(request, {
+        vpToken: 'vp.jwt',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      })
+
+      const [, init] = fetchMock.mock.calls[0]
+      const body = new URLSearchParams(String(init?.body))
+      expect(JSON.parse(body.get('vp_token') ?? '')).toEqual({ idcard_credential: 'vp.jwt' })
+    } finally {
+      getMetaStorage().clearAll()
+    }
+  })
+
+  test('submitPresentationResponse persists successful DCQL vp_token shape after 2xx', async () => {
+    const clientId = 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-persist'
+    const responseUri = 'http://verifier.zenithcomp.co.th:455/openid4vc/verify/request-persist'
+    const cacheKey = buildVerifierInteropCacheKey(clientId, responseUri)
+    const originalShape = process.env.EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE
+    delete process.env.EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE
+    getMetaStorage().clearAll()
+
+    const fetchMock = jest.fn(async () => new Response(JSON.stringify({ status: 'verified' }), { status: 200 }))
+
+    try {
+      const request = await resolvePresentationRequest(verifierRequestUri(), [thaiIdRecord], {
+        presentationFlowOrigin: 'scan',
+        fetchImpl: jest.fn(async () =>
+          new Response(
+            unsignedRequestJwt({
+              response_type: 'vp_token',
+              client_id: clientId,
+              response_mode: 'direct_post',
+              nonce: 'request-persist',
+              response_uri: responseUri,
+              dcql_query: {
+                credentials: [{ id: 'idcard_credential', format: 'jwt_vc_json', meta: { type_values: ['IDCardCredential'] } }],
+              },
+            }),
+            { status: 200 },
+          ),
+        ) as unknown as typeof fetch,
+        trustedVerifiers: [
+          {
+            clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
+            name: 'Verifier API',
+            allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
+          },
+        ],
+      })
+
+      await submitPresentationResponse(request, {
+        vpToken: 'vp.jwt',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      })
+
+      expect(readCachedVerifierDcqlVpTokenShape(cacheKey)).toBe('object_array')
+    } finally {
+      restoreEnvironmentVariable('EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE', originalShape)
+      getMetaStorage().clearAll()
+    }
   })
 
   test('selects client_id as the default presentation token audience', async () => {
@@ -2098,6 +2719,27 @@ describe('verifier return URL helpers', () => {
       false,
     )
     expect(isHolderPortalReturnUrl('https://verifier.zenithcomp.co.th:455/portal/callback', responseUri)).toBe(true)
+  })
+})
+
+describe('presentationService Scan path regression', () => {
+  test('rejects dc_api response_mode on the Scan/direct_post resolver', async () => {
+    const params = new URLSearchParams({
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
+      response_uri: 'https://verifier.example.com/oid4vp/direct-post',
+      response_mode: 'dc_api',
+      nonce: 'nonce-dc-api-scan',
+      dcql_query: JSON.stringify({ credentials: [] }),
+    })
+
+    await expect(resolvePresentationRequest(`openid4vp://authorize?${params.toString()}`, [], {
+      presentationFlowOrigin: 'scan',
+      trustedVerifiers: [{
+        clientId: 'decentralized_identifier:did:web:verifier.example.com',
+        name: 'Verifier',
+        allowedOrigins: ['https://verifier.example.com'],
+      }],
+    })).rejects.toThrow(/response_mode dc_api is not supported/i)
   })
 })
 

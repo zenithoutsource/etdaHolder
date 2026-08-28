@@ -21,6 +21,10 @@ export function isSdJwtDcqlFormat(format: string | undefined): boolean {
   return typeof format === 'string' && SD_JWT_DCQL_FORMATS.has(format)
 }
 
+export function isMsoMdocDcqlFormat(format: string | undefined): boolean {
+  return format === 'mso_mdoc'
+}
+
 export function isExactDualFormatPair(dcqlQuery: DcqlQuery): boolean {
   if (dcqlQuery.credentials.length !== 2) return false
 

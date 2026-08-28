@@ -1,4 +1,5 @@
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+import { recordHasLogicalMdocFormat } from '../credentials/logicalCredentialStorage'
 import {
   areVctValuesEquivalent,
   assertNoSetDcqlCardinality,
@@ -9,6 +10,18 @@ import {
   isCredentialCompatibleWithDcqlMetadata,
 } from './dcqlCredentialMatch'
 import type { DcqlCredentialQuery, DcqlQuery } from './presentationService'
+
+jest.mock('../credentials/logicalCredentialStorage', () => ({
+  ...jest.requireActual('../credentials/logicalCredentialStorage'),
+  recordHasLogicalMdocFormat: jest.fn(() => false),
+}))
+
+const mockRecordHasLogicalMdocFormat = jest.mocked(recordHasLogicalMdocFormat)
+
+beforeEach(() => {
+  mockRecordHasLogicalMdocFormat.mockReset()
+  mockRecordHasLogicalMdocFormat.mockReturnValue(false)
+})
 
 const thaiIdRecord: VerifiableCredentialRecord = {
   id: 'thai-id-1',
@@ -49,6 +62,27 @@ describe('assertSupportedDcqlCredentialQuery', () => {
         id: 'thai_id',
         format: 'jwt_vc_json',
         meta: { type_values: ['IDCardCredential'] },
+      }),
+    ).not.toThrow()
+  })
+
+  test('accepts standalone mso_mdoc with doctype_value', () => {
+    expect(() =>
+      assertSupportedDcqlCredentialQuery({
+        id: 'mdoc_credential',
+        format: 'mso_mdoc',
+        meta: { doctype_value: 'org.iso.18013.5.1.mDL' },
+      }),
+    ).not.toThrow()
+  })
+
+  test('accepts ISO mdoc two-segment claim paths on standalone mso_mdoc', () => {
+    expect(() =>
+      assertSupportedDcqlCredentialQuery({
+        id: 'mdoc_credential',
+        format: 'mso_mdoc',
+        meta: { doctype_value: 'org.iso.18013.5.1.mDL' },
+        claims: [{ path: ['org.iso.18013.5.1', 'family_name'] }],
       }),
     ).not.toThrow()
   })
@@ -199,6 +233,52 @@ describe('canWalletSatisfyDcqlCredentialQuery', () => {
 
     expect(canWalletSatisfyDcqlCredentialQuery(drivingLicenceRecord, credential)).toBe(true)
     expect(describeDcqlMatchFailure(drivingLicenceRecord, credential).failedGate).toBe('none')
+  })
+
+  test('matches a third-party stored mdoc against standalone mso_mdoc doctype_value', () => {
+    const tonyhereMdoc: VerifiableCredentialRecord = {
+      id: 'tonyhere-mdoc-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'mdoc:AQIDBA',
+      claims: {
+        doctype: 'org.iso.18013.5.1.mDL',
+        given_name: 'Ada',
+      },
+      issuedAt: '2026-08-24T00:00:00.000Z',
+      issuerUrl: 'https://demo.tonyhere.work',
+    }
+    const credential: DcqlCredentialQuery = {
+      id: 'mdoc_credential',
+      format: 'mso_mdoc',
+      meta: { doctype_value: 'org.iso.18013.5.1.mDL' },
+      claims: [{ path: ['org.iso.18013.5.1', 'family_name'] }],
+    }
+
+    expect(canWalletSatisfyDcqlCredentialQuery(tonyhereMdoc, credential)).toBe(true)
+    expect(describeDcqlMatchFailure(tonyhereMdoc, credential).failedGate).toBe('none')
+  })
+
+  test('matches dual-format DLT when rawVc is SD-JWT but logical mso_mdoc is linked', () => {
+    mockRecordHasLogicalMdocFormat.mockReturnValue(true)
+    const dualFormatRecord: VerifiableCredentialRecord = {
+      id: 'dual-format-dlt-1',
+      type: 'DLTDrivingLicence',
+      rawVc: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~',
+      claims: {
+        givenName: 'Ada',
+        familyName: 'Lovelace',
+      },
+      issuedAt: '2026-08-24T00:00:00.000Z',
+    }
+    const credential: DcqlCredentialQuery = {
+      id: 'mdoc_credential',
+      format: 'mso_mdoc',
+      meta: { doctype_value: 'org.iso.18013.5.1.mDL' },
+      claims: [{ path: ['org.iso.18013.5.1', 'family_name'] }],
+    }
+
+    expect(canWalletSatisfyDcqlCredentialQuery(dualFormatRecord, credential)).toBe(true)
+    expect(describeDcqlMatchFailure(dualFormatRecord, credential).failedGate).toBe('none')
   })
 
   test('does not treat a mis-folded unregistered card as DLT for DCQL type matching', () => {

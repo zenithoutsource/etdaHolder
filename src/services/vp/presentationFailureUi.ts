@@ -31,6 +31,7 @@ export type PresentationFailureKind =
   | 'biometric-unavailable'
   | 'biometric-failed'
   | 'submission-rejected'
+  | 'credential-revoked'
   | 'replay-blocked'
   | 'security-state'
   | 'generic'
@@ -322,14 +323,54 @@ function resolveMessageFailureUi(raw: string, error?: unknown): PresentationFail
     }
   }
 
+  if (raw.includes('PresentationCredentialStatusInvalid')) {
+    const statusMatch = raw.match(/status_list_entry=(VALID|INVALID|SUSPENDED|UNKNOWN)/)
+    const statusLabel = statusMatch?.[1] === 'SUSPENDED'
+      ? 'ถูกระงับ'
+      : statusMatch?.[1] === 'INVALID'
+        ? 'ถูกเพิกถอนแล้ว'
+        : 'ไม่พร้อมใช้งาน'
+    return {
+      kind: 'credential-revoked',
+      title: 'เอกสารไม่พร้อมนำเสนอ',
+      body: `เอกสารนี้${statusLabel}ตามรายการสถานะของผู้ออกเอกสาร`,
+      hint: 'ลบเอกสารเก่าใน Wallet แล้วขอออกเอกสารใหม่จากผู้ออกเอกสาร',
+      showRequestButton: false,
+    }
+  }
+
+  if (raw.includes('DcApiDeliveryFailed') || raw.includes('CredentialManagerDeliveryFailed')) {
+    return {
+      kind: 'submission-rejected',
+      title: 'ส่งข้อมูลกลับไปยังเบราว์เซอร์ไม่สำเร็จ',
+      body: 'Wallet สร้างการนำเสนอสำเร็จแล้ว แต่ไม่สามารถส่งผลลัพธ์กลับไปยัง Chrome ได้',
+      hint: 'กลับไปที่ Chrome แล้วกด Request Credentials ใหม่อีกครั้ง',
+      showRequestButton: false,
+    }
+  }
+
+  if (
+    raw.includes('DC_API_DEVICE_RESPONSE_X5CHAIN_MISSING')
+    || raw.includes('certificate chain (x5chain)')
+  ) {
+    return {
+      kind: 'not-presentable',
+      title: 'เอกสารไม่พร้อมนำเสนอ',
+      body: 'ใบขับขี่ mDL ที่เก็บไว้ไม่มี certificate chain (x5chain) ที่ผู้ตรวจสอบต้องการ',
+      hint: 'ลบเอกสารเก่าใน Wallet แล้วขอออกใบขับขี่ mDL ใหม่จากผู้ออกเอกสาร',
+      showRequestButton: false,
+    }
+  }
+
   if (raw.includes('PresentationSubmissionFailed')) {
     const isIssuer = raw.includes(':issuer')
+    const transportHint = __DEV__ ? readSafeTransportHint(error) : undefined
     return {
       kind: 'submission-rejected',
       title: isIssuer ? 'ผู้ออกเอกสารปฏิเสธการส่งข้อมูล' : 'ผู้ตรวจสอบปฏิเสธการส่งข้อมูล',
-      body: isIssuer
+      body: `${isIssuer
         ? 'คำขอส่งข้อมูลไม่ผ่านการตรวจสอบของผู้ออกเอกสาร'
-        : 'คำขอส่งข้อมูลไม่ผ่านการตรวจสอบของผู้ตรวจสอบ',
+        : 'คำขอส่งข้อมูลไม่ผ่านการตรวจสอบของผู้ตรวจสอบ'}${transportHint ? ` (${transportHint})` : ''}`,
       hint: 'ลองใหม่อีกครั้ง หรือติดต่อผู้เกี่ยวข้องหากปัญหายังคงอยู่',
       showRequestButton: false,
     }
@@ -375,6 +416,28 @@ function resolveMessageFailureUi(raw: string, error?: unknown): PresentationFail
     hint: 'ลองใหม่อีกครั้ง',
     showRequestButton: false,
   }
+}
+
+function readSafeTransportHint(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined
+
+  const hint = (error as Error & { presentationTransportHint?: unknown }).presentationTransportHint
+  if (!hint || typeof hint !== 'object' || Array.isArray(hint)) return undefined
+
+  const { jweSegments, vpTokenJsonType, jweAlg, jweEnc, jweApvPresent } = hint as Record<string, unknown>
+  const fields = [
+    Number.isInteger(jweSegments) && Number(jweSegments) >= 0 && Number(jweSegments) <= 10
+      ? `jwe_segments=${jweSegments}`
+      : undefined,
+    vpTokenJsonType === 'object' || vpTokenJsonType === 'array' || vpTokenJsonType === 'string'
+      ? `vp_token_json_type=${vpTokenJsonType}`
+      : undefined,
+    typeof jweAlg === 'string' ? `jwe_alg=${jweAlg}` : undefined,
+    typeof jweEnc === 'string' ? `jwe_enc=${jweEnc}` : undefined,
+    typeof jweApvPresent === 'boolean' ? `jwe_apv_present=${jweApvPresent}` : undefined,
+  ].filter((field): field is string => Boolean(field))
+
+  return fields.length > 0 ? `transport: ${fields.join('; ')}` : undefined
 }
 
 function resolveMatchFailureKind(error: PresentationCredentialUnavailableError): PresentationMatchFailureKind {

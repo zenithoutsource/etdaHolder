@@ -42,9 +42,11 @@ function base64UrlEncode(bytes: Uint8Array): string {
 }
 
 describe('oid4vpResponseEncryption', () => {
+  const originalOid4vpJweEnc = process.env.EXPO_PUBLIC_OID4VP_JWE_ENC
   const originalWalletDemoInterop = process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
 
   afterEach(() => {
+    process.env.EXPO_PUBLIC_OID4VP_JWE_ENC = originalOid4vpJweEnc
     process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = originalWalletDemoInterop
   })
 
@@ -52,6 +54,8 @@ describe('oid4vpResponseEncryption', () => {
     expect(isSupportedOid4vpResponseMode('direct_post')).toBe(true)
     expect(isSupportedOid4vpResponseMode('direct_post.jwt')).toBe(true)
     expect(isSupportedOid4vpResponseMode('fragment')).toBe(false)
+    expect(isSupportedOid4vpResponseMode('dc_api')).toBe(false)
+    expect(isSupportedOid4vpResponseMode('dc_api.jwt')).toBe(false)
   })
 
   it('selects first usable P-256 ECDH-ES key and default A128GCM', () => {
@@ -77,6 +81,19 @@ describe('oid4vpResponseEncryption', () => {
     expect(params.enc).toBe('A256GCM')
   })
 
+  it('uses the A256GCM dev override when the verifier advertises it', () => {
+    process.env.EXPO_PUBLIC_OID4VP_JWE_ENC = 'A256GCM'
+
+    const params = resolveOid4vpResponseEncryptionParams({
+      client_metadata: {
+        jwks: { keys: [recipientJwk] },
+        encrypted_response_enc_values_supported: ['A128GCM', 'A256GCM'],
+      },
+    })
+
+    expect(params.enc).toBe('A256GCM')
+  })
+
   it('records padding used for a verifier encryption JWK in demo interop', () => {
     process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
 
@@ -87,6 +104,19 @@ describe('oid4vpResponseEncryption', () => {
     })
 
     expect(params.jwkCoordinatePadded).toBe(true)
+  })
+
+  it('ignores the A256GCM dev override when the verifier does not advertise it', () => {
+    process.env.EXPO_PUBLIC_OID4VP_JWE_ENC = 'A256GCM'
+
+    const params = resolveOid4vpResponseEncryptionParams({
+      client_metadata: {
+        jwks: { keys: [recipientJwk] },
+        encrypted_response_enc_values_supported: ['A128GCM'],
+      },
+    })
+
+    expect(params.enc).toBe('A128GCM')
   })
 
   it('rejects oversized verifier encryption coordinates in demo interop', () => {

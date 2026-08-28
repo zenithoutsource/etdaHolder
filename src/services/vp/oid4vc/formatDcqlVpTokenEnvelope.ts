@@ -12,7 +12,7 @@ export type DcqlVpTokenEnvelopeInput = {
 
 /**
  * Build a DCQL vp_token response envelope and validate it with the oid4vc parser.
- * Wallet-owned shape selection stays env-driven via EXPO_PUBLIC_VERIFIER_DCQL_VP_TOKEN_SHAPE.
+ * Shape selection is caller-driven; demo interop may negotiate shapes per verifier.
  */
 export function formatDcqlVpTokenEnvelope(input: DcqlVpTokenEnvelopeInput): string {
   const shape = input.shape ?? readVerifierDcqlVpTokenShape()

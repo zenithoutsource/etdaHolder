@@ -49,6 +49,7 @@ describe('directPostFormBody', () => {
         responseMode: 'direct_post.jwt',
         responseEncryption: { alg: 'ECDH-ES', enc: 'A128GCM', jwk: publicJwk },
         state: 's1',
+        nonce: 'request-nonce-42',
         dcqlQuery: { credentials: [{ id: 'idcard_credential' }] },
       },
       formattedVpToken: vpEnvelope,
@@ -63,7 +64,7 @@ describe('directPostFormBody', () => {
       Buffer.from(headerSegment.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'),
     ) as Record<string, unknown>
     expect(header.apu).toBeUndefined()
-    expect(header.apv).toBeUndefined()
+    expect(header.apv).toBe('cmVxdWVzdC1ub25jZS00Mg')
 
     const decrypted = decryptCompactJweEcdhEsP256ForTest(body.get('response')!, privateKey)
     expect(decrypted.vp_token).toEqual({ idcard_credential: ['vp.jwt'] })
@@ -78,6 +79,7 @@ describe('directPostFormBody', () => {
         responseMode: 'direct_post.jwt',
         responseEncryption: { alg: 'ECDH-ES', enc: 'A128GCM', jwk: publicJwk },
         state: 's1',
+        nonce: 'request-nonce-42',
       },
       formattedVpToken: 'vp.jwt',
       presentationSubmission,
@@ -88,8 +90,8 @@ describe('directPostFormBody', () => {
     expect(decrypted.state).toBe('s1')
   })
 
-  it('includes nonce-derived JWE apv for the explicit development override', () => {
-    process.env.EXPO_PUBLIC_OID4VP_JWE_APV = 'true'
+  it('includes nonce-derived JWE apv by default', () => {
+    delete process.env.EXPO_PUBLIC_OID4VP_JWE_APV
     const body = buildDirectPostFormBody({
       request: {
         responseMode: 'direct_post.jwt',
@@ -107,9 +109,9 @@ describe('directPostFormBody', () => {
     expect(header.apv).toBe('cmVxdWVzdC1ub25jZS00Mg')
   })
 
-  test('demo interop ignores EXPO_PUBLIC_OID4VP_JWE_APV even when set', () => {
+  test('demo interop still binds apv, and the development opt-out removes it', () => {
     process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
-    process.env.EXPO_PUBLIC_OID4VP_JWE_APV = 'true'
+    delete process.env.EXPO_PUBLIC_OID4VP_JWE_APV
 
     const vpEnvelope = JSON.stringify({ q1: ['vp.jwt'] })
     const body = buildDirectPostFormBody({
@@ -126,8 +128,27 @@ describe('directPostFormBody', () => {
     const header = JSON.parse(
       Buffer.from(body.get('response')!.split('.')[0]!.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'),
     )
-    expect(header.apv).toBeUndefined()
+    expect(header.apv).toBe('bm9uY2UtMQ')
     expect(header.apu).toBeUndefined()
+
+    process.env.EXPO_PUBLIC_OID4VP_JWE_APV = 'false'
+    const optedOutBody = buildDirectPostFormBody({
+      request: {
+        responseMode: 'direct_post.jwt',
+        responseEncryption: { alg: 'ECDH-ES', enc: 'A128GCM', jwk: publicJwk },
+        state: 's1',
+        nonce: 'nonce-1',
+        dcqlQuery: { credentials: [{ id: 'q1' }] },
+      },
+      formattedVpToken: vpEnvelope,
+    })
+    const optedOutHeader = JSON.parse(
+      Buffer.from(
+        optedOutBody.get('response')!.split('.')[0]!.replace(/-/g, '+').replace(/_/g, '/'),
+        'base64',
+      ).toString('utf8'),
+    )
+    expect(optedOutHeader.apv).toBeUndefined()
   })
 
   test('encrypted DCQL payload stores vp_token as object without presentation_submission', () => {
@@ -138,6 +159,7 @@ describe('directPostFormBody', () => {
         responseMode: 'direct_post.jwt',
         responseEncryption: { alg: 'ECDH-ES', enc: 'A128GCM', jwk: publicJwk },
         state: 's1',
+        nonce: 'nonce-1',
         dcqlQuery: { credentials: [{ id: 'q1' }] },
       },
       formattedVpToken: vpEnvelope,

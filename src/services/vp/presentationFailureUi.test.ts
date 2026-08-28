@@ -92,6 +92,48 @@ describe('resolvePresentationFailureUi', () => {
     expect(ui.body).not.toContain('ES256')
   })
 
+  test('redacts OAuth errors in production and only exposes structural transport hints in dev', () => {
+    const runtime = globalThis as typeof globalThis & { __DEV__?: boolean }
+    const originalDev = runtime.__DEV__
+    const error = Object.assign(
+      new Error(
+        'PresentationSubmissionFailed: HTTP 400: invalid_request; token=eyJhbGciOiJIUzI1NiJ9.secret; '
+        + 'claims=full_name:Alice; plaintext=Alice; jwe=eyJ...; '
+        + 'untrustedDiagnostic=jwe_segments=999; vp_token_json_type=array',
+      ),
+      {
+        presentationTransportHint: {
+          jweSegments: 5,
+          vpTokenJsonType: 'object',
+          oauthError: 'invalid_request',
+          token: 'eyJhbGciOiJIUzI1NiJ9.secret',
+          plaintext: 'Alice',
+        },
+      },
+    )
+
+    try {
+      runtime.__DEV__ = false
+      const productionUi = resolvePresentationFailureUi(error)
+      expect(productionUi.body).not.toContain('invalid_request')
+      expect(productionUi.body).not.toContain('jwe_segments')
+      expect(productionUi.body).not.toContain('vp_token_json_type')
+
+      runtime.__DEV__ = true
+      const developmentUi = resolvePresentationFailureUi(error)
+      expect(developmentUi.body).toContain('jwe_segments=5')
+      expect(developmentUi.body).toContain('vp_token_json_type=object')
+      expect(developmentUi.body).not.toContain('jwe_segments=999')
+      expect(developmentUi.body).not.toContain('vp_token_json_type=array')
+      expect(developmentUi.body).not.toContain('invalid_request')
+      expect(developmentUi.body).not.toContain('eyJhbGciOiJIUzI1NiJ9.secret')
+      expect(developmentUi.body).not.toContain('Alice')
+      expect(developmentUi.body).not.toContain('eyJ...')
+    } finally {
+      runtime.__DEV__ = originalDev
+    }
+  })
+
   test('maps PresentationPidRequired to the PID-first presentation screen', () => {
     expect(resolvePresentationFailureUi(new Error('PresentationPidRequired'))).toEqual(
       expect.objectContaining({

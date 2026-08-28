@@ -3,8 +3,13 @@ import {
   signPresentationVpToken as defaultSignPresentationVpToken,
   signSdJwtKbPresentationToken as defaultSignSdJwtKbPresentationToken,
 } from '../crypto/crypto'
+import { canBuildOid4vpMdocDeviceResponse } from './oid4vpMdocDeviceResponse'
 import { buildApprovedPresentationResponse } from './presentationTokenBuilders/registry'
-import type { PresentationSubmission, ResolvedPresentationRequest } from './presentationService'
+import {
+  readPresentationTokenMode,
+  type PresentationSubmission,
+  type ResolvedPresentationRequest,
+} from './presentationService'
 
 type ApprovedPresentationResponse = {
   vpToken: string
@@ -28,6 +33,27 @@ export async function confirmPresentationBiometric(): Promise<void> {
     logScope: 'oid4vp',
     errorPrefix: 'PresentationBiometric',
   })
+}
+
+/**
+ * App-level biometric before submit when no sign-time Keychain/native gate will run.
+ * Signed SD-JWT / JWT VP modes sign on approve; mso_mdoc with hardware signs DeviceResponse.
+ */
+export function requiresPresentationAppBiometric(
+  request: ResolvedPresentationRequest,
+  options: {
+    readTokenMode?: typeof readPresentationTokenMode
+    canBuildMdocDeviceResponse?: typeof canBuildOid4vpMdocDeviceResponse
+  } = {},
+): boolean {
+  const readTokenMode = options.readTokenMode ?? readPresentationTokenMode
+  const canBuildMdocDeviceResponse = options.canBuildMdocDeviceResponse ?? canBuildOid4vpMdocDeviceResponse
+  const tokenMode = readTokenMode(request)
+  if (tokenMode === 'raw-credential') return true
+  if (tokenMode === 'mso-mdoc') {
+    return !canBuildMdocDeviceResponse(request.matchedCredential.id)
+  }
+  return false
 }
 
 export async function createApprovedPresentationResponse(

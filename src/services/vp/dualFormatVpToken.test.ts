@@ -49,7 +49,7 @@ test('buildDualFormatDcqlVpToken assembles per-query-id tokens', async () => {
     credentialId: 'credential-1',
     sdJwt: 'issuer.sd.jwt~WyJzYWx0LW5hbWUiLCJuYW1lIiwiQWxpY2UiXQ~',
   })
-  expect(readMdocEntry).toHaveBeenCalledWith('credential-1')
+  expect(readMdocEntry).toHaveBeenCalledWith('credential-1', baseRequest.matchedCredential.rawVc)
   expect(JSON.parse(vpToken)).toEqual({
     transcript_sd_jwt: ['sd-jwt~kb.jwt'],
     transcript_mdoc: ['b64mdoc'],
@@ -105,7 +105,7 @@ test('buildDualFormatDcqlVpToken assembles driving licence dual-format tokens', 
     readMdocEntry,
   })
 
-  expect(readMdocEntry).toHaveBeenCalledWith('dl-credential-1')
+  expect(readMdocEntry).toHaveBeenCalledWith('dl-credential-1', request.matchedCredential.rawVc)
   expect(vpToken).toContain('driving_licence_mdoc')
   expect(vpToken).toContain('driving_licence_sd_jwt')
 })

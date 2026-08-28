@@ -78,6 +78,18 @@ describe('selectSdJwtDisclosures', () => {
     )
   })
 
+  test('selects nested EUDI PID age disclosures by DCQL path segment', () => {
+    const ageDisclosure = encodeDisclosure(['salt-age', '21', true])
+    const nameDisclosure = encodeDisclosure(['salt-name', 'given_name', 'Erika'])
+    const rawSdJwt = `${issuerJwt}~${nameDisclosure}~${ageDisclosure}~`
+
+    expect(
+      selectSdJwtDisclosures(rawSdJwt, ['age_equal_or_over', '21'], {
+        documentType: 'ThaiNationalID',
+      }),
+    ).toBe(`${issuerJwt}~${ageDisclosure}~`)
+  })
+
   test('countSdJwtDisclosureSegments ignores KB-looking segments', () => {
     expect(countSdJwtDisclosureSegments(`${issuerJwt}~${nameDisclosure}~aaa.bbb.ccc`)).toBe(1)
   })

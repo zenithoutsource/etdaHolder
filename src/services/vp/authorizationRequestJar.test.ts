@@ -63,6 +63,15 @@ describe('authorizationRequestJar', () => {
     crv: 'Ed25519',
     x: base64UrlEncodeBytes(getPublicKey(privateKey)),
   }
+  const originalDemoInterop = process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+
+  afterEach(() => {
+    if (originalDemoInterop === undefined) {
+      delete process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+    } else {
+      process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = originalDemoInterop
+    }
+  })
 
   test('accepts unsigned redirect_uri request objects', async () => {
     const jwt = `${encodePart({ alg: 'none', typ: 'oauth-authz-req+jwt' })}.${encodePart({
@@ -255,7 +264,49 @@ describe('authorizationRequestJar', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  test('verifies signed did:web DC API JARs without response_uri using the platform origin', async () => {
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+
+    const payload = {
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
+      response_mode: 'dc_api',
+      nonce: 'nonce-dc-api',
+      expected_origins: ['https://demo.example.com'],
+      dcql_query: { credentials: [] },
+    }
+    const jwt = await signedRequestJwt(payload, privateKey, {
+      kid: 'did:web:verifier.example.com#key-1',
+      jwk: undefined,
+    })
+    const fetchMock = jest.fn(async () =>
+      Response.json({
+        id: 'did:web:verifier.example.com',
+        verificationMethod: [
+          {
+            id: 'did:web:verifier.example.com#key-1',
+            type: 'JsonWebKey2020',
+            publicKeyJwk: publicJwk,
+          },
+        ],
+      }),
+    )
+
+    await expect(
+      parseAuthorizationRequestBody(jwt, {
+        trustedVerifiers: [],
+        trustOrigin: 'https://demo.example.com',
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).resolves.toMatchObject({
+      client_id: 'decentralized_identifier:did:web:verifier.example.com',
+      expected_origins: ['https://demo.example.com'],
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   test('rejects untrusted decentralized_identifier request before did:web document fetch', async () => {
+    delete process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+
     const payload = {
       client_id: 'decentralized_identifier:did:web:verifier.example.com',
       response_uri: 'https://verifier.example.com/oid4vp/direct-post',

@@ -2,13 +2,18 @@ import {
   buildPresentationSubmission,
   type ResolvedPresentationRequest,
 } from './presentationService'
-import { confirmPresentationBiometric, createApprovedPresentationResponse } from './presentationApproval'
+import {
+  confirmPresentationBiometric,
+  createApprovedPresentationResponse,
+  requiresPresentationAppBiometric,
+} from './presentationApproval'
+import { logWalletError, logWalletStep } from '../debug/walletLogger'
 
 const mockHasHardwareAsync = jest.fn()
 const mockIsEnrolledAsync = jest.fn()
 const mockAuthenticateAsync = jest.fn()
-const mockLogWalletStep = jest.fn()
-const mockLogWalletError = jest.fn()
+const mockLogWalletStep = jest.mocked(logWalletStep)
+const mockLogWalletError = jest.mocked(logWalletError)
 
 jest.mock('expo-local-authentication', () => ({
   hasHardwareAsync: (...args: unknown[]) => mockHasHardwareAsync(...args),
@@ -17,8 +22,8 @@ jest.mock('expo-local-authentication', () => ({
 }))
 
 jest.mock('../debug/walletLogger', () => ({
-  logWalletError: (...args: unknown[]) => mockLogWalletError(...args),
-  logWalletStep: (...args: unknown[]) => mockLogWalletStep(...args),
+  logWalletError: jest.fn(),
+  logWalletStep: jest.fn(),
 }))
 
 const rawCredential = 'issuer.sd.jwt~disclosure~'
@@ -72,6 +77,29 @@ describe('presentationApproval', () => {
     mockHasHardwareAsync.mockResolvedValue(true)
     mockIsEnrolledAsync.mockResolvedValue(true)
     mockAuthenticateAsync.mockResolvedValue({ success: true })
+  })
+
+  test('requires app biometric for raw-credential mode', () => {
+    expect(requiresPresentationAppBiometric(baseRequest, { readTokenMode: () => 'raw-credential' })).toBe(true)
+  })
+
+  test('does not require app biometric for sd-jwt-kb or signed-vp-jwt modes', () => {
+    expect(requiresPresentationAppBiometric(baseRequest, { readTokenMode: () => 'sd-jwt-kb' })).toBe(false)
+    expect(requiresPresentationAppBiometric(baseRequest, { readTokenMode: () => 'signed-vp-jwt' })).toBe(false)
+  })
+
+  test('skips app biometric for mso-mdoc when hardware DeviceResponse will sign', () => {
+    expect(requiresPresentationAppBiometric(baseRequest, {
+      readTokenMode: () => 'mso-mdoc',
+      canBuildMdocDeviceResponse: () => true,
+    })).toBe(false)
+  })
+
+  test('requires app biometric for mso-mdoc fallback without hardware DeviceResponse', () => {
+    expect(requiresPresentationAppBiometric(baseRequest, {
+      readTokenMode: () => 'mso-mdoc',
+      canBuildMdocDeviceResponse: () => false,
+    })).toBe(true)
   })
 
   test('uses biometric-only OS prompt without device credential fallback', async () => {

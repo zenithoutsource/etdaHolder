@@ -8,13 +8,17 @@ import {
   isSdJwtKbDisabledForTesting,
   readVerifierDcqlVpTokenShape,
   readVerifierKbAudienceMode,
+  readWalletDemoInteropEnabled,
+  type VerifierDcqlVpTokenShape,
 } from '../../config/runtimeFlags'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
-import { isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
+import { agentDebugLog, buildSubmitDebugEvidence, formatSubmitDebugEvidenceSummary } from '../debug/agentDebugLog'
+import { isRecord, readString, toErrorMessage, decodeJwtPayload } from '@/src/utils/jwtUtils'
 import { normalizeClaimKey } from '@/src/utils/claimKeyNormalization'
 import { enrichDisclosuresWithPolicy } from './claimDisclosurePolicy'
 import type { FetchIssuerMetadata, VerifiableCredentialRecord } from '../vci/exchangeService'
 import { fetchIssuerMetadata, readCredentialClaimMap } from '../vci/exchangeService'
+import { assertIssuerDidWebCredentialSignature } from '../vci/issuerDidWebVerify'
 import { parseClientId } from './clientIdScheme'
 import { parseAuthorizationRequestBody } from './authorizationRequestJar'
 import {
@@ -28,6 +32,8 @@ import {
   readCredentialVct,
 } from './dcqlCredentialMatch'
 import { parseDcqlCredentialSets, resolveDcqlCredentialSelection } from './dcqlCredentialSetResolver'
+import { buildDcqlClaimDisclosures } from './dcqlClaimDisclosures'
+import { parseTransactionDataFromAuthorizationRequest, type TransactionDataPresentationContext } from './transactionDataKbJwt'
 import { formatDcqlVpTokenEnvelope } from './oid4vc/formatDcqlVpTokenEnvelope'
 import {
   createSafePresentationTransportHint,
@@ -46,8 +52,14 @@ import {
 } from './presentationCredentialMatch'
 import { isPreformattedDualFormatVpToken } from './dualFormatVpToken'
 import { fetchPresentationDefinition } from './presentationDefinitionResolver'
+import {
+  formatTokenStatusListProbeSummary,
+  probeTokenStatusList,
+  readTokenStatusListRefFromSdJwt,
+  type TokenStatusListProbeResult,
+} from '../credentials/tokenStatusList'
 import { hasUsablePidCredential } from '../credentials/credentialGuard'
-import { ensureNativeMdocStored } from '../proximity/mdocCredential'
+import { ensureNativeMdocStored, isMdocPresentableRecord } from '../proximity/mdocCredential'
 import { readTrustAnyOid4vcPeerForClientId } from '../../config/oid4vcPeerTrustPolicy'
 import { findTrustedVerifier, type TrustedVerifier } from './trustedVerifierMatcher'
 import { PresentationCredentialUnavailableError, type PresentationMatchFailureKind } from './presentationUnavailable'
@@ -69,6 +81,12 @@ import {
   type Oid4vpResponseMode,
 } from './oid4vpResponseEncryption'
 import { buildDirectPostFormBody } from './directPostFormBody'
+import {
+  persistSuccessfulDcqlVpTokenShape,
+  readVerifierDcqlVpTokenShapeEnvOverride,
+  resolveDcqlVpTokenShapeForPresentation,
+  type ResolvedDcqlVpTokenShape,
+} from './verifierDcqlSubmitNegotiation'
 
 type JsonRecord = Record<string, unknown>
 
@@ -145,6 +163,7 @@ export type ResolvedPresentationRequest = {
   protocolPath: ProtocolPath
   oid4vcContext?: Oid4vcAdapterContext
   responseEncryption?: Oid4vpResponseEncryptionParams
+  transactionData?: TransactionDataPresentationContext
 }
 
 export type PresentationSubmission = {
@@ -429,7 +448,9 @@ export async function resolvePresentationRequest(
     await ensureNativeMdocStored(matchedCredential)
   }
 
-  const dcqlClaimDisclosures = effectiveDcqlQuery ? readDcqlClaimDisclosures(matchedCredential, effectiveDcqlQuery) : undefined
+  const dcqlClaimDisclosures = effectiveDcqlQuery
+    ? buildDcqlClaimDisclosures(matchedCredential, effectiveDcqlQuery)
+    : undefined
   const rawDisclosures = presentationDefinition
     ? readBirthDateDisclosures(matchedCredential)
     : dcqlClaimDisclosures ?? [readCredentialDisclosure(matchedCredential)]
@@ -440,6 +461,7 @@ export async function resolvePresentationRequest(
       ? { credentialConfigurationId: matchedCredential.credentialConfigurationId }
       : {}),
   })
+  const transactionData = parseTransactionDataFromAuthorizationRequest(authorizationRequest)
   const resolvedRequest: ResolvedPresentationRequest = {
     requestUri: rawRequestUri,
     clientId,
@@ -452,6 +474,7 @@ export async function resolvePresentationRequest(
     ...(readString(authorizationRequest.state) ? { state: readString(authorizationRequest.state) } : {}),
     ...(presentationDefinition ? { presentationDefinition } : {}),
     ...(effectiveDcqlQuery ? { dcqlQuery: effectiveDcqlQuery } : {}),
+    ...(transactionData ? { transactionData } : {}),
     verifier,
     matchedCredential,
     disclosures,
@@ -522,23 +545,247 @@ export function readPresentationTokenAudience(request: Pick<ResolvedPresentation
   return readVerifierKbAudienceMode() === 'response_uri' ? request.responseUri : request.clientId
 }
 
+type DcqlShapeResolution = ResolvedDcqlVpTokenShape | VerifierDcqlVpTokenShape
+
+function resolveDcqlVpTokenShapeForRequest(request: ResolvedPresentationRequest): DcqlShapeResolution {
+  if (!request.dcqlQuery) return readVerifierDcqlVpTokenShape()
+
+  return resolveDcqlVpTokenShapeForPresentation({
+    clientId: request.clientId,
+    responseUri: request.responseUri,
+    dcqlCredentialCount: request.dcqlQuery.credentials.length,
+    envOverride: readVerifierDcqlVpTokenShapeEnvOverride(),
+  })
+}
+
+function readSubmitTokenShape(resolution: DcqlShapeResolution): VerifierDcqlVpTokenShape {
+  return typeof resolution === 'string' ? resolution : resolution.shape
+}
+
+function readSubmitShapeLogFields(
+  resolution: DcqlShapeResolution,
+): { tokenShape: VerifierDcqlVpTokenShape; interopCacheKey?: string; shapeSource?: string } {
+  if (typeof resolution === 'string') {
+    return { tokenShape: resolution, shapeSource: 'non-dcql' }
+  }
+  return {
+    tokenShape: resolution.shape,
+    interopCacheKey: resolution.cacheKey,
+    shapeSource: resolution.source,
+  }
+}
+
+function maybePersistSuccessfulDcqlShape(
+  request: ResolvedPresentationRequest,
+  resolution: DcqlShapeResolution,
+  tokenShape: VerifierDcqlVpTokenShape,
+): void {
+  if (!request.dcqlQuery || typeof resolution === 'string') return
+  persistSuccessfulDcqlVpTokenShape({
+    cacheKey: resolution.cacheKey,
+    shape: tokenShape,
+    envOverride: readVerifierDcqlVpTokenShapeEnvOverride(),
+  })
+}
+
+const submitAttemptsByState = new Map<string, number>()
+
+function nextSubmitAttemptForState(state: string | undefined): number {
+  const key = state && state.length > 0 ? state : 'missing'
+  const next = (submitAttemptsByState.get(key) ?? 0) + 1
+  submitAttemptsByState.set(key, next)
+  return next
+}
+
+function readEncryptionSelection(request: ResolvedPresentationRequest) {
+  if (!request.responseEncryption) return undefined
+  return {
+    jwksKeyCount: request.responseEncryption.jwksKeyCount ?? 0,
+    selectedKeyIndex: request.responseEncryption.selectedKeyIndex ?? 0,
+    advertisedEncValues: request.responseEncryption.advertisedEncValues ?? [],
+    selectedEnc: request.responseEncryption.enc,
+  }
+}
+
 export async function submitPresentationResponse(
   request: ResolvedPresentationRequest,
   options: SubmitPresentationResponseOptions,
 ): Promise<VerifierResponse> {
-  const formattedVpToken = formatVpTokenForResponse(request, options.vpToken)
+  const shapeResolution = resolveDcqlVpTokenShapeForRequest(request)
+  const tokenShape = readSubmitTokenShape(shapeResolution)
+  const shapeLogFields = readSubmitShapeLogFields(shapeResolution)
+  const formattedVpToken = formatVpTokenForResponse(request, options.vpToken, tokenShape)
+  const submitAttemptForState = nextSubmitAttemptForState(request.state)
 
   logWalletStep('oid4vp', 'submit-response-start', {
     responseUri: request.responseUri,
     verifierName: request.verifier.name,
     presentationBytes: options.vpToken.length,
-    tokenShape: request.dcqlQuery ? readVerifierDcqlVpTokenShape() : 'raw',
+    tokenShape: request.dcqlQuery ? tokenShape : 'raw',
+    ...shapeLogFields,
+    shapeNegotiation: Boolean(request.dcqlQuery),
     submissionPresent: Boolean(options.presentationSubmission),
     statePresent: Boolean(request.state),
     protocolPath: request.protocolPath,
     responseMode: request.responseMode,
     encryptedResponse: request.responseMode === 'direct_post.jwt',
+    submitAttemptForState,
   })
+
+  const issuerJwt = request.matchedCredential.rawVc.split('~')[0] ?? ''
+  const issuerPayload = decodeJwtPayload(issuerJwt)
+  const statusRecord = isRecord(issuerPayload?.status) ? issuerPayload.status : undefined
+  const statusList = isRecord(statusRecord?.status_list) ? statusRecord.status_list : undefined
+  // #region agent log
+  agentDebugLog({
+    location: 'presentationService.ts:submit',
+    message: 'credential-issuer-context',
+    hypothesisId: 'H8',
+    data: {
+      credentialId: request.matchedCredential.id,
+      credentialType: request.matchedCredential.type,
+      credentialIss: readString(issuerPayload?.iss),
+      credentialVct: readString(issuerPayload?.vct),
+      issuerUrl: request.matchedCredential.issuerUrl,
+      statusClaimType: issuerPayload?.status === undefined ? 'none' : typeof issuerPayload.status,
+      statusListPresent: Boolean(statusList),
+      statusListIdx: typeof statusList?.idx === 'number' ? statusList.idx : 'none',
+      issuerSdCount: Array.isArray(issuerPayload?._sd) ? issuerPayload._sd.length : 0,
+      nbfInFuture: typeof issuerPayload?.nbf === 'number'
+        ? issuerPayload.nbf > Math.floor(Date.now() / 1000)
+        : 'unknown',
+      expInPast: typeof issuerPayload?.exp === 'number'
+        ? issuerPayload.exp < Math.floor(Date.now() / 1000)
+        : 'unknown',
+      jwksKeyCount: request.responseEncryption?.jwksKeyCount ?? 0,
+      selectedKeyIndex: request.responseEncryption?.selectedKeyIndex ?? -1,
+      advertisedEnc: request.responseEncryption?.advertisedEncValues ?? [],
+      selectedEnc: request.responseEncryption?.enc ?? 'none',
+      submitAttemptForState,
+      verifierHost: (() => {
+        try {
+          return new URL(request.responseUri).hostname
+        } catch {
+          return 'unknown'
+        }
+      })(),
+      tokenShape: request.dcqlQuery ? tokenShape : 'raw',
+    },
+  })
+  // #endregion
+
+  const statusListProbe = await probeCredentialStatusListForSubmit(
+    request.matchedCredential.rawVc,
+    options.fetchImpl,
+  )
+  if (statusListProbe.result.state === 'resolved' && !statusListProbe.result.isValid) {
+    throw new Error(`PresentationCredentialStatusInvalid: ${statusListProbe.summary}`)
+  }
+
+  const issuerSigSummary = await probeIssuerJwtSignatureForSubmit(
+    request.matchedCredential.rawVc,
+    options.fetchImpl,
+  )
+  const submitContextSummary = `${statusListProbe.summary}; ${issuerSigSummary}`
+
+  const result = await submitFormattedPresentationResponse(
+    request,
+    options,
+    formattedVpToken,
+    tokenShape,
+    shapeResolution,
+    submitAttemptForState,
+    submitContextSummary,
+  )
+
+  return result
+}
+
+async function probeCredentialStatusListForSubmit(
+  rawVc: string,
+  fetchImpl?: typeof fetch,
+): Promise<{ result: TokenStatusListProbeResult; summary: string }> {
+  const ref = readTokenStatusListRefFromSdJwt(rawVc)
+  if (!ref) {
+    return { result: { state: 'no_status_list' }, summary: formatTokenStatusListProbeSummary({ state: 'no_status_list' }) }
+  }
+
+  const result = await probeTokenStatusList(ref, fetchImpl)
+  const summary = formatTokenStatusListProbeSummary(result)
+  // #region agent log
+  agentDebugLog({
+    location: 'presentationService.ts:status-list-probe',
+    message: 'credential-status-list-probe',
+    hypothesisId: 'H8',
+    data: {
+      statusListUriHost: (() => {
+        try {
+          return new URL(ref.uri).hostname
+        } catch {
+          return 'unknown'
+        }
+      })(),
+      statusListIdx: ref.idx,
+      probeState: result.state,
+      ...(result.state === 'resolved'
+        ? {
+          statusName: result.statusName,
+          statusCode: result.statusCode,
+          isValid: result.isValid,
+          subjectMatchesUri: result.subjectMatchesUri,
+        }
+        : result.state === 'fetch_failed'
+          ? { httpStatus: result.httpStatus, reason: result.reason }
+          : result.state === 'probe_failed'
+            ? { reason: result.reason }
+            : {}),
+    },
+  })
+  // #endregion
+  return { result, summary }
+}
+
+async function probeIssuerJwtSignatureForSubmit(
+  rawVc: string,
+  fetchImpl?: typeof fetch,
+): Promise<string> {
+  try {
+    await assertIssuerDidWebCredentialSignature(rawVc, { fetchImpl })
+    // #region agent log
+    agentDebugLog({
+      location: 'presentationService.ts:issuer-sig-probe',
+      message: 'issuer-jwt-signature-probe',
+      hypothesisId: 'H19',
+      data: { issuerJwtSigVerifies: true },
+    })
+    // #endregion
+    return 'issuer_jwt_sig_verifies=true'
+  } catch (error) {
+    const reason = error instanceof Error ? error.name : 'unknown'
+    // #region agent log
+    agentDebugLog({
+      location: 'presentationService.ts:issuer-sig-probe',
+      message: 'issuer-jwt-signature-probe',
+      hypothesisId: 'H19',
+      data: {
+        issuerJwtSigVerifies: false,
+        reason,
+      },
+    })
+    // #endregion
+    return `issuer_jwt_sig_verifies=false; issuer_sig_probe=${reason}`
+  }
+}
+
+async function submitFormattedPresentationResponse(
+  request: ResolvedPresentationRequest,
+  options: SubmitPresentationResponseOptions,
+  formattedVpToken: string,
+  tokenShape: VerifierDcqlVpTokenShape,
+  shapeResolution: DcqlShapeResolution,
+  submitAttemptForState: number,
+  statusListProbeSummary: string,
+): Promise<VerifierResponse> {
   if (request.protocolPath === 'oid4vc') {
     if (!request.oid4vcContext) {
       throw new Error('PresentationSubmissionFailed: oid4vc adapter context is missing')
@@ -569,6 +816,8 @@ export async function submitPresentationResponse(
       const parsedBody = adapterResult.parsedBody
       const redirectUri = readVerifierReturnUrl(parsedBody, request)
 
+      maybePersistSuccessfulDcqlShape(request, shapeResolution, tokenShape)
+
       return {
         status: readString(isRecord(parsedBody) ? parsedBody.status : undefined) ?? 'verified',
         ...(readString(isRecord(parsedBody) ? parsedBody.message : undefined)
@@ -580,6 +829,7 @@ export async function submitPresentationResponse(
       const diagnostic = describePresentationAttempt({
         request,
         vpToken: options.vpToken,
+        tokenShape: request.dcqlQuery ? tokenShape : undefined,
       })
       const transportHint = error instanceof Error
         ? (error as Error & { presentationTransportHint?: SafePresentationTransportHint }).presentationTransportHint
@@ -591,14 +841,23 @@ export async function submitPresentationResponse(
         ? describeEncryptedSubmitAttempt({
           request,
           transportHint: safeTransportHint,
+          tokenShape: request.dcqlQuery ? tokenShape : undefined,
           ...(request.responseEncryption?.jwkCoordinatePadded ? { jwkCoordPadded: true } : {}),
+          ...(readEncryptionSelection(request) ? { encryptionSelection: readEncryptionSelection(request) } : {}),
         })
         : undefined
+      const submitDebugEvidence = buildSubmitDebugEvidence({
+        request,
+        formattedVpToken,
+        vpToken: options.vpToken,
+        tokenShape: request.dcqlQuery ? tokenShape : undefined,
+      })
       logWalletError('oid4vp', 'submit-response-failed', error, {
         responseUri: request.responseUri,
         verifierName: request.verifier.name,
         protocolPath: request.protocolPath,
-        diagnostic,
+        diagnostic: `${diagnostic}; ${statusListProbeSummary}; submit_evidence: ${formatSubmitDebugEvidenceSummary(submitDebugEvidence)}; ${formatSubmitFailureExtras({ submitAttemptForState, error })}`,
+        submitDebugEvidence,
         ...(transportDiagnostic ? { transportDiagnostic } : {}),
       })
       const raw = error instanceof Error ? error.message : String(error)
@@ -611,6 +870,13 @@ export async function submitPresentationResponse(
     formattedVpToken,
     presentationSubmission: options.presentationSubmission,
   })
+  const compactJwe = body.get('response') ?? undefined
+  const presentationTransportHint = typeof compactJwe === 'string'
+    ? createSafePresentationTransportHint({
+      formattedVpToken,
+      compactJwe,
+    })
+    : undefined
 
   const response = await (options.fetchImpl ?? fetch)(request.responseUri, {
     method: 'POST',
@@ -633,29 +899,89 @@ export async function submitPresentationResponse(
     const diagnostic = describePresentationAttempt({
       request,
       vpToken: options.vpToken,
+      tokenShape: request.dcqlQuery ? tokenShape : undefined,
     })
-    logWalletError('oid4vp', 'submit-response-failed', new Error(`PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`), {
+    const transportDiagnostic = presentationTransportHint
+      ? describeEncryptedSubmitAttempt({
+        request,
+        transportHint: presentationTransportHint,
+        tokenShape: request.dcqlQuery ? tokenShape : undefined,
+        ...(request.responseEncryption?.jwkCoordinatePadded ? { jwkCoordPadded: true } : {}),
+        ...(readEncryptionSelection(request) ? { encryptionSelection: readEncryptionSelection(request) } : {}),
+      })
+      : undefined
+    const submissionError = new Error(
+      `PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`,
+    )
+    const submitDebugEvidence = buildSubmitDebugEvidence({
+      request,
+      formattedVpToken,
+      vpToken: options.vpToken,
+      tokenShape: request.dcqlQuery ? tokenShape : undefined,
+    })
+    logWalletError('oid4vp', 'submit-response-failed', submissionError, {
       responseUri: request.responseUri,
       verifierName: request.verifier.name,
       status: response.status,
       parsedBody,
-      diagnostic,
+      diagnostic: `${diagnostic}; ${statusListProbeSummary}; submit_evidence: ${formatSubmitDebugEvidenceSummary(submitDebugEvidence)}; ${formatSubmitFailureExtras({ submitAttemptForState, parsedBody, contentType: response.headers.get('content-type') ?? undefined })}`,
+      submitDebugEvidence,
+      ...(transportDiagnostic ? { transportDiagnostic } : {}),
     })
     const isIssuerPost = isIssuerOid4VpResponseUri(request.responseUri) || isIssuerOid4VpClientId(request.clientId)
-    throw new Error(
+    throw createPresentationSubmissionError(
       isIssuerPost
         ? `PresentationSubmissionFailed:issuer: HTTP ${response.status}${formatVerifierError(parsedBody)}`
         : `PresentationSubmissionFailed: HTTP ${response.status}${formatVerifierError(parsedBody)}`,
+      presentationTransportHint,
     )
   }
 
   const redirectUri = readVerifierReturnUrl(parsedBody, request)
+
+  maybePersistSuccessfulDcqlShape(request, shapeResolution, tokenShape)
 
   return {
     status: readString(parsedBody.status) ?? 'verified',
     ...(readString(parsedBody.message) ? { message: readString(parsedBody.message) } : {}),
     ...(redirectUri ? { redirectUri } : {}),
   }
+}
+
+function formatSubmitFailureExtras(input: {
+  submitAttemptForState: number
+  error?: unknown
+  parsedBody?: unknown
+  contentType?: string
+}): string {
+  const failure = input.error as {
+    verifierResponseKeys?: string[]
+    verifierContentType?: string
+    verifierError?: string
+    verifierErrorDescription?: string
+  } | undefined
+  const parsed = isRecord(input.parsedBody) ? input.parsedBody : undefined
+  const keys = failure?.verifierResponseKeys
+    ?? (parsed ? Object.keys(parsed) : [])
+  const contentType = failure?.verifierContentType ?? input.contentType ?? 'none'
+  const verifierError = failure?.verifierError
+    ?? (parsed ? readString(parsed.error) : undefined)
+    ?? readVerifierErrorFromSubmissionMessage(input.error)
+  const verifierErrorDescription = failure?.verifierErrorDescription
+    ?? (parsed ? (readString(parsed.error_description) ?? readString(parsed.message)) : undefined)
+  return [
+    `submit_attempt_for_state=${input.submitAttemptForState}`,
+    `verifier_response_keys=${keys.length > 0 ? keys.join(',') : 'none'}`,
+    `verifier_error=${verifierError ?? 'none'}`,
+    `verifier_error_description=${verifierErrorDescription ?? 'none'}`,
+    `verifier_content_type=${contentType}`,
+  ].join('; ')
+}
+
+function readVerifierErrorFromSubmissionMessage(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined
+  const match = error.message.match(/^PresentationSubmissionFailed: HTTP \d+: ([^\s-]+)/)
+  return match?.[1]
 }
 
 function createPresentationSubmissionError(
@@ -769,7 +1095,11 @@ export function isAllowlistedReturnUrl(returnUrl: string, allowedOrigins: readon
   return allowedOrigins.some((allowed) => readComparableOrigin(allowed) === returnOrigin)
 }
 
-function formatVpTokenForResponse(request: ResolvedPresentationRequest, vpToken: string): string {
+function formatVpTokenForResponse(
+  request: ResolvedPresentationRequest,
+  vpToken: string,
+  shape?: VerifierDcqlVpTokenShape,
+): string {
   if (!request.dcqlQuery) return vpToken
   if (isPreformattedDualFormatVpToken(request, vpToken)) return vpToken
 
@@ -777,7 +1107,7 @@ function formatVpTokenForResponse(request: ResolvedPresentationRequest, vpToken:
     entries: Object.fromEntries(
       request.dcqlQuery.credentials.map((credential) => [credential.id, vpToken]),
     ),
-    shape: readVerifierDcqlVpTokenShape(),
+    shape: shape ?? readVerifierDcqlVpTokenShape(),
   })
 }
 
@@ -949,7 +1279,13 @@ function readDcqlQueryValue(value: unknown): JsonRecord | undefined {
 }
 
 function readDcqlCredentialQuery(value: unknown): DcqlCredentialQuery | undefined {
-  if (!isRecord(value) || typeof value.id !== 'string') return undefined
+  if (!isRecord(value)) return undefined
+  const credentialId = typeof value.id === 'string'
+    ? value.id
+    : typeof value.id === 'number' && Number.isFinite(value.id)
+      ? String(value.id)
+      : undefined
+  if (!credentialId) return undefined
   const meta = isRecord(value.meta) ? value.meta : undefined
   const typeValues = Array.isArray(meta?.type_values)
     ? meta.type_values.filter((item): item is string => typeof item === 'string')
@@ -970,7 +1306,7 @@ function readDcqlCredentialQuery(value: unknown): DcqlCredentialQuery | undefine
     : undefined
 
   return {
-    id: value.id,
+    id: credentialId,
     ...(readString(value.format) ? { format: readString(value.format) } : {}),
     ...(typeof value.require_cryptographic_holder_binding === 'boolean'
       ? { require_cryptographic_holder_binding: value.require_cryptographic_holder_binding }
@@ -1159,46 +1495,6 @@ function logResolvedPresentationRequest(
   logWalletStep('oid4vp', 'resolved-request-debug', payload)
 }
 
-function readDcqlClaimDisclosures(record: VerifiableCredentialRecord, query: DcqlQuery): PresentationDisclosure[] | undefined {
-  const claimsQueries = query.credentials.flatMap((credential) => credential.claims ?? [])
-  if (claimsQueries.length === 0) return undefined
-
-  const schema = resolveCardSchema(record)
-  const claims = readCredentialClaimMap(record)
-  const normalizedClaimKeys = new Map(Object.keys(claims).map((key) => [normalizeClaimKey(key), key]))
-
-  const disclosures: PresentationDisclosure[] = []
-  for (const claimQuery of claimsQueries) {
-    const requestedKey = claimQuery.path[0]
-    if (!requestedKey) continue
-
-    const normalizedRequestedKey = normalizeClaimKey(requestedKey)
-    const field = findDisplayFieldForClaimKey(schema.displayFields, requestedKey)
-
-    const lookupKeys = field
-      ? collectDisplayFieldMatchKeys(field)
-      : [normalizedClaimKeys.get(normalizedRequestedKey) ?? requestedKey]
-
-    const rawValue = field
-      ? readPresentationFieldValue(claims, field)
-      : readClaimText(claims, lookupKeys)
-    const value =
-      isFirstPartyDrivingLicence(record) && field?.key === 'licenceClass'
-        ? formatDrivingLicenceVehicleTypeDisplay(rawValue) ?? rawValue
-        : rawValue
-    const present = value !== undefined || hasAnyClaimValue(claims, lookupKeys)
-    if (!present) continue
-
-    disclosures.push({
-      key: requestedKey,
-      label: resolvePresentationDisclosureLabel(record.type, requestedKey),
-      value: value ?? '',
-    })
-  }
-
-  return disclosures.length > 0 ? disclosures : undefined
-}
-
 function describeCredentialMetadataMismatch(
   query: DcqlQuery | undefined,
   candidates: VerifiableCredentialRecord[],
@@ -1252,7 +1548,7 @@ function readBirthDateClaim(record: VerifiableCredentialRecord): { key: string; 
   const profileBirthDate = readCredentialHolderProfile(record).birthDate
   if (!profileBirthDate) return undefined
 
-  const normalizedKeys = new Map(Object.keys(record.claims).map((key) => [normalizeClaimKey(key), key]))
+  const normalizedKeys = new Map(Object.keys(readCredentialClaimMap(record)).map((key) => [normalizeClaimKey(key), key]))
   const matchedKey = BIRTH_DATE_KEYS.map((key) => normalizedKeys.get(normalizeClaimKey(key))).find(
     (key): key is string => Boolean(key),
   )

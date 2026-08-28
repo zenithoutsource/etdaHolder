@@ -88,10 +88,19 @@ export function readDidWebHttpsOrigin(did: string): string | undefined {
   }
 }
 
-export function readResponseUriMatchesClientId(clientId: string, responseUri: string): boolean {
+export function readResponseUriMatchesClientId(
+  clientId: string,
+  responseUri: string,
+  options?: { allowSameOrigin?: boolean },
+): boolean {
   const parsed = parseClientId(clientId)
   if (parsed.scheme === 'redirect_uri') {
-    return parsed.originalClientId === responseUri
+    if (parsed.originalClientId === responseUri) return true
+    if (!options?.allowSameOrigin) return false
+
+    const clientOrigin = readUrlOrigin(parsed.originalClientId)
+    const responseOrigin = readUrlOrigin(responseUri)
+    return Boolean(clientOrigin && responseOrigin && clientOrigin === responseOrigin)
   }
 
   if (parsed.scheme === 'decentralized_identifier' && parsed.originalClientId.startsWith('did:web:')) {

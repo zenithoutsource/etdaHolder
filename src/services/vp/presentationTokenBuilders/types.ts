@@ -1,8 +1,6 @@
-import type {
-  signPresentationVpToken,
-  signSdJwtKbPresentationToken,
-} from '../../crypto/crypto'
+import type { signPresentationVpToken, signSdJwtKbPresentationToken } from '../../crypto/crypto'
 import type { buildDualFormatDcqlVpToken } from '../dualFormatVpToken'
+import type { readMdocVpTokenEntry } from '../mdocVpTokenEntry'
 import type { readPresentationTokenMode, ResolvedPresentationRequest } from '../presentationService'
 
 export type ApprovedPresentationResponse = {
@@ -17,6 +15,7 @@ export type PresentationTokenBuildContext = {
   signPresentationVpToken: typeof signPresentationVpToken
   readTokenMode: typeof readPresentationTokenMode
   buildDualFormatDcqlVpToken: typeof buildDualFormatDcqlVpToken
+  readMdocVpTokenEntry: typeof readMdocVpTokenEntry
 }
 
 export type PresentationTokenBuilder = {

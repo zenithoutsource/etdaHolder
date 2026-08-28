@@ -1,4 +1,5 @@
 import { readWalletDemoInteropEnabled, shouldIncludeOid4vpJweApv } from '@/src/config/runtimeFlags'
+import { agentDebugLog, describeVpTokenEnvelopeForDebug } from '@/src/services/debug/agentDebugLog'
 import { encryptCompactJweEcdhEsP256 } from '@/src/services/crypto/jweEcdhEs'
 import { toErrorMessage } from '@/src/utils/jwtUtils'
 
@@ -9,7 +10,7 @@ import type { Oid4vpResponseEncryptionParams } from './oid4vpResponseEncryption'
 export type DirectPostFormBodyRequest = {
   responseMode: 'direct_post' | 'direct_post.jwt'
   responseEncryption?: Oid4vpResponseEncryptionParams
-  /** Authorization request nonce — bound into JWE `apv` only by the development A/B override. */
+  /** Authorization request nonce — bound into JWE `apv` for `direct_post.jwt`. */
   nonce?: string
   state?: string
   dcqlQuery?: {
@@ -78,7 +79,7 @@ export function buildDirectPostFormBody(input: {
       throw new Error('PresentationSubmissionFailed: direct_post.jwt response encryption parameters are missing')
     }
     const demoInteropEnabled = readWalletDemoInteropEnabled()
-    const includeJweApv = shouldIncludeOid4vpJweApv() && !demoInteropEnabled
+    const includeJweApv = shouldIncludeOid4vpJweApv()
     if (includeJweApv && !input.request.nonce) {
       throw new Error('PresentationSubmissionFailed: direct_post.jwt requires authorization request nonce for JWE apv')
     }
@@ -88,6 +89,27 @@ export function buildDirectPostFormBody(input: {
       formattedVpToken: input.formattedVpToken,
       ...(input.presentationSubmission ? { presentationSubmission: input.presentationSubmission } : {}),
     })
+
+    // #region agent log
+    agentDebugLog({
+      location: 'directPostFormBody.ts:encrypt',
+      message: 'jwe-plaintext-envelope',
+      hypothesisId: 'H1-H2',
+      data: {
+        payloadKeys: Object.keys(authorizationPayload),
+        statePresent: typeof authorizationPayload.state === 'string',
+        stateLen: typeof authorizationPayload.state === 'string' ? authorizationPayload.state.length : 0,
+        dcqlQueryIds: input.request.dcqlQuery?.credentials.map((c) => c.id) ?? [],
+        formattedStartsWithBrace: input.formattedVpToken.trimStart().startsWith('{'),
+        dualFormatEnvelope: isDualFormatEnvelope(input.request.dcqlQuery, input.formattedVpToken),
+        ...describeVpTokenEnvelopeForDebug(authorizationPayload.vp_token),
+        enc: input.request.responseEncryption.enc,
+        jweKidPresent: Boolean(input.request.responseEncryption.jwk.kid),
+        demoInterop: demoInteropEnabled,
+        includeJweApv,
+      },
+    })
+    // #endregion
 
     try {
       const compactJwe = encryptCompactJweEcdhEsP256({

@@ -1,4 +1,4 @@
-import { findTrustedVerifier } from './trustedVerifierMatcher'
+import { findTrustedVerifier, findTrustedVerifierForDcApiPlatformOrigin } from './trustedVerifierMatcher'
 
 const HTTPS_CLIENT_ID = 'redirect_uri:https://unlisted.example/oid4vp/direct-post'
 const HTTPS_RESPONSE_URI = 'https://unlisted.example/oid4vp/direct-post'
@@ -122,6 +122,22 @@ describe('findTrustedVerifier', () => {
         [],
       ),
     ).toBeUndefined()
+  })
+
+  test('findTrustedVerifierForDcApiPlatformOrigin trusts did:web on a different host than the page origin', () => {
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+
+    expect(
+      findTrustedVerifierForDcApiPlatformOrigin(
+        'decentralized_identifier:did:web:verifier.example.com',
+        'https://demo.example.com',
+        [],
+      ),
+    ).toEqual({
+      clientId: 'decentralized_identifier:did:web:verifier.example.com',
+      name: 'demo.example.com',
+      allowedOrigins: ['https://demo.example.com'],
+    })
   })
 })
 
