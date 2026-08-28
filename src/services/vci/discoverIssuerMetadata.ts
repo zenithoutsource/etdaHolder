@@ -1,5 +1,7 @@
 import { isRecord, readString, toErrorMessage } from '@/src/utils/jwtUtils'
 
+import { logWalletStep } from '../debug/walletLogger'
+
 import type { IssuerMetadataV1_0_15 } from './walletVciTypes'
 
 export function normalizeIssuerIdentifier(issuer: string): string {
@@ -95,9 +97,11 @@ export async function discoverIssuerMetadata(
   let lastHttpStatus: number | undefined
   let lastError: unknown
   let sawIncompatibleMetadata = false
+  let attemptCount = 0
 
   for (const identifier of identifiers) {
     for (const metadataUrl of listIssuerMetadataWellKnownUrls(identifier)) {
+      attemptCount += 1
       try {
         const result = await fetchJsonObject(metadataUrl, fetchImpl)
         if (!result.payload) {
@@ -124,6 +128,12 @@ export async function discoverIssuerMetadata(
   if (lastError && toErrorMessage(lastError).startsWith('IssuerMetadataFetchFailed:')) {
     throw lastError
   }
+  logWalletStep('oid4vci', 'issuer-metadata-discovery-exhausted', {
+    issuer,
+    attemptCount,
+    lastHttpStatus,
+    sawIncompatibleMetadata,
+  })
   if (sawIncompatibleMetadata) {
     throw new Error('IssuerMetadataMismatch: credential_issuer does not match the credential offer issuer')
   }

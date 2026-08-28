@@ -5,14 +5,15 @@ import {
 import {
   claimCredential as defaultClaimCredential,
   type ClaimCredentialOptions,
+  readCredentialClaimMap,
   type ResolvedCredentialOffer,
   type VerifiableCredentialRecord,
 } from './exchangeService'
 import { resolveCardSchema, type DisplayField, type CardSchemaConfig } from '../../config/cardSchemas'
-import { canonicalFirstPartyType, isFirstPartyIssuerOrigin } from '../../config/firstPartyCredential'
+import { canonicalFirstPartyType, isFirstPartyCredential, isFirstPartyIssuerOrigin } from '../../config/firstPartyCredential'
 import { isHiddenClaimKey, readClaimText, stringifyClaim } from '../credentials/claimFormatting'
 import { readClaimDisplayName } from '../credentials/claimDisplayMetadata'
-import { readGenericClaimRows } from '../credentials/genericClaimDisplay'
+import { readThirdPartyCredentialDisplayRows } from '../credentials/thirdPartyCredentialDisplay'
 import { getCredentialKeyRecord } from '../crypto/credentialKeyRegistry'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { launchPushNotificationsInBackground } from '../notifications/pushNotificationService'
@@ -93,25 +94,26 @@ export function readCredentialInformationRows(
   record: VerifiableCredentialRecord,
   displayFields: DisplayField[],
 ): CredentialInformationRow[] {
+  const claims = readCredentialClaimMap(record)
   const configuredRows = displayFields
     .map((field) => {
-      const value = readClaimText(record.claims, [field.key, ...(field.aliases ?? [])])
+      const value = readClaimText(claims, [field.key, ...(field.aliases ?? [])])
       return value ? { key: field.key, label: field.label, value } : undefined
     })
     .filter((row): row is CredentialInformationRow => Boolean(row))
 
   if (configuredRows.length > 0) return configuredRows
 
-  return Object.entries(record.claims)
+  return Object.entries(claims)
     .filter(([key, value]) => !key.startsWith('_') && !isHiddenClaimKey(key) && stringifyClaim(value).trim().length > 0)
     .map(([key, value]) => ({ key, label: key, value: stringifyClaim(value) }))
 }
 
 export function readCredentialPreviewDisplay(record: VerifiableCredentialRecord): CredentialPreviewDisplay {
   const schema = resolveCardSchema(record)
-  const rows = schema.displayFields.length > 0
+  const rows = isFirstPartyCredential(record)
     ? readCredentialInformationRows(record, schema.displayFields)
-    : readGenericClaimRows(record.claims, record.claimDisplayLabels).rows
+    : readThirdPartyCredentialDisplayRows(record).rows
 
   return {
     documentTitle: record.credentialDisplayName?.trim() || schema.documentTitle,

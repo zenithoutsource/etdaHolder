@@ -15,7 +15,7 @@ import {
     toErrorMessage,
 } from '@/src/utils/jwtUtils'
 import { getCardSchema } from '../../config/cardSchemas'
-import { canonicalFirstPartyType } from '../../config/firstPartyCredential'
+import { canonicalFirstPartyType, isFirstPartyIssuerOrigin } from '../../config/firstPartyCredential'
 import {
   readHistoryDocumentLabel,
   readHistoryIssuerPartyName,
@@ -27,11 +27,11 @@ import {
   readClaimDisplayLabels,
   readCredentialDisplayName,
 } from '../credentials/claimDisplayMetadata'
-import { stringifyClaim } from '../credentials/claimFormatting'
-import { extractMdocWalletClaims } from '../credentials/mdocWalletClaims'
+import { extractMdocIssuerClaims, extractMdocWalletClaims } from '../credentials/mdocWalletClaims'
 import { readNormalizedDocumentExpiry } from '../credentials/credentialDocumentExpiresAt'
 import { readCredentialHolderDid } from '../credentials/credentialHolderBinding'
 import { readCredentialIssuerName } from '../credentials/credentialIssuer'
+import { decodeSdJwtDisclosedClaims } from '../credentials/sdJwtClaimDecode'
 import { notifyCredentialsChanged } from '../credentials/storedCredentials'
 import {
     bindPendingKeyToCredential,
@@ -2350,9 +2350,12 @@ function finalizeMdocCredentialRecord(
   const docType = readMdocDocType(configuration) ?? 'unknown'
   const type = readCredentialType({ vct: docType }, undefined, resolvedOffer)
   const mdocBytes = base64UrlToBytes(rawBase64)
+  const extractedClaims = isFirstPartyIssuerOrigin(resolvedOffer.issuer)
+    ? extractMdocWalletClaims(mdocBytes)
+    : extractMdocIssuerClaims(mdocBytes)
   const claims: Record<string, unknown> = {
     doctype: docType,
-    ...extractMdocWalletClaims(mdocBytes),
+    ...extractedClaims,
   }
 
   const issuerName = resolvedOffer.issuerDisplay?.name?.trim() || resolvedOffer.issuer
@@ -2397,6 +2400,11 @@ async function persistClaimedCredentialFormats(
 }
 
 function decodeCredentialClaims(rawVc: string): Record<string, unknown> {
+  if (rawVc.startsWith('mdoc:')) {
+    const mdocBytes = base64UrlToBytes(rawVc.slice('mdoc:'.length))
+    return extractMdocIssuerClaims(mdocBytes)
+  }
+
   if (isCompactSdJwt(rawVc)) {
     return decodeSdJwtClaims(rawVc)
   }
@@ -2412,17 +2420,9 @@ export function readCredentialClaimMap(record: VerifiableCredentialRecord): Reco
     return { ...record.claims }
   }
 
-  const merged = { ...decoded, ...record.claims }
-  for (const [key, value] of Object.entries(record.claims)) {
-    if (stringifyClaim(value).trim().length === 0 && key in decoded) {
-      const decodedText = stringifyClaim(decoded[key]).trim()
-      if (decodedText.length > 0) {
-        merged[key] = decoded[key]
-      }
-    }
-  }
-
-  return merged
+  // Stored claims may include mdoc overlays and other enrichments, but the signed rawVc
+  // payload is the source of truth for SD-JWT / JWT claim values.
+  return { ...record.claims, ...decoded }
 }
 
 function isCompactSdJwt(rawVc: string): boolean {
@@ -2469,40 +2469,8 @@ function readProofJwtHeader(proofJwt: string): Record<string, unknown> | undefin
 }
 
 function decodeSdJwtClaims(compactSdJwt: string): Record<string, unknown> {
-  const [issuerJwt, ...segments] = compactSdJwt.split('~')
-  const issuerClaims = decodeJwtPayload(issuerJwt)
-  const disclosureClaims = decodeSdJwtDisclosureClaims(segments)
-
-  return flattenCredentialSubject({
-    ...issuerClaims,
-    ...disclosureClaims,
-  })
-}
-
-function decodeSdJwtDisclosureClaims(segments: string[]): Record<string, unknown> {
-  const claims: Record<string, unknown> = {}
-
-  for (const segment of segments) {
-    if (!segment || segment.includes('.')) {
-      continue
-    }
-
-    try {
-      const disclosure = JSON.parse(base64UrlDecodeToString(segment)) as unknown
-
-      if (
-        Array.isArray(disclosure) &&
-        disclosure.length >= 3 &&
-        typeof disclosure[1] === 'string'
-      ) {
-        claims[disclosure[1]] = disclosure[2]
-      }
-    } catch {
-      // Ignore malformed disclosure segments; the signed issuer payload is still retained.
-    }
-  }
-
-  return claims
+  const disclosed = decodeSdJwtDisclosedClaims(compactSdJwt)
+  return flattenCredentialSubject(disclosed)
 }
 
 function flattenCredentialSubject(claims: Record<string, unknown>): Record<string, unknown> {

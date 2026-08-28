@@ -6,6 +6,7 @@ import {
 import { sha256, sha384, sha512 } from '@noble/hashes/sha2.js'
 import { randomBytes } from 'react-native-quick-crypto'
 
+import { readX509CertificateMetadata } from '@/src/services/vp/x509Certificate'
 import { verifyEdDsaCompactJwt } from '@/src/services/crypto/eddsaJwtVerify'
 import { verifyEs256CompactJwt } from '@/src/services/crypto/es256JwtVerify'
 import { isRecord, readString } from '@/src/utils/jwtUtils'
@@ -64,9 +65,7 @@ export function createOid4vcCallbacks(options?: CreateOid4vcCallbacksOptions): C
     encryptJwe: async () => {
       throw new Error('PresentationRequestUnsupported: JWE encryption is not supported in Phase 1')
     },
-    getX509CertificateMetadata: () => {
-      throw new Error('PresentationRequestUnsupported: X.509 client identifiers are not supported in Phase 1')
-    },
+    getX509CertificateMetadata: (certificate) => readX509CertificateMetadata(certificate),
     generateRandom: async (byteLength) => new Uint8Array(randomBytes(byteLength)),
     clientAuthentication:
       options?.clientAuthentication ?? clientAuthenticationNone({ clientId: 'wallet-holder' }),

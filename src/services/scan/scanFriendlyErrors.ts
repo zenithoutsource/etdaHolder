@@ -127,6 +127,17 @@ export function toFriendlyError(raw: string): string {
 
   }
 
+  if (raw.includes('PresentationCredentialStatusInvalid')) {
+    const statusMatch = raw.match(/status_list_entry=(VALID|INVALID|SUSPENDED|UNKNOWN)/)
+    if (statusMatch?.[1] === 'SUSPENDED') {
+      return 'This credential is suspended on the issuer status list. Delete the old copy in Wallet and claim a fresh credential from the Issuer.'
+    }
+    if (statusMatch?.[1] === 'INVALID') {
+      return 'This credential is revoked on the issuer status list. Delete the old copy in Wallet and claim a fresh credential from the Issuer.'
+    }
+    return 'This credential is not valid on the issuer status list. Delete the old copy in Wallet and claim a fresh credential from the Issuer.'
+  }
+
   if (raw.includes('PresentationCredentialMissing:issuer-pid')) {
 
     return 'Store Thai National ID (PID) before presenting to the Issuer.'
