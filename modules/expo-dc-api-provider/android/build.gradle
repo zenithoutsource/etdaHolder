@@ -1,0 +1,27 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.wallet.dcapiprovider'
+version = '1.0.0'
+
+android {
+  namespace "com.wallet.dcapiprovider"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  implementation("androidx.activity:activity-ktx:1.9.3")
+  implementation("androidx.credentials:credentials:1.5.0")
+  implementation("androidx.credentials.registry:registry-digitalcredentials-mdoc:1.0.0-alpha04")
+  implementation("androidx.credentials.registry:registry-digitalcredentials-openid:1.0.0-alpha04")
+  implementation("androidx.credentials.registry:registry-digitalcredentials-sdjwtvc:1.0.0-alpha04")
+  implementation("androidx.credentials.registry:registry-provider:1.0.0-alpha04")
+  implementation("androidx.credentials.registry:registry-provider-play-services:1.0.0-alpha04")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+  testImplementation("junit:junit:4.13.2")
+}
