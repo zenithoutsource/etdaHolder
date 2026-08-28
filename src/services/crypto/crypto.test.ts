@@ -273,6 +273,29 @@ describe('Keychain Ed25519 wallet crypto service', () => {
     expect(typeof payload.sd_hash).toBe('string')
   })
 
+  test('keeps the Keychain EdDSA KB kid after hardware SD-JWT KB default changes', async () => {
+    await generateWalletKeyIfNeeded()
+    const holderJwk = getPublicKeyJwk()
+    const sdJwt = `${unsignedJwt({
+      iss: 'https://issuer.example.com',
+      cnf: { jwk: holderJwk },
+    })}~disclosure~`
+
+    const presentation = await signSdJwtKbPresentationToken({
+      audience: 'https://verifier.example.com',
+      nonce: 'nonce-hardware-default',
+      sdJwt,
+    })
+    const kbJwt = presentation.slice(sdJwt.length)
+    const [encodedHeader] = kbJwt.split('.')
+
+    expect(base64UrlDecode(encodedHeader)).toMatchObject({
+      alg: 'EdDSA',
+      typ: 'kb+jwt',
+      kid: `${ED25519_DID_KEY_VECTOR}#${ED25519_DID_KEY_VECTOR.replace('did:key:', '')}`,
+    })
+  })
+
   test('rejects Keychain Ed25519 SD-JWT+KB signing when the credential is not holder-bound to the wallet key', async () => {
     await generateWalletKeyIfNeeded()
     const sdJwt = `${unsignedJwt({

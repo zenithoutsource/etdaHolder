@@ -38,6 +38,7 @@ describe('runHardwareEcdsaSliceBChecklist', () => {
 
   afterEach(() => {
     ;(global as { __DEV__?: boolean }).__DEV__ = originalDev
+    delete process.env.EXPO_PUBLIC_HARDWARE_ECDSA_CAPACITY_PROBE_LIMIT
     jest.restoreAllMocks()
   })
 
@@ -71,6 +72,19 @@ describe('runHardwareEcdsaSliceBChecklist', () => {
     const row4 = result.rows.find((row) => row.id === '4')
     expect(row4?.status).toBe('pass')
     expect(row4?.evidence.some((entry) => entry.includes('keys-created-before-failure=3'))).toBe(true)
+  })
+
+  test('uses the fixed capacity probe limit instead of the legacy env override', async () => {
+    process.env.EXPO_PUBLIC_HARDWARE_ECDSA_CAPACITY_PROBE_LIMIT = '1'
+    const signer = createCapacityLimitedSigner(3)
+
+    const result = await runHardwareEcdsaSliceBChecklist({
+      signer,
+      backend: 'mock',
+      skipCapacityStress: false,
+    })
+
+    expect(result.rows.find((row) => row.id === '4')?.status).toBe('pass')
   })
 
   test('skips row 3 without attestation challenge', async () => {

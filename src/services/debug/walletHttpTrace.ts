@@ -1,3 +1,4 @@
+import { isOid4vpPresentationWireBody } from '../vp/oid4vpRawProtocolLog'
 import {
   isWalletDebugLoggingEnabled,
   isWalletRawProtocolLoggingEnabled,
@@ -8,6 +9,24 @@ import {
 } from './walletLogger'
 
 const PROTOCOL_PATH_PATTERN = /\/(credential|token|openid4vc|verify|presentation|deferred)(\/|$)/i
+const HTTP_FAILURE_DEDUPE_WINDOW_MS = 3_000
+
+const recentHttpFailureLogs = new Map<string, number>()
+
+/** Clears in-memory HTTP failure dedupe state (tests only). */
+export function resetWalletHttpTraceDedupeForTesting(): void {
+  recentHttpFailureLogs.clear()
+}
+
+export function isSilentIssuerMetadataDiscoveryResponse(
+  url: string,
+  method: string,
+  status: number,
+): boolean {
+  if (method !== 'GET') return false
+  if (status !== 404 && status !== 405 && status !== 406 && status !== 410) return false
+  return url.includes('/.well-known/openid-credential-issuer')
+}
 
 export function resolveHttpTraceScope(resolvedUrl: string, walletApiHost?: string): string {
   try {
@@ -67,14 +86,19 @@ export async function traceHttpFetch(
   const walletApiHost = readHostFromBaseUrl(options?.walletApiBaseUrl)
   const scope = resolveHttpTraceScope(resolvedUrl, walletApiHost)
   const method = readRequestMethod(input, init)
+  if (method === 'POST' && isOid4vpPresentationWireBody(readRequestBodyString(init))) {
+    return fetchImpl(input, init)
+  }
   const startedAt = Date.now()
 
-  logWalletStep(scope, 'http-request-start', {
-    method,
-    ...describeUrl(resolvedUrl),
-    requestHeaders: describeSafeHeaders(init?.headers),
-    requestBodyPreview: await readRequestBodyPreview(init),
-  })
+  if (isWalletRawProtocolLoggingEnabled()) {
+    logWalletStep(scope, 'http-request-start', {
+      method,
+      ...describeUrl(resolvedUrl),
+      requestHeaders: describeSafeHeaders(init?.headers),
+      requestBodyPreview: await readRequestBodyPreview(init),
+    })
+  }
 
   try {
     const response = await fetchImpl(input, init)
@@ -100,12 +124,17 @@ export async function traceHttpFetch(
       : {}
 
     if (!response.ok) {
-      logWalletError(
-        scope,
-        'http-response',
-        new Error(`HttpRequestFailed:${response.status}`),
-        { ...baseDetails, ...bodyDetails },
-      )
+      if (!isSilentIssuerMetadataDiscoveryResponse(resolvedUrl, method, response.status)) {
+        const dedupeKey = `${method}|${resolvedUrl}|${response.status}`
+        if (shouldEmitHttpFailureLog(dedupeKey)) {
+          logWalletError(
+            scope,
+            'http-response',
+            new Error(`HttpRequestFailed:${response.status}`),
+            { ...baseDetails, ...bodyDetails },
+          )
+        }
+      }
     } else {
       logWalletStep(scope, 'http-response', { ...baseDetails, ...bodyDetails })
     }
@@ -188,11 +217,16 @@ function readHeader(headers: HeadersInit, name: string): string | undefined {
   return undefined
 }
 
+function readRequestBodyString(init?: RequestInit): string | undefined {
+  if (!init?.body || typeof init.body !== 'string') return undefined
+  return init.body
+}
+
 async function readRequestBodyPreview(init?: RequestInit): Promise<unknown> {
-  if (!init?.body) return undefined
+  const body = readRequestBodyString(init)
+  if (!body) return undefined
 
   try {
-    const body = typeof init.body === 'string' ? init.body : String(init.body)
     const parsed = tryParseJson(body)
     const preview = parsed ?? truncateBodyPreview(body)
     return sanitizeForWalletLog(preview)
@@ -232,4 +266,13 @@ function readHostFromBaseUrl(baseUrl?: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+function shouldEmitHttpFailureLog(dedupeKey: string, now = Date.now()): boolean {
+  const lastLoggedAt = recentHttpFailureLogs.get(dedupeKey)
+  if (lastLoggedAt !== undefined && now - lastLoggedAt < HTTP_FAILURE_DEDUPE_WINDOW_MS) {
+    return false
+  }
+  recentHttpFailureLogs.set(dedupeKey, now)
+  return true
 }

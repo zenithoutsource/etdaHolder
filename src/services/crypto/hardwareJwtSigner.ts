@@ -7,6 +7,8 @@ import {
   assertEs256SignatureBytes,
   p256PublicKeyToCoseKey,
 } from './p256Identity'
+import type { TransactionDataPresentationContext } from '@/src/services/vp/transactionDataKbJwt'
+import { buildTransactionDataKbJwtClaims } from '@/src/services/vp/transactionDataKbJwt'
 import { normalizeSdJwtWithoutKb } from './sdJwtNormalize'
 
 function base64UrlEncode(input: Uint8Array | string): string {
@@ -128,9 +130,10 @@ export async function signHardwareSdJwtKbPresentationToken(input: {
   nonce: string
   sdJwt: string
   holderDid: string
-  kid: string
-  /** Public JWK embedded in KB header so Verifiers can verify without resolving did:key. */
-  publicJwk: EcP256Jwk
+  kid?: string
+  /** @deprecated eudi-dev wire profile omits KB header key material; kept for call-site compatibility. */
+  publicJwk?: EcP256Jwk
+  transactionData?: TransactionDataPresentationContext
   sign: (message: Uint8Array) => Promise<Uint8Array>
 }): Promise<string> {
   const sdJwtWithoutKb = normalizeSdJwtWithoutKb(input.sdJwt)
@@ -138,23 +141,18 @@ export async function signHardwareSdJwtKbPresentationToken(input: {
     createHash('sha256').update(new TextEncoder().encode(sdJwtWithoutKb)).digest(),
   )
 
-  // Keep kid (matches cnf.kid) and embed jwk for Verifiers that do not resolve did:key.
+  // Match eudi-dev createKBJWT: header is alg+typ only; binding comes from cnf + signature.
   const header = {
     alg: 'ES256',
     typ: 'kb+jwt',
-    kid: input.kid,
-    jwk: {
-      kty: input.publicJwk.kty,
-      crv: input.publicJwk.crv,
-      x: input.publicJwk.x,
-      y: input.publicJwk.y,
-    },
   }
+  const iat = Math.floor(Date.now() / 1000)
   const payload = {
-    nonce: input.nonce,
     aud: input.audience,
-    iat: Math.floor(Date.now() / 1000),
+    iat,
+    nonce: input.nonce,
     sd_hash: sdHash,
+    ...buildTransactionDataKbJwtClaims(input.transactionData),
   }
 
   const kbJwt = await signEs256Jwt(header, payload, input.sign, 'kb')

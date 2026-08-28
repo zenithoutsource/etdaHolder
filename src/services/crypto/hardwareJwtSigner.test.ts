@@ -123,7 +123,7 @@ describe('hardwareJwtSigner', () => {
     }
   })
 
-  test('signHardwareSdJwtKbPresentationToken appends kb+jwt with kid and jwk', async () => {
+  test('signHardwareSdJwtKbPresentationToken matches eudi-dev kb+jwt header (alg and typ only)', async () => {
     const { secretKey, publicKey } = p256.keygen()
     const holderDid = p256PublicKeyToDidKey(publicKey)
     const jwk = p256PublicKeyToJwk(publicKey)
@@ -141,10 +141,32 @@ describe('hardwareJwtSigner', () => {
     })
 
     expect(presentation.startsWith(sdJwt)).toBe(true)
-    expect(presentation.length).toBeGreaterThan(sdJwt.length)
     const kbHeader = decodeJwtPart(presentation.split('~').at(-1)!.split('.')[0]!)
-    expect(kbHeader.kid).toBe(kid)
-    expect(kbHeader.jwk).toMatchObject({ kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y })
+    expect(kbHeader).toEqual({ alg: 'ES256', typ: 'kb+jwt' })
+    const kbPayload = decodeJwtPart(presentation.split('~').at(-1)!.split('.')[1]!)
+    expect(kbPayload.aud).toBe('https://verifier.example.com')
+    expect(kbPayload.nonce).toBe('vp-nonce')
+    expect(kbPayload.sd_hash).toBeTruthy()
+    expect(kbPayload.iat).toEqual(expect.any(Number))
+  })
+
+  test('signHardwareSdJwtKbPresentationToken omits optional kid and jwk', async () => {
+    const { secretKey, publicKey } = p256.keygen()
+    const jwk = p256PublicKeyToJwk(publicKey)
+    const sdJwt = 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIxIn0.sig~'
+
+    const presentation = await signHardwareSdJwtKbPresentationToken({
+      audience: 'https://verifier.example.com',
+      nonce: 'vp-nonce',
+      sdJwt,
+      holderDid: p256PublicKeyToDidKey(publicKey),
+      kid: undefined,
+      sign: async (message) => signEs256Prehash(message, secretKey),
+    })
+
+    const kbHeader = decodeJwtPart(presentation.split('~').at(-1)!.split('.')[0]!)
+    expect(kbHeader.kid).toBeUndefined()
+    expect(kbHeader.jwk).toBeUndefined()
   })
 
   test('signHardwareSdJwtKbPresentationToken preserves SD-JWT disclosure segments', async () => {

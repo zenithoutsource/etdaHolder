@@ -25,8 +25,7 @@ export function isWalletRawProtocolLoggingEnabled(isDevelopment = __DEV__): bool
 }
 
 export function readWalletDebugMaxBodyBytes(): number {
-  const parsed = Number(process.env.EXPO_PUBLIC_WALLET_DEBUG_MAX_BODY_BYTES)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_WALLET_DEBUG_MAX_BODY_BYTES
+  return DEFAULT_WALLET_DEBUG_MAX_BODY_BYTES
 }
 
 export function logWalletRawProtocol(scope: LogScope, event: string, details?: unknown): void {

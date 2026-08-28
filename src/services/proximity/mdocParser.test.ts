@@ -1,4 +1,7 @@
-import { parseMdocDocument, listMdocFieldKeys, formatMdocFieldLabel } from './mdocParser'
+import { encode, decode } from 'cbor-x'
+
+import { parseMdocDocument, listMdocFieldKeys, formatMdocFieldLabel, readMdocIssuerAuthSignatureBase64Url } from './mdocParser'
+import { base64UrlEncodeBytes } from '@/src/utils/base64Url'
 
 const ISO_NS = 'org.iso.18013.5.1'
 const DOC_TYPE = 'org.iso.18013.5.1.mDL'
@@ -134,5 +137,45 @@ describe('mdocParser', () => {
 
     const parsed = parseMdocDocument(new Uint8Array([1]), () => document)
     expect(parsed.namespaces[ISO_NS].driving_privileges).toEqual(privileges)
+  })
+
+  it('infers EUDI PID docType from a single eu.europa namespace when docType is absent', () => {
+    const eudiNamespace = 'eu.europa.ec.eudi.pid.1'
+    const root = new Map<unknown, unknown>([
+      ['issuerAuth', new Uint8Array([0xd2])],
+      [
+        'nameSpaces',
+        new Map<unknown, unknown>([
+          [eudiNamespace, [issuerSignedItem('family_name', 'Mustermann')]],
+        ]),
+      ],
+    ])
+
+    const parsed = parseMdocDocument(new Uint8Array([1]), () => root)
+    expect(parsed.docType).toBe(eudiNamespace)
+    expect(parsed.namespaces[eudiNamespace].family_name).toBe('Mustermann')
+  })
+
+  it('reads issuerAuth COSE_Sign1 signature bytes as base64url', () => {
+    const signatureBytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef])
+    const issuerAuth = {
+      tag: 18,
+      value: [new Uint8Array([0xa0]), new Map(), new Uint8Array([0xa0]), signatureBytes],
+    }
+    const document = new Map<unknown, unknown>([
+      ['docType', DOC_TYPE],
+      [
+        'issuerSigned',
+        new Map<unknown, unknown>([
+          ['nameSpaces', nameSpacesWithItems([issuerSignedItem('given_name', 'Ada')])],
+          ['issuerAuth', issuerAuth],
+        ]),
+      ],
+    ])
+    const bytes = encode(document)
+
+    expect(readMdocIssuerAuthSignatureBase64Url(bytes, decode)).toBe(
+      base64UrlEncodeBytes(signatureBytes),
+    )
   })
 })

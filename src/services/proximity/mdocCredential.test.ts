@@ -1,4 +1,18 @@
-import { canShowNfcPresentButton, isMdocRawVc } from './mdocCredential'
+import {
+  canShowNfcPresentButton,
+  isMdocPresentableRecord,
+  isMdocRawVc,
+  readMdocDocTypeFromRecord,
+} from './mdocCredential'
+
+jest.mock('../credentials/logicalCredentialStorage', () => ({
+  ...jest.requireActual('../credentials/logicalCredentialStorage'),
+  recordHasLogicalMdocFormat: jest.fn(() => false),
+}))
+
+import { recordHasLogicalMdocFormat } from '../credentials/logicalCredentialStorage'
+
+const mockRecordHasLogicalMdocFormat = jest.mocked(recordHasLogicalMdocFormat)
 
 describe('mdocCredential NFC visibility', () => {
   test('shows NFC on Android when rawVc is an mdoc payload', () => {
@@ -65,5 +79,38 @@ describe('mdocCredential NFC visibility', () => {
     expect(isMdocRawVc('mdoc:abc')).toBe(true)
     expect(isMdocRawVc('openid-credential-offer://x')).toBe(false)
     expect(isMdocRawVc(undefined)).toBe(false)
+  })
+
+  test('isMdocPresentableRecord accepts dual-format SD-JWT records linked to logical mso_mdoc', () => {
+    mockRecordHasLogicalMdocFormat.mockReturnValueOnce(true)
+    expect(
+      isMdocPresentableRecord({
+        id: 'dual-format-dlt-1',
+        rawVc: 'issuer.sd.jwt~disclosure~',
+        claims: {},
+      }),
+    ).toBe(true)
+  })
+
+  test('readMdocDocTypeFromRecord defaults dual-format DLT to org.iso.18013.5.1.mDL', () => {
+    expect(
+      readMdocDocTypeFromRecord({
+        id: 'dual-format-dlt-1',
+        type: 'DLTDrivingLicence',
+        rawVc: 'issuer.sd.jwt~disclosure~',
+        claims: { givenName: 'Ada' },
+      }),
+    ).toBe('org.iso.18013.5.1.mDL')
+  })
+
+  test('readMdocDocTypeFromRecord does not default non-mdoc ThaiNationalID to mDL', () => {
+    expect(
+      readMdocDocTypeFromRecord({
+        id: 'thai-id-1',
+        type: 'ThaiNationalID',
+        rawVc: 'issuer.sd.jwt~disclosure~',
+        claims: { givenName: 'Ada' },
+      }),
+    ).toBe('unknown')
   })
 })

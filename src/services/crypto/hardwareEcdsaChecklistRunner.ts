@@ -16,6 +16,7 @@ const CHECKLIST_PREFIX = 'wallet.p256.checklist'
 const PROBE_ALIAS = `${CHECKLIST_PREFIX}.probe`
 const SESSION_ALIAS = `${CHECKLIST_PREFIX}.session`
 const ATTEST_ALIAS = `${CHECKLIST_PREFIX}.attest`
+const CAPACITY_PROBE_LIMIT = 48
 
 export type SliceBChecklistRowId = '1' | '2' | '3' | '4' | '6' | '10'
 
@@ -58,7 +59,7 @@ export type SliceBChecklistResult = {
 }
 
 function readCapacityProbeLimit(): number {
-  return Number(process.env.EXPO_PUBLIC_HARDWARE_ECDSA_CAPACITY_PROBE_LIMIT) || 48
+  return CAPACITY_PROBE_LIMIT
 }
 
 function summarizeRows(rows: SliceBChecklistRowResult[]): SliceBChecklistSummary {
@@ -285,7 +286,7 @@ async function runRow4CapacityStressProbe(
       title,
       'skipped',
       evidence,
-      `No failure within probe limit (${limit}); increase EXPO_PUBLIC_HARDWARE_ECDSA_CAPACITY_PROBE_LIMIT`,
+      `No failure within probe limit (${limit}); pass a larger capacityProbeLimit to the checklist runner`,
     )
   } catch (error) {
     return rowResult(

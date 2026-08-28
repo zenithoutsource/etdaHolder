@@ -162,7 +162,7 @@ describe('walletLogger raw protocol mode', () => {
   })
 
   test('readWalletDebugMaxBodyBytes defaults to 32768', () => {
-    delete process.env.EXPO_PUBLIC_WALLET_DEBUG_MAX_BODY_BYTES
+    process.env.EXPO_PUBLIC_WALLET_DEBUG_MAX_BODY_BYTES = '64'
     expect(readWalletDebugMaxBodyBytes()).toBe(32768)
   })
 

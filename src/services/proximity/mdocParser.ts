@@ -1,3 +1,5 @@
+import { base64UrlEncodeBytes } from '@/src/utils/base64Url'
+
 type CborMap = Map<unknown, unknown>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -113,6 +115,69 @@ function readIssuerSignedNamespaces(
   return namespaces
 }
 
+function readIssuerSignedRoot(root: CborMap): CborMap | undefined {
+  const documents = root.get('documents')
+  if (Array.isArray(documents) && documents[0]) {
+    const firstDocument = decodeCborMap(documents[0])
+    if (firstDocument) {
+      const nestedIssuerSigned = decodeCborMap(firstDocument.get('issuerSigned'))
+      if (nestedIssuerSigned) return nestedIssuerSigned
+      if (firstDocument.get('nameSpaces') || firstDocument.get('issuerAuth')) return firstDocument
+    }
+  }
+
+  const issuerSigned = decodeCborMap(root.get('issuerSigned'))
+  if (issuerSigned) return issuerSigned
+
+  if (root.get('nameSpaces') || root.get('issuerAuth')) return root
+
+  return undefined
+}
+
+function readIssuerAuth(root: CborMap): unknown {
+  return readIssuerSignedRoot(root)?.get('issuerAuth')
+}
+
+const COSE_SIGN1_TAG = 18
+
+function readByteArray(value: unknown): Uint8Array | undefined {
+  if (value instanceof Uint8Array) return value
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+  }
+  return undefined
+}
+
+function readCoseSign1Signature(
+  item: unknown,
+  decode: (input: Uint8Array) => unknown,
+): Uint8Array | undefined {
+  let current = item
+  for (let depth = 0; depth < 4; depth += 1) {
+    const embedded = readByteArray(current)
+    if (embedded) {
+      current = decode(embedded)
+      continue
+    }
+
+    const tag = readTagNumber(current)
+    const value = readTagValue(current)
+    if (tag === COSE_SIGN1_TAG || tag === 24) {
+      if (value !== undefined) {
+        current = value
+        continue
+      }
+    }
+    break
+  }
+
+  if (Array.isArray(current) && current.length >= 4) {
+    return readByteArray(current[3])
+  }
+
+  return undefined
+}
+
 function readIssuerSignedNameSpaces(root: CborMap): unknown {
   const documents = root.get('documents')
   if (Array.isArray(documents) && documents[0]) {
@@ -148,6 +213,15 @@ function readDocType(root: CborMap): string | undefined {
 function inferDocType(docType: string | undefined, namespaces: ParsedMdocNamespaces): string {
   if (docType) return docType
   if (namespaces['org.iso.18013.5.1']) return 'org.iso.18013.5.1.mDL'
+
+  const namespaceKeys = Object.keys(namespaces)
+  if (namespaceKeys.length === 1) {
+    return namespaceKeys[0]
+  }
+
+  const eudiNamespace = namespaceKeys.find((key) => key.startsWith('eu.europa.'))
+  if (eudiNamespace) return eudiNamespace
+
   throw new Error('MdocParseFailed: docType is missing')
 }
 
@@ -165,6 +239,27 @@ export function parseMdocDocument(
   const docType = inferDocType(readDocType(root), namespaces)
 
   return { docType, namespaces }
+}
+
+export function readMdocIssuerAuthSignatureBase64Url(
+  mdocBytes: Uint8Array,
+  decode: (input: Uint8Array) => unknown,
+): string | undefined {
+  try {
+    const decoded = decode(mdocBytes)
+    const root = decodeCborMap(decoded)
+    if (!root) return undefined
+
+    const issuerAuth = readIssuerAuth(root)
+    if (!issuerAuth) return undefined
+
+    const signatureBytes = readCoseSign1Signature(issuerAuth, decode)
+    if (!signatureBytes || signatureBytes.length === 0) return undefined
+
+    return base64UrlEncodeBytes(signatureBytes)
+  } catch {
+    return undefined
+  }
 }
 
 export function listMdocFieldKeys(namespaces: ParsedMdocNamespaces): string[] {

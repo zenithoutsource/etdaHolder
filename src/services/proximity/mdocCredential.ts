@@ -2,7 +2,10 @@ import { Platform } from 'react-native'
 
 import { base64UrlToBytes } from '@/src/utils/jwtUtils'
 
+import type { VerifiableCredentialRecord } from '../vci/exchangeService'
+
 import { isFirstPartyDrivingLicence, type FirstPartyRecordLike } from '../../config/firstPartyCredential'
+import { recordHasLogicalMdocFormat } from '../credentials/logicalCredentialStorage'
 import { logWalletError } from '../debug/walletLogger'
 import { hasStoredMdoc, storeMdocCredential } from './mdocStorage'
 
@@ -18,6 +21,49 @@ type MdocRecordLike = {
 
 export function isMdocRawVc(rawVc: string | undefined): boolean {
   return typeof rawVc === 'string' && rawVc.startsWith(MDOC_RAW_PREFIX)
+}
+
+/** True when the wallet can build an mdoc DeviceResponse for this record. */
+export function isMdocPresentableRecord(record: MdocRecordLike): boolean {
+  if (isMdocRawVc(record.rawVc)) return true
+  return recordHasLogicalMdocFormat(record.id)
+}
+
+export function readMdocDocTypeFromRecord(record: MdocRecordLike): string {
+  const doctype = record.claims.doctype ?? record.claims.docType
+  if (typeof doctype === 'string' && doctype.length > 0 && doctype !== 'unknown') {
+    return doctype
+  }
+  if (record.type) {
+    const classified: FirstPartyRecordLike = {
+      type: record.type,
+      claims: record.claims ?? {},
+      ...(record.credentialConfigurationId
+        ? { credentialConfigurationId: record.credentialConfigurationId }
+        : {}),
+    }
+    if (isFirstPartyDrivingLicence(classified)) {
+      return 'org.iso.18013.5.1.mDL'
+    }
+  }
+  if (isMdocRawVc(record.rawVc) || recordHasLogicalMdocFormat(record.id)) {
+    return 'org.iso.18013.5.1.mDL'
+  }
+  return 'unknown'
+}
+
+export async function enumeratePresentableMdocCredentials(
+  credentials: VerifiableCredentialRecord[],
+): Promise<VerifiableCredentialRecord[]> {
+  const resolved = await Promise.all(
+    credentials.map(async (credential) => ({
+      credential,
+      presentable:
+        isMdocPresentableRecord(credential) ||
+        (await hasStoredMdoc(credential.id)) === true,
+    })),
+  )
+  return resolved.filter((entry) => entry.presentable).map((entry) => entry.credential)
 }
 
 export function canShowNfcPresentButton(input: {

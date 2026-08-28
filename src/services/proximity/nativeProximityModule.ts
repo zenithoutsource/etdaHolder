@@ -45,7 +45,20 @@ export type BuildDcApiDeviceResponseParams = {
   encryptionJwkJson?: string
 }
 
+export type BuildOid4vpDeviceResponseParams = {
+  credentialId: string
+  approvedNamespaceKeys: string[]
+  clientId: string
+  nonce: string
+  responseUri: string
+  encryptionJwkJson?: string
+}
+
 export type NativeBuildDcApiDeviceResponseParams = BuildDcApiDeviceResponseParams & {
+  opaqueNativeHandle: string
+}
+
+export type NativeBuildOid4vpDeviceResponseParams = BuildOid4vpDeviceResponseParams & {
   opaqueNativeHandle: string
 }
 
@@ -59,6 +72,7 @@ type NativeProximityModule = {
   readMdoc: (credentialId: string) => Promise<Uint8Array>
   deleteMdoc: (credentialId: string) => Promise<void>
   buildDcApiDeviceResponse: (params: NativeBuildDcApiDeviceResponseParams) => Promise<string>
+  buildOid4vpDeviceResponse: (params: NativeBuildOid4vpDeviceResponseParams) => Promise<string>
   armProximitySession: (config: ProximityArmConfig) => Promise<void>
   extendProximityArm?: (armWindowMs: number) => void
   supplyCompanionPresentation: (presentation: string) => Promise<void>

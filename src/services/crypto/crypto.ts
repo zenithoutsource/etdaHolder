@@ -43,6 +43,8 @@ import {
 } from './hardwareJwtSigner'
 import type { EcP256Jwk } from './hardwareEcdsaTypes'
 import { didKeyToP256PublicJwk } from './p256Identity'
+import type { TransactionDataPresentationContext } from '@/src/services/vp/transactionDataKbJwt'
+import { buildTransactionDataKbJwtClaims } from '@/src/services/vp/transactionDataKbJwt'
 import { normalizeSdJwtWithoutKb } from './sdJwtNormalize'
 
 hashes.sha512 = sha512
@@ -957,12 +959,13 @@ async function signSdJwtKbPresentationTokenWithCredentialKey(
   const sdJwtWithoutKb = normalizeSdJwtWithoutKb(input.sdJwt)
   const sdHash = base64UrlEncode(createHash('sha256').update(new TextEncoder().encode(sdJwtWithoutKb)).digest())
 
-  const header = { alg: 'EdDSA', typ: 'kb+jwt', kid: cnfKid ?? kid }
+  const header = { alg: 'EdDSA', typ: 'kb+jwt' }
   const payload = {
-    nonce: input.nonce,
     aud: input.audience,
     iat: now,
+    nonce: input.nonce,
     sd_hash: sdHash,
+    ...buildTransactionDataKbJwtClaims(input.transactionData),
   }
 
   logWalletStep('crypto', 'sign-sd-jwt-kb-credential-start', {
@@ -1032,6 +1035,7 @@ export type SdJwtKbPresentationTokenInput = {
   nonce: string
   sdJwt: string
   credentialId?: string
+  transactionData?: TransactionDataPresentationContext
 }
 
 /**
@@ -1175,11 +1179,12 @@ async function signSdJwtKbPresentationTokenWithSeed(
     const jwk = await readHardwareCredentialSigningPublicJwk(credentialId)
     const kid = `${did}#${did.slice('did:key:'.length)}`
     const cnfKid = assertSdJwtHolderBinding(input.sdJwt, { jwk, kid })
+    const kbKid = cnfKid
     const hardwareSession = await openHardwareCredentialSigningSession(credentialId, 'oid4vp')
 
     logWalletStep('crypto', 'sign-sd-jwt-kb-hardware-start', {
       credentialId: input.credentialId,
-      kid: cnfKid ?? kid,
+      kid: kbKid,
       audience: input.audience,
       noncePresent: Boolean(input.nonce),
       sdJwtBytes: input.sdJwt.length,
@@ -1191,8 +1196,9 @@ async function signSdJwtKbPresentationTokenWithSeed(
         nonce: input.nonce,
         sdJwt: input.sdJwt,
         holderDid: did,
-        kid: cnfKid ?? kid,
-        publicJwk: jwk,
+        kid: kbKid,
+        publicJwk: cnfKid ? jwk : undefined,
+        ...(input.transactionData ? { transactionData: input.transactionData } : {}),
         sign: (message) => hardwareSession.sign(message),
       })
       logWalletStep('crypto', 'sign-sd-jwt-kb-hardware-complete', {
@@ -1215,17 +1221,17 @@ async function signSdJwtKbPresentationTokenWithSeed(
 
   const kid = `${did}#${did.slice('did:key:'.length)}`
   const cnfKid = assertSdJwtHolderBinding(input.sdJwt, { jwk, kid })
-
   const now = Math.floor(Date.now() / 1000)
   const sdJwtWithoutKb = normalizeSdJwtWithoutKb(input.sdJwt)
   const sdHash = base64UrlEncode(createHash('sha256').update(new TextEncoder().encode(sdJwtWithoutKb)).digest())
 
-  const header = { alg: 'EdDSA', typ: 'kb+jwt', kid: cnfKid ?? kid }
+  const header = { alg: 'EdDSA', typ: 'kb+jwt' }
   const payload = {
-    nonce: input.nonce,
     aud: input.audience,
     iat: now,
+    nonce: input.nonce,
     sd_hash: sdHash,
+    ...buildTransactionDataKbJwtClaims(input.transactionData),
   }
 
   logWalletStep('crypto', seedKind === 'previous' ? 'sign-sd-jwt-kb-previous-start' : 'sign-sd-jwt-kb-start', {

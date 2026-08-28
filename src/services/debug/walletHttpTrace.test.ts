@@ -1,5 +1,7 @@
 import {
+  isSilentIssuerMetadataDiscoveryResponse,
   resolveHttpTraceScope,
+  resetWalletHttpTraceDedupeForTesting,
   shouldCaptureSuccessBody,
   traceHttpFetch,
   truncateBodyPreview,
@@ -28,6 +30,60 @@ describe('walletHttpTrace', () => {
     logWalletStepMock.mockClear()
     logWalletErrorMock.mockClear()
     isWalletRawProtocolLoggingEnabledMock.mockReturnValue(false)
+    resetWalletHttpTraceDedupeForTesting()
+  })
+
+  test('isSilentIssuerMetadataDiscoveryResponse matches retryable issuer well-known GET 404', () => {
+    expect(
+      isSilentIssuerMetadataDiscoveryResponse(
+        'https://issuer.tonyhere.work/.well-known/openid-credential-issuer/ssi/openid4vci/final-1.0',
+        'GET',
+        404,
+      ),
+    ).toBe(true)
+    expect(isSilentIssuerMetadataDiscoveryResponse('/wallet-api/auth/login', 'POST', 404)).toBe(false)
+  })
+
+  test('traceHttpFetch skips http-request-start unless raw protocol mode is on', async () => {
+    const fetchImpl = jest.fn(async () => new Response('{}', { status: 200 }))
+    await traceHttpFetch(fetchImpl as typeof fetch, 'https://issuer.example.com/credential')
+    expect(logWalletStepMock).not.toHaveBeenCalledWith('http', 'http-request-start', expect.anything())
+    isWalletRawProtocolLoggingEnabledMock.mockReturnValue(true)
+    await traceHttpFetch(fetchImpl as typeof fetch, 'https://issuer.example.com/credential')
+    expect(logWalletStepMock).toHaveBeenCalledWith('http', 'http-request-start', expect.anything())
+  })
+
+  test('traceHttpFetch stays silent for issuer metadata discovery 404', async () => {
+    const fetchImpl = jest.fn(
+      async () =>
+        new Response('missing', {
+          status: 404,
+        }),
+    )
+    await traceHttpFetch(
+      fetchImpl as typeof fetch,
+      'https://issuer.tonyhere.work/.well-known/openid-credential-issuer/ssi/openid4vci/final-1.0',
+      { method: 'GET' },
+    )
+    expect(logWalletErrorMock).not.toHaveBeenCalled()
+    expect(logWalletStepMock).not.toHaveBeenCalledWith('http', 'http-response', expect.anything())
+  })
+
+  test('traceHttpFetch stays silent for OID4VP presentation submit wire body', async () => {
+    const fetchImpl = jest.fn(async () => new Response('{}', { status: 200 }))
+    await traceHttpFetch(fetchImpl as typeof fetch, 'https://verifier.example/response', {
+      method: 'POST',
+      body: 'response=eyJhbGciOiJFQ0RILUVTIn0..cipher.tag',
+    })
+    expect(logWalletStepMock).not.toHaveBeenCalled()
+    expect(logWalletErrorMock).not.toHaveBeenCalled()
+  })
+
+  test('traceHttpFetch dedupes identical HTTP failures within a short window', async () => {
+    const fetchImpl = jest.fn(async () => new Response('{"message":"bad"}', { status: 400 }))
+    await traceHttpFetch(fetchImpl as typeof fetch, '/wallet-api/auth/login', { method: 'POST' })
+    await traceHttpFetch(fetchImpl as typeof fetch, '/wallet-api/auth/login', { method: 'POST' })
+    expect(logWalletErrorMock).toHaveBeenCalledTimes(1)
   })
 
   test('resolveHttpTraceScope uses sdk for relative wallet-api paths', () => {
