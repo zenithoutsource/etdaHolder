@@ -441,11 +441,12 @@ describe('CredentialDocumentDetailCard', () => {
           ...display,
           title: 'Demo Driving License',
           documentTitle: 'DIGITAL DOCUMENT',
-          imageKey: 'car',
-          primaryText: 'Ada',
+          imageKey: 'profile',
+          primaryText: 'SOMCHAI SUKJAI',
           primaryRows: [
-            { key: 'given_name', label: 'Given name', value: 'Ada' },
-            { key: 'issuing_authority', label: 'Issuing authority', value: 'Demo Transport' },
+            { key: 'given_name', label: 'Given name (Latin)', value: 'SOMCHAI' },
+            { key: 'family_name', label: 'Family name (Latin)', value: 'SUKJAI' },
+            { key: 'document_number', label: 'Licence number', value: 'DL-DEMO-000001' },
           ],
           extraRows: [],
         }}
@@ -455,8 +456,8 @@ describe('CredentialDocumentDetailCard', () => {
           rawVc: 'header.payload.signature',
           claims: {
             vct: 'https://demo.tonyhere.work/credentials/DrivingLicense',
-            given_name: 'Ada',
-            issuing_authority: 'Demo Transport',
+            given_name: 'SOMCHAI',
+            family_name: 'SUKJAI',
           },
           issuedAt: '2026-08-21T00:00:00.000Z',
           issuerUrl: 'https://demo.tonyhere.work/',
@@ -467,8 +468,10 @@ describe('CredentialDocumentDetailCard', () => {
 
     expect(screen.queryByTestId('driving-licence-card')).toBeNull()
     expect(screen.getByTestId('document-detail-card')).toBeTruthy()
-    expect(screen.getByText('Issuing authority')).toBeTruthy()
-    expect(screen.getByText('Demo Transport')).toBeTruthy()
+    expect(screen.getByTestId('document-detail-name')).toHaveTextContent('SOMCHAI SUKJAI')
+    expect(screen.queryByText('Given name (Latin)')).toBeNull()
+    expect(screen.getByText('Licence number')).toBeTruthy()
+    expect(screen.getByText('DL-DEMO-000001')).toBeTruthy()
   })
 
   test('places a banner action on the driving-licence card header', () => {

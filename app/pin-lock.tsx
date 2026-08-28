@@ -13,7 +13,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { PinUnlockPrompt } from "../src/components/PinUnlockPrompt";
 import { isBiometricDisabledForTesting } from "../src/config/runtimeFlags";
+import { runDcApiRegistrySync } from "../src/hooks/useDcApiProviderStartup";
 import { hasWalletPin, setWalletPin, verifyWalletPin } from "../src/services/auth/walletPin";
+import { readStoredCredentials } from "../src/services/credentials/storedCredentials";
 import {
   confirmWalletUnlockBiometric,
   isWalletUnlockBiometricCancellation,
@@ -29,6 +31,7 @@ import {
   readPendingPresentationRoute,
   useDeeplinkStore,
 } from "../src/store/deeplinkStore";
+import { hasPendingDcApiPresentationPhase } from "../src/store/dcApiPresentationStore";
 
 const BIOMETRIC_TIMEOUT_MS = 15_000;
 
@@ -86,6 +89,13 @@ export default function PinLockScreen() {
     if (pendingPresentationRoute) {
       logWalletStep("wallet-unlock", "pin-lock-route-pending-presentation");
       router.replace(pendingPresentationRoute);
+      return;
+    }
+
+    if (hasPendingDcApiPresentationPhase()) {
+      logWalletStep("wallet-unlock", "pin-lock-route-pending-dc-api-presentation");
+      router.replace("/dc-api-presentation");
+      return;
     }
   }, [router]);
 
@@ -93,7 +103,19 @@ export default function PinLockScreen() {
     cancelBiometricAttempt();
     logWalletStep("wallet-unlock", "pin-lock-unlock-complete");
     setPinVerified(true);
-    routeAfterUnlock();
+    void (async () => {
+      if (Platform.OS === "android") {
+        try {
+          await runDcApiRegistrySync("pin-lock-unlock");
+          logWalletStep("wallet-unlock", "pin-lock-dc-api-registry-synced", {
+            storedCredentialCount: readStoredCredentials().length,
+          });
+        } catch (error) {
+          logWalletError("wallet-unlock", "pin-lock-dc-api-registry-sync-failed", error);
+        }
+      }
+      routeAfterUnlock();
+    })();
   }, [cancelBiometricAttempt, routeAfterUnlock, setPinVerified]);
 
   const handleBiometricUnlock = useCallback(async () => {

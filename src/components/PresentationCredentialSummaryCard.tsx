@@ -15,7 +15,7 @@ import {
   readDisplayValue,
   type CredentialHolderProfile,
 } from '../services/credentials/credentialDisplay'
-import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
+import { readCredentialClaimMap, type VerifiableCredentialRecord } from '../services/vci/exchangeService'
 
 import { THEME } from '../config/themeColors'
 
@@ -40,8 +40,9 @@ function resolveSummaryValue(
   field: DisplayField,
 ): string | undefined {
   if (field.key === 'issuedAt') return formatThaiDate(display.issuedAt)
+  const claims = readCredentialClaimMap(record)
   const raw =
-    readDisplayValue(record.claims, field) ??
+    readDisplayValue(claims, field) ??
     (field.key === 'birthDate' ? profile.birthDate : undefined) ??
     field.staticValue
   return overlayPresentationDisclosureValue(field.key, raw, profile)

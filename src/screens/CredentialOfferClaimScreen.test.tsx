@@ -16,7 +16,6 @@ import { saveScannedCredential } from '../services/credentials/scannedCredential
 import { logWalletError } from '../services/debug/walletLogger'
 import { useSameDeviceIssuanceStore } from '../store/sameDeviceIssuanceStore'
 import {
-  pairRenewalReplacementForSavedCredential,
   readRenewalIntakePendingKeyForOffer,
 } from '../services/credentials/renewalIssuerIntake'
 
@@ -86,7 +85,10 @@ jest.mock('../services/credentials/credentialGuard', () => {
 
 jest.mock('../services/credentials/renewalIssuerIntake', () => ({
   readRenewalIntakePendingKeyForOffer: jest.fn(() => undefined),
-  pairRenewalReplacementForSavedCredential: jest.fn(() => false),
+}))
+
+jest.mock('../services/credentials/finalizeCredentialClaim', () => ({
+  finalizeCredentialClaim: jest.fn(),
 }))
 
 jest.mock('../services/credentials/credentialKeyRenewal', () => ({
@@ -125,10 +127,6 @@ const readRenewalIntakePendingKeyForOfferMock =
   readRenewalIntakePendingKeyForOffer as jest.MockedFunction<
     typeof readRenewalIntakePendingKeyForOffer
   >
-const pairRenewalReplacementForSavedCredentialMock =
-  pairRenewalReplacementForSavedCredential as jest.MockedFunction<
-    typeof pairRenewalReplacementForSavedCredential
-  >
 const linkingMock = jest.requireMock('expo-linking') as {
   getInitialURL: jest.Mock<Promise<string | null>, []>
   useURL: jest.Mock<string | null, []>
@@ -145,7 +143,6 @@ describe('CredentialOfferClaimScreen', () => {
     readStoredCredentialsMock.mockReturnValue([])
     readPidGateStatusMock.mockReturnValue('ready')
     readRenewalIntakePendingKeyForOfferMock.mockReturnValue(undefined)
-    pairRenewalReplacementForSavedCredentialMock.mockReturnValue(false)
     acquireDualFormatForPreviewMock.mockReset()
     finalizeDualFormatCredentialMock.mockReset()
     useSameDeviceIssuanceStore.getState().clearSession()
@@ -584,12 +581,6 @@ describe('CredentialOfferClaimScreen', () => {
       expect(saveScannedCredentialMock).toHaveBeenCalledTimes(1)
       expect(screen.getByText('รับเอกสารสำเร็จ')).toBeTruthy()
     })
-    expect(pairRenewalReplacementForSavedCredentialMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: 'id-card-before-acquire',
-        type: 'ThaiNationalID',
-      }),
-    )
     expect(screen.queryByTestId('thai-id-confirmation-image')).toBeNull()
   })
 

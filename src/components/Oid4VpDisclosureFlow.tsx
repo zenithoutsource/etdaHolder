@@ -33,11 +33,14 @@ import { recordOid4vpPresentationFailure, recordWalletInitiatedPresentationFailu
 import { maybeConsumeSingleUseCredential } from '../services/credentials/singleUseCredentialConsumption'
 import type { VerifiableCredentialRecord } from '../services/vci/exchangeService'
 import { describePresentationForLog } from '../services/scan/scanLogDescriptors'
-import { confirmPresentationBiometric, createApprovedPresentationResponse } from '../services/vp/presentationApproval'
+import {
+  confirmPresentationBiometric,
+  createApprovedPresentationResponse,
+  requiresPresentationAppBiometric,
+} from '../services/vp/presentationApproval'
 import { markPresentationRequestConsumed } from '../services/vp/presentationRequestReplay'
 import type { PresentationFlowOrigin } from '../services/vp/oid4vc/types'
 import {
-  readPresentationTokenMode,
   submitPresentationResponse,
   type ResolvedPresentationRequest,
 } from '../services/vp/presentationService'
@@ -200,7 +203,7 @@ export function Oid4VpDisclosureFlow({
     )
     try {
       logWalletStep(logScope, 'presentation-approve-start', describePresentationForLog(request))
-      if (readPresentationTokenMode(request) === 'raw-credential') {
+      if (requiresPresentationAppBiometric(request)) {
         logWalletStep(logScope, 'presentation-biometric-start', describePresentationForLog(request))
         await confirmPresentationBiometric()
         logWalletStep(logScope, 'presentation-biometric-complete', describePresentationForLog(request))
@@ -274,7 +277,12 @@ export function Oid4VpDisclosureFlow({
       })
       onSucceeded?.()
     } catch (err) {
-      logWalletError(logScope, 'presentation-approve-failed', err)
+      const transportHint = err instanceof Error
+        ? (err as Error & { presentationTransportHint?: unknown }).presentationTransportHint
+        : undefined
+      logWalletError(logScope, 'presentation-approve-failed', err, {
+        ...(transportHint ? { transportHint } : {}),
+      })
       if (historyChannel === 'oid4vp') {
         recordOid4vpPresentationFailure(request, err, disclosedLabels, deliveryPath)
       } else {

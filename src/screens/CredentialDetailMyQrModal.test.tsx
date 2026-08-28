@@ -277,6 +277,7 @@ jest.mock('../../src/services/proximity/mdocStorage', () => ({
 
 jest.mock('../../src/services/vp/presentationEvidence', () => ({
   readCompactTokenSignature: jest.fn(() => 'signature'),
+  readCredentialPresentationSignature: jest.fn(() => 'signature'),
 }))
 
 jest.mock('../../src/services/vp/sdJwtCredential', () => ({

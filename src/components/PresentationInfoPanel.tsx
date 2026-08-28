@@ -14,7 +14,7 @@ import {
   resolveDisplayHolderProfile,
 } from '../services/credentials/credentialDisplay'
 import { getWalletKeyRegisteredAt } from '../services/crypto/crypto'
-import { readCompactTokenSignature } from '../services/vp/presentationEvidence'
+import { readCredentialPresentationSignature } from '../services/vp/presentationEvidence'
 import type { ResolvedPresentationRequest } from '../services/vp/presentationService'
 import { CredentialDocumentDetailCard } from './CredentialDocumentDetailCard'
 import { PresentationApprovalDeviceCard } from './PresentationApprovalDeviceCard'
@@ -43,7 +43,7 @@ export function PresentationInfoPanel({
     () => resolveDisplayHolderProfile(record, credentials),
     [credentials, record],
   )
-  const credentialSignature = readCompactTokenSignature(record.rawVc) ?? 'Signature unavailable'
+  const credentialSignature = readCredentialPresentationSignature(record.rawVc) ?? 'Signature unavailable'
 
   return (
     <View className="flex-1 bg-surface px-4 pt-6">

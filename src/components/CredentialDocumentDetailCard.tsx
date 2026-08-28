@@ -32,6 +32,7 @@ import type { CredentialInactiveState } from "../services/credentials/credential
 import { shouldShowCredentialRenewalRibbon } from "../services/credentials/credentialRenewalPresentation";
 import { shouldBlockCredentialDetailPresentment } from "../services/credentials/credentialHomeNavigation";
 import type { VerifiableCredentialRecord } from "../services/vci/exchangeService";
+import { normalizeClaimKey, readMdocElementIdentifier } from "@/src/utils/claimKeyNormalization";
 import { CredentialRenewalOverlay } from "./CredentialRenewalOverlay";
 import { DocumentCardDetailValue } from "./DocumentCardDetailValue";
 import { DrivingLicenceDocumentCard } from "./DrivingLicenceDocumentCard";
@@ -186,7 +187,7 @@ function DocumentActionRow({
   );
 }
 
-const NAME_ROW_KEYS = new Set(["givenName", "familyName"]);
+const LATIN_NAME_ROW_LEAF_KEYS = new Set(["givenname", "familyname"]);
 const PRIMARY_ID_KEYS = [
   "nationalId",
   "licenceNumber",
@@ -196,6 +197,12 @@ const PRIMARY_ID_KEYS = [
 const EMPTY_VALUE = "-";
 const MOCK_ID_CARD_ADDRESS =
   "123/45 ถนนราชดำเนิน แขวงพระบรมมหาราชวัง เขตพระนคร กรุงเทพมหานคร 10200";
+
+function isNameDetailRow(row: CredentialDisplayRow): boolean {
+  return LATIN_NAME_ROW_LEAF_KEYS.has(
+    normalizeClaimKey(readMdocElementIdentifier(row.key)),
+  );
+}
 
 function pickPrimaryId(
   rows: CredentialDisplayRow[],
@@ -652,7 +659,7 @@ export function CredentialDocumentDetailCard({
   const isPortraitArtwork = display.imageKey === "profile";
   const detailRows = [...display.primaryRows, ...display.extraRows].filter(
     (row) => {
-      if (NAME_ROW_KEYS.has(row.key)) return false;
+      if (isNameDetailRow(row)) return false;
       if (primaryId && row.key === primaryId.key) return false;
       return true;
     },

@@ -113,7 +113,10 @@ jest.mock('../../src/hooks/useStoredCredentials', () => ({
 }))
 jest.mock('../../src/services/proximity/proximityPresentation', () => ({ isProximityPresentationSupported: () => false }))
 jest.mock('../../src/services/proximity/mdocStorage', () => ({ hasStoredMdoc: jest.fn(() => new Promise(() => {})) }))
-jest.mock('../../src/services/vp/presentationEvidence', () => ({ readCompactTokenSignature: jest.fn() }))
+jest.mock('../../src/services/vp/presentationEvidence', () => ({
+  readCompactTokenSignature: jest.fn(),
+  readCredentialPresentationSignature: jest.fn(() => 'signature'),
+}))
 jest.mock('../../src/services/vp/sdJwtCredential', () => ({ isSdJwtCredential: () => false }))
 jest.mock('../../src/config/themeColors', () => ({ THEME: { navy: '#000', danger: '#f00' } }))
 

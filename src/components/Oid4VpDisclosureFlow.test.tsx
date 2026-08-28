@@ -42,10 +42,18 @@ jest.mock('../services/vp/presentationService', () => ({
 
 const mockCreateResponse = jest.fn()
 const mockBiometric = jest.fn()
-jest.mock('../services/vp/presentationApproval', () => ({
-  createApprovedPresentationResponse: (...args: unknown[]) => mockCreateResponse(...args),
-  confirmPresentationBiometric: (...args: unknown[]) => mockBiometric(...args),
+const mockCanBuildMdocDeviceResponse = jest.fn()
+jest.mock('../services/vp/oid4vpMdocDeviceResponse', () => ({
+  canBuildOid4vpMdocDeviceResponse: (...args: unknown[]) => mockCanBuildMdocDeviceResponse(...args),
 }))
+jest.mock('../services/vp/presentationApproval', () => {
+  const actual = jest.requireActual('../services/vp/presentationApproval') as object
+  return {
+    ...actual,
+    createApprovedPresentationResponse: (...args: unknown[]) => mockCreateResponse(...args),
+    confirmPresentationBiometric: (...args: unknown[]) => mockBiometric(...args),
+  }
+})
 
 const mockRecordSuccess = jest.fn()
 jest.mock('../services/history/recordWalletPresentationSuccess', () => ({
@@ -201,6 +209,8 @@ async function flush() {
 beforeEach(() => {
   jest.clearAllMocks()
   mockMarkPresentationRequestConsumed.mockReset()
+  mockCanBuildMdocDeviceResponse.mockReset()
+  mockCanBuildMdocDeviceResponse.mockReturnValue(false)
   mockReadMode.mockReturnValue('sd-jwt-kb')
   mockCreateResponse.mockResolvedValue({ vpToken: 'vp~kb', presentationSubmission: { id: 'sub' } })
   mockSubmit.mockResolvedValue({ status: 'accepted' })
@@ -447,6 +457,59 @@ describe('Oid4VpDisclosureFlow', () => {
   test('raw-credential mode requires the app-level biometric gate at info accept', async () => {
     mockResolve.mockResolvedValue(buildRequest())
     mockReadMode.mockReturnValue('raw-credential')
+    mockBiometric.mockResolvedValue(undefined)
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('scan-face'))
+    await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    expect(mockBiometric).not.toHaveBeenCalled()
+
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
+    expect(mockBiometric).toHaveBeenCalledTimes(1)
+  })
+
+  test('mso-mdoc mode skips app biometric when hardware DeviceResponse will sign', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    mockReadMode.mockReturnValue('mso-mdoc')
+    mockCanBuildMdocDeviceResponse.mockReturnValue(true)
+    mockBiometric.mockResolvedValue(undefined)
+
+    render(
+      <Oid4VpDisclosureFlow
+        authorizationRequestUri="openid4vp://authorize?request_uri=http://verifier/r/1"
+        credentials={[credential]}
+        onDone={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    )
+
+    await flush()
+    fireEvent.press(screen.getByText('scan-face'))
+    await flush()
+    fireEvent.press(screen.getByText('consent-accept'))
+    await flush()
+    fireEvent.press(screen.getByText('info-confirm'))
+    await flush()
+    expect(mockBiometric).not.toHaveBeenCalled()
+    expect(mockCreateResponse).toHaveBeenCalledTimes(1)
+  })
+
+  test('mso-mdoc fallback requires the app-level biometric gate at info accept', async () => {
+    mockResolve.mockResolvedValue(buildRequest())
+    mockReadMode.mockReturnValue('mso-mdoc')
+    mockCanBuildMdocDeviceResponse.mockReturnValue(false)
     mockBiometric.mockResolvedValue(undefined)
 
     render(

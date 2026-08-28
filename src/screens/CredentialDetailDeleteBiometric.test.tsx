@@ -7,6 +7,7 @@ import CredentialDetailScreen from '../../app/(tabs)/credential/[id]'
 const mockReact = React
 const mockRefresh = jest.fn()
 const mockPush = jest.fn()
+const mockReplace = jest.fn()
 const mockConfirmCredentialDeletionBiometric = jest.fn()
 const mockIsCredentialDeletionBiometricCancellation = jest.fn()
 const mockHasWalletPin = jest.fn(() => true)
@@ -20,7 +21,7 @@ jest.mock('@expo/vector-icons/MaterialCommunityIcons', () => () => null)
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'credential-1' }),
-  useRouter: () => ({ back: jest.fn(), push: mockPush, replace: jest.fn() }),
+  useRouter: () => ({ back: jest.fn(), push: mockPush, replace: mockReplace }),
   useFocusEffect: (effect: () => void | (() => void)) => {
     mockReact.useEffect(() => effect(), [])
   },
@@ -231,6 +232,7 @@ jest.mock('../../src/services/proximity/mdocStorage', () => ({
 
 jest.mock('../../src/services/vp/presentationEvidence', () => ({
   readCompactTokenSignature: jest.fn(() => 'signature'),
+  readCredentialPresentationSignature: jest.fn(() => 'signature'),
 }))
 
 jest.mock('../../src/services/vp/sdJwtCredential', () => ({
@@ -327,7 +329,7 @@ describe('CredentialDetailScreen delete biometric', () => {
     expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
   })
 
-  test('opens History on the lifecycle filter after delete approval', async () => {
+  test('returns to Wallet home after delete approval', async () => {
     mockConfirmCredentialDeletionBiometric.mockResolvedValueOnce(undefined)
 
     renderDeleteSecurityScreen()
@@ -338,9 +340,7 @@ describe('CredentialDetailScreen delete biometric', () => {
     })
     fireEvent.press(screen.getByRole('button', { name: 'Approve' }))
 
-    expect(mockPush).toHaveBeenCalledWith({
-      pathname: '/(tabs)/history',
-      params: { filter: 'lifecycle' },
-    })
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)')
   })
 })

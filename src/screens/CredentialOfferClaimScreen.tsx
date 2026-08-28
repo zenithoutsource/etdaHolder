@@ -1,8 +1,8 @@
 /**
  * OID4VCI claim pipeline — resolve, optional auth/tx_code, preview, save.
  * Journey: P1 issuance (Scan QR or same-device callback); P3 same-type pairing after save.
- * Copy: WALLET_HOME_COPY; cardSchemas issuance confirmation; THEME.
- * Layout: ThaiID / DL / transcript panels, IssuanceTrustConfirmationPanel, ScanSuccessPanel.
+ * Copy: WALLET_HOME_COPY; cardSchemas issuance confirmation; TxCodeEntryPanel; THEME.
+ * Layout: ThaiID / DL / transcript panels, TxCodeEntryPanel, IssuanceTrustConfirmationPanel, ScanSuccessPanel.
  * Next: Wallet on Back after success (offer dismissed so remount cannot restore DOPA).
  * Map: docs/CODEMAPS/frontend.md#scan-and-issuance
  */
@@ -11,12 +11,11 @@ import * as Linking from 'expo-linking'
 import * as WebBrowser from 'expo-web-browser'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppButton } from '../components/AppButton'
 import { useAppDialog } from '../components/AppDialog'
-import { CodeBoxField } from '../components/auth/CodeBoxField'
 import { DrivingLicencePreviewPanel } from '../components/DrivingLicencePreviewPanel'
 import { IssuanceTrustConfirmationPanel } from '../components/IssuanceTrustConfirmationPanel'
 import { ScanSuccessPanel } from '../components/ScanSuccessPanel'
@@ -24,6 +23,7 @@ import { ThaiIdReceivePanel } from '../components/ThaiIdReceivePanel'
 import { ThaiIdSuccessConfirmationPanel } from '../components/ThaiIdSuccessConfirmationPanel'
 import { TranscriptPreviewPanel } from '../components/TranscriptPreviewPanel'
 import { CredentialReceiveCardPanel } from '../components/CredentialReceiveCardPanel'
+import { TxCodeEntryPanel } from '../components/TxCodeEntryPanel'
 import { WalletHeader } from '../components/WalletHeader'
 
 import { useAndroidBackNavigation } from '../hooks/useAndroidBackNavigation'
@@ -59,9 +59,9 @@ import {
   type PendingMdocCredential,
 } from '../services/credentials/dualFormatIssuance'
 import {
-  pairRenewalReplacementForSavedCredential,
   readRenewalIntakePendingKeyForOffer,
 } from '../services/credentials/renewalIssuerIntake'
+import { finalizeCredentialClaim } from '../services/credentials/finalizeCredentialClaim'
 import { saveScannedCredential } from '../services/credentials/scannedCredentialSave'
 import { readStoredCredentials } from '../services/credentials/storedCredentials'
 import { discardIssuanceCredentialArtifacts, commitIssuanceCredentialKeyReplacement } from '../services/crypto/perCredentialSigning'
@@ -82,7 +82,6 @@ import {
 import { resolveCredentialOfferDeeplink } from '../services/credentials/resolveCredentialOfferDeeplink'
 import { resolveDisplayHolderProfile } from '../services/credentials/credentialDisplay'
 import { isCredentialOfferDeeplink, useDeeplinkStore } from '../store/deeplinkStore'
-import { normalizeNumericCode } from '../utils/normalizeNumericCode'
 
 import { THEME } from '../config/themeColors'
 import { resolveFirstPartyType } from '../config/firstPartyCredential'
@@ -652,15 +651,11 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
         await finalizeDualFormatCredential(record, pendingMdoc, {
           refreshCredentials,
         })
+        finalizeCredentialClaim(record)
       } else {
         saveScannedCredential(record, { refreshCredentials })
       }
       await commitIssuanceCredentialKeyReplacement(record.id)
-      try {
-        pairRenewalReplacementForSavedCredential(record)
-      } catch (pairingError) {
-        logWalletError('deeplink', 'renewal-pair-failed', pairingError, describeCredentialForLog(record))
-      }
       logWalletStep('deeplink', 'credential-save-complete', describeCredentialForLog(record))
       consumeCompletedOffer()
       setPhase({ tag: 'success', record })
@@ -777,63 +772,15 @@ export function CredentialOfferClaimScreen({ initialOfferUri, onClose }: Props =
   }
 
   if (phase.tag === 'txCode') {
-    const canContinue = txCode.trim().length > 0
-    const txCodeMeta = phase.offer.txCode
-    const isNumericTxCode = txCodeMeta?.input_mode === 'numeric'
-    const txCodeMaxLength = txCodeMeta?.length
-    const useCodeBoxes = isNumericTxCode && txCodeMaxLength === 6
-
-    function handleTxCodeChange(text: string) {
-      if (isNumericTxCode) {
-        setTxCode(normalizeNumericCode(text, txCodeMaxLength ?? 32))
-        return
-      }
-      setTxCode(text)
-    }
-
     return (
       <SafeAreaView className="flex-1 bg-wallet-navy" edges={SCREEN_SAFE_EDGES}>
         <WalletHeader onBack={exitFlow} />
-        <View className="flex-1 bg-surface px-4 pt-6">
-          <View className="rounded-lg bg-white p-6">
-            <Text className="text-[16px] font-extrabold text-navy-deep">Transaction code</Text>
-            <Text className="mt-1 text-xs text-slate">
-              {useCodeBoxes
-                ? 'Tap the boxes to enter or paste the code from your email'
-                : 'Enter the code from your email'}
-            </Text>
-            {useCodeBoxes ? (
-              <View className="mt-4">
-                <CodeBoxField
-                  value={txCode}
-                  onChange={handleTxCodeChange}
-                  length={6}
-                  testID="tx-code-boxes"
-                />
-              </View>
-            ) : (
-              <TextInput
-                value={txCode}
-                onChangeText={handleTxCodeChange}
-                keyboardType={isNumericTxCode ? 'number-pad' : 'default'}
-                textContentType={isNumericTxCode ? 'oneTimeCode' : 'none'}
-                autoComplete={isNumericTxCode ? 'one-time-code' : 'off'}
-                maxLength={txCodeMaxLength}
-                placeholder="Enter transaction code"
-                placeholderTextColor={THEME.grayCool}
-                className="mt-3 min-h-[44px] rounded-lg border border-gray300 px-3 text-[15px] font-semibold text-navy-deep"
-              />
-            )}
-            <AppButton
-              variant="solid-block"
-              label="Continue"
-              disabled={!canContinue}
-              onPress={() => handleTxCodeSubmit(phase.offer)}
-              className={`mt-4 h-9 w-28 !bg-success ${!canContinue ? 'opacity-45' : ''}`}
-              textClassName="text-[14px]"
-            />
-          </View>
-        </View>
+        <TxCodeEntryPanel
+          value={txCode}
+          onChange={setTxCode}
+          onContinue={() => handleTxCodeSubmit(phase.offer)}
+          txCode={phase.offer.txCode}
+        />
       </SafeAreaView>
     )
   }

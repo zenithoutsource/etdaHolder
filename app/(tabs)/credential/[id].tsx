@@ -97,7 +97,7 @@ import {
 import { useStoredCredentials } from "../../../src/hooks/useStoredCredentials";
 import { canShowNfcPresentButton } from "../../../src/services/proximity/mdocCredential";
 import { hasStoredMdoc } from "../../../src/services/proximity/mdocStorage";
-import { readCompactTokenSignature } from "../../../src/services/vp/presentationEvidence";
+import { readCredentialPresentationSignature } from "../../../src/services/vp/presentationEvidence";
 
 import { THEME } from '../../../src/config/themeColors'
 
@@ -206,6 +206,8 @@ export default function CredentialDetailScreen() {
     isCredentialExpiringSoon(credential) &&
     (inactiveState.kind === "active" || inactiveState.kind === "renewal-required");
   const showRenewalCleanupCta = isRenewalAwaitingHolderCleanup(renewalStatus);
+  const showDocumentDeleteCta =
+    inactiveState.kind === "document-expired" || inactiveState.kind === "superseded";
 
   const requestThaId = useCallback(() => {
     void requestCredentialViaPortalFlow({
@@ -495,7 +497,8 @@ export default function CredentialDetailScreen() {
     }
     if (action === "Delete") {
       deleteStoredCredentialAfterHolderApproval(credential.id);
-      router.push({ pathname: "/(tabs)/history", params: { filter: "lifecycle" } });
+      refresh();
+      router.replace("/(tabs)");
       return;
     }
     recordCredentialLifecycleAction(credential.id, action);
@@ -610,7 +613,7 @@ export default function CredentialDetailScreen() {
 
   if (phase.tag === "approve" && display) {
     const credentialSignature = credential
-      ? readCompactTokenSignature(credential.rawVc) ?? "Signature unavailable"
+      ? readCredentialPresentationSignature(credential.rawVc) ?? "Signature unavailable"
       : "Signature unavailable";
 
     return (
@@ -792,6 +795,17 @@ export default function CredentialDetailScreen() {
                     variant="solid-block"
                     label={WALLET_HOME_COPY.renewalCleanupCta}
                     onPress={showOldCredentialCleanupDialog}
+                    className="w-full rounded-xl bg-danger-dark py-3"
+                    textClassName="text-center text-sm font-bold"
+                  />
+                </View>
+              ) : null}
+              {showDocumentDeleteCta ? (
+                <View className="mt-4">
+                  <AppButton
+                    variant="solid-block"
+                    label={WALLET_HOME_COPY.deleteDocumentCta}
+                    onPress={() => beginAction("Delete")}
                     className="w-full rounded-xl bg-danger-dark py-3"
                     textClassName="text-center text-sm font-bold"
                   />

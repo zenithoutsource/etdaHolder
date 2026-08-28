@@ -69,6 +69,7 @@ import {
 } from '@/src/services/vp/presentationRequestReplay';
 import { notifyPresentationIntakeRejection } from '@/src/services/vp/presentationIntakeRejection';
 import { useNotificationRouteStore } from '@/src/store/notificationRouteStore';
+import { useDcApiProviderBridge, useDcApiRegistrySync } from '@/src/hooks/useDcApiProviderStartup';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -137,6 +138,9 @@ export default function RootLayout() {
   useEffect(() => {
     isAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
+
+  useDcApiProviderBridge(startupState.status === 'ready');
+  useDcApiRegistrySync(startupState.status === 'ready' && isPinVerified);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -814,6 +818,7 @@ export default function RootLayout() {
           <Stack.Screen name="pin-setup" options={{ headerShown: false }} />
           <Stack.Screen name="pin-lock" options={{ headerShown: false }} />
           <Stack.Screen name="callback" options={{ headerShown: false }} />
+          <Stack.Screen name="dc-api-presentation" options={{ headerShown: false, presentation: 'modal' }} />
         </Stack>
         <StatusBar style={isTabRoute ? 'light' : 'dark'} backgroundColor="transparent" translucent />
       </AppDialogProvider>

@@ -71,7 +71,7 @@ import {
   startRenewalIssuerIntake,
 } from "../../src/services/credentials/renewalIssuerIntake";
 import { shouldShowRenewedActiveBadge } from "../../src/services/credentials/credentialRenewalPresentation";
-import { findCleanupPendingForCredentialType } from "../../src/services/credentials/renewalCleanupNotification";
+import { findSupersededOldCredentialForDisplay } from "../../src/services/credentials/credentialSupersededSibling";
 import {
   isCatalogFirstPartyMatch,
   listUnregisteredHomeDocuments,
@@ -374,8 +374,12 @@ export default function WalletHomeScreen() {
                     renewalStatuses,
                   )
                 : undefined;
-              const cleanupPendingForType = item.credentialType
-                ? findCleanupPendingForCredentialType(item.credentialType)
+              const supersededOld = credential
+                ? findSupersededOldCredentialForDisplay({
+                    preferredCredential: credential,
+                    credentials,
+                    renewalStatuses,
+                  })
                 : undefined;
               const lifecycleStatus = credential
                 ? lifecycleStatuses[credential.id]
@@ -495,19 +499,19 @@ export default function WalletHomeScreen() {
                       : undefined
                   }
                   oldCredentialLabel={
-                    cleanupPendingForType &&
-                    cleanupPendingForType.oldCredentialId !== credential?.id
+                    supersededOld &&
+                    supersededOld.oldCredentialId !== credential?.id
                       ? `${WALLET_HOME_COPY.viewCredential} (เอกสารเดิม)`
                       : undefined
                   }
                   onViewOldCredential={
-                    cleanupPendingForType &&
-                    cleanupPendingForType.oldCredentialId !== credential?.id
+                    supersededOld &&
+                    supersededOld.oldCredentialId !== credential?.id
                       ? () => {
                           router.push({
                             pathname: "/(tabs)/credential/[id]",
                             params: {
-                              id: cleanupPendingForType.oldCredentialId,
+                              id: supersededOld.oldCredentialId,
                             },
                           });
                         }
@@ -610,6 +614,12 @@ export default function WalletHomeScreen() {
                 credential,
               });
 
+              const supersededOld = findSupersededOldCredentialForDisplay({
+                preferredCredential: credential,
+                credentials,
+                renewalStatuses,
+              });
+
               return (
                 <WalletDocumentMenuItem
                   key={credential.id}
@@ -620,6 +630,21 @@ export default function WalletHomeScreen() {
                   isExpanded={false}
                   badge={badge}
                   requestLabel={WALLET_HOME_COPY.requestCredential}
+                  oldCredentialLabel={
+                    supersededOld
+                      ? `${WALLET_HOME_COPY.viewCredential} (เอกสารเดิม)`
+                      : undefined
+                  }
+                  onViewOldCredential={
+                    supersededOld
+                      ? () => {
+                          router.push({
+                            pathname: "/(tabs)/credential/[id]",
+                            params: { id: supersededOld.oldCredentialId },
+                          });
+                        }
+                      : undefined
+                  }
                   onPress={() => {
                     if (isNewCredential) {
                       clearNewCredentialBadge(credential.id);
