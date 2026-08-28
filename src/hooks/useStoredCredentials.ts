@@ -20,7 +20,7 @@ function isStorageNotInitialized(error: unknown): boolean {
 }
 
 export function useStoredCredentials(): UseStoredCredentialsResult {
-  const [status, setStatus] = useState<UseStoredCredentialsResult['status']>('ready')
+  const [status, setStatus] = useState<UseStoredCredentialsResult['status']>('storage-not-ready')
   const [credentials, setCredentials] = useState<VerifiableCredentialRecord[]>([])
   const [error, setError] = useState<string | null>(null)
 

@@ -21,6 +21,36 @@ const drivingLicenceRecord: VerifiableCredentialRecord = {
 }
 
 describe('readDrivingLicenceCardView', () => {
+  test('maps tonyhere synthetic mDL claims into the driving-licence card view', () => {
+    const view = readDrivingLicenceCardView({
+      id: 'tonyhere-mdl',
+      type: 'DLTDrivingLicence',
+      rawVc: 'header.payload.signature',
+      claims: {
+        vct: 'https://demo.tonyhere.work/credentials/DrivingLicense',
+        givenName: 'SOMCHAI',
+        familyName: 'SUKJAI',
+        givenNameTh: 'สมชาย',
+        familyNameTh: 'สุขใจ',
+        licenceNumber: 'DL-DEMO-000001',
+        birthDate: '15/01/1990',
+        issuanceDate: '20/08/2026',
+        expiryDate: '19/08/2031',
+        licenceClass: 'B',
+      },
+      issuedAt: '2026-08-20T00:00:00.000Z',
+      issuerUrl: 'https://demo.tonyhere.work/',
+    })
+
+    expect(view.thaiName).toBe('สมชาย สุขใจ')
+    expect(view.englishName).toBe('SOMCHAI SUKJAI')
+    expect(view.licenceNumber).toBe('DL-DEMO-000001')
+    expect(view.type).toBe('รถยนต์ส่วนบุคคล')
+    expect(view.birthDate).toContain('2533')
+    expect(view.issueDate).toContain('2569')
+    expect(view.expiryDate).toContain('2574')
+  })
+
   test('maps issuer claims into the driving-licence card view', () => {
     const view = readDrivingLicenceCardView(drivingLicenceRecord)
 
@@ -29,7 +59,7 @@ describe('readDrivingLicenceCardView', () => {
     expect(view.licenceNumber).toBe('DLT-12345')
     expect(view.type).toBe('รถยนต์ส่วนบุคคล')
     expect(view.englishType).toBe('Private Motor Car')
-    expect(view.englishName).toBe('Ms. Thodsopp Eekkasandigital')
+    expect(view.englishName).toBe('Somchai Jaidee')
     expect(view.birthDate).toContain('2533')
     expect(view.expiryDate).toContain('2573')
   })

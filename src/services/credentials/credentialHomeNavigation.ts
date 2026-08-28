@@ -43,7 +43,8 @@ export function shouldSplitSuspendedHomeRow(
     inactiveState.kind === 'renewal-required' ||
     inactiveState.kind === 'renewal-processing' ||
     inactiveState.kind === 'cleanup-pending' ||
-    inactiveState.kind === 'old-revoked'
+    inactiveState.kind === 'old-revoked' ||
+    inactiveState.kind === 'superseded'
   )
 }
 
@@ -58,6 +59,7 @@ export function shouldBlockCredentialDetailPresentment(
     kind === 'renewal-processing' ||
     kind === 'old-revoked' ||
     kind === 'cleanup-pending' ||
+    kind === 'superseded' ||
     kind === 'document-expired' ||
     kind === 'hardware-reissue-required' ||
     kind === 'issuer-suspended' ||

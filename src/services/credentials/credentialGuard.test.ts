@@ -328,6 +328,27 @@ describe('credentialGuard', () => {
     expect(picked?.id).toBe('id-card-new')
   })
 
+  test('prefers newer issuedAt when both credentials are normal active with different k_cred DIDs', () => {
+    const oldRecord: VerifiableCredentialRecord = {
+      id: 'transcript-old',
+      type: 'ChulalongkornUniversityTranscript',
+      rawVc: 'vc-old',
+      claims: {},
+      issuedAt: '2026-01-01T00:00:00.000Z',
+    }
+    const newRecord: VerifiableCredentialRecord = {
+      id: 'transcript-new',
+      type: 'ChulalongkornUniversityTranscript',
+      rawVc: 'vc-new',
+      claims: {},
+      issuedAt: '2026-08-24T00:00:00.000Z',
+    }
+
+    const picked = pickPreferredHomeCredential([oldRecord, newRecord], {})
+
+    expect(picked?.id).toBe('transcript-new')
+  })
+
   test('treats issuer-suspended PID as unusable and re-requestable', () => {
     writeIssuerSuspension({
       credentialId: thaiIdRecord.id,

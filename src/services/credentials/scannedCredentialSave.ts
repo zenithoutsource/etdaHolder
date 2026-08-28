@@ -1,4 +1,5 @@
 import { markCredentialAsNew as defaultMarkCredentialAsNew } from './credentialBadges'
+import { finalizeCredentialClaim } from './finalizeCredentialClaim'
 import {
   saveCredentialRecord as defaultSaveCredentialRecord,
   type VerifiableCredentialRecord,
@@ -18,6 +19,7 @@ export function saveScannedCredential(
   const markCredentialAsNew = dependencies.markCredentialAsNew ?? defaultMarkCredentialAsNew
 
   saveCredentialRecord(record)
+  finalizeCredentialClaim(record)
   markCredentialAsNew(record.id)
   dependencies.refreshCredentials?.()
 }

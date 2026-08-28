@@ -3,7 +3,10 @@
  */
 
 import { isRecord } from '@/src/utils/jwtUtils'
+import { isCborTaggedDateValue, readIsoDateClaimValue } from '@/src/utils/cborClaimValue'
+import { readByteArray, readImageDataUriFromBytes } from '@/src/utils/imageDataUri'
 import { hasClaimValue, isHiddenClaimKey } from './claimFormatting'
+import { isDrivingPrivilegeShape, readDrivingPrivilegeDisplayValue } from './mdocWalletClaims'
 
 export type GenericClaimRow = {
   key: string
@@ -33,12 +36,23 @@ export function isPhotoClaimKey(key: string): boolean {
 }
 
 export function formatGenericClaimValue(value: unknown): string {
+  if (isCborTaggedDateValue(value)) {
+    return readIsoDateClaimValue(value) ?? ''
+  }
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (typeof value === 'string') return value
   if (typeof value === 'number' && !Number.isNaN(value)) return String(value)
   if (value === null || value === undefined) return ''
-  if (Array.isArray(value)) return summarizeArray(value)
-  if (isRecord(value)) return summarizeObject(value)
+  if (Array.isArray(value)) {
+    const privilegeDisplay = readDrivingPrivilegeDisplayValue(value)
+    if (privilegeDisplay && isDrivingPrivilegeShape(value)) return privilegeDisplay
+    return summarizeArray(value)
+  }
+  if (isRecord(value)) {
+    const privilegeDisplay = readDrivingPrivilegeDisplayValue(value)
+    if (privilegeDisplay && isDrivingPrivilegeShape(value)) return privilegeDisplay
+    return summarizeObject(value)
+  }
   return ''
 }
 
@@ -55,13 +69,24 @@ function summarizeArray(value: unknown[]): string {
 }
 
 function summarizeObject(value: Record<string, unknown>): string {
+  if (isCborTaggedDateValue(value)) {
+    return readIsoDateClaimValue(value) ?? ''
+  }
+
   return Object.entries(value)
     .filter(([, entry]) => typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean')
     .map(([key, entry]) => `${humanizeClaimKey(key)}: ${formatGenericClaimValue(entry)}`)
     .join(', ')
 }
 
+function isCborEncodingKey(key: string): boolean {
+  return key === 'tag' || key === '__tag' || key === 'value'
+}
+
 export function readImageUriFromClaim(value: unknown): string | undefined {
+  const bytes = readByteArray(value)
+  if (bytes) return readImageDataUriFromBytes(bytes)
+
   if (typeof value !== 'string' || value.trim().length === 0) return undefined
   const trimmed = value.trim()
   if (IMAGE_DATA_URI_PATTERN.test(trimmed)) return trimmed
@@ -76,6 +101,7 @@ export function readImageUriFromClaim(value: unknown): string | undefined {
 export function readGenericClaimRows(
   claims: Record<string, unknown>,
   labels: Record<string, string> = {},
+  options?: { metadataKeyOrder?: readonly string[] },
 ): { rows: GenericClaimRow[]; photoUri?: string } {
   const rows: GenericClaimRow[] = []
   let photoUri: string | undefined
@@ -89,7 +115,21 @@ export function readGenericClaimRows(
     }
 
     if (isRecord(value) && !Array.isArray(value)) {
-      const nestedEntries = Object.entries(value).filter(([, nested]) => hasClaimValue(nested))
+      if (isCborTaggedDateValue(value)) {
+        const taggedDate = formatGenericClaimValue(value).trim()
+        if (taggedDate) {
+          rows.push({
+            key,
+            label: labels[key] ?? humanizeClaimKey(key),
+            value: taggedDate,
+          })
+        }
+        continue
+      }
+
+      const nestedEntries = Object.entries(value).filter(
+        ([nestedKey, nested]) => hasClaimValue(nested) && !isCborEncodingKey(nestedKey),
+      )
       if (nestedEntries.length > 0) {
         for (const [nestedKey, nestedValue] of nestedEntries) {
           const nestedPath = `${key}.${nestedKey}`
@@ -118,6 +158,29 @@ export function readGenericClaimRows(
     })
   }
 
-  rows.sort((left, right) => left.key.localeCompare(right.key))
+  sortGenericClaimRows(rows, options?.metadataKeyOrder)
   return photoUri ? { rows, photoUri } : { rows }
+}
+
+function sortGenericClaimRows(rows: GenericClaimRow[], metadataKeyOrder?: readonly string[]): void {
+  if (!metadataKeyOrder || metadataKeyOrder.length === 0) {
+    rows.sort((left, right) => left.key.localeCompare(right.key))
+    return
+  }
+
+  const rank = new Map<string, number>()
+  metadataKeyOrder.forEach((key, index) => {
+    rank.set(key, index)
+    const leaf = key.includes('.') ? (key.split('.').at(-1) ?? key) : key
+    if (!rank.has(leaf)) rank.set(leaf, index)
+  })
+
+  rows.sort((left, right) => {
+    const leftRank = rank.get(left.key)
+    const rightRank = rank.get(right.key)
+    if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank
+    if (leftRank !== undefined) return -1
+    if (rightRank !== undefined) return 1
+    return left.key.localeCompare(right.key)
+  })
 }

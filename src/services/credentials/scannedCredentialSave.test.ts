@@ -1,6 +1,10 @@
 import { saveScannedCredential } from './scannedCredentialSave'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
+jest.mock('./finalizeCredentialClaim', () => ({
+  finalizeCredentialClaim: jest.fn(),
+}))
+
 const record: VerifiableCredentialRecord = {
   id: 'transcript-2',
   type: 'ChulalongkornUniversityTranscript',
@@ -26,5 +30,8 @@ describe('saveScannedCredential', () => {
     expect(markCredentialAsNew).toHaveBeenCalledWith(record.id)
     expect(refreshCredentials).toHaveBeenCalledTimes(1)
     expect(events).toEqual(['save', 'mark-new', 'refresh'])
+    expect(jest.requireMock('./finalizeCredentialClaim').finalizeCredentialClaim).toHaveBeenCalledWith(
+      record,
+    )
   })
 })

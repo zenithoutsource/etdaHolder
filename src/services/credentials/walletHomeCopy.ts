@@ -54,6 +54,8 @@ export const WALLET_HOME_COPY = {
   renewalRevokedMessage: 'เอกสารเดิมถูกเพิกถอนแล้ว เอกสารใหม่พร้อมใช้งาน',
   renewalDeleteTitle: '!! ดำเนินการลบเอกสาร !!',
   renewalDeleteMessage: 'เอกสารเดิมไม่สามารถใช้งานได้แล้ว กรุณาลบเอกสารเดิมเพื่อดำเนินการต่อ',
+  supersededDocumentPanelMessage:
+    'มีเอกสารฉบับใหม่แล้ว เอกสารนี้จะถูกเก็บไว้จนกว่าคุณจะลบ',
   confirmDelete: 'ยืนยัน',
   acknowledge: 'รับทราบ',
   renewalReceivedTitle: 'ได้รับเอกสารใหม่แล้ว',
@@ -74,6 +76,7 @@ export const WALLET_HOME_COPY = {
   documentExpiredCleanupTitle: '!! ดำเนินการลบเอกสาร !!',
   documentExpiredCleanupMessage:
     'เอกสารเดิมหมดอายุแล้ว กรุณาลบเอกสารเดิมเพื่อดำเนินการต่อ',
+  deleteDocumentCta: 'ลบเอกสารนี้',
   documentExpiringSoonNotificationTitle: 'เอกสารใกล้หมดอายุ',
   documentExpiringSoonNotificationBody:
     'เอกสารใน Wallet ของคุณจะหมดอายุในอีกไม่นาน กรุณาติดต่อผู้ออกเอกสารเพื่อขอเอกสารใหม่',

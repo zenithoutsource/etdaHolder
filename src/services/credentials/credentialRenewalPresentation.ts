@@ -35,6 +35,7 @@ export function shouldShowCredentialRenewalRibbon(
     inactiveState.kind === 'cleanup-pending' ||
     inactiveState.kind === 'document-expired' ||
     inactiveState.kind === 'hardware-reissue-required' ||
+    inactiveState.kind === 'superseded' ||
     inactiveState.kind === 'issuer-suspended' ||
     inactiveState.kind === 'revoked'
   )
@@ -53,5 +54,12 @@ export function shouldHideCredentialActionMenu(
   void renewalStatus
   if (readWalletKeyRotationRecord()) return true
   if (!context) return false
+
+  const kind = context.inactiveState.kind
+  // Expired or superseded siblings stay deletable via ⋮ even when the inactive ribbon shows.
+  if (kind === 'document-expired' || kind === 'superseded') {
+    return false
+  }
+
   return shouldShowCredentialRenewalRibbon(context.inactiveState, context.renewalState)
 }

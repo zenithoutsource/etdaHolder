@@ -3,12 +3,17 @@ import { encode } from 'cbor-x'
 import { base64UrlEncodeBytes } from '@/src/utils/base64Url'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import {
+  extractMdocIssuerClaims,
   extractMdocWalletClaims,
   mapIso18013NamespaceClaims,
+  mapMdocNamespaceIssuerClaims,
   overlayDrivingLicenceMdocClaims,
+  readDrivingPrivilegeDisplayValue,
+  readMdocPhotoClaimValue,
 } from './mdocWalletClaims'
 
 const ISO_NS = 'org.iso.18013.5.1'
+const EUDI_PID_NS = 'eu.europa.ec.eudi.pid.1'
 
 function encodeIssuerSignedDocument(claims: Record<string, unknown>): Uint8Array {
   const items = Object.entries(claims).map(([identifier, value], digestID) =>
@@ -87,6 +92,24 @@ describe('mdocWalletClaims', () => {
     })
   })
 
+  test('maps ISO national-character names into Thai wallet claim keys', () => {
+    expect(
+      mapIso18013NamespaceClaims({
+        [ISO_NS]: {
+          given_name: 'SOMCHAI',
+          family_name: 'SUKJAI',
+          given_name_national_character: 'สมชาย',
+          family_name_national_character: 'สุขใจ',
+        },
+      }),
+    ).toEqual({
+      givenName: 'SOMCHAI',
+      familyName: 'SUKJAI',
+      givenNameTh: 'สมชาย',
+      familyNameTh: 'สุขใจ',
+    })
+  })
+
   test('maps document_number to licenceNumber and keeps leftover ISO keys', () => {
     expect(
       mapIso18013NamespaceClaims({
@@ -101,7 +124,75 @@ describe('mdocWalletClaims', () => {
       licenceNumber: '54002891',
       sex: '1',
       nationality: 'THA',
-      issuing_authority: 'Department of Land Transport',
+      issuingAuthority: 'Department of Land Transport',
+    })
+  })
+
+  test('extracts portrait bytes from issuer namespace claims', () => {
+    const portrait = Uint8Array.from([0xff, 0xd8, 0xff, 0x01])
+    expect(
+      mapMdocNamespaceIssuerClaims({
+        [ISO_NS]: {
+          given_name: 'Ada',
+          portrait,
+        },
+      }),
+    ).toEqual({
+      [`${ISO_NS}.given_name`]: 'Ada',
+      [`${ISO_NS}.portrait`]: portrait,
+    })
+  })
+
+  test('reads portrait bytes from encoded mdoc documents', () => {
+    const portrait = Uint8Array.from([0xff, 0xd8, 0xff, 0xab])
+    const bytes = encodeIssuerSignedDocument({ portrait, given_name: 'Ada' })
+
+    expect(readMdocPhotoClaimValue(bytes)).toEqual(portrait)
+    expect(extractMdocIssuerClaims(bytes)[`${ISO_NS}.portrait`]).toEqual(portrait)
+    expect(extractMdocWalletClaims(bytes).portrait).toEqual(portrait)
+  })
+
+  test('maps EUDI PID namespace issuer claims with namespace-prefixed keys', () => {
+    expect(
+      mapMdocNamespaceIssuerClaims({
+        [EUDI_PID_NS]: {
+          family_name: 'Mustermann',
+          given_name: 'Erika',
+          birth_date: '1964-08-12',
+        },
+      }),
+    ).toEqual({
+      'eu.europa.ec.eudi.pid.1.family_name': 'Mustermann',
+      'eu.europa.ec.eudi.pid.1.given_name': 'Erika',
+      'eu.europa.ec.eudi.pid.1.birth_date': '1964-08-12',
+    })
+  })
+
+  test('extracts third-party EUDI PID issuer claims from issuerSigned-as-root mdoc bytes', () => {
+    const items = [
+      new Map<unknown, unknown>([
+        ['digestID', 0],
+        ['random', new Uint8Array([1])],
+        ['elementIdentifier', 'family_name'],
+        ['elementValue', 'Mustermann'],
+      ]),
+      new Map<unknown, unknown>([
+        ['digestID', 1],
+        ['random', new Uint8Array([2])],
+        ['elementIdentifier', 'given_name'],
+        ['elementValue', 'Erika'],
+      ]),
+    ]
+    const bytes = encode(
+      new Map<unknown, unknown>([
+        ['issuerAuth', new Uint8Array([0xd2])],
+        ['nameSpaces', new Map<unknown, unknown>([[EUDI_PID_NS, items]])],
+      ]),
+    )
+
+    expect(extractMdocIssuerClaims(bytes)).toEqual({
+      'eu.europa.ec.eudi.pid.1.family_name': 'Mustermann',
+      'eu.europa.ec.eudi.pid.1.given_name': 'Erika',
     })
   })
 
@@ -134,6 +225,35 @@ describe('mdocWalletClaims', () => {
     })
   })
 
+  test('formats driving_privileges with CBOR-tagged issue and expiry dates', () => {
+    expect(
+      readDrivingPrivilegeDisplayValue([
+        {
+          vehicle_category_code: 'B',
+          issue_date: { __tag: 1004, value: '2026-08-20' },
+          expiry_date: { __tag: 1004, value: '2031-08-19' },
+        },
+      ]),
+    ).toBe('B · Issue 2026-08-20 · Expiry 2031-08-19')
+  })
+
+  test('skips wallet mdoc remapping for third-party driving licence records', () => {
+    const record: VerifiableCredentialRecord = {
+      id: 'dl-tonyhere',
+      type: 'DLTDrivingLicence',
+      rawVc: 'header.payload.signature',
+      claims: { given_name: 'SOMCHAI' },
+      issuedAt: '2026-01-01T00:00:00.000Z',
+      issuerUrl: 'https://demo.tonyhere.work/',
+    }
+    const bytes = encodeIssuerSignedDocument({
+      given_name: 'Ada',
+      family_name: 'Lovelace',
+    })
+
+    expect(overlayDrivingLicenceMdocClaims(record, base64UrlEncodeBytes(bytes))).toEqual(record)
+  })
+
   test('overlays mdoc claims onto a driving licence record and prefers mdoc values', () => {
     const bytes = encodeIssuerSignedDocument({
       given_name: 'สมชาย',
@@ -150,6 +270,7 @@ describe('mdocWalletClaims', () => {
         licenceNumber: 'SD-JWT-LIC',
       },
       issuedAt: '2026-01-01T00:00:00.000Z',
+      issuerUrl: 'https://issuer.zenithcomp.co.th:455/',
     }
 
     const overlaid = overlayDrivingLicenceMdocClaims(record, base64UrlEncodeBytes(bytes))

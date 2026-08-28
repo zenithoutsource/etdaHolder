@@ -81,3 +81,41 @@ export function findLogicalCredentialBySdJwtRecordId(
     (credential) => credential.formats['dc+sd-jwt']?.rawCredentialRef === recordId,
   )
 }
+
+export function findLogicalCredentialsByRawCredentialRef(
+  recordId: string,
+  storage: CredentialStorage = getDefaultCredentialStorage(),
+): LogicalCredential[] {
+  return listLogicalCredentials(storage).filter((credential) =>
+    Object.values(credential.formats).some((format) => format?.rawCredentialRef === recordId),
+  )
+}
+
+export function removeLogicalCredential(
+  logicalCredentialId: string,
+  storage: CredentialStorage = getDefaultCredentialStorage(),
+): void {
+  if (!storage.remove) {
+    throw new Error('CredentialStorageRemoveUnsupported')
+  }
+
+  storage.remove(`${LOGICAL_CREDENTIAL_KEY_PREFIX}${logicalCredentialId}`)
+
+  const nextIndex = listLogicalCredentialIds(storage).filter((id) => id !== logicalCredentialId)
+  if (nextIndex.length === 0) {
+    storage.remove(LOGICAL_CREDENTIAL_INDEX_KEY)
+    return
+  }
+
+  storage.set(LOGICAL_CREDENTIAL_INDEX_KEY, JSON.stringify(nextIndex))
+}
+
+export function recordHasLogicalMdocFormat(
+  recordId: string,
+  storage: CredentialStorage = getDefaultCredentialStorage(),
+): boolean {
+  return listLogicalCredentials(storage).some((credential) => {
+    const mdocFormat = credential.formats['mso_mdoc']
+    return mdocFormat?.rawCredentialRef === recordId
+  })
+}

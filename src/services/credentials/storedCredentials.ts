@@ -8,8 +8,8 @@ const CREDENTIAL_KEY_PREFIX = 'credential:'
 
 type CredentialStorageReader = {
   getString: (key: string) => string | undefined
-  set?: (key: string, value: string) => void
-  remove?: (key: string) => boolean
+  set: (key: string, value: string) => void
+  remove: (key: string) => boolean
 }
 
 type CredentialsChangeListener = () => void
@@ -68,8 +68,8 @@ export function removeStoredCredential(
   const ids: string[] = indexRaw ? (JSON.parse(indexRaw) as string[]) : []
   const foundInIndex = ids.includes(credentialId)
   logWalletStep('credentials', 'remove-stored-credential-start', { credentialId, foundInIndex, indexSize: ids.length })
-  storage.set?.(CREDENTIAL_INDEX_KEY, JSON.stringify(ids.filter((id) => id !== credentialId)))
-  storage.remove?.(`${CREDENTIAL_KEY_PREFIX}${credentialId}`)
+  storage.set(CREDENTIAL_INDEX_KEY, JSON.stringify(ids.filter((id) => id !== credentialId)))
+  storage.remove(`${CREDENTIAL_KEY_PREFIX}${credentialId}`)
   void cancelDocumentExpiryNotifications(credentialId).catch((error) => {
     logWalletError('credentials', 'cancel-expiry-notifications-failed', error, { credentialId })
   })

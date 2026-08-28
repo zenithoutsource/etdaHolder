@@ -107,6 +107,7 @@ describe('shouldShowCredentialRenewalRibbon', () => {
   'cleanup-pending',
   'document-expired',
   'hardware-reissue-required',
+  'superseded',
   'issuer-suspended',
   'revoked',
 ] as const)('shows inactive ribbon for %s', (kind) => {
@@ -153,7 +154,7 @@ describe('shouldHideCredentialActionMenu', () => {
     expect(shouldHideCredentialActionMenu(undefined)).toBe(false)
   })
 
-  test('hides for document-expired ribbon even without renewal metadata', () => {
+  test('keeps delete available for document-expired ribbon', () => {
     mockStorage()
 
     expect(
@@ -165,7 +166,22 @@ describe('shouldHideCredentialActionMenu', () => {
           panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
         },
       }),
-    ).toBe(true)
+    ).toBe(false)
+  })
+
+  test('keeps delete available for superseded inactive state', () => {
+    mockStorage()
+
+    expect(
+      shouldHideCredentialActionMenu(undefined, {
+        inactiveState: {
+          kind: 'superseded',
+          badgeLabel: 'Inactive',
+          badgeClassName: 'bg-gray-badge',
+          panelMessage: 'มีเอกสารฉบับใหม่แล้ว',
+        },
+      }),
+    ).toBe(false)
   })
 
   test('hides for renewed-active ribbon on replacement credential', () => {

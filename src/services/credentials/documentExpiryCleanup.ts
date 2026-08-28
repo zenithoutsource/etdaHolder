@@ -1,6 +1,5 @@
-import { recordCredentialLifecycleAction } from './credentialLifecycle'
+import { purgeCredentialFromWallet } from './credentialDeletion'
 import { findExpiredCredentialsOfSameType } from './credentialDocumentExpiry'
-import { removeStoredCredential } from './storedCredentials'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 
 export function readExpiredCredentialsForCleanupAfterClaim(
@@ -12,6 +11,5 @@ export function readExpiredCredentialsForCleanupAfterClaim(
 }
 
 export function deleteExpiredCredentialAfterReissue(credentialId: string): void {
-  recordCredentialLifecycleAction(credentialId, 'Delete', 'system')
-  removeStoredCredential(credentialId)
+  purgeCredentialFromWallet(credentialId, 'system')
 }

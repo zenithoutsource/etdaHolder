@@ -8,6 +8,8 @@ import {
 import { WALLET_HOME_COPY } from './walletHomeCopy'
 import type { VerifiableCredentialRecord } from '../vci/exchangeService'
 import { credentialRequiresHardwareReissue } from '../crypto/hardwareCredentialSigningKey'
+import { isCredentialSupersededByNewerSibling } from './credentialSupersededSibling'
+import { readStoredCredentials } from './storedCredentials'
 
 type ActiveCredentialState = {
   kind: 'active'
@@ -25,6 +27,7 @@ type InactiveCredentialState = {
     | 'cleanup-pending'
     | 'document-expired'
     | 'hardware-reissue-required'
+    | 'superseded'
   badgeLabel: string
   badgeClassName: string
   panelMessage: string
@@ -161,6 +164,18 @@ export function readCredentialInactiveState({
   if (renewalStatus?.state === 'renewed-active') {
     return {
       kind: 'active',
+    }
+  }
+
+  if (
+    credential &&
+    isCredentialSupersededByNewerSibling(credential.id, readStoredCredentials())
+  ) {
+    return {
+      kind: 'superseded',
+      badgeLabel: 'Inactive',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: WALLET_HOME_COPY.supersededDocumentPanelMessage,
     }
   }
 

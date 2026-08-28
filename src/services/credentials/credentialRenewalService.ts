@@ -14,7 +14,8 @@ import {
   upsertCredentialRenewal,
   writeCredentialRenewal,
 } from './credentialKeyRenewal'
-import { notifyCredentialsChanged, readStoredCredentials, removeStoredCredential } from './storedCredentials'
+import { purgeCredentialStorageKeys } from './credentialDeletion'
+import { notifyCredentialsChanged, readStoredCredentials } from './storedCredentials'
 import { readCredentialHolderDid } from './credentialHolderBinding'
 import {
   resolveOffer,
@@ -25,8 +26,7 @@ import { claimCredentialWithDualFormatSupport } from './dualFormatIssuance'
 import { logWalletError, logWalletStep } from '../debug/walletLogger'
 import { pairRenewalReplacement } from './renewalIssuerIntake'
 import { clearWalletKeyRotationRecord } from '../crypto/walletKeyRotation'
-import { clearRenewalCleanupBannerDismissal, isRenewalAwaitingHolderCleanup } from './renewalCleanupNotification'
-import { clearCredentialLifecycleStatus } from './credentialLifecycle'
+import { isRenewalAwaitingHolderCleanup } from './renewalCleanupNotification'
 import { findRenewedActiveCredentialForType } from './credentialGuard'
 import { syncPushTokenRegistration } from '../notifications/pushNotificationService'
 import {
@@ -564,10 +564,7 @@ export async function confirmOldCredentialCleanup(credentialId: string): Promise
     oldRenewalState: oldRenewal?.state,
   })
 
-  clearCredentialRenewal(credentialId)
-  clearRenewalCleanupBannerDismissal(credentialId)
-  clearCredentialLifecycleStatus(credentialId)
-  removeStoredCredential(credentialId)
+  purgeCredentialStorageKeys(credentialId)
   await destroyIssuanceCredentialKey(credentialId).catch((error) => {
     logWalletError('credentials', 'destroy-old-credential-key-failed', error, { credentialId })
   })

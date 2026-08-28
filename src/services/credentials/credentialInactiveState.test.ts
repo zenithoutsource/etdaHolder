@@ -10,6 +10,14 @@ jest.mock('../crypto/hardwareCredentialSigningKey', () => ({
   credentialRequiresHardwareReissue: jest.fn(() => false),
 }))
 
+jest.mock('./credentialSupersededSibling', () => ({
+  isCredentialSupersededByNewerSibling: jest.fn(() => false),
+}))
+
+jest.mock('./storedCredentials', () => ({
+  readStoredCredentials: jest.fn(() => []),
+}))
+
 const credentialRequiresHardwareReissueMock = credentialRequiresHardwareReissue as jest.MockedFunction<
   typeof credentialRequiresHardwareReissue
 >
@@ -188,6 +196,30 @@ describe('credentialInactiveState', () => {
       badgeLabel: 'หมดอายุ',
       badgeClassName: 'bg-gray-badge',
       panelMessage: 'เอกสารหมดอายุแล้ว กรุณาขอเอกสารใหม่จากผู้ออกเอกสาร',
+    })
+  })
+
+  test('marks superseded credentials as inactive when a newer sibling exists', () => {
+    const { isCredentialSupersededByNewerSibling } = jest.requireMock(
+      './credentialSupersededSibling',
+    ) as { isCredentialSupersededByNewerSibling: jest.Mock }
+    isCredentialSupersededByNewerSibling.mockReturnValueOnce(true)
+
+    expect(
+      readCredentialInactiveState({
+        credential: {
+          id: 'old-transcript',
+          type: 'ChulalongkornUniversityTranscript',
+          rawVc: 'vc-old',
+          claims: {},
+          issuedAt: '2026-01-01T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({
+      kind: 'superseded',
+      badgeLabel: 'Inactive',
+      badgeClassName: 'bg-gray-badge',
+      panelMessage: 'มีเอกสารฉบับใหม่แล้ว เอกสารนี้จะถูกเก็บไว้จนกว่าคุณจะลบ',
     })
   })
 

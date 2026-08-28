@@ -77,7 +77,7 @@ describe('credentialDisplay', () => {
     expect(detail.extraRows).toEqual([])
   })
 
-  test('renders tonyhere claims with persisted labels instead of DLT chrome', () => {
+  test('renders tonyhere claims with claim-time labels instead of DLT chrome', () => {
     const detail = readCredentialDetailDisplay({
       id: 'tonyhere-1',
       type: 'DLTDrivingLicence',
@@ -92,47 +92,84 @@ describe('credentialDisplay', () => {
       credentialDisplayName: 'PID Age Credential',
       claimDisplayLabels: { given_name: 'Given name', age_over_18: 'Over 18' },
       issuerName: 'tonyhere',
+      issuerUrl: 'https://demo.tonyhere.work/',
     })
 
     expect(detail.title).toBe('PID Age Credential')
     expect(detail.issuerName).toBe('tonyhere')
     expect(detail.imageKey).toBe('profile')
     expect(detail.primaryRows).toEqual([
-      { key: 'age_over_18', label: 'Over 18', value: 'Yes' },
       { key: 'given_name', label: 'Given name', value: 'Ada' },
+      { key: 'age_over_18', label: 'Over 18', value: 'Yes' },
     ])
   })
 
-  test('lists tonyhere DrivingLicense ISO-style claims on generic detail', () => {
+  test('lists tonyhere DrivingLicense claims with claim-time issuer metadata labels', () => {
     const detail = readCredentialDetailDisplay({
       id: 'tonyhere-dl-1',
       type: 'DLTDrivingLicence',
       rawVc: 'header.payload.signature',
       claims: {
         vct: 'https://demo.tonyhere.work/credentials/DrivingLicense',
-        given_name: 'Ada',
+        given_name: 'SOMCHAI',
+        family_name: 'SUKJAI',
+        'org.iso.18013.5.1.given_name_national_character': 'สมชาย',
+        'org.iso.18013.5.1.family_name_national_character': 'สุขใจ',
+        document_number: 'DL-DEMO-000001',
+        birth_date: '15/01/1990',
+        issue_date: '20/08/2026',
+        expiry_date: '19/08/2031',
+        driving_privileges: [{
+          vehicle_category_code: 'B',
+          issue_date: { __tag: 1004, value: '2026-08-20' },
+          expiry_date: { __tag: 1004, value: '2031-08-19' },
+        }],
         issuing_authority: 'Demo Transport',
-        age_over_18: true,
       },
       issuedAt: '2026-08-21T00:00:00.000Z',
       issuerUrl: 'https://demo.tonyhere.work/',
       credentialConfigurationId: 'https://demo.tonyhere.work/credentials/DrivingLicense',
       credentialDisplayName: 'Demo Driving License',
       claimDisplayLabels: {
-        given_name: 'Given name',
+        given_name: 'Given name (Latin)',
+        family_name: 'Family name (Latin)',
+        'org.iso.18013.5.1.given_name_national_character': 'Given name (Thai)',
+        'org.iso.18013.5.1.family_name_national_character': 'Family name (Thai)',
+        document_number: 'Licence number',
+        birth_date: 'Date of birth',
+        issue_date: 'Licence issue date',
+        expiry_date: 'Licence expiry date',
+        driving_privileges: 'Vehicle category',
         issuing_authority: 'Issuing authority',
       },
     })
 
     expect(detail.imageKey).toBe('profile')
-    expect(detail.primaryRows).toEqual(
-      expect.arrayContaining([
-        { key: 'given_name', label: 'Given name', value: 'Ada' },
-        { key: 'issuing_authority', label: 'Issuing authority', value: 'Demo Transport' },
-        { key: 'age_over_18', label: 'Age Over 18', value: 'Yes' },
-      ]),
-    )
-    expect(detail.primaryRows.find((row) => row.key === 'licenceNumber')).toBeUndefined()
+    expect(detail.documentTitle).toBe('DIGITAL DOCUMENT')
+    expect(detail.primaryRows).toEqual([
+      { key: 'given_name', label: 'Given name (Latin)', value: 'SOMCHAI' },
+      { key: 'family_name', label: 'Family name (Latin)', value: 'SUKJAI' },
+      {
+        key: 'org.iso.18013.5.1.given_name_national_character',
+        label: 'Given name (Thai)',
+        value: 'สมชาย',
+      },
+      {
+        key: 'org.iso.18013.5.1.family_name_national_character',
+        label: 'Family name (Thai)',
+        value: 'สุขใจ',
+      },
+      { key: 'document_number', label: 'Licence number', value: 'DL-DEMO-000001' },
+      { key: 'birth_date', label: 'Date of birth', value: '15/01/1990' },
+      { key: 'issue_date', label: 'Licence issue date', value: '20/08/2026' },
+      { key: 'expiry_date', label: 'Licence expiry date', value: '19/08/2031' },
+      {
+        key: 'driving_privileges',
+        label: 'Vehicle category',
+        value: 'B · Issue 2026-08-20 · Expiry 2031-08-19',
+      },
+      { key: 'issuing_authority', label: 'Issuing authority', value: 'Demo Transport' },
+    ])
   })
 
   test('reads holder profile values from ThaiNationalID claims', () => {

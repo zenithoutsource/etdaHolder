@@ -3,7 +3,8 @@ import { isFirstPartyCredential } from '../../config/firstPartyCredential'
 import { normalizeClaimKey, readMdocElementIdentifier } from '@/src/utils/claimKeyNormalization'
 import { readCredentialClaimMap, type VerifiableCredentialRecord } from '../vci/exchangeService'
 import { hasAnyClaimValue, isHiddenClaimKey, readClaimText, stringifyClaim } from './claimFormatting'
-import { readGenericClaimRows } from './genericClaimDisplay'
+import { isPhotoClaimKey, readImageUriFromClaim } from './genericClaimDisplay'
+import { readThirdPartyCredentialDisplayRows } from './thirdPartyCredentialDisplay'
 import { readCredentialIssuerName } from './credentialIssuer'
 
 const PID_CREDENTIAL_TYPE = 'ThaiNationalID'
@@ -63,8 +64,7 @@ export function readCredentialSummaryDisplay(record: VerifiableCredentialRecord)
   const schema = resolveCardSchema(record)
   const holderName = readHolderName(record)
   const firstParty = isFirstPartyCredential(record)
-  const claimMap = firstParty ? record.claims : readCredentialClaimMap(record)
-  const generic = firstParty ? undefined : readGenericClaimRows(claimMap, record.claimDisplayLabels)
+  const thirdPartyDisplay = firstParty ? undefined : readThirdPartyCredentialDisplayRows(record)
   const title = firstParty
     ? schema.title
     : (record.credentialDisplayName?.trim() || schema.title)
@@ -78,8 +78,8 @@ export function readCredentialSummaryDisplay(record: VerifiableCredentialRecord)
     imageKey: schema.imageKey,
     primaryText: holderName || title,
     rows: firstParty
-      ? readRows(record.claims, schema.summaryFields ?? schema.displayFields)
-      : (generic?.rows.slice(0, 3) ?? []),
+      ? readRows(readCredentialClaimMap(record), schema.summaryFields ?? schema.displayFields)
+      : (thirdPartyDisplay?.rows.slice(0, 3) ?? []),
   }
 }
 
@@ -88,20 +88,23 @@ export function readCredentialDetailDisplay(record: VerifiableCredentialRecord):
   const schema = resolveCardSchema(record)
 
   if (!isFirstPartyCredential(record)) {
-    const generic = readGenericClaimRows(readCredentialClaimMap(record), record.claimDisplayLabels)
+    const thirdPartyDisplay = readThirdPartyCredentialDisplayRows(record)
+    const photoUri = thirdPartyDisplay.photoUri ?? readCredentialPhotoUri(record)
     return {
       ...summary,
-      primaryRows: generic.rows,
+      primaryRows: thirdPartyDisplay.rows,
       extraRows: [],
       issuedAt: record.issuedAt,
       ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
-      ...(generic.photoUri ? { photoUri: generic.photoUri } : {}),
+      ...(photoUri ? { photoUri } : {}),
     }
   }
 
-  const primaryRows = readRows(record.claims, schema.displayFields)
+  const claims = readCredentialClaimMap(record)
+  const photoUri = readCredentialPhotoUri(record)
+  const primaryRows = readRows(claims, schema.displayFields)
   const configuredKeys = new Set(schema.displayFields.flatMap((field) => [field.key, ...(field.aliases ?? [])]))
-  const extraRows = Object.entries(record.claims)
+  const extraRows = Object.entries(claims)
     .filter(([key, value]) => {
       if (configuredKeys.has(key) || key.startsWith('_') || isHiddenClaimKey(key)) return false
       return stringifyClaim(value).trim().length > 0
@@ -109,12 +112,24 @@ export function readCredentialDetailDisplay(record: VerifiableCredentialRecord):
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, value]) => ({ key, label: key, value: stringifyClaim(value) }))
 
-  return { ...summary, primaryRows, extraRows, issuedAt: record.issuedAt, ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}) }
+  return { ...summary, primaryRows, extraRows, issuedAt: record.issuedAt, ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}), ...(photoUri ? { photoUri } : {}) }
+}
+
+export function readCredentialPhotoUri(record: VerifiableCredentialRecord): string | undefined {
+  const claims = readCredentialClaimMap(record)
+  for (const [key, value] of Object.entries(claims)) {
+    const leaf = readMdocElementIdentifier(key)
+    if (!isPhotoClaimKey(key) && !isPhotoClaimKey(leaf)) continue
+    const uri = readImageUriFromClaim(value)
+    if (uri) return uri
+  }
+  return undefined
 }
 
 export function readCredentialHolderProfile(record: VerifiableCredentialRecord): CredentialHolderProfile {
-  const genericFullName = readFirstClaimTextLoose(record.claims, ['fullName', 'full_name', 'name'])
-  const explicitThaiName = readFirstClaimTextLoose(record.claims, [
+  const claims = readCredentialClaimMap(record)
+  const genericFullName = readFirstClaimTextLoose(claims, ['fullName', 'full_name', 'name'])
+  const explicitThaiName = readFirstClaimTextLoose(claims, [
     'thaiFullName',
     'thai_full_name',
     'fullNameTh',
@@ -128,22 +143,42 @@ export function readCredentialHolderProfile(record: VerifiableCredentialRecord):
     'ชื่อ-นามสกุล',
   ]) ?? (genericFullName && THAI_SCRIPT_PATTERN.test(genericFullName) ? genericFullName : undefined)
   const thaiNameParts = [
-    readFirstClaimTextLoose(record.claims, ['givenNameTh', 'given_name_th', 'givenNameThai', 'thaiGivenName', 'thai_given_name', 'firstNameTh', 'first_name_th', 'ชื่อ']),
-    readFirstClaimTextLoose(record.claims, ['familyNameTh', 'family_name_th', 'familyNameThai', 'thaiFamilyName', 'thai_family_name', 'lastNameTh', 'last_name_th', 'นามสกุล']),
+    readFirstClaimTextLoose(claims, [
+      'givenNameTh',
+      'given_name_national_character',
+      'givenNameThai',
+      'given_name_th',
+      'thaiGivenName',
+      'thai_given_name',
+      'firstNameTh',
+      'first_name_th',
+      'ชื่อ',
+    ]),
+    readFirstClaimTextLoose(claims, [
+      'familyNameTh',
+      'family_name_national_character',
+      'familyNameThai',
+      'family_name_th',
+      'thaiFamilyName',
+      'thai_family_name',
+      'lastNameTh',
+      'last_name_th',
+      'นามสกุล',
+    ]),
   ]
     .filter(Boolean)
     .join(' ')
     .trim()
-  const thaiName = explicitThaiName ?? (thaiNameParts || pickNameByScript(record.claims, 'thai'))
+  const thaiName = explicitThaiName ?? (thaiNameParts || pickNameByScript(claims, 'thai'))
   const composedEnglishName = [
-    readFirstClaimTextLoose(record.claims, [...ENGLISH_GIVEN_NAME_KEYS]),
-    readFirstClaimTextLoose(record.claims, [...ENGLISH_FAMILY_NAME_KEYS]),
+    readFirstClaimTextLoose(claims, [...ENGLISH_GIVEN_NAME_KEYS]),
+    readFirstClaimTextLoose(claims, [...ENGLISH_FAMILY_NAME_KEYS]),
   ]
     .filter(Boolean)
     .join(' ')
     .trim()
   const englishName = readLatinDisplayName(
-    readFirstClaimTextLoose(record.claims, [
+    readFirstClaimTextLoose(claims, [
       'englishFullName',
       'english_full_name',
       'fullNameEn',
@@ -156,9 +191,9 @@ export function readCredentialHolderProfile(record: VerifiableCredentialRecord):
     ]) ??
       (composedEnglishName || undefined) ??
       (isLatinDisplayName(genericFullName) ? genericFullName : undefined) ??
-      pickNameByScript(record.claims, 'latin'),
+      pickNameByScript(claims, 'latin'),
   )
-  const birthDate = readFirstClaimTextLoose(record.claims, [
+  const birthDate = readFirstClaimTextLoose(claims, [
     'birthDate',
     'birthdate',
     'birth_date',
@@ -380,7 +415,7 @@ export function readPresentationFieldValue(
 }
 
 export function readHolderName(record: VerifiableCredentialRecord): string {
-  return readComposedPersonName(record.claims) ?? ''
+  return readComposedPersonName(readCredentialClaimMap(record)) ?? ''
 }
 
 function readRows(claims: Record<string, unknown>, fields: DisplayField[]): CredentialDisplayRow[] {

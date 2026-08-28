@@ -156,6 +156,19 @@ export function canSubmitCredentialRenewal(
   return !findRenewedActiveCredentialForType(credential.type, credentials, renewalStatuses)
 }
 
+function pickLatestIssuedAt(
+  records: VerifiableCredentialRecord[],
+): VerifiableCredentialRecord | undefined {
+  if (records.length === 0) return undefined
+  return records.reduce((best, current) => {
+    const bestTime = Date.parse(best.issuedAt)
+    const currentTime = Date.parse(current.issuedAt)
+    if (Number.isNaN(currentTime)) return best
+    if (Number.isNaN(bestTime) || currentTime > bestTime) return current
+    return best
+  })
+}
+
 export function pickPreferredHomeCredential(
   matches: VerifiableCredentialRecord[],
   renewalStatuses: Record<string, CredentialRenewalRecord>,
@@ -181,16 +194,18 @@ export function pickPreferredHomeCredential(
   )
   if (renewedActive) return renewedActive
 
-  const mdocNormalActive = rankedCandidates.find(
+  const mdocNormalActiveCandidates = rankedCandidates.filter(
     (record) =>
       readRenewalState(record.id, renewalStatuses) === undefined &&
       record.rawVc.startsWith('mdoc:'),
   )
+  const mdocNormalActive = pickLatestIssuedAt(mdocNormalActiveCandidates)
   if (mdocNormalActive) return mdocNormalActive
 
-  const normalActive = rankedCandidates.find(
+  const normalActiveCandidates = rankedCandidates.filter(
     (record) => readRenewalState(record.id, renewalStatuses) === undefined,
   )
+  const normalActive = pickLatestIssuedAt(normalActiveCandidates)
   if (normalActive) return normalActive
 
   const waiting = rankedCandidates.find((record) => {
