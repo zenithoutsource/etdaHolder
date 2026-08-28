@@ -13,8 +13,11 @@ import org.multipaz.cbor.Tstr
 import org.multipaz.cbor.addCborMap
 import org.multipaz.cbor.buildCborArray
 import org.multipaz.cbor.buildCborMap
+import org.multipaz.cbor.putCborArray
 import org.multipaz.cbor.putCborMap
 import org.multipaz.cbor.toDataItem
+import org.multipaz.cose.Cose
+import org.multipaz.cose.CoseNumberLabel
 import org.multipaz.cose.CoseSign1
 import kotlin.time.ExperimentalTime
 
@@ -109,6 +112,48 @@ class MdocIssuerSignedExtractorTest {
     val auth = Cbor.decode(extracted)["issuerAuth"]
     assertTrue(auth is CborArray)
     CoseSign1.fromDataItem(auth)
+  }
+
+  @Test
+  fun extractForPresentationPreservesTaggedIssuerAuthAndX5Chain() {
+    val issuerAuth = buildCborArray {
+      add(byteArrayOf())
+      add(
+        buildCborMap {
+          put(
+            33L,
+            buildCborArray {
+              add(Bstr(byteArrayOf(0x30, 0x01, 0x02)))
+            },
+          )
+        },
+      )
+      add(Bstr(byteArrayOf(0xa0.toByte())))
+      add(byteArrayOf(0x01))
+    }
+    val issuerSigned = Cbor.encode(
+      buildCborMap {
+        put(
+          "nameSpaces",
+          buildCborMap {
+            put(MdocIssuerSignedExtractor.MDL_NAMESPACE, buildCborArray {})
+          },
+        )
+        put("issuerAuth", Tagged(Tagged.COSE_SIGN1, issuerAuth))
+      },
+    )
+    val document = Cbor.encode(
+      buildCborMap {
+        put("docType", MdocIssuerSignedExtractor.MDL_DOCTYPE)
+        put("issuerSigned", RawCbor(issuerSigned))
+      },
+    )
+
+    val (_, extracted) = MdocIssuerSignedExtractor.extractForPresentation(document)
+    assertTrue(MdocIssuerAuthX5Chain.hasX5Chain(extracted))
+    val auth = Cbor.decode(extracted)["issuerAuth"]
+    val taggedAuth = auth as Tagged
+    assertTrue(taggedAuth.tagNumber == Tagged.COSE_SIGN1)
   }
 
   @Test

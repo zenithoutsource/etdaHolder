@@ -1,5 +1,6 @@
 package com.wallet.mdocproximity
 
+import com.etdawallet.mdocproximity.MdocIssuerAuthX5Chain
 import com.etdawallet.mdocproximity.MdocIssuerSignedExtractor
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.bytestring.ByteString
@@ -17,6 +18,8 @@ import org.multipaz.cbor.buildCborArray
 import org.multipaz.cbor.buildCborMap
 import org.multipaz.cbor.putCborArray
 import org.multipaz.cbor.putCborMap
+import org.multipaz.cose.Cose
+import org.multipaz.cose.CoseNumberLabel
 import org.multipaz.crypto.EcCurve
 import org.multipaz.crypto.EcPublicKeyDoubleCoordinate
 import org.multipaz.mdoc.issuersigned.IssuerNamespaces
@@ -102,7 +105,25 @@ class DcApiDeviceResponseBuilderTest {
     return Cbor.decode((encodedDeviceAuthentication.taggedItem as Bstr).value) as CborArray
   }
 
-  private fun storedMdocBytes(): ByteArray {
+  @Test
+  fun preservesIssuerAuthX5ChainThroughPresentationPipeline() = runBlocking {
+    val encoded = DcApiDeviceResponseBuilder.build(
+      mdocBytes = storedMdocBytes(includeX5Chain = true),
+      storedDocType = MdocIssuerSignedExtractor.MDL_DOCTYPE,
+      approvedNamespaceKeys = listOf("${MdocIssuerSignedExtractor.MDL_NAMESPACE}/family_name"),
+      origin = "https://example.com",
+      nonce = "nonce-x5chain",
+      encryptionJwkJson = null,
+      publicKey = testPublicKey(),
+      sign = { ByteArray(64) { 0x2b } },
+    )
+
+    val response = Cbor.decode(encoded) as CborMap
+    val issuerSignedBytes = Cbor.encode(response["documents"][0]["issuerSigned"])
+    assertTrue(MdocIssuerAuthX5Chain.hasX5Chain(issuerSignedBytes))
+  }
+
+  private fun storedMdocBytes(includeX5Chain: Boolean = true): ByteArray {
     val mdlItems = listOf(
       issuerSignedItem(0, "family_name", "Doe"),
       issuerSignedItem(1, "given_name", "Jane"),
@@ -110,7 +131,18 @@ class DcApiDeviceResponseBuilderTest {
     val ageItems = listOf(issuerSignedItem(2, "age_over_21", true))
     val issuerAuth = buildCborArray {
       add(byteArrayOf())
-      addCborMap {}
+      add(
+        buildCborMap {
+          if (includeX5Chain) {
+            put(
+              33L,
+              buildCborArray {
+                add(Bstr(byteArrayOf(0x30, 0x01, 0x02)))
+              },
+            )
+          }
+        },
+      )
       add(Bstr(byteArrayOf(0xa0.toByte())))
       add(byteArrayOf(0x01))
     }

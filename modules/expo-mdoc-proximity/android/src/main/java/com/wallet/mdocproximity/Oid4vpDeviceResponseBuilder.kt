@@ -7,22 +7,24 @@ import org.multipaz.cbor.Simple
 import org.multipaz.cbor.buildCborArray
 import org.multipaz.crypto.EcPublicKey
 
-object DcApiDeviceResponseBuilder {
+object Oid4vpDeviceResponseBuilder {
   @Suppress("UNUSED_PARAMETER")
   suspend fun build(
     mdocBytes: ByteArray,
     storedDocType: String?,
     approvedNamespaceKeys: List<String>,
-    origin: String,
+    clientId: String,
     nonce: String,
+    responseUri: String,
     encryptionJwkJson: String?,
     publicKey: EcPublicKey,
     sign: suspend (ByteArray) -> ByteArray,
   ): ByteArray {
     require(mdocBytes.isNotEmpty()) { "Stored mDOC bytes are required" }
     require(approvedNamespaceKeys.isNotEmpty()) { "Approved namespace keys are required" }
-    require(origin.isNotBlank()) { "DC API origin is required" }
-    require(nonce.isNotBlank()) { "DC API nonce is required" }
+    require(clientId.isNotBlank()) { "OID4VP client_id is required" }
+    require(nonce.isNotBlank()) { "OID4VP nonce is required" }
+    require(responseUri.isNotBlank()) { "OID4VP response_uri is required" }
 
     val (docType, issuerSignedBytes) = MdocIssuerSignedExtractor.extractForPresentation(
       mdocBytes,
@@ -35,12 +37,21 @@ object DcApiDeviceResponseBuilder {
     )
     val thumbprint = encryptionJwkJson?.let { jwk ->
       DcApiHandoverCbor.sha256ThumbprintOfJwk(jwk)
-        ?: throw IllegalArgumentException("DC API encryption JWK is invalid")
+        ?: throw IllegalArgumentException("OID4VP encryption JWK is invalid")
     }
     val sessionTranscript = buildCborArray {
       add(Simple.NULL)
       add(Simple.NULL)
-      add(Cbor.decode(DcApiHandoverCbor.buildHandover(origin, nonce, thumbprint)))
+      add(
+        Cbor.decode(
+          Oid4vpHandoverCbor.buildHandover(
+            clientId = clientId,
+            nonce = nonce,
+            jwkThumbprint = thumbprint,
+            responseUri = responseUri,
+          ),
+        ),
+      )
     }
 
     return MdocManualDeviceResponseBuilder.build(

@@ -28,7 +28,7 @@ class DcApiNativeBridgeContractTest {
     )
     val construction = DcApiNativeBridgeContract.safeFailure(
       DcApiNativeFailureStage.CONSTRUCTION,
-      sensitiveDiagnostic,
+      IllegalArgumentException("Stored mDOC issuerAuth is missing x5chain; claim a new mDL credential from the issuer"),
     )
 
     assertEquals("STORAGE_FAILED", storage.code)
@@ -37,11 +37,19 @@ class DcApiNativeBridgeContractTest {
     assertEquals("DC_API_SIGNING_FAILED", signing.code)
     assertEquals("DC API DeviceResponse signing failed", signing.message)
     assertEquals("signing_failed", signing.diagnosticCategory)
-    assertEquals("DC_API_DEVICE_RESPONSE_FAILED", construction.code)
-    assertEquals("DC API DeviceResponse construction failed", construction.message)
-    assertEquals("construction_failed", construction.diagnosticCategory)
+    assertEquals("DC_API_DEVICE_RESPONSE_X5CHAIN_MISSING", construction.code)
+    assertEquals("Stored mDOC issuerAuth is missing x5chain", construction.message)
+    assertEquals("missing_x5chain", construction.diagnosticCategory)
 
-    listOf(storage, signing, construction).forEach { failure ->
+    val genericConstruction = DcApiNativeBridgeContract.safeFailure(
+      DcApiNativeFailureStage.CONSTRUCTION,
+      sensitiveDiagnostic,
+    )
+    assertEquals("DC_API_DEVICE_RESPONSE_FAILED", genericConstruction.code)
+    assertEquals("DC API DeviceResponse construction failed", genericConstruction.message)
+    assertEquals("construction_failed", genericConstruction.diagnosticCategory)
+
+    listOf(storage, signing, construction, genericConstruction).forEach { failure ->
       assertFalse(failure.toString().contains("Jane Doe"))
       assertFalse(failure.toString().contains("opaque-secret"))
       assertFalse(failure.toString().contains("{secret}"))

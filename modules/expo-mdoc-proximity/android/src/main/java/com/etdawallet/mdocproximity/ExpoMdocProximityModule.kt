@@ -1,10 +1,12 @@
 package com.etdawallet.mdocproximity
 
 import android.util.Log
+import com.wallet.mdocproximity.DcApiHandoverCbor
 import com.wallet.mdocproximity.DcApiBridgeExecutionException
 import com.wallet.mdocproximity.DcApiBridgeInputException
 import com.wallet.mdocproximity.DcApiDeviceResponseBuilder
 import com.wallet.mdocproximity.DcApiNativeBridgeContract
+import com.wallet.mdocproximity.Oid4vpDeviceResponseBuilder
 import com.wallet.mdocproximity.DcApiNativeBridgeDependencies
 import com.wallet.mdocproximity.DcApiNativeFailureStage
 import com.wallet.mdocproximity.DcApiNativeInput
@@ -135,6 +137,97 @@ class ExpoMdocProximityModule : Module() {
               dcApiBridgeDependencies(activity),
             ),
           )
+        } catch (error: DcApiBridgeInputException) {
+          rejectDcApiFailure(promise, error.failure)
+        } catch (error: DcApiBridgeExecutionException) {
+          rejectDcApiFailure(promise, error.failure)
+        } catch (error: Exception) {
+          rejectDcApiFailure(
+            promise,
+            DcApiNativeBridgeContract.safeFailure(
+              DcApiNativeFailureStage.CONSTRUCTION,
+              error,
+            ),
+          )
+        }
+      }
+    }
+
+    AsyncFunction("buildOid4vpDeviceResponse") { params: Map<String, Any?>, promise: Promise ->
+      val activity = appContext.currentActivity as? FragmentActivity
+      if (activity == null) {
+        promise.reject(
+          MdocProximityErrors.PROXIMITY_NOT_READY,
+          "CurrentActivityUnavailable",
+          null,
+        )
+        return@AsyncFunction
+      }
+
+      CoroutineScope(Dispatchers.Main.immediate).launch {
+        try {
+          val credentialId = params["credentialId"] as? String
+            ?: throw DcApiBridgeInputException()
+          val approvedNamespaceKeys = (params["approvedNamespaceKeys"] as? List<*>)
+            ?.mapNotNull { it as? String }
+            ?.filter { it.isNotBlank() }
+            ?: throw DcApiBridgeInputException()
+          if (approvedNamespaceKeys.isEmpty()) throw DcApiBridgeInputException()
+          val clientId = params["clientId"] as? String ?: throw DcApiBridgeInputException()
+          val nonce = params["nonce"] as? String ?: throw DcApiBridgeInputException()
+          val responseUri = params["responseUri"] as? String ?: throw DcApiBridgeInputException()
+          val opaqueNativeHandle = params["opaqueNativeHandle"] as? String
+            ?: throw DcApiBridgeInputException()
+          val encryptionJwkJson = if (params.containsKey("encryptionJwkJson")) {
+            val supplied = params["encryptionJwkJson"] as? String
+              ?: throw DcApiBridgeInputException()
+            if (
+              supplied.isBlank() ||
+              DcApiHandoverCbor.sha256ThumbprintOfJwk(supplied) == null
+            ) {
+              throw DcApiBridgeInputException()
+            }
+            supplied
+          } else {
+            null
+          }
+
+          if (MdocProximityEngine.isPresentationActive()) {
+            throw DcApiBridgeExecutionException(
+              DcApiNativeBridgeContract.safeFailure(
+                DcApiNativeFailureStage.PRESENTATION_ACTIVE,
+                IllegalStateException("presentation active"),
+              ),
+            )
+          }
+
+          val context = requireContext()
+          val storedCredential = DcApiStoredCredential(
+            mdocBytes = MdocProximityEngine.readMdoc(context, credentialId),
+            docType = MdocProximityEngine.readStoredDocType(context, credentialId),
+          )
+          HardwareSigningSessionManager.authenticateMdocSession(opaqueNativeHandle, activity)
+          val publicKey = withContext(Dispatchers.Default) {
+            HardwareHandleSecureArea(opaqueNativeHandle)
+              .getKeyInfo(HardwareHandleSecureArea.KEY_ALIAS)
+              .publicKey
+          }
+          val deviceResponse = withContext(Dispatchers.Default) {
+            Oid4vpDeviceResponseBuilder.build(
+              mdocBytes = storedCredential.mdocBytes,
+              storedDocType = storedCredential.docType,
+              approvedNamespaceKeys = approvedNamespaceKeys,
+              clientId = clientId,
+              nonce = nonce,
+              responseUri = responseUri,
+              encryptionJwkJson = encryptionJwkJson,
+              publicKey = publicKey,
+              sign = { data ->
+                HardwareSigningSessionManager.signMdocWithoutPrompt(opaqueNativeHandle, data)
+              },
+            )
+          }
+          promise.resolve(DcApiNativeBridgeContract.encodeDeviceResponse(deviceResponse))
         } catch (error: DcApiBridgeInputException) {
           rejectDcApiFailure(promise, error.failure)
         } catch (error: DcApiBridgeExecutionException) {

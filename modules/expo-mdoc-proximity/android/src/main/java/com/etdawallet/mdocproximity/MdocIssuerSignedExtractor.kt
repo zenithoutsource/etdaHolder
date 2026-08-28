@@ -4,6 +4,7 @@ import org.multipaz.cbor.Bstr
 import org.multipaz.cbor.Cbor
 import org.multipaz.cbor.CborMap
 import org.multipaz.cbor.DataItem
+import org.multipaz.cbor.RawCbor
 import org.multipaz.cbor.Tagged
 import org.multipaz.cbor.Tstr
 import org.multipaz.cbor.buildCborMap
@@ -26,12 +27,32 @@ object MdocIssuerSignedExtractor {
   fun extract(mdocBytes: ByteArray, storedDocType: String? = null): Pair<String, ByteArray> {
     val root = Cbor.decode(mdocBytes)
     val document = unwrapDocument(root)
-    val issuerSigned = normalizeIssuerAuth(issuerSignedFrom(document))
+    val issuerSigned = normalizeIssuerAuth(decodeEmbeddedCbor(issuerSignedFrom(document)))
     val docType = readDocType(document)
       ?: storedDocType?.takeIf { it.isNotBlank() && it != "unknown" }
       ?: inferDocType(issuerSigned)
     return docType to Cbor.encode(issuerSigned)
   }
+
+  /**
+   * Presentment path: keep issuerAuth bytes exactly as issued (tag 18, RawCbor, x5chain).
+   * Multipaz certify unwraps COSE tag 18; verifiers still need the original issuerAuth shape.
+   */
+  fun extractForPresentation(mdocBytes: ByteArray, storedDocType: String? = null): Pair<String, ByteArray> {
+    val root = Cbor.decode(mdocBytes)
+    val document = unwrapDocument(root)
+    val issuerSigned = decodeEmbeddedCbor(issuerSignedFrom(document))
+    val docType = readDocType(document)
+      ?: storedDocType?.takeIf { it.isNotBlank() && it != "unknown" }
+      ?: inferDocType(issuerSigned)
+    return docType to Cbor.encode(issuerSigned)
+  }
+
+  private fun decodeEmbeddedCbor(item: DataItem): DataItem =
+    when (item) {
+      is RawCbor -> Cbor.decode(Cbor.encode(item))
+      else -> item
+    }
 
   private fun unwrapDocument(root: DataItem): DataItem {
     val documents = root.optional("documents") ?: return root

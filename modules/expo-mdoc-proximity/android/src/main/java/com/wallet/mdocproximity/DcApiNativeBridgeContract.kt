@@ -98,11 +98,21 @@ internal object DcApiNativeBridgeContract {
         message = "DC API DeviceResponse signing failed",
         diagnosticCategory = "signing_failed",
       )
-      DcApiNativeFailureStage.CONSTRUCTION -> DcApiSafeFailure(
-        code = MdocProximityErrors.DC_API_DEVICE_RESPONSE_FAILED,
-        message = "DC API DeviceResponse construction failed",
-        diagnosticCategory = "construction_failed",
-      )
+      DcApiNativeFailureStage.CONSTRUCTION -> {
+        val message = rawFailure.message.orEmpty()
+        when {
+          message.contains("x5chain", ignoreCase = true) -> DcApiSafeFailure(
+            code = MdocProximityErrors.DC_API_DEVICE_RESPONSE_X5CHAIN_MISSING,
+            message = "Stored mDOC issuerAuth is missing x5chain",
+            diagnosticCategory = "missing_x5chain",
+          )
+          else -> DcApiSafeFailure(
+            code = MdocProximityErrors.DC_API_DEVICE_RESPONSE_FAILED,
+            message = "DC API DeviceResponse construction failed",
+            diagnosticCategory = "construction_failed",
+          )
+        }
+      }
     }
   }
 
