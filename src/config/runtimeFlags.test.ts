@@ -87,13 +87,14 @@ describe('runtime flags', () => {
     expect(readOid4vpJweEncOverride()).toBe('A256GCM')
   })
 
-  test('includes OID4VP JWE apv only when explicitly enabled in development', () => {
+  test('includes OID4VP JWE apv by default and honours the development opt-out', () => {
     delete process.env.EXPO_PUBLIC_OID4VP_JWE_APV
-    expect(shouldIncludeOid4vpJweApv(true)).toBe(false)
-
-    process.env.EXPO_PUBLIC_OID4VP_JWE_APV = 'true'
     expect(shouldIncludeOid4vpJweApv(true)).toBe(true)
-    expect(shouldIncludeOid4vpJweApv(false)).toBe(false)
+    expect(shouldIncludeOid4vpJweApv(false)).toBe(true)
+
+    process.env.EXPO_PUBLIC_OID4VP_JWE_APV = 'false'
+    expect(shouldIncludeOid4vpJweApv(true)).toBe(false)
+    expect(shouldIncludeOid4vpJweApv(false)).toBe(true)
   })
 
   test('enables demo interop only in development when flag is true', () => {

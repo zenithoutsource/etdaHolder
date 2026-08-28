@@ -2,6 +2,11 @@
  * Exact first-party credential allowlist and display-time reclassify.
  * Journey: Home catalog, credential detail, DLT NFC, issuance receive chrome.
  * Map: docs/CODEMAPS/frontend.md#wallet
+ *
+ * Display boundary: only records whose issuer hostname matches the configured first-party
+ * issuer use cardSchemas and dedicated document layouts. Third-party / interop issuers
+ * (e.g. demo wallets) keep claim-time issuer-metadata generic rows — see
+ * `src/services/credentials/thirdPartyCredentialDisplay.ts`.
  */
 
 export const FIRST_PARTY_CREDENTIAL_TYPES = [
@@ -155,12 +160,23 @@ export function resolveFirstPartyType(record: FirstPartyRecordLike): FirstPartyC
   return candidate
 }
 
+/** Wire-id document type without first-party issuer hostname gate (interop / demo issuers). */
+export function resolveCatalogDocumentType(
+  record: FirstPartyRecordLike,
+): FirstPartyCredentialType | undefined {
+  return readCandidateFirstPartyType(record)
+}
+
 export function isFirstPartyCredential(record: FirstPartyRecordLike): boolean {
   return Boolean(resolveFirstPartyType(record))
 }
 
 export function isFirstPartyDrivingLicence(record: FirstPartyRecordLike): boolean {
   return resolveFirstPartyType(record) === 'DLTDrivingLicence'
+}
+
+export function isDrivingLicenceDocument(record: FirstPartyRecordLike): boolean {
+  return resolveCatalogDocumentType(record) === 'DLTDrivingLicence'
 }
 
 export function readUnregisteredDocumentGroupKey(record: FirstPartyRecordLike): string {

@@ -1,10 +1,12 @@
 import {
   canonicalFirstPartyType,
+  isDrivingLicenceDocument,
   isFirstPartyCredential,
   isFirstPartyDrivingLicence,
   isFirstPartyIdentifier,
   isFirstPartyIssuerOrigin,
   readUnregisteredDocumentGroupKey,
+  resolveCatalogDocumentType,
   resolveFirstPartyType,
 } from './firstPartyCredential'
 
@@ -100,6 +102,8 @@ describe('firstPartyCredential', () => {
     expect(resolveFirstPartyType(record)).toBeUndefined()
     expect(isFirstPartyCredential(record)).toBe(false)
     expect(isFirstPartyDrivingLicence(record)).toBe(false)
+    expect(resolveCatalogDocumentType(record)).toBe('DLTDrivingLicence')
+    expect(isDrivingLicenceDocument(record)).toBe(true)
   })
 
   test('recognizes the first-party issuer origin by hostname', () => {

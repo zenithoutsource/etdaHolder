@@ -5,7 +5,6 @@ describe('trusted verifier production bundle', () => {
   test('inlines every public trust setting used by the release allowlist', () => {
     const originalEnv = { ...process.env }
     process.env.EXPO_PUBLIC_VERIFIER_API_BASE_URL = 'https://bundle-verifier.example.com'
-    process.env.EXPO_PUBLIC_VERIFIER_NAME = 'Bundle Verifier'
     process.env.EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST = 'true'
     process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID = 'did:web:bundle-verifier.example.com'
     process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN =
@@ -40,7 +39,6 @@ describe('trusted verifier production bundle', () => {
       const code = transformed?.code ?? ''
       for (const expected of [
         'https://bundle-verifier.example.com',
-        'Bundle Verifier',
         'did:web:bundle-verifier.example.com',
         'Bundle DID Verifier',
         'bundle-verifier-key',

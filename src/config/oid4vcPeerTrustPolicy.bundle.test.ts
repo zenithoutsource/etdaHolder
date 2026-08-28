@@ -2,9 +2,11 @@ import { transformSync } from '@babel/core'
 import { readFileSync } from 'node:fs'
 
 describe('oid4vc peer trust production bundle', () => {
-  test('inlines EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER via direct env access', () => {
+  test('inlines EXPO_PUBLIC_TRUST_ANY_OID4VC peer trust flags via direct env access', () => {
     const originalEnv = { ...process.env }
     process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_PEER = 'true'
+    process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_ISSUER = 'true'
+    process.env.EXPO_PUBLIC_TRUST_ANY_OID4VC_VERIFIER = 'true'
 
     try {
       const filename = require.resolve('./oid4vcPeerTrustPolicy')

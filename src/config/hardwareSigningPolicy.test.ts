@@ -1,4 +1,4 @@
-import { isHardwareP256SigningEnabled } from './hardwareSigningPolicy'
+import { isHardwareP256SigningEnabled, readDefaultMaxSignatures } from './hardwareSigningPolicy'
 
 describe('isHardwareP256SigningEnabled', () => {
   const originalFlag = process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED
@@ -31,5 +31,33 @@ describe('isHardwareP256SigningEnabled', () => {
     expect(isHardwareP256SigningEnabled()).toBe(false)
     process.env.EXPO_PUBLIC_HARDWARE_P256_SIGNING_ENABLED = '0'
     expect(isHardwareP256SigningEnabled()).toBe(false)
+  })
+})
+
+describe('readDefaultMaxSignatures', () => {
+  afterEach(() => {
+    delete process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_OID4VCI
+    delete process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_OID4VP
+    delete process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_MDOC
+    delete process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_ATTEST
+  })
+
+  afterEach(() => {
+    delete process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_OID4VCI
+    delete process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_OID4VP
+    delete process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_MDOC
+    delete process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_ATTEST
+  })
+
+  test('uses the fixed security ceilings even when legacy env overrides are present', () => {
+    process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_OID4VCI = '99'
+    process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_OID4VP = '99'
+    process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_MDOC = '99'
+    process.env.EXPO_PUBLIC_HARDWARE_SIGNING_MAX_SIGS_ATTEST = '99'
+
+    expect(readDefaultMaxSignatures('oid4vci')).toBe(8)
+    expect(readDefaultMaxSignatures('oid4vp')).toBe(4)
+    expect(readDefaultMaxSignatures('mdoc')).toBe(16)
+    expect(readDefaultMaxSignatures('attest')).toBe(2)
   })
 })

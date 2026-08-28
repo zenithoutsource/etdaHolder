@@ -399,6 +399,24 @@ describe('walletPinNavigation', () => {
     })).toBeUndefined()
   })
 
+  test('readWalletAccessRedirect does not redirect away from DC API presentation', () => {
+    expect(readWalletAccessRedirect({
+      isAuthenticated: true,
+      isPinVerified: true,
+      currentSegment: 'dc-api-presentation',
+      platform: 'android',
+      hasWalletPin: true,
+    })).toBeUndefined()
+
+    expect(readStartupRoute({
+      isAuthenticated: true,
+      isPinVerified: true,
+      currentSegment: 'dc-api-presentation',
+      platform: 'android',
+      hasWalletPin: true,
+    })).toBeUndefined()
+  })
+
   test('does not redirect away from callback while it stores the pending offer for pin unlock', () => {
     expect(readStartupRoute({
       isAuthenticated: true,

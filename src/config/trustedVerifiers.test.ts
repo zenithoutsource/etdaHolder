@@ -1,7 +1,7 @@
 import { buildTrustedVerifiersFromEnv, readTrustedVerifierBuildPolicy } from './trustedVerifiers'
 
 describe('trustedVerifiers', () => {
-  test('builds Verifier API redirect_uri allowlist from env', () => {
+  test('builds Verifier API redirect_uri allowlist with its fixed display name', () => {
     expect(
       buildTrustedVerifiersFromEnv(
         {
@@ -13,7 +13,7 @@ describe('trustedVerifiers', () => {
     ).toEqual([
       {
         clientId: 'redirect_uri:http://verifier.zenithcomp.co.th:455/openid4vc/verify',
-        name: 'Demo Verifier',
+        name: 'Verifier API',
         allowedOrigins: ['http://verifier.zenithcomp.co.th:455'],
       },
     ])
@@ -44,7 +44,7 @@ describe('trustedVerifiers', () => {
     ).toEqual([
       {
         clientId: 'redirect_uri:https://verifier.zenithcomp.co.th:455/openid4vc/verify',
-        name: 'Demo Verifier',
+        name: 'Verifier API',
         allowedOrigins: ['https://verifier.zenithcomp.co.th:455'],
       },
     ])
@@ -75,6 +75,26 @@ describe('trustedVerifiers', () => {
           crv: 'Ed25519',
           x: 'abc',
         },
+      },
+    ])
+  })
+
+  test('supports comma-separated did:web allowed origins for Scan and DC API hosts', () => {
+    expect(
+      buildTrustedVerifiersFromEnv(
+        {
+          EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID: 'did:web:verifier.example.com',
+          EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN:
+            'https://demo.example.com,https://verifier.example.com/',
+          EXPO_PUBLIC_VERIFIER_DID_WEB_NAME: 'Interop Verifier',
+        },
+        false,
+      ),
+    ).toEqual([
+      {
+        clientId: 'decentralized_identifier:did:web:verifier.example.com',
+        name: 'Interop Verifier',
+        allowedOrigins: ['https://demo.example.com', 'https://verifier.example.com'],
       },
     ])
   })

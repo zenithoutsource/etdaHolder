@@ -7,7 +7,6 @@ type Env = Record<string, string | undefined>
 // Keep this snapshot explicit so release bundles receive the configured trust policy.
 const BUILD_ENV: Env = {
   EXPO_PUBLIC_VERIFIER_API_BASE_URL: process.env.EXPO_PUBLIC_VERIFIER_API_BASE_URL,
-  EXPO_PUBLIC_VERIFIER_NAME: process.env.EXPO_PUBLIC_VERIFIER_NAME,
   EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST:
     process.env.EXPO_PUBLIC_ALLOW_REDIRECT_URI_VERIFIER_TRUST,
   EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID,
@@ -53,8 +52,8 @@ function buildDidWebTrustedPartyFromEnv(input: {
   jwkKey: string
 }): TrustedVerifier | undefined {
   const didWebClientId = input.env[input.clientIdKey]?.trim()
-  const didWebResponseOrigin = readOrigin(input.env[input.responseOriginKey])
-  if (!didWebClientId || !didWebResponseOrigin) return undefined
+  const allowedOrigins = readOrigins(input.env[input.responseOriginKey])
+  if (!didWebClientId || allowedOrigins.length === 0) return undefined
 
   const parsed = parseClientId(didWebClientId)
   const normalizedClientId = didWebClientId.startsWith('decentralized_identifier:')
@@ -66,7 +65,7 @@ function buildDidWebTrustedPartyFromEnv(input: {
   return {
     clientId: normalizedClientId,
     name: input.env[input.nameKey]?.trim() || input.fallbackName || 'Trusted Party',
-    allowedOrigins: [didWebResponseOrigin],
+    allowedOrigins,
     ...(verificationJwk ? { verificationJwk } : {}),
   }
 }
@@ -87,12 +86,12 @@ function buildDidKeyTrustedPartyFromEnv(input: {
     : rawClientId
   if (!didKeyClientId.startsWith('did:key:')) return undefined
 
-  const responseOrigin =
-    readOrigin(input.env[input.responseOriginKey]) ??
-    (input.fallbackOriginFromApiBaseUrl
-      ? readOrigin(normalizeBaseUrl(input.env.EXPO_PUBLIC_VERIFIER_API_BASE_URL))
-      : undefined)
-  if (!responseOrigin) return undefined
+  const allowedOrigins = readOrigins(input.env[input.responseOriginKey])
+  if (allowedOrigins.length === 0 && input.fallbackOriginFromApiBaseUrl) {
+    const fallbackOrigin = readOrigin(normalizeBaseUrl(input.env.EXPO_PUBLIC_VERIFIER_API_BASE_URL))
+    if (fallbackOrigin) allowedOrigins.push(fallbackOrigin)
+  }
+  if (allowedOrigins.length === 0) return undefined
 
   const parsed = parseClientId(didKeyClientId)
   const normalizedClientId =
@@ -103,7 +102,7 @@ function buildDidKeyTrustedPartyFromEnv(input: {
   return {
     clientId: normalizedClientId,
     name: input.env[input.nameKey]?.trim() || input.fallbackName || 'Trusted Verifier',
-    allowedOrigins: [responseOrigin],
+    allowedOrigins,
   }
 }
 
@@ -129,7 +128,7 @@ export function buildTrustedVerifiersFromEnv(
   if (shouldEmitRedirectUriVerifierTrust(env, isDevelopment) && verifierApiBaseUrl) {
     verifiers.push({
       clientId: `redirect_uri:${verifierApiBaseUrl}/openid4vc/verify`,
-      name: env.EXPO_PUBLIC_VERIFIER_NAME?.trim() || 'Verifier API',
+      name: 'Verifier API',
       allowedOrigins: [new URL(verifierApiBaseUrl).origin],
     })
   }
@@ -139,7 +138,7 @@ export function buildTrustedVerifiersFromEnv(
     clientIdKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID',
     responseOriginKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN',
     nameKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_NAME',
-    fallbackName: env.EXPO_PUBLIC_VERIFIER_NAME?.trim() || 'Trusted Verifier',
+    fallbackName: 'Trusted Verifier',
     jwkKey: 'EXPO_PUBLIC_VERIFIER_DID_WEB_JWK',
   })
   if (verifierDidWeb) verifiers.push(verifierDidWeb)
@@ -149,7 +148,7 @@ export function buildTrustedVerifiersFromEnv(
     clientIdKey: 'EXPO_PUBLIC_VERIFIER_DID_KEY_CLIENT_ID',
     responseOriginKey: 'EXPO_PUBLIC_VERIFIER_DID_KEY_RESPONSE_ORIGIN',
     nameKey: 'EXPO_PUBLIC_VERIFIER_DID_KEY_NAME',
-    fallbackName: env.EXPO_PUBLIC_VERIFIER_NAME?.trim() || 'Trusted Verifier',
+    fallbackName: 'Trusted Verifier',
     fallbackOriginFromApiBaseUrl: true,
   })
   if (verifierDidKey) verifiers.push(verifierDidKey)
@@ -252,4 +251,17 @@ function readOrigin(value: string | undefined): string | undefined {
   } catch {
     return undefined
   }
+}
+
+/** Comma-separated HTTPS origins for verifier trust (Scan response_uri or DC API page origin). */
+function readOrigins(value: string | undefined): string[] {
+  const trimmed = value?.trim()
+  if (!trimmed) return []
+
+  const origins = trimmed
+    .split(',')
+    .map((entry) => readOrigin(entry.trim()))
+    .filter((origin): origin is string => Boolean(origin))
+
+  return [...new Set(origins)]
 }

@@ -5,6 +5,7 @@ import {
   readPendingCredentialOfferRoute,
   readPendingPresentationRoute,
 } from '../../store/deeplinkStore'
+import { hasPendingDcApiPresentationPhase } from '../../store/dcApiPresentationStore'
 import { hasWalletPin } from './walletPin'
 
 type PostLoginRouteInput = {
@@ -56,6 +57,7 @@ export function readPostLoginRoute(input: PostLoginRouteInput): WalletRoute {
 
 const UNAUTHENTICATED_PUBLIC_SEGMENTS = new Set(['auth', 'login', 'register', 'forgot-pin'])
 const AUTHENTICATED_AUTH_FLOW_SEGMENTS = new Set(['auth', 'login', 'pin-setup', 'forgot-pin', 'pin-lock', 'callback'])
+const TRANSIENT_WALLET_FLOW_SEGMENTS = new Set(['callback', 'dc-api-presentation'])
 
 function requiresPinUnlock(input: StartupRouteInput): boolean {
   return isWalletPinLockRequired(input)
@@ -76,6 +78,10 @@ export function readStartupRoute(input: StartupRouteInput): WalletRoute | undefi
   }
 
   if (input.isAuthenticated && AUTHENTICATED_AUTH_FLOW_SEGMENTS.has(segment)) {
+    return undefined
+  }
+
+  if (input.isAuthenticated && TRANSIENT_WALLET_FLOW_SEGMENTS.has(segment)) {
     return undefined
   }
 
@@ -112,6 +118,14 @@ function hasPendingPostUnlockDeeplinkRoute(input: WalletAccessRedirectInput): bo
 }
 
 export function readWalletAccessRedirect(input: WalletAccessRedirectInput): WalletRoute | undefined {
+  if (input.currentSegment && TRANSIENT_WALLET_FLOW_SEGMENTS.has(input.currentSegment)) {
+    return undefined
+  }
+
+  if (hasPendingDcApiPresentationPhase()) {
+    return undefined
+  }
+
   const targetRoute = readStartupRoute(input)
   if (!targetRoute) return undefined
 
@@ -131,7 +145,7 @@ export function readWalletAccessRedirect(input: WalletAccessRedirectInput): Wall
     targetRoute === '/(tabs)'
     && input.currentSegment === 'pin-lock'
     && input.isPinVerified
-    && hasPendingPostUnlockDeeplinkRoute(input)
+    && (hasPendingPostUnlockDeeplinkRoute(input) || hasPendingDcApiPresentationPhase())
   ) {
     return undefined
   }

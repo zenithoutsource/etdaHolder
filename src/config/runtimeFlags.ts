@@ -27,8 +27,14 @@ export function readOid4vpJweEncOverride(): Oid4vpJweEncOverride | undefined {
   return value === 'A128GCM' || value === 'A256GCM' ? value : undefined
 }
 
+/**
+ * `apv` is on by default to match the OID4VP reference stack, which always binds
+ * base64url(request nonce) into the JARM JWE Concat KDF. Verifiers that reconstruct
+ * the expected `apv` from their own nonce fail to derive the CEK without it.
+ */
 export function shouldIncludeOid4vpJweApv(isDevelopment = __DEV__): boolean {
-  return isDevelopment && process.env.EXPO_PUBLIC_OID4VP_JWE_APV === 'true'
+  if (isDevelopment && process.env.EXPO_PUBLIC_OID4VP_JWE_APV === 'false') return false
+  return true
 }
 
 export function readWalletDemoInteropEnabled(isDevelopment = __DEV__): boolean {

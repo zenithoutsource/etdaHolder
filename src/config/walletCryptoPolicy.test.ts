@@ -69,8 +69,8 @@ describe('walletCryptoPolicy', () => {
     expect(WALLET_ATTEST_CHALLENGE_UNSUPPORTED_UNTIL_KEY).toBe('wallet.attest.challenge_unsupported_until')
   })
 
-  test('isPerCredentialSigningEnabled defaults on', () => {
-    delete process.env.EXPO_PUBLIC_PER_CREDENTIAL_SIGNING_ENABLED
+  test('keeps per-credential signing enabled when a legacy env override disables it', () => {
+    process.env.EXPO_PUBLIC_PER_CREDENTIAL_SIGNING_ENABLED = 'false'
     expect(isPerCredentialSigningEnabled()).toBe(true)
   })
 

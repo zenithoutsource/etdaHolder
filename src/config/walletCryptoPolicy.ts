@@ -11,8 +11,7 @@ export function readIssuancePendingKeyTtlMs(): number {
 
 /** Default on: P2 journey 12 / canvas 20 generates a new `did:key` per credential without Wallet Provider WUA. */
 export function isPerCredentialSigningEnabled(): boolean {
-  const raw = process.env.EXPO_PUBLIC_PER_CREDENTIAL_SIGNING_ENABLED
-  return raw !== 'false' && raw !== '0'
+  return true
 }
 
 /** Opt-in Wallet Provider WUA/WIA on OID4VCI credential request. Default off. */
