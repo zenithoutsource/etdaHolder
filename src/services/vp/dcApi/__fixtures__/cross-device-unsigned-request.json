@@ -1,0 +1,8 @@
+{
+  "sessionId": "fixture-cross-device-session",
+  "protocol": "openid4vp-v1-unsigned",
+  "origin": "https://digital-credentials.dev",
+  "transport": "cross_device",
+  "selectedCredentialId": "mdl-credential-redacted",
+  "request": "{\"response_mode\":\"dc_api\",\"nonce\":\"nonce-redacted\",\"dcql_query\":{\"credentials\":[{\"id\":\"mdl\",\"format\":\"mso_mdoc\",\"meta\":{\"doctype_value\":\"org.iso.18013.5.1.mDL\"},\"claims\":[{\"path\":[\"org.iso.18013.5.1\",\"family_name\"]}]}]}}"
+}

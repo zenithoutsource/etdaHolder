@@ -2,7 +2,7 @@ import { readWalletDemoInteropEnabled } from '@/src/config/runtimeFlags'
 import { readTrustAnyOid4vcPeerForClientId } from '@/src/config/oid4vcPeerTrustPolicy'
 import { logWalletError } from '@/src/services/debug/walletLogger'
 import { parseAuthorizationRequestBody } from '@/src/services/vp/authorizationRequestJar'
-import { findTrustedVerifier, type TrustedVerifier } from '@/src/services/vp/trustedVerifierMatcher'
+import { findTrustedVerifierForDcApiPlatformOrigin, type TrustedVerifier } from '@/src/services/vp/trustedVerifierMatcher'
 import { decodeJsonBase64Url, looksLikeCompactJwt, readString } from '@/src/utils/jwtUtils'
 
 export type AuthenticatedDcApiSignedRequest = {
@@ -40,6 +40,7 @@ const authenticatedSignedRequests = new WeakSet<object>()
  */
 export async function authenticateDcApiSignedRequest(input: {
   request: string
+  origin: string
   trustedVerifiers: TrustedVerifier[]
   fetchImpl?: typeof fetch
 }): Promise<AuthenticatedDcApiSignedRequest> {
@@ -47,6 +48,7 @@ export async function authenticateDcApiSignedRequest(input: {
   const authorizationRequest = await parseAuthorizationRequestBody(input.request, {
     trustedVerifiers: input.trustedVerifiers,
     fetchImpl: input.fetchImpl,
+    trustOrigin: input.origin,
   })
   if (!authorizationRequest) {
     throw new Error('PresentationRequestInvalid: signed dc_api request is empty')
@@ -108,11 +110,14 @@ export function evaluateDcApiTrust(input: DcApiTrustInput): DcApiTrustResult {
     }
   }
 
-  const verifier = findTrustedVerifier(
+  const trustAnyPeer =
+    readTrustAnyOid4vcPeerForClientId(input.signedRequest.clientId)
+    || readWalletDemoInteropEnabled(isDevelopment)
+  const verifier = findTrustedVerifierForDcApiPlatformOrigin(
     input.signedRequest.clientId,
     origin,
     input.trustedVerifiers,
-    readTrustAnyOid4vcPeerForClientId(input.signedRequest.clientId) || readWalletDemoInteropEnabled(isDevelopment),
+    trustAnyPeer,
   )
   if (!verifier) {
     return { allowed: false, reason: 'PresentationRequestUntrusted: signed dc_api verifier not trusted' }
@@ -122,11 +127,16 @@ export function evaluateDcApiTrust(input: DcApiTrustInput): DcApiTrustResult {
 }
 
 export function readDcApiMdocAudience(origin: string): string {
+  return `origin:${readCanonicalDcApiOrigin(origin)}`
+}
+
+/** Canonical HTTPS origin for DC API handover and mdoc device-auth binding. */
+export function readCanonicalDcApiOrigin(origin: string): string {
   const canonicalOrigin = readCanonicalHttpsOrigin(origin)
   if (!canonicalOrigin) {
     throw new Error('PresentationRequestInvalid: DC API origin must be HTTPS')
   }
-  return `origin:${canonicalOrigin}`
+  return canonicalOrigin
 }
 
 function assertCompactSignedJar(request: string): void {
@@ -153,9 +163,16 @@ function readExpectedOrigins(authorizationRequest: Record<string, unknown>): str
 
 function readCanonicalHttpsOrigin(origin: string): string | undefined {
   try {
-    const parsed = new URL(origin)
+    let trimmed = origin.trim().replace(/\/$/, '')
+    if (trimmed.endsWith(':443')) {
+      trimmed = trimmed.slice(0, -4)
+    }
+    const parsed = new URL(trimmed)
     const canonical = parsed.origin
-    if (parsed.protocol !== 'https:' || (origin !== canonical && origin !== `${canonical}/`)) {
+    if (parsed.protocol !== 'https:') {
+      return undefined
+    }
+    if (trimmed !== canonical && trimmed !== `${canonical}/`) {
       return undefined
     }
     return canonical

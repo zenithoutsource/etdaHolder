@@ -3,7 +3,7 @@ import { p256 } from '@noble/curves/nist.js'
 import { decryptCompactJweEcdhEsP256ForTest } from '@/src/services/crypto/jweEcdhEs'
 import { p256PublicKeyToJwk } from '@/src/services/crypto/p256Identity'
 
-import { buildDcApiPresentationPayload } from './dcApiResponseBuilder'
+import { buildDcApiPresentationPayload, formatDcApiDigitalCredentialResponse } from './dcApiResponseBuilder'
 
 describe('buildDcApiPresentationPayload', () => {
   const privateKey = p256.keygen().secretKey
@@ -91,6 +91,34 @@ describe('buildDcApiPresentationPayload', () => {
     if (payload.responseMode !== 'dc_api.jwt') throw new Error('ExpectedDcApiJwtPayload')
     expect(decryptCompactJweEcdhEsP256ForTest(payload.response, privateKey)).toEqual({
       vp_token: { cred2: ['base64urlDeviceResponse'] },
+    })
+  })
+
+  test('wraps presentation payload for Credential Manager credentialJson', () => {
+    const wrapped = formatDcApiDigitalCredentialResponse(
+      {
+        responseMode: 'dc_api',
+        data: { vp_token: { cred1: ['device-response'] } },
+      },
+      'openid4vp-v1-unsigned',
+    )
+    expect(JSON.parse(wrapped)).toEqual({
+      protocol: 'openid4vp-v1-unsigned',
+      data: { vp_token: { cred1: ['device-response'] } },
+    })
+  })
+
+  test('wraps encrypted dc_api.jwt payload for Credential Manager credentialJson', () => {
+    const wrapped = formatDcApiDigitalCredentialResponse(
+      {
+        responseMode: 'dc_api.jwt',
+        response: 'eyJhbGciOiJFQ0RILUVTK0EyNTZHQ00ifQ..ciphertext..tag',
+      },
+      'openid4vp-v1-unsigned',
+    )
+    expect(JSON.parse(wrapped)).toEqual({
+      protocol: 'openid4vp-v1-unsigned',
+      data: { response: 'eyJhbGciOiJFQ0RILUVTK0EyNTZHQ00ifQ..ciphertext..tag' },
     })
   })
 })

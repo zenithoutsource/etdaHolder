@@ -19,10 +19,24 @@ export type BuildDcApiPresentationPayloadInput = {
   deviceResponse: string
 }
 
+/**
+ * Android Credential Manager expects CMWallet-compatible credentialJson:
+ * `{ protocol, data }` where `data` holds the OpenID4VP response (`vp_token` or JWE `response`).
+ */
+export function formatDcApiDigitalCredentialResponse(
+  payload: DcApiPresentationPayload,
+  protocol: 'openid4vp-v1-unsigned' | 'openid4vp-v1-signed',
+): string {
+  const data = payload.responseMode === 'dc_api'
+    ? payload.data
+    : { response: payload.response }
+  return JSON.stringify({ protocol, data })
+}
+
 export function buildDcApiPresentationPayload(
   input: BuildDcApiPresentationPayloadInput,
 ): DcApiPresentationPayload {
-  const vpToken = buildDcqlObjectArrayVpToken(input)
+  const vpToken = buildDcqlVpTokenForDcApi(input)
 
   if (input.responseMode === 'dc_api') {
     return { responseMode: 'dc_api', data: { vp_token: vpToken } }
@@ -40,10 +54,11 @@ export function buildDcApiPresentationPayload(
   }
 }
 
-function buildDcqlObjectArrayVpToken(input: BuildDcApiPresentationPayloadInput): Record<string, string[]> {
+function buildDcqlVpTokenForDcApi(input: BuildDcApiPresentationPayloadInput): Record<string, string[]> {
   assertSelectedDcqlQueryId(input.authorizationRequest, input.selectedDcqlQueryId)
   const envelope = formatDcqlVpTokenEnvelope({
     entries: { [input.selectedDcqlQueryId]: input.deviceResponse },
+    // OID4VP 1.0 + current CMWallet: JSONArray per DCQL id (object_array).
     shape: 'object_array',
   })
   return JSON.parse(envelope) as Record<string, string[]>

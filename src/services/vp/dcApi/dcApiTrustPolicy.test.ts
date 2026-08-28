@@ -1,9 +1,11 @@
 import { p256 } from '@noble/curves/nist.js'
 
-import { p256PublicKeyToDidKey, signEs256Prehash } from '@/src/services/crypto/p256Identity'
+import { p256PublicKeyToDidKey, p256PublicKeyToJwk, signEs256Prehash } from '@/src/services/crypto/p256Identity'
+import { buildTrustedVerifiersFromEnv } from '@/src/config/trustedVerifiers'
 import {
   authenticateDcApiSignedRequest,
   evaluateDcApiTrust,
+  readCanonicalDcApiOrigin,
   readDcApiMdocAudience,
 } from './dcApiTrustPolicy'
 
@@ -183,6 +185,7 @@ describe('evaluateDcApiTrust', () => {
         origin: 'https://verifier.example.com',
         secretKey,
       }),
+      origin: 'https://verifier.example.com',
       trustedVerifiers: [verifier],
     })
 
@@ -209,6 +212,7 @@ describe('evaluateDcApiTrust', () => {
         secretKey,
         expectedOrigins: ['https://attacker.example.com'],
       }),
+      origin: 'https://verifier.example.com',
       trustedVerifiers: [verifier],
     })
 
@@ -234,6 +238,7 @@ describe('evaluateDcApiTrust', () => {
         origin: 'https://verifier.example.com',
         secretKey,
       }),
+      origin: 'https://verifier.example.com',
       trustedVerifiers: [verifier],
     })
 
@@ -244,6 +249,155 @@ describe('evaluateDcApiTrust', () => {
       trustedVerifiers: [verifier],
       isDevelopment: false,
     })).toEqual({ allowed: true, verifier })
+  })
+
+  test('authenticates a signed dc_api JAR without response_uri using the platform origin in demo interop', async () => {
+    delete process.env.EXPO_PUBLIC_BUILD_PROFILE
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+
+    const { secretKey, publicKey } = p256.keygen()
+    const clientId = `decentralized_identifier:${p256PublicKeyToDidKey(publicKey)}`
+    const header = {
+      alg: 'ES256',
+      typ: 'oauth-authz-req+jwt',
+      kid: 'dc-api-verifier-key',
+    }
+    const payload = {
+      client_id: clientId,
+      response_mode: 'dc_api',
+      nonce: 'nonce-1',
+      expected_origins: ['https://digital-credentials.dev'],
+      dcql_query: {
+        credentials: [{ id: 'mdl', format: 'mso_mdoc', meta: { doctype_value: 'org.iso.18013.5.1.mDL' } }],
+      },
+    }
+    const unsigned = `${encodePart(header)}.${encodePart(payload)}`
+    const signature = signEs256Prehash(new TextEncoder().encode(unsigned), secretKey)
+    const jar = `${unsigned}.${base64UrlEncodeBytes(signature)}`
+
+    await expect(authenticateDcApiSignedRequest({
+      request: jar,
+      origin: 'https://digital-credentials.dev',
+      trustedVerifiers: [],
+    })).resolves.toMatchObject({
+      clientId,
+      responseMode: 'dc_api',
+    })
+  })
+
+  test('authenticates signed dc_api did:web JARs when verifier DID host differs from the page origin', async () => {
+    delete process.env.EXPO_PUBLIC_BUILD_PROFILE
+    process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP = 'true'
+
+    const { secretKey, publicKey } = p256.keygen()
+    const es256Jwk = { ...p256PublicKeyToJwk(publicKey), kid: 'verifier-es256-1', alg: 'ES256' }
+    const clientId = 'decentralized_identifier:did:web:verifier.tonyhere.work'
+    const header = {
+      alg: 'ES256',
+      typ: 'oauth-authz-req+jwt',
+      kid: 'did:web:verifier.tonyhere.work#key-1',
+    }
+    const payload = {
+      client_id: clientId,
+      response_mode: 'dc_api',
+      nonce: 'nonce-tonyhere',
+      expected_origins: ['https://demo.tonyhere.work'],
+      dcql_query: {
+        credentials: [{ id: 'mdl', format: 'mso_mdoc', meta: { doctype_value: 'org.iso.18013.5.1.mDL' } }],
+      },
+    }
+    const unsigned = `${encodePart(header)}.${encodePart(payload)}`
+    const signature = signEs256Prehash(new TextEncoder().encode(unsigned), secretKey)
+    const jar = `${unsigned}.${base64UrlEncodeBytes(signature)}`
+    const fetchMock = jest.fn(async () =>
+      Response.json({
+        id: 'did:web:verifier.tonyhere.work',
+        verificationMethod: [
+          {
+            id: 'did:web:verifier.tonyhere.work#key-1',
+            type: 'JsonWebKey2020',
+            publicKeyJwk: es256Jwk,
+          },
+        ],
+      }),
+    )
+
+    const signedRequest = await authenticateDcApiSignedRequest({
+      request: jar,
+      origin: 'https://demo.tonyhere.work',
+      trustedVerifiers: [],
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    })
+
+    expect(signedRequest).toMatchObject({
+      clientId,
+      responseMode: 'dc_api',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    expect(evaluateDcApiTrust({
+      isSignedRequest: true,
+      origin: 'https://demo.tonyhere.work',
+      signedRequest,
+      trustedVerifiers: [],
+      isDevelopment: true,
+    })).toEqual({
+      allowed: true,
+      verifier: {
+        clientId,
+        name: 'demo.tonyhere.work',
+        allowedOrigins: ['https://demo.tonyhere.work'],
+      },
+    })
+  })
+
+  test('trusts env-configured did:web verifier for signed dc_api without demo interop', async () => {
+    delete process.env.EXPO_PUBLIC_BUILD_PROFILE
+    delete process.env.EXPO_PUBLIC_WALLET_DEMO_INTEROP
+
+    const { secretKey, publicKey } = p256.keygen()
+    const es256Jwk = { ...p256PublicKeyToJwk(publicKey), kid: 'verifier-es256-1', alg: 'ES256' }
+    const clientId = 'decentralized_identifier:did:web:verifier.example.com'
+    const trustedVerifiers = buildTrustedVerifiersFromEnv(
+      {
+        EXPO_PUBLIC_VERIFIER_DID_WEB_CLIENT_ID: 'did:web:verifier.example.com',
+        EXPO_PUBLIC_VERIFIER_DID_WEB_RESPONSE_ORIGIN: 'https://demo.example.com',
+        EXPO_PUBLIC_VERIFIER_DID_WEB_NAME: 'Production Verifier',
+        EXPO_PUBLIC_VERIFIER_DID_WEB_JWK: JSON.stringify(es256Jwk),
+      },
+      false,
+    )
+    const header = {
+      alg: 'ES256',
+      typ: 'oauth-authz-req+jwt',
+      kid: 'verifier-es256-1',
+    }
+    const payload = {
+      client_id: clientId,
+      response_mode: 'dc_api',
+      nonce: 'nonce-env-trust',
+      expected_origins: ['https://demo.example.com'],
+      dcql_query: {
+        credentials: [{ id: 'mdl', format: 'mso_mdoc', meta: { doctype_value: 'org.iso.18013.5.1.mDL' } }],
+      },
+    }
+    const unsigned = `${encodePart(header)}.${encodePart(payload)}`
+    const signature = signEs256Prehash(new TextEncoder().encode(unsigned), secretKey)
+    const jar = `${unsigned}.${base64UrlEncodeBytes(signature)}`
+
+    const signedRequest = await authenticateDcApiSignedRequest({
+      request: jar,
+      origin: 'https://demo.example.com',
+      trustedVerifiers,
+    })
+
+    expect(evaluateDcApiTrust({
+      isSignedRequest: true,
+      origin: 'https://demo.example.com',
+      signedRequest,
+      trustedVerifiers,
+      isDevelopment: false,
+    })).toEqual({ allowed: true, verifier: trustedVerifiers[0] })
   })
 })
 
@@ -256,5 +410,17 @@ describe('readDcApiMdocAudience', () => {
 
   test('rejects an invalid origin instead of constructing an mdoc audience', () => {
     expect(() => readDcApiMdocAudience('http://verifier.example.com')).toThrow(/origin must be HTTPS/i)
+  })
+
+  test('readCanonicalDcApiOrigin strips trailing slash', () => {
+    expect(readCanonicalDcApiOrigin('https://digital-credentials.dev/')).toBe(
+      'https://digital-credentials.dev',
+    )
+  })
+
+  test('readCanonicalDcApiOrigin strips explicit :443 default port', () => {
+    expect(readCanonicalDcApiOrigin('https://digital-credentials.dev:443')).toBe(
+      'https://digital-credentials.dev',
+    )
   })
 })
